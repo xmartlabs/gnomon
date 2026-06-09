@@ -1717,18 +1717,6 @@ def steering_reading(stats):
     return {"label": label, "gloss": gloss, "detail": detail}
 
 
-_MODEL_FAMILIES = (("opus", re.compile(r"opus", re.I)),
-                   ("sonnet", re.compile(r"sonnet", re.I)),
-                   ("haiku", re.compile(r"haiku", re.I)))
-
-
-def _model_family(name):
-    for fam, rx in _MODEL_FAMILIES:
-        if rx.search(name or ""):
-            return fam
-    return "other"
-
-
 def compute_aq(stats):
     """Agentic Quotient v2 — 'how well you OPERATE AGENTS' (distinct from the gstack
     scorecard, which grades how you BUILD). Four pillars: Breadth (how much machinery),
@@ -1801,18 +1789,19 @@ def compute_aq(stats):
     ]
 
     # ---- Pillar 4: Savvy ----
-    fam_turns, total_turns = {}, 0
-    for name, n in st.get("models", []):
-        fam_turns[_model_family(name)] = fam_turns.get(_model_family(name), 0) + n
-        total_turns += n
-    distinct_fams = len([f for f in fam_turns if f != "other"])  # 0 if no recognized family
-    nonopus_share = (sum(n for f, n in fam_turns.items() if f != "opus") / total_turns) if total_turns else 0
-    model_tier = .5 * sat(distinct_fams, 3) + .5 * sat(nonopus_share, 0.30)
+    # Provider-agnostic: works across Claude / OpenAI-Codex / Gemini / etc. "Model mix"
+    # rewards using more than one model and routing work off your single default model
+    # (match model to task) — no hard-coded model names or tiers.
+    models = st.get("models", [])
+    total_turns = sum(n for _, n in models)
+    top_turns = max((n for _, n in models), default=0)
+    offload_share = (1 - top_turns / total_turns) if total_turns else 0
+    model_mix = .5 * sat(len(models), 3) + .5 * sat(offload_share, 0.30)
     cli_calls, mcp_calls = t.get("cli_calls", 0), t.get("mcp_calls", 0)
     cli_share = cli_calls / (cli_calls + mcp_calls) if (cli_calls + mcp_calls) else 0
     token_economy = .5 * sat(t.get("toolsearch_calls", 0), 300) + .5 * sat(cli_share, 0.70)
     savvy_axes = [
-        ("Model-tier savvy", 50, model_tier, {"model_families": distinct_fams, "nonopus_share": round(nonopus_share, 2)}),
+        ("Model mix", 50, model_mix, {"distinct_models": len(models), "offload_share": round(offload_share, 2)}),
         ("Token economy", 50, token_economy, {"toolsearch": t.get("toolsearch_calls", 0), "cli_share": round(cli_share, 2)}),
     ]
 
