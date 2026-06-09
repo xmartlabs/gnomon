@@ -60,7 +60,7 @@ Auto-detected from their default local locations:
 Two **independent** questions — the report frames both:
 
 ### 1. gstack scorecard — *how you build*
-Three 0–10 axes (Execution / Planning / Engineering) grounded in [gstack](https://github.com/garrytan/gstack), plus an archetype (Architect, Quality Guardian, …) and a described steering style. Counts are measured; scores are a transparent rubric. **Unchanged from upstream.**
+Three 0–10 axes (Execution / Planning / Engineering) grounded in [gstack](https://github.com/garrytan/gstack) and a described steering style. Counts are measured; scores are a transparent rubric. **Axes unchanged from upstream.**
 
 ### 2. Agentic Quotient (AQ) — *how you operate agents*
 0–100, four pillars (each shown with its sub-axes):
@@ -72,7 +72,9 @@ Three 0–10 axes (Execution / Planning / Engineering) grounded in [gstack](http
 | **Efficiency** | 20 | Steering leverage (sweet-spot) · Recovery |
 | **Savvy** | 15 | Model mix · Token economy |
 
-Tiers: Operator <40 · Power User 40–60 · Orchestrator 60–80 · **Systems Builder 80–100**.
+**Level** (one honest ladder, driven by AQ — no flattery at the floor): Novice <25 · Apprentice 25–45 · Adequate 45–60 · Proficient 60–75 · Advanced 75–88 · **Elite 88–100**. This is also the profile headline; the quote names your thinnest pillar so the gap is visible.
+
+> Orchestration now reads **coordination** (median agents coordinated per orchestrating session), not raw dispatch volume — a serial grinder firing one agent at a time can't max it.
 
 `MCP vs CLI` and `Tool diversity` are **described, not graded** (like steering — no better/worse end). CLI-first is treated as token-efficient, not a gap.
 

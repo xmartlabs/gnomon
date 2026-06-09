@@ -71,7 +71,7 @@ def _sample_stats():
                        ("claude-sonnet-4-6", 3000), ("claude-haiku-4-5", 900)],
         },
         "behavior": {
-            "background_tasks": 187, "scheduled_actions": 11,
+            "fanout_median": 4,
             "shell_test_runs": 200, "planning_ratio_explore_to_doing": 0.94,
             "actions_per_prompt": 13.8, "error_recovery_ratio": 0.98,
             "api_errors_retries": 20,
@@ -98,8 +98,8 @@ class TestComputeAqV2(unittest.TestCase):
             for a in p["axes"]:
                 self.assertLessEqual(a["score"], a["weight"], a["name"])
 
-    def test_tier_systems_builder(self):
-        self.assertEqual(self.aq["tier"], "Systems Builder")
+    def test_tier_elite(self):
+        self.assertEqual(self.aq["tier"], "Elite")
 
     def test_steering_sweetspot_band(self):
         eff = next(p for p in self.aq["pillars"] if p["name"] == "Efficiency")
@@ -119,6 +119,42 @@ class TestComputeAqV2(unittest.TestCase):
 
     def test_empty_low(self):
         self.assertLess(paxel.compute_aq({"tools": {}, "stack": {}, "behavior": {}})["aq_0_100"], 40)
+
+    def test_level_ladder_honest(self):
+        # The level vocabulary must track AQ, with no flattery at the floor.
+        cases = [(10, "Novice"), (35, "Apprentice"), (52, "Adequate"),
+                 (68, "Proficient"), (80, "Advanced"), (95, "Elite")]
+        for total, expected in cases:
+            tier = ("Elite" if total >= 88 else "Advanced" if total >= 75 else "Proficient"
+                    if total >= 60 else "Adequate" if total >= 45 else "Apprentice"
+                    if total >= 25 else "Novice")
+            self.assertEqual(tier, expected, total)
+
+    def test_archetype_matches_aq_tier(self):
+        # Headline archetype is the AQ rung — never contradicts the tier shown below it.
+        s = _sample_stats()
+        aq = paxel.compute_aq(s); s["agentic"] = aq
+        s.setdefault("velocity", {})
+        arch, quote = paxel.pick_archetype(s, {"Planning": 7.5, "Execution": 7.3, "Engineering": 6.0})
+        self.assertEqual(arch, aq["tier"])
+        self.assertIn("thinnest axis", quote)   # the gap is surfaced, not hidden
+
+    def _orch(self, aq):
+        breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
+        return next(a for a in breadth["axes"] if a["name"] == "Orchestration")["score"]
+
+    def test_coordination_beats_volume(self):
+        # Same agent_runs / variety / harness; only fan-out differs. A real orchestrator
+        # (coordinates a team per session) must out-score a serial grinder (1 agent/session).
+        orchestrator = _sample_stats(); orchestrator["behavior"]["fanout_median"] = 6
+        grinder = _sample_stats(); grinder["behavior"]["fanout_median"] = 1
+        self.assertGreater(self._orch(paxel.compute_aq(orchestrator)),
+                           self._orch(paxel.compute_aq(grinder)))
+
+    def test_volume_alone_cannot_max_orchestration(self):
+        # 10x the agent_runs but no coordination (fanout=1) -> still capped below full.
+        s = _sample_stats(); s["tools"]["agent_calls"] = 5000; s["behavior"]["fanout_median"] = 1
+        self.assertLess(self._orch(paxel.compute_aq(s)), 33)
 
 
 class TestCompoundingPath(unittest.TestCase):

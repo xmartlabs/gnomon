@@ -828,6 +828,7 @@ def main():
     model_counter = Counter()
     skill_counter = Counter()
     subagent_counter = Counter()
+    agents_per_session = defaultdict(int)   # sessionId -> Agent dispatches (for fan-out / coordination)
     mcp_server_counter = Counter()   # mcp server name -> calls
     cli_counter = Counter()          # known CLI head -> calls (from Bash commands)
     compounding_counter = 0   # writes to CLAUDE.md/AGENTS.md/memory/docs/adr
@@ -1046,6 +1047,8 @@ def main():
                                 if name == "Agent":
                                     st = inp.get("subagent_type", "general-purpose")
                                     subagent_counter[st] += 1
+                                    if sid:
+                                        agents_per_session[sid] += 1
                                 if name in ASK_TOOLS:
                                     questions_asked += 1
                                 if inp.get("run_in_background"):
@@ -1173,6 +1176,11 @@ def main():
 
     error_recovery_ratio = (recovered_errors / tool_errors) if tool_errors else 0
     error_rate_per_100_tools = (tool_errors / tool_use_total * 100) if tool_use_total else 0
+    # Fan-out / coordination: among sessions that DISPATCH agents, how many do you
+    # coordinate at once? Median (robust to one big fan-out outlier). A serial grinder
+    # firing N agents one-per-session reads 1; a real orchestrator reads its team size.
+    _fanouts = [n for n in agents_per_session.values() if n > 0]
+    fanout_median = statistics.median(_fanouts) if _fanouts else 0
     _depths = sorted(edits_per_file_events)
     iteration_mean = statistics.mean(_depths) if _depths else 0
     iteration_median = statistics.median(_depths) if _depths else 0
@@ -1273,6 +1281,7 @@ def main():
             "tool_errors": tool_errors,
             "recovered_errors": recovered_errors,
             "api_errors_retries": api_errors,
+            "fanout_median": fanout_median,
             "iteration_depth_mean": round(iteration_mean, 2),
             "iteration_depth_median": round(iteration_median, 2),
             "iteration_depth_p90": iteration_p90,
@@ -1737,11 +1746,16 @@ def compute_aq(stats):
 
     # ---- Pillar 1: Breadth (unchanged axes) ----
     agent_runs = t.get("agent_calls", 0)
-    bg, sched = b.get("background_tasks", 0), b.get("scheduled_actions", 0)
+    fanout = b.get("fanout_median", 0)
     o_harn = 1.0 if (any(re.search(r"harness|trisel", str(k), re.I)
                          for k, _ in st.get("subagent_types", [])) or has_skill(["trisel"])) else 0.6
-    orchestration = (.30 * sat(agent_runs, 400) + .25 * sat(st.get("subagent_types_distinct", 0), 8)
-                     + .20 * o_harn + .25 * sat(bg + sched, 200))
+    # Coordination over volume: fan-out (agents coordinated per orchestrating session)
+    # is the orchestration tell — a serial grinder firing N agents one-per-session reads
+    # fanout=1, a real orchestrator reads its team size. agent_runs stays only as a small
+    # volume floor; the old (background + scheduled) COUNT term was cut (it double-counted
+    # volume and rewarded firing-and-forgetting, not coordinating).
+    orchestration = (.30 * sat(st.get("subagent_types_distinct", 0), 8) + .30 * sat(fanout, 5)
+                     + .20 * o_harn + .20 * sat(agent_runs, 400))
     skill_fluency = (.40 * sat(st.get("skills_distinct", 0), 40) + .30 * sat(st.get("skills_total", 0), 1500)
                      + .30 * (1.0 if has_skill(["subagent-driven", "brainstorm", "writing-plans",
                                                 "cerberus", "systematic-debugging"]) else 0.6))
@@ -1751,7 +1765,7 @@ def compute_aq(stats):
                   + .40 * (1.0 if has_skill(["writing-plans", "autoplan", "plan"]) else 0.6))
     breadth_axes = [
         ("Orchestration", 33, orchestration, {"agent_runs": agent_runs,
-         "subagent_types": st.get("subagent_types_distinct", 0), "background": bg, "scheduled": sched}),
+         "subagent_types": st.get("subagent_types_distinct", 0), "fanout_median": fanout}),
         ("Skill fluency", 22, skill_fluency, {"skills_distinct": st.get("skills_distinct", 0),
          "skills_total": st.get("skills_total", 0)}),
         ("Tool command (MCP + CLI)", 28, tool_command, {"mcp_servers": t.get("mcp_servers_distinct", 0),
@@ -1812,8 +1826,10 @@ def compute_aq(stats):
     pillars = [build_pillar("Breadth", 30, breadth_axes), build_pillar("Craft", 35, craft_axes),
                build_pillar("Efficiency", 20, eff_axes), build_pillar("Savvy", 15, savvy_axes)]
     total = round(sum(p["weight"] / 100 * p["score"] for p in pillars))
-    tier = ("Systems Builder" if total >= 80 else "Orchestrator" if total >= 60
-            else "Power User" if total >= 40 else "Operator")
+    # ONE honest level vocabulary, driven by AQ (the score that actually separates level).
+    # No flattery at the floor: a low score reads low. Also drives the profile archetype.
+    tier = ("Elite" if total >= 88 else "Advanced" if total >= 75 else "Proficient" if total >= 60
+            else "Adequate" if total >= 45 else "Apprentice" if total >= 25 else "Novice")
     return {
         "aq_0_100": total, "tier": tier, "pillars": pillars,
         "mcp_vs_cli": {"cli_calls": cli_calls, "cli_distinct": t.get("clis_distinct", 0),
@@ -1824,35 +1840,28 @@ def compute_aq(stats):
 
 
 def pick_archetype(stats, scores):
-    b, vel = stats["behavior"], stats["velocity"]
-    # brute = a HABITUAL grinder (high typical iteration), not one 40-edit outlier session
-    brute = b["iteration_depth_p90"] >= 12 or (vel["shell_authored_lines_est"] > 50000
-                                               and b["error_rate_per_100_tools"] >= 3)
-    plan_hi = scores.get("Planning", 0) >= 7.5
-    exec_hi = scores.get("Execution", 0) >= 8
-    eng_hi = scores.get("Engineering", 0) >= 7.5
-    # Steering isn't scored anymore — read hands-on directly from cadence (short leash).
-    # "The Director" stays a positive, descriptive identity; there's no inverse-shaming pole.
-    steer_hi = b["actions_per_prompt"] <= 6
-    # when both Execution and Engineering qualify, let the dominant one win the label
-    exec_hi = exec_hi and scores.get("Execution", 0) >= scores.get("Engineering", 0)
-    if plan_hi and brute:
-        name, q = "Brute-Force Architect", "You plan and scaffold like an architect — then grind the hard parts by hand, in the shell, until they work."
-    elif plan_hi:
-        name, q = "The Architect", "You plan first, codify your decisions, and build scaffolding that compounds."
-    elif exec_hi and brute:
-        name, q = "The Bulldozer", "You point yourself at the problem and push through it until it gives."
-    elif exec_hi:
-        name, q = "Velocity Machine", "You move fast, delegate hard, and keep a lot of plates spinning at once."
-    elif eng_hi:
-        name, q = "Quality Guardian", "You keep churn low and the bar high — measured changes, reviewed twice."
-    elif steer_hi:
-        name, q = "The Director", "You stay in the loop — short chains, frequent check-ins, no runaway agents."
+    """Honest level read — NOT a flattering identity. One vocabulary, driven by AQ
+    (the score that actually separates level): Novice < Apprentice < Adequate <
+    Proficient < Advanced < Elite. A low score reads low; we don't dress it up. The
+    quote names the thinnest AQ pillar so the gap is visible, not hidden — if you fall
+    short somewhere, it says so."""
+    aq = stats.get("agentic", {})
+    rung = aq.get("tier", "Novice")
+    score = aq.get("aq_0_100", 0)
+    pillars = aq.get("pillars", [])
+    gap = min(pillars, key=lambda p: p["score"])["name"].lower() if pillars else None
+    g = f" Your thinnest axis is {gap} — that's where the next gain is." if gap else ""
+    if score >= 75:
+        q = "You operate at the top — broad machinery, well used." + g
+    elif score >= 60:
+        q = "Proficient and consistent, but not yet at the top tier." + g
+    elif score >= 45:
+        q = "Adequate. The fundamentals are there, with real room to grow." + g
+    elif score >= 25:
+        q = "Still developing — the habits aren't compounding yet." + g
     else:
-        # No single mode dominates. (Time-of-day isn't a build style — it's a 'what we
-        # noticed' card, not an identity — so Night Owl was retired as an archetype.)
-        name, q = "The Builder", "Balanced and pragmatic — no single mode dominates; you adapt to the problem in front of you."
-    return name, q
+        q = "Just getting started. Broad gaps to close before the rest pays off." + g
+    return rung, q
 
 
 def signature_moves(stats):
@@ -2292,7 +2301,7 @@ def write_profile_html(stats, archetype, quote, scores, voice=None):
       '<span class="badge">🔒 Generated locally · nothing uploaded</span></div></div>')
     P('<div class="wrap"><section class="hero">')
     P(f'<p class="eyebrow">{eyebrow}</p>')
-    P(f'<h1>You\'re a<br><span class="accent">{_h.escape(archetype)}.</span></h1>')
+    P(f'<h1>You\'re<br><span class="accent">{_h.escape(archetype)}.</span></h1>')
     P(f'<p class="quote">“{_h.escape(quote)}”</p>')
     P(f'<p class="sub"><b>{v["thinking_blocks"]:,} reasoning blocks</b> before the diffs, '
       f'<b>{b["delegate_actions"]:,} subagents</b> dispatched, and <b>{b["tool_errors"]:,} errors</b> recovered from along the way.</p>')
