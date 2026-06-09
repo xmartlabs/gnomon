@@ -95,5 +95,18 @@ class TestComputeAq(unittest.TestCase):
         self.assertLess(paxel.compute_aq(empty)["aq_0_100"], 60)
 
 
+class TestCompoundingPath(unittest.TestCase):
+    def test_claude_md(self):
+        self.assertTrue(paxel._is_compounding_path("/x/CLAUDE.md"))
+    def test_memory_dir(self):
+        self.assertTrue(paxel._is_compounding_path("/x/memory/foo.md"))
+    def test_adr(self):
+        self.assertTrue(paxel._is_compounding_path("/x/docs/adr/0001.md"))
+    def test_normal_file_false(self):
+        self.assertFalse(paxel._is_compounding_path("/x/src/app.py"))
+    def test_none(self):
+        self.assertFalse(paxel._is_compounding_path(None))
+
+
 if __name__ == "__main__":
     unittest.main()

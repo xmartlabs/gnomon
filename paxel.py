@@ -72,6 +72,7 @@ KNOWN_CLIS = {
     "vitest", "jest", "pytest", "ruby", "swift", "ffmpeg",
 }
 _CLI_SPLIT = re.compile(r"&&|\|\||\||;|\bthen\b|\bdo\b")
+_COMPOUNDING_RX = re.compile(r"CLAUDE\.md|AGENTS\.md|GEMINI\.md|/memory/|/docs/adr|\.cursorrules", re.I)
 
 # verbs that mark an MCP tool as read/inspect rather than produce/act
 MCP_INSPECT_HINTS = ("read", "get", "list", "search", "find", "describe",
@@ -181,6 +182,11 @@ def _extract_clis(command):
             if head in KNOWN_CLIS:
                 found.append(head)
     return found
+
+
+def _is_compounding_path(path):
+    """True if a write target is a compounding artifact (project memory / instructions / ADRs)."""
+    return bool(path) and bool(_COMPOUNDING_RX.search(path))
 
 
 def _git(cwd, args, timeout=30):
@@ -824,6 +830,7 @@ def main():
     subagent_counter = Counter()
     mcp_server_counter = Counter()   # mcp server name -> calls
     cli_counter = Counter()          # known CLI head -> calls (from Bash commands)
+    compounding_counter = 0   # writes to CLAUDE.md/AGENTS.md/memory/docs/adr
     project_activity = Counter()   # cwd -> events
     project_sessions = defaultdict(set)
 
@@ -1055,12 +1062,16 @@ def main():
                                     fpth = inp.get("file_path")
                                     if sid and fpth:
                                         file_edit_run[sid][fpth] += 1
+                                    if _is_compounding_path(fpth):
+                                        compounding_counter += 1
                                 elif name == "Write":
                                     a = line_count(inp.get("content", ""))
                                     lines_added += a
                                     fpth = inp.get("file_path")
                                     if sid and fpth:
                                         file_edit_run[sid][fpth] += 1
+                                    if _is_compounding_path(fpth):
+                                        compounding_counter += 1
                                 elif name == "MultiEdit":
                                     for e in inp.get("edits", []) or []:
                                         if isinstance(e, dict):
@@ -1069,11 +1080,15 @@ def main():
                                     fpth = inp.get("file_path")
                                     if sid and fpth:
                                         file_edit_run[sid][fpth] += 1
+                                    if _is_compounding_path(fpth):
+                                        compounding_counter += 1
                                 elif name == "NotebookEdit":
                                     lines_added += line_count(inp.get("new_source", ""))
                                     fpth = inp.get("notebook_path")
                                     if sid and fpth:
                                         file_edit_run[sid][fpth] += 1
+                                    if _is_compounding_path(fpth):
+                                        compounding_counter += 1
                                 elif name == "Bash":
                                     cmd = inp.get("command", "") or ""
                                     for _cli in _extract_clis(cmd):
@@ -1281,6 +1296,8 @@ def main():
             "skills_distinct": len(skill_counter),
             "skills_total": sum(skill_counter.values()),
             "subagent_types_distinct": len(subagent_counter),
+            "skills_all": skill_counter.most_common(),
+            "compounding_writes": compounding_counter,
             "subagent_types": subagent_counter.most_common(10),
             "top_projects": [(os.path.basename(p), c, len(project_sessions[p]))
                              for p, c in project_activity.most_common(12)],
