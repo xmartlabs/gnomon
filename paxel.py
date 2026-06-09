@@ -1451,9 +1451,10 @@ def write_report(s):
             sig = ", ".join(f"{k}={v}" for k, v in ax["signals"].items())
             A(f"  - {ax['name']}: **{ax['score']}/{ax['weight']}** ({sig})")
         mv = aq["mcp_vs_cli"]
+        _ratio = f"{mv['ratio']}:1" if mv["ratio"] is not None else "all-CLI (no MCP)"
         A(f"- MCP vs CLI _(described, not graded)_: **CLI** {mv['cli_calls']:,} calls / "
           f"{mv['cli_distinct']} tools · **MCP** {mv['mcp_calls']:,} calls / {mv['mcp_distinct']} servers "
-          f"· ratio {mv['ratio']}:1 CLI-first")
+          f"· ratio {_ratio} CLI-first")
         td = aq["tool_diversity"]
         A(f"- Tool diversity _(described)_: {td['distinct']} distinct tools, entropy {td['entropy']}")
     with open(os.path.join(OUT_DIR, "report.md"), "w") as f:
@@ -2278,10 +2279,11 @@ def write_profile_html(stats, archetype, quote, scores, voice=None):
         cli_calls, mcp_calls = mv["cli_calls"], mv["mcp_calls"]
         tot = (cli_calls + mcp_calls) or 1
         cli_pct = max(8, round(cli_calls / tot * 100))
+        _ratio = f'{mv["ratio"]}:1' if mv["ratio"] is not None else "all-CLI (no MCP)"
         P('<div class="aq-split"><b>MCP vs CLI</b> — described, not graded'
           f'<div class="bar"><span class="cli" style="flex:{cli_pct}">CLI · {cli_calls:,} · {mv["cli_distinct"]} tools</span>'
           f'<span class="mcp" style="flex:{100-cli_pct}">MCP · {mcp_calls:,} · {mv["mcp_distinct"]}</span></div>'
-          f'<p class="meta">Ratio <b>{mv["ratio"]}:1</b> CLI-first. CLI is token-cheap and scriptable — '
+          f'<p class="meta">Ratio <b>{_ratio}</b> CLI-first. CLI is token-cheap and scriptable — '
           'you reach for it on repeatable work and reserve MCP for what CLI can\'t do (browser, design canvas, '
           'device control). Right instinct, not a gap.</p>'
           f'<p class="meta"><b>Tool diversity</b> · {aq["tool_diversity"]["distinct"]} distinct tools, '
