@@ -815,6 +815,8 @@ def main():
     model_counter = Counter()
     skill_counter = Counter()
     subagent_counter = Counter()
+    mcp_server_counter = Counter()   # mcp server name -> calls
+    cli_counter = Counter()          # known CLI head -> calls (from Bash commands)
     project_activity = Counter()   # cwd -> events
     project_sessions = defaultdict(set)
 
@@ -999,6 +1001,9 @@ def main():
                                 cat_counter[classify_tool(name)] += 1
                                 if name.startswith("mcp__"):
                                     mcp_calls += 1
+                                    parts = name.split("__")
+                                    if len(parts) > 1 and parts[1]:
+                                        mcp_server_counter[parts[1]] += 1
                                 else:
                                     native_calls += 1
 
@@ -1051,6 +1056,8 @@ def main():
                                         file_edit_run[sid][fpth] += 1
                                 elif name == "Bash":
                                     cmd = inp.get("command", "") or ""
+                                    for _cli in _extract_clis(cmd):
+                                        cli_counter[_cli] += 1
                                     if bash_writes_file(cmd):
                                         bash_write_calls += 1
                                         bash_authored_lines += cmd.count("\n")
@@ -1189,6 +1196,14 @@ def main():
             "mcp_share": round(mcp_calls / (mcp_calls + native_calls), 3) if (mcp_calls + native_calls) else 0,
             "top_tools": tool_counter.most_common(15),
             "category_breakdown": dict(cat_counter),
+            "mcp_servers": mcp_server_counter.most_common(),
+            "mcp_servers_distinct": len(mcp_server_counter),
+            "clis": cli_counter.most_common(),
+            "clis_distinct": len(cli_counter),
+            "cli_calls": sum(cli_counter.values()),
+            "toolsearch_calls": tool_counter.get("ToolSearch", 0),
+            "task_tool_calls": tool_counter.get("TaskCreate", 0) + tool_counter.get("TaskUpdate", 0),
+            "agent_calls": tool_counter.get("Agent", 0),
         },
         "velocity": {
             "git_churn_total": gc["churn"],
@@ -1243,6 +1258,9 @@ def main():
         "stack": {
             "models": model_counter.most_common(),
             "top_skills": skill_counter.most_common(15),
+            "skills_distinct": len(skill_counter),
+            "skills_total": sum(skill_counter.values()),
+            "subagent_types_distinct": len(subagent_counter),
             "subagent_types": subagent_counter.most_common(10),
             "top_projects": [(os.path.basename(p), c, len(project_sessions[p]))
                              for p, c in project_activity.most_common(12)],
