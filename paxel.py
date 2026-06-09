@@ -2002,6 +2002,16 @@ _PROFILE_CSS = """<style>
   .card .reroll:hover{background:#fff;border-color:var(--beak)}
   .card .a{font-family:var(--serif);font-size:19px;font-weight:700;margin:0 0 6px} .card .d{color:var(--muted);font-size:13.5px;margin:0}
   footer{margin-top:54px;padding-top:22px;border-top:1px solid var(--line);color:var(--muted);font-size:13px;line-height:1.7} footer .lock{color:var(--beak-deep);font-weight:700} footer .by{color:var(--text)}
+  .aq-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin:0 0 6px}
+  .aq-big{font-family:var(--serif);font-size:46px;font-weight:800;color:var(--beak-deep);line-height:1}
+  .aq-tier{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--beak-deep);border:1px solid var(--beak);border-radius:999px;padding:4px 11px}
+  .aq-axis{display:grid;grid-template-columns:200px 1fr 56px;align-items:center;gap:14px;margin:0 0 12px}
+  .aq-axis .nm{font-weight:600;font-size:14px} .aq-axis .vl{font-weight:800;text-align:right}
+  .aq-split{margin-top:18px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:15px 16px}
+  .aq-split .bar{display:flex;height:28px;border-radius:6px;overflow:hidden;font-size:11.5px;font-weight:700;margin:8px 0}
+  .aq-split .cli{background:var(--beak-deep);color:#fff;display:flex;align-items:center;padding:0 12px}
+  .aq-split .mcp{background:var(--beak);color:#fff;display:flex;align-items:center;justify-content:flex-end;padding:0 12px}
+  .aq-split .meta{font-size:12.5px;color:var(--muted);margin:6px 0 0;line-height:1.5} .aq-split .meta b{color:var(--text)}
 </style>"""
 
 
@@ -2231,6 +2241,32 @@ def write_profile_html(stats, archetype, quote, scores, voice=None):
     P(f'<div class="steerread"><span class="sr-k">Steering</span>'
       f'<span class="sr-v"><b>{_h.escape(steer_read["label"])}</b> — {_h.escape(steer_read["gloss"])}</span>'
       f'<span class="sr-d">{_h.escape(steer_read["detail"])}</span></div>')
+    aq = stats.get("agentic")
+    if aq:
+        P('<h2 class="section">Agentic Quotient</h2>')
+        P('<div class="disclaimer"><b>How well you wield the agentic stack</b> — multi-agents, skills, '
+          'MCP + CLI, orchestration. A custom metric (not part of paxel). MCP-vs-CLI and tool diversity '
+          'below are <b>described, not graded</b> — like Steering.</div>')
+        P(f'<div class="aq-head"><span class="aq-big">{aq["aq_0_100"]}</span>'
+          f'<span class="aq-tier">{_h.escape(aq["tier"])}</span></div>')
+        for ax in aq["axes"]:
+            pct = (ax["score"] / ax["weight"] * 100) if ax["weight"] else 0
+            P(f'<div class="aq-axis"><span class="nm">{_h.escape(ax["name"])}</span>'
+              f'<span class="track"><span class="fill" style="width:{pct:.0f}%"></span></span>'
+              f'<span class="vl mono">{ax["score"]:.0f}/{ax["weight"]}</span></div>')
+        mv = aq["mcp_vs_cli"]
+        cli_calls, mcp_calls = mv["cli_calls"], mv["mcp_calls"]
+        tot = (cli_calls + mcp_calls) or 1
+        cli_pct = max(8, round(cli_calls / tot * 100))
+        P('<div class="aq-split"><b>MCP vs CLI</b> — described, not graded'
+          f'<div class="bar"><span class="cli" style="flex:{cli_pct}">CLI · {cli_calls:,} · {mv["cli_distinct"]} tools</span>'
+          f'<span class="mcp" style="flex:{100-cli_pct}">MCP · {mcp_calls:,} · {mv["mcp_distinct"]}</span></div>'
+          f'<p class="meta">Ratio <b>{mv["ratio"]}:1</b> CLI-first. CLI is token-cheap and scriptable — '
+          'you reach for it on repeatable work and reserve MCP for what CLI can\'t do (browser, design canvas, '
+          'device control). Right instinct, not a gap.</p>'
+          f'<p class="meta"><b>Tool diversity</b> · {aq["tool_diversity"]["distinct"]} distinct tools, '
+          f'entropy {aq["tool_diversity"]["entropy"]} — high range available, concentrated use. Not penalized.</p>'
+          '</div>')
     if moves:
         P('<h2 class="section">Your signature moves</h2>')
         P('<p class="lead">The patterns in how you direct the AI, pulled from your real sessions. The tag on each '
