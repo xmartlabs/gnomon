@@ -1,0 +1,11 @@
+# Generated outputs — contain YOUR personal transcript-derived data. Never commit.
+stats.json
+report.md
+profile.html
+narrative_input.md
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
