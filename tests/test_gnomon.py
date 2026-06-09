@@ -39,5 +39,49 @@ class TestCodexInjected(unittest.TestCase):
         self.assertFalse(paxel._codex_is_injected(""))
 
 
+def _sample_stats():
+    return {
+        "tools": {
+            "tool_diversity": 111, "tool_entropy_normalized": 0.435,
+            "mcp_calls": 1984, "mcp_servers_distinct": 12,
+            "clis_distinct": 41, "cli_calls": 9194,
+            "toolsearch_calls": 308, "task_tool_calls": 1166, "agent_calls": 416,
+        },
+        "stack": {
+            "skills_distinct": 39, "skills_total": 8000,
+            "subagent_types_distinct": 9,
+            "subagent_types": [("general-purpose", 250), ("harness-generator", 29)],
+            "top_skills": [("simplify", 1832), ("superpowers:writing-plans", 1752),
+                           ("cerberus", 774)],
+        },
+        "behavior": {"background_tasks": 187, "scheduled_actions": 11},
+    }
+
+
+class TestComputeAq(unittest.TestCase):
+    def setUp(self):
+        self.aq = paxel.compute_aq(_sample_stats())
+
+    def test_score_and_tier(self):
+        self.assertEqual(self.aq["aq_0_100"], 95)
+        self.assertEqual(self.aq["tier"], "Systems Builder")
+
+    def test_four_axes(self):
+        names = [a["name"] for a in self.aq["axes"]]
+        self.assertEqual(names, ["Multi-agent orchestration", "Skill fluency",
+                                 "Tool command (MCP + CLI)", "Orchestration discipline"])
+
+    def test_mcp_vs_cli(self):
+        self.assertEqual(self.aq["mcp_vs_cli"]["ratio"], 4.6)
+        self.assertEqual(self.aq["mcp_vs_cli"]["cli_distinct"], 41)
+
+    def test_tool_diversity_passthrough(self):
+        self.assertEqual(self.aq["tool_diversity"]["distinct"], 111)
+
+    def test_tier_floor(self):
+        empty = {"tools": {}, "stack": {}, "behavior": {}}
+        self.assertLess(paxel.compute_aq(empty)["aq_0_100"], 60)
+
+
 if __name__ == "__main__":
     unittest.main()

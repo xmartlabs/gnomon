@@ -1661,6 +1661,78 @@ def steering_reading(stats):
     return {"label": label, "gloss": gloss, "detail": detail}
 
 
+def compute_aq(stats):
+    """Agentic Quotient (0-100): how well the builder wields the agentic stack.
+    Four graded axes (weights 33/22/28/17). MCP-vs-CLI and tool diversity are
+    DESCRIPTIVE (not graded), mirroring how Steering is described, not scored."""
+    t, st, b = stats.get("tools", {}), stats.get("stack", {}), stats.get("behavior", {})
+
+    def sat(x, target):
+        return min(1.0, x / target) if target else 0.0
+
+    def has_skill(needles):
+        return any(any(nd in str(k).lower() for nd in needles)
+                   for k, _ in st.get("top_skills", []))
+
+    def has_harness():
+        rx = re.compile(r"harness|trisel", re.I)
+        return any(rx.search(str(k)) for k, _ in st.get("subagent_types", [])) or has_skill(["trisel"])
+
+    agent_runs = t.get("agent_calls", 0)
+    bg, sched = b.get("background_tasks", 0), b.get("scheduled_actions", 0)
+
+    vol = sat(agent_runs, 400)
+    div = sat(st.get("subagent_types_distinct", 0), 8)
+    harness = 1.0 if has_harness() else 0.6
+    asy = sat(bg + sched, 200)
+    ax1 = .30 * vol + .25 * div + .20 * harness + .25 * asy
+
+    sk_distinct = sat(st.get("skills_distinct", 0), 40)
+    sk_volume = sat(st.get("skills_total", 0), 1500)
+    sk_meta = 1.0 if has_skill(["subagent-driven", "brainstorm", "writing-plans",
+                                "cerberus", "systematic-debugging"]) else 0.6
+    ax2 = .40 * sk_distinct + .30 * sk_volume + .30 * sk_meta
+
+    mcp = sat(t.get("mcp_servers_distinct", 0), 15)
+    cli = sat(t.get("clis_distinct", 0), 40)
+    tss = sat(t.get("toolsearch_calls", 0), 300)
+    ax3 = .40 * mcp + .40 * cli + .20 * tss
+
+    tasks = sat(t.get("task_tool_calls", 0), 1500)
+    plan = 1.0 if has_skill(["writing-plans", "autoplan", "plan"]) else 0.6
+    ax4 = .60 * tasks + .40 * plan
+
+    axes = [
+        ("Multi-agent orchestration", 33, ax1,
+         {"agent_runs": agent_runs, "subagent_types": st.get("subagent_types_distinct", 0),
+          "background": bg, "scheduled": sched}),
+        ("Skill fluency", 22, ax2,
+         {"skills_distinct": st.get("skills_distinct", 0), "skills_total": st.get("skills_total", 0)}),
+        ("Tool command (MCP + CLI)", 28, ax3,
+         {"mcp_servers": t.get("mcp_servers_distinct", 0), "clis": t.get("clis_distinct", 0),
+          "toolsearch": t.get("toolsearch_calls", 0)}),
+        ("Orchestration discipline", 17, ax4,
+         {"task_tool_calls": t.get("task_tool_calls", 0)}),
+    ]
+    total = round(sum(w * s for _, w, s, _ in axes))
+    tier = ("Systems Builder" if total >= 80 else "Orchestrator" if total >= 60
+            else "Power User" if total >= 40 else "Operator")
+    cli_calls, mcp_calls = t.get("cli_calls", 0), t.get("mcp_calls", 0)
+    return {
+        "aq_0_100": total,
+        "tier": tier,
+        "axes": [{"name": n, "weight": w, "score": round(w * s, 1), "signals": sig}
+                 for n, w, s, sig in axes],
+        "mcp_vs_cli": {
+            "cli_calls": cli_calls, "cli_distinct": t.get("clis_distinct", 0),
+            "mcp_calls": mcp_calls, "mcp_distinct": t.get("mcp_servers_distinct", 0),
+            "ratio": round(cli_calls / mcp_calls, 1) if mcp_calls else None,
+        },
+        "tool_diversity": {"distinct": t.get("tool_diversity", 0),
+                           "entropy": t.get("tool_entropy_normalized", 0)},
+    }
+
+
 def pick_archetype(stats, scores):
     b, vel = stats["behavior"], stats["velocity"]
     # brute = a HABITUAL grinder (high typical iteration), not one 40-edit outlier session
