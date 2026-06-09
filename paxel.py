@@ -1275,6 +1275,7 @@ def main():
             },
         },
     }
+    stats["agentic"] = compute_aq(stats)
 
     with open(os.path.join(OUT_DIR, "stats.json"), "w") as f:
         json.dump(stats, f, indent=2, default=str)
