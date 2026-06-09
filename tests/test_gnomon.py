@@ -38,6 +38,18 @@ class TestCodexInjected(unittest.TestCase):
     def test_empty(self):
         self.assertFalse(paxel._codex_is_injected(""))
 
+    def test_agents_md_instructions(self):
+        self.assertTrue(paxel._codex_is_injected("# AGENTS.md instructions for /\n\n<INSTRUCTIONS>\n..."))
+
+    def test_turn_aborted(self):
+        self.assertTrue(paxel._codex_is_injected("<turn_aborted>\nThe user interrupted...</turn_aborted>"))
+
+    def test_two_plus_two_probe(self):
+        self.assertTrue(paxel._codex_is_injected("whats 2+2?"))
+
+    def test_task_wrapper_kept(self):
+        self.assertFalse(paxel._codex_is_injected("<task> Read the full file at /x and summarize"))
+
 
 def _sample_stats():
     return {

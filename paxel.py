@@ -414,12 +414,19 @@ def _codex_tool(p):
 
 
 def _codex_is_injected(text):
-    """True for Codex tooling wrappers (environment context / user instructions) that are
-    sent as `user` messages but are NOT human prompts."""
+    """True for Codex tooling wrappers (environment context, project instructions, turn
+    notices, and the boot 'whats 2+2?' probe) that are sent as `user` messages but are
+    NOT human prompts. Real task wrappers like <task> are NOT injected."""
     if not text:
         return False
     s = text.lstrip()
-    return s.startswith("<environment_context") or s.startswith("<user_instructions")
+    if s.startswith(("<environment_context", "<user_instructions", "<turn_aborted")):
+        return True
+    if s.startswith("# AGENTS.md instructions for"):
+        return True
+    if s.rstrip().lower() in ("whats 2+2?", "what's 2+2?", "whats 2 + 2?"):
+        return True
+    return False
 
 
 def _codex_events(fp):
@@ -863,7 +870,20 @@ def main():
         # iter_events() yields Claude-shaped event dicts for every source format,
         # so the per-event logic below is identical across all supported sources.
         with contextlib.nullcontext(iter_events(fp, fmt)) as _evs:
-            for ev in _evs:
+            _ev_list = list(_evs)
+            # Codex emits ~37k empty "seed" sessions (only injected wrappers + a 2+2 probe).
+            # If a codex file has no genuine human prompt after filtering, skip it entirely so
+            # it doesn't inflate session counts and drag the scores.
+            if fmt == "codex" and not any(
+                e.get("type") == "user"
+                and isinstance((e.get("message") or {}).get("content"), str)
+                and (e.get("message") or {}).get("content", "").strip()
+                for e in _ev_list
+            ):
+                source_files[cur_src] -= 1
+                files_parsed -= 1
+                continue
+            for ev in _ev_list:
                 if ev.get("__bad__"):
                     lines_bad += 1
                     continue
