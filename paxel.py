@@ -1422,6 +1422,20 @@ def write_report(s):
     A("## Autonomy")
     A(f"- **Autonomy score: {au['autonomy_score_0_100']}/100**")
     A(f"- Components: {au['components']}")
+    aq = s.get("agentic")
+    if aq:
+        A("\n## Agentic Quotient (AQ)")
+        A(f"- **AQ: {aq['aq_0_100']}/100 — {aq['tier']}** "
+          "_(custom metric, not from paxel; multi-agents · skills · MCP+CLI · orchestration)_")
+        for ax in aq["axes"]:
+            sig = ", ".join(f"{k}={v}" for k, v in ax["signals"].items())
+            A(f"  - {ax['name']}: **{ax['score']}/{ax['weight']}** ({sig})")
+        mv = aq["mcp_vs_cli"]
+        A(f"- MCP vs CLI _(described, not graded)_: **CLI** {mv['cli_calls']:,} calls / "
+          f"{mv['cli_distinct']} tools · **MCP** {mv['mcp_calls']:,} calls / {mv['mcp_distinct']} servers "
+          f"· ratio {mv['ratio']}:1 CLI-first")
+        td = aq["tool_diversity"]
+        A(f"- Tool diversity _(described)_: {td['distinct']} distinct tools, entropy {td['entropy']}")
     with open(os.path.join(OUT_DIR, "report.md"), "w") as f:
         f.write("\n".join(L))
 
