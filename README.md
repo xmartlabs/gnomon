@@ -65,7 +65,7 @@ Auto-detected from their default local locations:
 | Codex CLI (OpenAI/GPT) | `~/.codex/**/*.jsonl` | Injected wrappers + seed-sessions filtered; model read from `turn_context`; SKILL.md shell-reads counted as skill usage |
 | Gemini CLI | `~/.gemini/**/*.json` | |
 | Others (PI, opencode) | per-tool dirs | parsed where present |
-| Cursor | `state.vscdb` | detected, not yet parsed (experimental) |
+| Cursor | `state.vscdb` + `~/.cursor/projects/.../agent-transcripts` | full (SQLite-first + JSONL, deduped) |
 | Google Antigravity | `state.vscdb` (protobuf) | detected; conversation count + date range surfaced as metadata. Transcripts live **server-side**, so it can't be scored honestly |
 
 ---
@@ -130,3 +130,12 @@ Covers the CLI extractor, Codex injected-message filter, compounding-path matche
 ## Privacy
 
 Everything runs on-device. For accurate code-churn it shells out to your local `git` (`git log --numstat`) on the repos it finds. No network calls, no uploads.
+
+### Cursor specifics (from upstream)
+
+- Cursor sessions live in BOTH `state.vscdb` (SQLite) and agent-transcripts JSONL with
+  complementary data: SQLite is the event stream (per-event timestamps + tool error statuses);
+  the JSONL twin backfills the workspace path and edit old/new strings, and stands alone for
+  sessions missing from the DB and for subagent sidechains.
+- Known caveats: workspace slugs with dashes may mis-parse; JSONL-only sessions get a single
+  file-mtime timestamp; `ApplyPatch` churn counts raw patch lines (slight over-estimate).
