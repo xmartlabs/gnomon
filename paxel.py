@@ -63,6 +63,17 @@ SCHEDULE_TOOLS = {"ScheduleWakeup", "CronCreate", "CronDelete", "CronList",
 SKILL_TOOLS = {"Skill"}
 ASK_TOOLS = {"AskUserQuestion"}
 
+KNOWN_CLIS = {
+    "git", "gh", "npm", "npx", "yarn", "pnpm", "bun", "python", "python3", "pip",
+    "pip3", "node", "deno", "cargo", "go", "rg", "grep", "sed", "awk", "find",
+    "curl", "wget", "jq", "docker", "kubectl", "make", "xcodebuild", "pod", "expo",
+    "eas", "supabase", "vercel", "psql", "sqlite3", "open", "cp", "mv", "rm",
+    "mkdir", "ls", "cat", "chmod", "ssh", "brew", "tsc", "eslint", "prettier",
+    "vitest", "jest", "pytest", "ruby", "swift", "ffmpeg",
+}
+_CLI_SPLIT = re.compile(r"&&|\|\||\||;|\bthen\b|\bdo\b")
+_COMPOUNDING_RX = re.compile(r"CLAUDE\.md|AGENTS\.md|GEMINI\.md|/memory/|/docs/adr|\.cursorrules", re.I)
+
 # verbs that mark an MCP tool as read/inspect rather than produce/act
 MCP_INSPECT_HINTS = ("read", "get", "list", "search", "find", "describe",
                      "snapshot", "screenshot", "query", "fetch", "whoami",
@@ -156,6 +167,26 @@ _SHELL_TEST_RE = re.compile(
 
 def bash_runs_tests(cmd):
     return bool(_SHELL_TEST_RE.search(cmd or ""))
+
+
+def _extract_clis(command):
+    """Return the known-CLI heads invoked in a shell command (one per &&/|/;-separated part)."""
+    found = []
+    for part in _CLI_SPLIT.split(command or ""):
+        toks = part.strip().split()
+        i = 0
+        while i < len(toks) and ("=" in toks[i] and not toks[i].startswith("-")):
+            i += 1  # skip leading VAR=val env assignments
+        if i < len(toks):
+            head = toks[i].split("/")[-1]
+            if head in KNOWN_CLIS:
+                found.append(head)
+    return found
+
+
+def _is_compounding_path(path):
+    """True if a write target is a compounding artifact (project memory / instructions / ADRs)."""
+    return bool(path) and bool(_COMPOUNDING_RX.search(path))
 
 
 def _git(cwd, args, timeout=30):
@@ -388,6 +419,22 @@ def _codex_tool(p):
     return name, args
 
 
+def _codex_is_injected(text):
+    """True for Codex tooling wrappers (environment context, project instructions, turn
+    notices, and the boot 'whats 2+2?' probe) that are sent as `user` messages but are
+    NOT human prompts. Real task wrappers like <task> are NOT injected."""
+    if not text:
+        return False
+    s = text.lstrip()
+    if s.startswith(("<environment_context", "<user_instructions", "<turn_aborted")):
+        return True
+    if s.startswith("# AGENTS.md instructions for"):
+        return True
+    if s.rstrip().lower() in ("whats 2+2?", "what's 2+2?", "whats 2 + 2?"):
+        return True
+    return False
+
+
 def _codex_events(fp):
     rows = []
     try:
@@ -425,7 +472,7 @@ def _codex_events(fp):
         if pt == "message":
             role = p.get("role")
             text = _texts(p.get("content"))
-            if role == "user" and text:
+            if role == "user" and text and not _codex_is_injected(text):
                 yield {**base, "type": "user", "timestamp": ts,
                        "message": {"role": "user", "content": text}}
             elif role == "assistant":
@@ -781,6 +828,9 @@ def main():
     model_counter = Counter()
     skill_counter = Counter()
     subagent_counter = Counter()
+    mcp_server_counter = Counter()   # mcp server name -> calls
+    cli_counter = Counter()          # known CLI head -> calls (from Bash commands)
+    compounding_counter = 0   # writes to CLAUDE.md/AGENTS.md/memory/docs/adr
     project_activity = Counter()   # cwd -> events
     project_sessions = defaultdict(set)
 
@@ -827,7 +877,20 @@ def main():
         # iter_events() yields Claude-shaped event dicts for every source format,
         # so the per-event logic below is identical across all supported sources.
         with contextlib.nullcontext(iter_events(fp, fmt)) as _evs:
-            for ev in _evs:
+            _ev_list = list(_evs)
+            # Codex emits ~37k empty "seed" sessions (only injected wrappers + a 2+2 probe).
+            # If a codex file has no genuine human prompt after filtering, skip it entirely so
+            # it doesn't inflate session counts and drag the scores.
+            if fmt == "codex" and not any(
+                e.get("type") == "user"
+                and isinstance((e.get("message") or {}).get("content"), str)
+                and (e.get("message") or {}).get("content", "").strip()
+                for e in _ev_list
+            ):
+                source_files[cur_src] -= 1
+                files_parsed -= 1
+                continue
+            for ev in _ev_list:
                 if ev.get("__bad__"):
                     lines_bad += 1
                     continue
@@ -965,6 +1028,9 @@ def main():
                                 cat_counter[classify_tool(name)] += 1
                                 if name.startswith("mcp__"):
                                     mcp_calls += 1
+                                    parts = name.split("__")
+                                    if len(parts) > 1 and parts[1]:
+                                        mcp_server_counter[parts[1]] += 1
                                 else:
                                     native_calls += 1
 
@@ -996,12 +1062,16 @@ def main():
                                     fpth = inp.get("file_path")
                                     if sid and fpth:
                                         file_edit_run[sid][fpth] += 1
+                                    if _is_compounding_path(fpth):
+                                        compounding_counter += 1
                                 elif name == "Write":
                                     a = line_count(inp.get("content", ""))
                                     lines_added += a
                                     fpth = inp.get("file_path")
                                     if sid and fpth:
                                         file_edit_run[sid][fpth] += 1
+                                    if _is_compounding_path(fpth):
+                                        compounding_counter += 1
                                 elif name == "MultiEdit":
                                     for e in inp.get("edits", []) or []:
                                         if isinstance(e, dict):
@@ -1010,13 +1080,19 @@ def main():
                                     fpth = inp.get("file_path")
                                     if sid and fpth:
                                         file_edit_run[sid][fpth] += 1
+                                    if _is_compounding_path(fpth):
+                                        compounding_counter += 1
                                 elif name == "NotebookEdit":
                                     lines_added += line_count(inp.get("new_source", ""))
                                     fpth = inp.get("notebook_path")
                                     if sid and fpth:
                                         file_edit_run[sid][fpth] += 1
+                                    if _is_compounding_path(fpth):
+                                        compounding_counter += 1
                                 elif name == "Bash":
                                     cmd = inp.get("command", "") or ""
+                                    for _cli in _extract_clis(cmd):
+                                        cli_counter[_cli] += 1
                                     if bash_writes_file(cmd):
                                         bash_write_calls += 1
                                         bash_authored_lines += cmd.count("\n")
@@ -1155,6 +1231,14 @@ def main():
             "mcp_share": round(mcp_calls / (mcp_calls + native_calls), 3) if (mcp_calls + native_calls) else 0,
             "top_tools": tool_counter.most_common(15),
             "category_breakdown": dict(cat_counter),
+            "mcp_servers": mcp_server_counter.most_common(),
+            "mcp_servers_distinct": len(mcp_server_counter),
+            "clis": cli_counter.most_common(),
+            "clis_distinct": len(cli_counter),
+            "cli_calls": sum(cli_counter.values()),
+            "toolsearch_calls": tool_counter.get("ToolSearch", 0),
+            "task_tool_calls": tool_counter.get("TaskCreate", 0) + tool_counter.get("TaskUpdate", 0),
+            "agent_calls": tool_counter.get("Agent", 0),
         },
         "velocity": {
             "git_churn_total": gc["churn"],
@@ -1209,6 +1293,11 @@ def main():
         "stack": {
             "models": model_counter.most_common(),
             "top_skills": skill_counter.most_common(15),
+            "skills_distinct": len(skill_counter),
+            "skills_total": sum(skill_counter.values()),
+            "subagent_types_distinct": len(subagent_counter),
+            "skills_all": skill_counter.most_common(),
+            "compounding_writes": compounding_counter,
             "subagent_types": subagent_counter.most_common(10),
             "top_projects": [(os.path.basename(p), c, len(project_sessions[p]))
                              for p, c in project_activity.most_common(12)],
@@ -1223,6 +1312,7 @@ def main():
             },
         },
     }
+    stats["agentic"] = compute_aq(stats)
 
     with open(os.path.join(OUT_DIR, "stats.json"), "w") as f:
         json.dump(stats, f, indent=2, default=str)
@@ -1369,6 +1459,24 @@ def write_report(s):
     A("## Autonomy")
     A(f"- **Autonomy score: {au['autonomy_score_0_100']}/100**")
     A(f"- Components: {au['components']}")
+    aq = s.get("agentic")
+    if aq:
+        A("\n## Agentic Quotient (AQ) — how you operate agents")
+        A("_The scorecard above grades how you **build** (gstack); AQ grades how you **operate agents**._")
+        A(f"- **AQ: {aq['aq_0_100']}/100 — {aq['tier']}** "
+          "_(custom metric, not from paxel; Breadth · Craft · Efficiency · Savvy)_")
+        for pillar in aq["pillars"]:
+            A(f"  - **{pillar['name']}** ({pillar['weight']}%): **{pillar['score']}**")
+            for ax in pillar["axes"]:
+                sig = ", ".join(f"{k}={v}" for k, v in ax["signals"].items())
+                A(f"    - {ax['name']}: **{ax['score']}/{ax['weight']}** ({sig})")
+        mv = aq["mcp_vs_cli"]
+        _ratio = f"{mv['ratio']}:1" if mv["ratio"] is not None else "all-CLI (no MCP)"
+        A(f"- MCP vs CLI _(described, not graded)_: **CLI** {mv['cli_calls']:,} calls / "
+          f"{mv['cli_distinct']} tools · **MCP** {mv['mcp_calls']:,} calls / {mv['mcp_distinct']} servers "
+          f"· ratio {_ratio} CLI-first")
+        td = aq["tool_diversity"]
+        A(f"- Tool diversity _(described)_: {td['distinct']} distinct tools, entropy {td['entropy']}")
     with open(os.path.join(OUT_DIR, "report.md"), "w") as f:
         f.write("\n".join(L))
 
@@ -1607,6 +1715,112 @@ def steering_reading(stats):
     detail = (f'~{apr:.0f} actions per turn before you weigh in · '
               f'the agent checked in on {qrate*100:.0f}% of your prompts')
     return {"label": label, "gloss": gloss, "detail": detail}
+
+
+def compute_aq(stats):
+    """Agentic Quotient v2 — 'how well you OPERATE AGENTS' (distinct from the gstack
+    scorecard, which grades how you BUILD). Four pillars: Breadth (how much machinery),
+    Craft (how well), Efficiency (leverage per intervention), Savvy (smart choices).
+    MCP-vs-CLI and tool diversity stay descriptive (not graded)."""
+    t, st, b = stats.get("tools", {}), stats.get("stack", {}), stats.get("behavior", {})
+
+    def sat(x, target):
+        return min(1.0, x / target) if target else 0.0
+
+    skills = st.get("skills_all") or st.get("top_skills", [])
+
+    def skill_uses(needles):
+        return sum(n for k, n in skills if any(nd in str(k).lower() for nd in needles))
+
+    def has_skill(needles):
+        return any(any(nd in str(k).lower() for nd in needles) for k, _ in skills)
+
+    # ---- Pillar 1: Breadth (unchanged axes) ----
+    agent_runs = t.get("agent_calls", 0)
+    bg, sched = b.get("background_tasks", 0), b.get("scheduled_actions", 0)
+    o_harn = 1.0 if (any(re.search(r"harness|trisel", str(k), re.I)
+                         for k, _ in st.get("subagent_types", [])) or has_skill(["trisel"])) else 0.6
+    orchestration = (.30 * sat(agent_runs, 400) + .25 * sat(st.get("subagent_types_distinct", 0), 8)
+                     + .20 * o_harn + .25 * sat(bg + sched, 200))
+    skill_fluency = (.40 * sat(st.get("skills_distinct", 0), 40) + .30 * sat(st.get("skills_total", 0), 1500)
+                     + .30 * (1.0 if has_skill(["subagent-driven", "brainstorm", "writing-plans",
+                                                "cerberus", "systematic-debugging"]) else 0.6))
+    tool_command = (.40 * sat(t.get("mcp_servers_distinct", 0), 15) + .40 * sat(t.get("clis_distinct", 0), 40)
+                    + .20 * sat(t.get("toolsearch_calls", 0), 300))
+    discipline = (.60 * sat(t.get("task_tool_calls", 0), 1500)
+                  + .40 * (1.0 if has_skill(["writing-plans", "autoplan", "plan"]) else 0.6))
+    breadth_axes = [
+        ("Orchestration", 33, orchestration, {"agent_runs": agent_runs,
+         "subagent_types": st.get("subagent_types_distinct", 0), "background": bg, "scheduled": sched}),
+        ("Skill fluency", 22, skill_fluency, {"skills_distinct": st.get("skills_distinct", 0),
+         "skills_total": st.get("skills_total", 0)}),
+        ("Tool command (MCP + CLI)", 28, tool_command, {"mcp_servers": t.get("mcp_servers_distinct", 0),
+         "clis": t.get("clis_distinct", 0), "toolsearch": t.get("toolsearch_calls", 0)}),
+        ("Discipline", 17, discipline, {"task_tool_calls": t.get("task_tool_calls", 0)}),
+    ]
+
+    # ---- Pillar 2: Craft ----
+    review_n = skill_uses(["code-review", "cerberus", "verify", "requesting-code-review", "review"])
+    verification = .5 * sat(b.get("shell_test_runs", 0), 150) + .5 * sat(review_n, 100)
+    grounding = sat(b.get("planning_ratio_explore_to_doing", 0), 1.0)
+    compounding = (.6 * sat(st.get("compounding_writes", 0), 30)
+                   + .4 * (1.0 if has_skill(["retro", "writing-plans", "brainstorm"]) else 0.6))
+    craft_axes = [
+        ("Verification", 40, verification, {"test_runs": b.get("shell_test_runs", 0), "review_skills": review_n}),
+        ("Grounding", 30, grounding, {"planning_ratio": b.get("planning_ratio_explore_to_doing", 0)}),
+        ("Compounding", 30, compounding, {"compounding_writes": st.get("compounding_writes", 0)}),
+    ]
+
+    # ---- Pillar 3: Efficiency ----
+    app = b.get("actions_per_prompt", 0)
+    if app <= 0:
+        lever = 0.0
+    elif app < 5:
+        lever = app / 5
+    elif app <= 20:
+        lever = 1.0
+    else:
+        lever = max(0.0, 1 - (app - 20) / 40)
+    recovery = .85 * sat(b.get("error_recovery_ratio", 0), 1.0) + .15 * (1 - sat(b.get("api_errors_retries", 0), 50))
+    eff_axes = [
+        ("Steering leverage", 50, lever, {"actions_per_prompt": app}),
+        ("Recovery", 50, recovery, {"recovery_ratio": b.get("error_recovery_ratio", 0),
+         "api_retries": b.get("api_errors_retries", 0)}),
+    ]
+
+    # ---- Pillar 4: Savvy ----
+    # Provider-agnostic: works across Claude / OpenAI-Codex / Gemini / etc. "Model mix"
+    # rewards using more than one model and routing work off your single default model
+    # (match model to task) — no hard-coded model names or tiers.
+    models = st.get("models", [])
+    total_turns = sum(n for _, n in models)
+    top_turns = max((n for _, n in models), default=0)
+    offload_share = (1 - top_turns / total_turns) if total_turns else 0
+    model_mix = .5 * sat(len(models), 3) + .5 * sat(offload_share, 0.30)
+    cli_calls, mcp_calls = t.get("cli_calls", 0), t.get("mcp_calls", 0)
+    cli_share = cli_calls / (cli_calls + mcp_calls) if (cli_calls + mcp_calls) else 0
+    token_economy = .5 * sat(t.get("toolsearch_calls", 0), 300) + .5 * sat(cli_share, 0.70)
+    savvy_axes = [
+        ("Model mix", 50, model_mix, {"distinct_models": len(models), "offload_share": round(offload_share, 2)}),
+        ("Token economy", 50, token_economy, {"toolsearch": t.get("toolsearch_calls", 0), "cli_share": round(cli_share, 2)}),
+    ]
+
+    def build_pillar(name, weight, axes):
+        out = [{"name": n, "weight": w, "score": round(w * s, 1), "signals": sig} for n, w, s, sig in axes]
+        return {"name": name, "weight": weight, "score": round(sum(a["score"] for a in out), 1), "axes": out}
+
+    pillars = [build_pillar("Breadth", 30, breadth_axes), build_pillar("Craft", 35, craft_axes),
+               build_pillar("Efficiency", 20, eff_axes), build_pillar("Savvy", 15, savvy_axes)]
+    total = round(sum(p["weight"] / 100 * p["score"] for p in pillars))
+    tier = ("Systems Builder" if total >= 80 else "Orchestrator" if total >= 60
+            else "Power User" if total >= 40 else "Operator")
+    return {
+        "aq_0_100": total, "tier": tier, "pillars": pillars,
+        "mcp_vs_cli": {"cli_calls": cli_calls, "cli_distinct": t.get("clis_distinct", 0),
+                       "mcp_calls": mcp_calls, "mcp_distinct": t.get("mcp_servers_distinct", 0),
+                       "ratio": round(cli_calls / mcp_calls, 1) if mcp_calls else None},
+        "tool_diversity": {"distinct": t.get("tool_diversity", 0), "entropy": t.get("tool_entropy_normalized", 0)},
+    }
 
 
 def pick_archetype(stats, scores):
@@ -1863,6 +2077,20 @@ _PROFILE_CSS = """<style>
   .card .reroll:hover{background:#fff;border-color:var(--beak)}
   .card .a{font-family:var(--serif);font-size:19px;font-weight:700;margin:0 0 6px} .card .d{color:var(--muted);font-size:13.5px;margin:0}
   footer{margin-top:54px;padding-top:22px;border-top:1px solid var(--line);color:var(--muted);font-size:13px;line-height:1.7} footer .lock{color:var(--beak-deep);font-weight:700} footer .by{color:var(--text)}
+  .aq-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin:0 0 6px}
+  .aq-big{font-family:var(--serif);font-size:46px;font-weight:800;color:var(--beak-deep);line-height:1}
+  .aq-tier{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--beak-deep);border:1px solid var(--beak);border-radius:999px;padding:4px 11px}
+  .aq-axis{display:grid;grid-template-columns:200px 1fr 56px;align-items:center;gap:14px;margin:0 0 12px}
+  .aq-axis .nm{font-weight:600;font-size:14px} .aq-axis .vl{font-weight:800;text-align:right}
+  .aq-split{margin-top:18px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:15px 16px}
+  .aq-split .bar{display:flex;height:28px;border-radius:6px;overflow:hidden;font-size:11.5px;font-weight:700;margin:8px 0}
+  .aq-split .cli{background:var(--beak-deep);color:#fff;display:flex;align-items:center;padding:0 12px}
+  .aq-split .mcp{background:var(--beak);color:#fff;display:flex;align-items:center;justify-content:flex-end;padding:0 12px}
+  .aq-split .meta{font-size:12.5px;color:var(--muted);margin:6px 0 0;line-height:1.5} .aq-split .meta b{color:var(--text)}
+  .aq-pillar{margin:18px 0 4px;display:flex;align-items:baseline;gap:10px}
+  .aq-pillar .pn{font-family:var(--display);font-size:13px;text-transform:uppercase;letter-spacing:.12em;color:var(--slate);font-weight:700}
+  .aq-pillar .pv{font-weight:800;color:var(--beak-deep)}
+  .aq-pillar .pw{font-size:12px;color:var(--muted)}
 </style>"""
 
 
@@ -2083,7 +2311,8 @@ def write_profile_html(stats, archetype, quote, scores, voice=None):
     P('<div class="disclaimer"><b>Counts are measured; the three scores are a read on your style</b>, '
       'grounded in <a href="https://github.com/garrytan/gstack" target="_blank" rel="noopener">gstack</a> '
       '— how you work, not a ranking of how good you are. <b>Steering isn\'t scored</b>: how hands-on you '
-      'run agents has no better or worse end, so it\'s described, not graded.</div>')
+      'run agents has no better or worse end, so it\'s described, not graded.'
+      ' This scorecard grades how you <b>build</b> (gstack); the Agentic Quotient further down grades how you <b>operate agents</b>.</div>')
     if _evidence(stats) < 0.5:   # < ~1000 tool calls: too thin to read habits confidently
         P(f'<div class="disclaimer" style="border-left-color:var(--muted)">⚠ <b>Limited data.</b> '
           f'Just {v["total_sessions"]} sessions and {v["tool_calls_total"]:,} tool calls here — not enough to read '
@@ -2092,6 +2321,37 @@ def write_profile_html(stats, archetype, quote, scores, voice=None):
     P(f'<div class="steerread"><span class="sr-k">Steering</span>'
       f'<span class="sr-v"><b>{_h.escape(steer_read["label"])}</b> — {_h.escape(steer_read["gloss"])}</span>'
       f'<span class="sr-d">{_h.escape(steer_read["detail"])}</span></div>')
+    aq = stats.get("agentic")
+    if aq:
+        P('<h2 class="section">Agentic Quotient — how you operate agents</h2>')
+        P('<div class="disclaimer"><b>The scorecard above grades how you BUILD</b> (gstack). '
+          '<b>The Agentic Quotient grades how you OPERATE AGENTS</b> — orchestration, craft, efficiency, '
+          'and savvy. A custom metric (not part of paxel). MCP-vs-CLI and tool diversity are '
+          '<b>described, not graded</b>, like Steering.</div>')
+        P(f'<div class="aq-head"><span class="aq-big">{aq["aq_0_100"]}</span>'
+          f'<span class="aq-tier">{_h.escape(aq["tier"])}</span></div>')
+        for pillar in aq["pillars"]:
+            P(f'<div class="aq-pillar"><span class="pn">{_h.escape(pillar["name"])}</span>'
+              f'<span class="pv">{pillar["score"]:.0f}</span><span class="pw">/ {pillar["weight"]} weight</span></div>')
+            for ax in pillar["axes"]:
+                pct = (ax["score"] / ax["weight"] * 100) if ax["weight"] else 0
+                P(f'<div class="aq-axis"><span class="nm">{_h.escape(ax["name"])}</span>'
+                  f'<span class="track"><span class="fill" style="width:{pct:.0f}%"></span></span>'
+                  f'<span class="vl mono">{ax["score"]:.0f}/{ax["weight"]}</span></div>')
+        mv = aq["mcp_vs_cli"]
+        cli_calls, mcp_calls = mv["cli_calls"], mv["mcp_calls"]
+        tot = (cli_calls + mcp_calls) or 1
+        cli_pct = max(8, round(cli_calls / tot * 100))
+        _ratio = f'{mv["ratio"]}:1' if mv["ratio"] is not None else "all-CLI (no MCP)"
+        P('<div class="aq-split"><b>MCP vs CLI</b> — described, not graded'
+          f'<div class="bar"><span class="cli" style="flex:{cli_pct}">CLI · {cli_calls:,} · {mv["cli_distinct"]} tools</span>'
+          f'<span class="mcp" style="flex:{100-cli_pct}">MCP · {mcp_calls:,} · {mv["mcp_distinct"]}</span></div>'
+          f'<p class="meta">Ratio <b>{_ratio}</b> CLI-first. CLI is token-cheap and scriptable — '
+          'you reach for it on repeatable work and reserve MCP for what CLI can\'t do (browser, design canvas, '
+          'device control). Right instinct, not a gap.</p>'
+          f'<p class="meta"><b>Tool diversity</b> · {aq["tool_diversity"]["distinct"]} distinct tools, '
+          f'entropy {aq["tool_diversity"]["entropy"]} — high range available, concentrated use. Not penalized.</p>'
+          '</div>')
     if moves:
         P('<h2 class="section">Your signature moves</h2>')
         P('<p class="lead">The patterns in how you direct the AI, pulled from your real sessions. The tag on each '
