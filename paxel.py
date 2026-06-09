@@ -1463,10 +1463,12 @@ def write_report(s):
     if aq:
         A("\n## Agentic Quotient (AQ)")
         A(f"- **AQ: {aq['aq_0_100']}/100 — {aq['tier']}** "
-          "_(custom metric, not from paxel; multi-agents · skills · MCP+CLI · orchestration)_")
-        for ax in aq["axes"]:
-            sig = ", ".join(f"{k}={v}" for k, v in ax["signals"].items())
-            A(f"  - {ax['name']}: **{ax['score']}/{ax['weight']}** ({sig})")
+          "_(custom metric, not from paxel; Breadth · Craft · Efficiency · Savvy)_")
+        for pillar in aq["pillars"]:
+            A(f"  - **{pillar['name']}** ({pillar['weight']}%): **{pillar['score']}**")
+            for ax in pillar["axes"]:
+                sig = ", ".join(f"{k}={v}" for k, v in ax["signals"].items())
+                A(f"    - {ax['name']}: **{ax['score']}/{ax['weight']}** ({sig})")
         mv = aq["mcp_vs_cli"]
         _ratio = f"{mv['ratio']}:1" if mv["ratio"] is not None else "all-CLI (no MCP)"
         A(f"- MCP vs CLI _(described, not graded)_: **CLI** {mv['cli_calls']:,} calls / "
@@ -1714,75 +1716,121 @@ def steering_reading(stats):
     return {"label": label, "gloss": gloss, "detail": detail}
 
 
+_MODEL_FAMILIES = (("opus", re.compile(r"opus", re.I)),
+                   ("sonnet", re.compile(r"sonnet", re.I)),
+                   ("haiku", re.compile(r"haiku", re.I)))
+
+
+def _model_family(name):
+    for fam, rx in _MODEL_FAMILIES:
+        if rx.search(name or ""):
+            return fam
+    return "other"
+
+
 def compute_aq(stats):
-    """Agentic Quotient (0-100): how well the builder wields the agentic stack.
-    Four graded axes (weights 33/22/28/17). MCP-vs-CLI and tool diversity are
-    DESCRIPTIVE (not graded), mirroring how Steering is described, not scored."""
+    """Agentic Quotient v2 — 'how well you OPERATE AGENTS' (distinct from the gstack
+    scorecard, which grades how you BUILD). Four pillars: Breadth (how much machinery),
+    Craft (how well), Efficiency (leverage per intervention), Savvy (smart choices).
+    MCP-vs-CLI and tool diversity stay descriptive (not graded)."""
     t, st, b = stats.get("tools", {}), stats.get("stack", {}), stats.get("behavior", {})
 
     def sat(x, target):
         return min(1.0, x / target) if target else 0.0
 
+    skills = st.get("skills_all") or st.get("top_skills", [])
+
+    def skill_uses(needles):
+        return sum(n for k, n in skills if any(nd in str(k).lower() for nd in needles))
+
     def has_skill(needles):
-        return any(any(nd in str(k).lower() for nd in needles)
-                   for k, _ in st.get("top_skills", []))
+        return any(any(nd in str(k).lower() for nd in needles) for k, _ in skills)
 
-    def has_harness():
-        rx = re.compile(r"harness|trisel", re.I)
-        return any(rx.search(str(k)) for k, _ in st.get("subagent_types", [])) or has_skill(["trisel"])
-
+    # ---- Pillar 1: Breadth (unchanged axes) ----
     agent_runs = t.get("agent_calls", 0)
     bg, sched = b.get("background_tasks", 0), b.get("scheduled_actions", 0)
-
-    vol = sat(agent_runs, 400)
-    div = sat(st.get("subagent_types_distinct", 0), 8)
-    harness = 1.0 if has_harness() else 0.6
-    asy = sat(bg + sched, 200)
-    ax1 = .30 * vol + .25 * div + .20 * harness + .25 * asy
-
-    sk_distinct = sat(st.get("skills_distinct", 0), 40)
-    sk_volume = sat(st.get("skills_total", 0), 1500)
-    sk_meta = 1.0 if has_skill(["subagent-driven", "brainstorm", "writing-plans",
-                                "cerberus", "systematic-debugging"]) else 0.6
-    ax2 = .40 * sk_distinct + .30 * sk_volume + .30 * sk_meta
-
-    mcp = sat(t.get("mcp_servers_distinct", 0), 15)
-    cli = sat(t.get("clis_distinct", 0), 40)
-    tss = sat(t.get("toolsearch_calls", 0), 300)
-    ax3 = .40 * mcp + .40 * cli + .20 * tss
-
-    tasks = sat(t.get("task_tool_calls", 0), 1500)
-    plan = 1.0 if has_skill(["writing-plans", "autoplan", "plan"]) else 0.6
-    ax4 = .60 * tasks + .40 * plan
-
-    axes = [
-        ("Multi-agent orchestration", 33, ax1,
-         {"agent_runs": agent_runs, "subagent_types": st.get("subagent_types_distinct", 0),
-          "background": bg, "scheduled": sched}),
-        ("Skill fluency", 22, ax2,
-         {"skills_distinct": st.get("skills_distinct", 0), "skills_total": st.get("skills_total", 0)}),
-        ("Tool command (MCP + CLI)", 28, ax3,
-         {"mcp_servers": t.get("mcp_servers_distinct", 0), "clis": t.get("clis_distinct", 0),
-          "toolsearch": t.get("toolsearch_calls", 0)}),
-        ("Orchestration discipline", 17, ax4,
-         {"task_tool_calls": t.get("task_tool_calls", 0)}),
+    o_harn = 1.0 if (any(re.search(r"harness|trisel", str(k), re.I)
+                         for k, _ in st.get("subagent_types", [])) or has_skill(["trisel"])) else 0.6
+    orchestration = (.30 * sat(agent_runs, 400) + .25 * sat(st.get("subagent_types_distinct", 0), 8)
+                     + .20 * o_harn + .25 * sat(bg + sched, 200))
+    skill_fluency = (.40 * sat(st.get("skills_distinct", 0), 40) + .30 * sat(st.get("skills_total", 0), 1500)
+                     + .30 * (1.0 if has_skill(["subagent-driven", "brainstorm", "writing-plans",
+                                                "cerberus", "systematic-debugging"]) else 0.6))
+    tool_command = (.40 * sat(t.get("mcp_servers_distinct", 0), 15) + .40 * sat(t.get("clis_distinct", 0), 40)
+                    + .20 * sat(t.get("toolsearch_calls", 0), 300))
+    discipline = (.60 * sat(t.get("task_tool_calls", 0), 1500)
+                  + .40 * (1.0 if has_skill(["writing-plans", "autoplan", "plan"]) else 0.6))
+    breadth_axes = [
+        ("Orchestration", 33, orchestration, {"agent_runs": agent_runs,
+         "subagent_types": st.get("subagent_types_distinct", 0), "background": bg, "scheduled": sched}),
+        ("Skill fluency", 22, skill_fluency, {"skills_distinct": st.get("skills_distinct", 0),
+         "skills_total": st.get("skills_total", 0)}),
+        ("Tool command (MCP + CLI)", 28, tool_command, {"mcp_servers": t.get("mcp_servers_distinct", 0),
+         "clis": t.get("clis_distinct", 0), "toolsearch": t.get("toolsearch_calls", 0)}),
+        ("Discipline", 17, discipline, {"task_tool_calls": t.get("task_tool_calls", 0)}),
     ]
-    total = round(sum(w * s for _, w, s, _ in axes))
+
+    # ---- Pillar 2: Craft ----
+    review_n = skill_uses(["code-review", "cerberus", "verify", "requesting-code-review", "review"])
+    verification = .5 * sat(b.get("shell_test_runs", 0), 150) + .5 * sat(review_n, 100)
+    grounding = sat(b.get("planning_ratio_explore_to_doing", 0), 1.0)
+    compounding = (.6 * sat(st.get("compounding_writes", 0), 30)
+                   + .4 * (1.0 if has_skill(["retro", "writing-plans", "brainstorm"]) else 0.6))
+    craft_axes = [
+        ("Verification", 40, verification, {"test_runs": b.get("shell_test_runs", 0), "review_skills": review_n}),
+        ("Grounding", 30, grounding, {"planning_ratio": b.get("planning_ratio_explore_to_doing", 0)}),
+        ("Compounding", 30, compounding, {"compounding_writes": st.get("compounding_writes", 0)}),
+    ]
+
+    # ---- Pillar 3: Efficiency ----
+    app = b.get("actions_per_prompt", 0)
+    if app <= 0:
+        lever = 0.0
+    elif app < 5:
+        lever = app / 5
+    elif app <= 20:
+        lever = 1.0
+    else:
+        lever = max(0.0, 1 - (app - 20) / 40)
+    recovery = .85 * b.get("error_recovery_ratio", 0) + .15 * (1 - sat(b.get("api_errors_retries", 0), 50))
+    eff_axes = [
+        ("Steering leverage", 50, lever, {"actions_per_prompt": app}),
+        ("Recovery", 50, recovery, {"recovery_ratio": b.get("error_recovery_ratio", 0),
+         "api_retries": b.get("api_errors_retries", 0)}),
+    ]
+
+    # ---- Pillar 4: Savvy ----
+    fam_turns, total_turns = {}, 0
+    for name, n in st.get("models", []):
+        fam_turns[_model_family(name)] = fam_turns.get(_model_family(name), 0) + n
+        total_turns += n
+    real_fams = [f for f in fam_turns if f != "other"]
+    distinct_fams = len(real_fams) if real_fams else len(fam_turns)
+    nonopus_share = (sum(n for f, n in fam_turns.items() if f != "opus") / total_turns) if total_turns else 0
+    model_tier = .5 * sat(distinct_fams, 3) + .5 * sat(nonopus_share, 0.30)
+    cli_calls, mcp_calls = t.get("cli_calls", 0), t.get("mcp_calls", 0)
+    cli_share = cli_calls / (cli_calls + mcp_calls) if (cli_calls + mcp_calls) else 0
+    token_economy = .5 * sat(t.get("toolsearch_calls", 0), 300) + .5 * sat(cli_share, 0.70)
+    savvy_axes = [
+        ("Model-tier savvy", 50, model_tier, {"model_families": distinct_fams, "nonopus_share": round(nonopus_share, 2)}),
+        ("Token economy", 50, token_economy, {"toolsearch": t.get("toolsearch_calls", 0), "cli_share": round(cli_share, 2)}),
+    ]
+
+    def build_pillar(name, weight, axes):
+        out = [{"name": n, "weight": w, "score": round(w * s, 1), "signals": sig} for n, w, s, sig in axes]
+        return {"name": name, "weight": weight, "score": round(sum(a["score"] for a in out), 1), "axes": out}
+
+    pillars = [build_pillar("Breadth", 30, breadth_axes), build_pillar("Craft", 35, craft_axes),
+               build_pillar("Efficiency", 20, eff_axes), build_pillar("Savvy", 15, savvy_axes)]
+    total = round(sum(p["weight"] / 100 * p["score"] for p in pillars))
     tier = ("Systems Builder" if total >= 80 else "Orchestrator" if total >= 60
             else "Power User" if total >= 40 else "Operator")
-    cli_calls, mcp_calls = t.get("cli_calls", 0), t.get("mcp_calls", 0)
     return {
-        "aq_0_100": total,
-        "tier": tier,
-        "axes": [{"name": n, "weight": w, "score": round(w * s, 1), "signals": sig}
-                 for n, w, s, sig in axes],
-        "mcp_vs_cli": {
-            "cli_calls": cli_calls, "cli_distinct": t.get("clis_distinct", 0),
-            "mcp_calls": mcp_calls, "mcp_distinct": t.get("mcp_servers_distinct", 0),
-            "ratio": round(cli_calls / mcp_calls, 1) if mcp_calls else None,
-        },
-        "tool_diversity": {"distinct": t.get("tool_diversity", 0),
-                           "entropy": t.get("tool_entropy_normalized", 0)},
+        "aq_0_100": total, "tier": tier, "pillars": pillars,
+        "mcp_vs_cli": {"cli_calls": cli_calls, "cli_distinct": t.get("clis_distinct", 0),
+                       "mcp_calls": mcp_calls, "mcp_distinct": t.get("mcp_servers_distinct", 0),
+                       "ratio": round(cli_calls / mcp_calls, 1) if mcp_calls else None},
+        "tool_diversity": {"distinct": t.get("tool_diversity", 0), "entropy": t.get("tool_entropy_normalized", 0)},
     }
 
 
@@ -2287,11 +2335,14 @@ def write_profile_html(stats, archetype, quote, scores, voice=None):
           'below are <b>described, not graded</b> — like Steering.</div>')
         P(f'<div class="aq-head"><span class="aq-big">{aq["aq_0_100"]}</span>'
           f'<span class="aq-tier">{_h.escape(aq["tier"])}</span></div>')
-        for ax in aq["axes"]:
-            pct = (ax["score"] / ax["weight"] * 100) if ax["weight"] else 0
-            P(f'<div class="aq-axis"><span class="nm">{_h.escape(ax["name"])}</span>'
-              f'<span class="track"><span class="fill" style="width:{pct:.0f}%"></span></span>'
-              f'<span class="vl mono">{ax["score"]:.0f}/{ax["weight"]}</span></div>')
+        for pillar in aq["pillars"]:
+            P(f'<div class="aq-pillar"><span class="nm"><b>{_h.escape(pillar["name"])}</b> ({pillar["weight"]}%)</span>'
+              f'<span class="vl mono">{pillar["score"]:.0f}</span></div>')
+            for ax in pillar["axes"]:
+                pct = (ax["score"] / ax["weight"] * 100) if ax["weight"] else 0
+                P(f'<div class="aq-axis"><span class="nm">{_h.escape(ax["name"])}</span>'
+                  f'<span class="track"><span class="fill" style="width:{pct:.0f}%"></span></span>'
+                  f'<span class="vl mono">{ax["score"]:.0f}/{ax["weight"]}</span></div>')
         mv = aq["mcp_vs_cli"]
         cli_calls, mcp_calls = mv["cli_calls"], mv["mcp_calls"]
         tot = (cli_calls + mcp_calls) or 1

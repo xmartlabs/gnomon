@@ -63,36 +63,62 @@ def _sample_stats():
             "skills_distinct": 39, "skills_total": 8000,
             "subagent_types_distinct": 9,
             "subagent_types": [("general-purpose", 250), ("harness-generator", 29)],
-            "top_skills": [("simplify", 1832), ("superpowers:writing-plans", 1752),
-                           ("cerberus", 774)],
+            "top_skills": [("simplify", 1832), ("superpowers:writing-plans", 1752)],
+            "skills_all": [("simplify", 1832), ("superpowers:writing-plans", 1752),
+                           ("cerberus", 774), ("superpowers:brainstorming", 50)],
+            "compounding_writes": 40,
+            "models": [("claude-opus-4-7", 20000), ("claude-opus-4-8", 16000),
+                       ("claude-sonnet-4-6", 3000), ("claude-haiku-4-5", 900)],
         },
-        "behavior": {"background_tasks": 187, "scheduled_actions": 11},
+        "behavior": {
+            "background_tasks": 187, "scheduled_actions": 11,
+            "shell_test_runs": 200, "planning_ratio_explore_to_doing": 0.94,
+            "actions_per_prompt": 13.8, "error_recovery_ratio": 0.98,
+            "api_errors_retries": 20,
+        },
     }
 
 
-class TestComputeAq(unittest.TestCase):
+class TestComputeAqV2(unittest.TestCase):
     def setUp(self):
         self.aq = paxel.compute_aq(_sample_stats())
 
-    def test_score_and_tier(self):
-        self.assertEqual(self.aq["aq_0_100"], 95)
+    def test_four_pillars(self):
+        names = [p["name"] for p in self.aq["pillars"]]
+        self.assertEqual(names, ["Breadth", "Craft", "Efficiency", "Savvy"])
+
+    def test_pillar_weights_sum_100(self):
+        self.assertEqual(sum(p["weight"] for p in self.aq["pillars"]), 100)
+
+    def test_scores_in_range(self):
+        self.assertTrue(0 <= self.aq["aq_0_100"] <= 100)
+        for p in self.aq["pillars"]:
+            self.assertTrue(0 <= p["score"] <= 100, p["name"])
+            self.assertEqual(sum(a["weight"] for a in p["axes"]), 100, p["name"])
+            for a in p["axes"]:
+                self.assertLessEqual(a["score"], a["weight"], a["name"])
+
+    def test_tier_systems_builder(self):
         self.assertEqual(self.aq["tier"], "Systems Builder")
 
-    def test_four_axes(self):
-        names = [a["name"] for a in self.aq["axes"]]
-        self.assertEqual(names, ["Multi-agent orchestration", "Skill fluency",
-                                 "Tool command (MCP + CLI)", "Orchestration discipline"])
+    def test_steering_sweetspot_band(self):
+        eff = next(p for p in self.aq["pillars"] if p["name"] == "Efficiency")
+        lever = next(a for a in eff["axes"] if a["name"] == "Steering leverage")
+        self.assertEqual(lever["score"], 50.0)
 
-    def test_mcp_vs_cli(self):
+    def test_steering_overdrive_penalized(self):
+        s = _sample_stats(); s["behavior"]["actions_per_prompt"] = 60
+        aq = paxel.compute_aq(s)
+        eff = next(p for p in aq["pillars"] if p["name"] == "Efficiency")
+        lever = next(a for a in eff["axes"] if a["name"] == "Steering leverage")
+        self.assertEqual(lever["score"], 0.0)
+
+    def test_mcp_vs_cli_and_diversity(self):
         self.assertEqual(self.aq["mcp_vs_cli"]["ratio"], 4.6)
-        self.assertEqual(self.aq["mcp_vs_cli"]["cli_distinct"], 41)
-
-    def test_tool_diversity_passthrough(self):
         self.assertEqual(self.aq["tool_diversity"]["distinct"], 111)
 
-    def test_tier_floor(self):
-        empty = {"tools": {}, "stack": {}, "behavior": {}}
-        self.assertLess(paxel.compute_aq(empty)["aq_0_100"], 60)
+    def test_empty_low(self):
+        self.assertLess(paxel.compute_aq({"tools": {}, "stack": {}, "behavior": {}})["aq_0_100"], 40)
 
 
 class TestCompoundingPath(unittest.TestCase):
