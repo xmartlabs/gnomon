@@ -1461,7 +1461,8 @@ def write_report(s):
     A(f"- Components: {au['components']}")
     aq = s.get("agentic")
     if aq:
-        A("\n## Agentic Quotient (AQ)")
+        A("\n## Agentic Quotient (AQ) — how you operate agents")
+        A("_The scorecard above grades how you **build** (gstack); AQ grades how you **operate agents**._")
         A(f"- **AQ: {aq['aq_0_100']}/100 — {aq['tier']}** "
           "_(custom metric, not from paxel; Breadth · Craft · Efficiency · Savvy)_")
         for pillar in aq["pillars"]:
@@ -2098,6 +2099,10 @@ _PROFILE_CSS = """<style>
   .aq-split .cli{background:var(--beak-deep);color:#fff;display:flex;align-items:center;padding:0 12px}
   .aq-split .mcp{background:var(--beak);color:#fff;display:flex;align-items:center;justify-content:flex-end;padding:0 12px}
   .aq-split .meta{font-size:12.5px;color:var(--muted);margin:6px 0 0;line-height:1.5} .aq-split .meta b{color:var(--text)}
+  .aq-pillar{margin:18px 0 4px;display:flex;align-items:baseline;gap:10px}
+  .aq-pillar .pn{font-family:var(--display);font-size:13px;text-transform:uppercase;letter-spacing:.12em;color:var(--slate);font-weight:700}
+  .aq-pillar .pv{font-weight:800;color:var(--beak-deep)}
+  .aq-pillar .pw{font-size:12px;color:var(--muted)}
 </style>"""
 
 
@@ -2318,7 +2323,8 @@ def write_profile_html(stats, archetype, quote, scores, voice=None):
     P('<div class="disclaimer"><b>Counts are measured; the three scores are a read on your style</b>, '
       'grounded in <a href="https://github.com/garrytan/gstack" target="_blank" rel="noopener">gstack</a> '
       '— how you work, not a ranking of how good you are. <b>Steering isn\'t scored</b>: how hands-on you '
-      'run agents has no better or worse end, so it\'s described, not graded.</div>')
+      'run agents has no better or worse end, so it\'s described, not graded.'
+      ' This scorecard grades how you <b>build</b> (gstack); the Agentic Quotient further down grades how you <b>operate agents</b>.</div>')
     if _evidence(stats) < 0.5:   # < ~1000 tool calls: too thin to read habits confidently
         P(f'<div class="disclaimer" style="border-left-color:var(--muted)">⚠ <b>Limited data.</b> '
           f'Just {v["total_sessions"]} sessions and {v["tool_calls_total"]:,} tool calls here — not enough to read '
@@ -2329,15 +2335,16 @@ def write_profile_html(stats, archetype, quote, scores, voice=None):
       f'<span class="sr-d">{_h.escape(steer_read["detail"])}</span></div>')
     aq = stats.get("agentic")
     if aq:
-        P('<h2 class="section">Agentic Quotient</h2>')
-        P('<div class="disclaimer"><b>How well you wield the agentic stack</b> — multi-agents, skills, '
-          'MCP + CLI, orchestration. A custom metric (not part of paxel). MCP-vs-CLI and tool diversity '
-          'below are <b>described, not graded</b> — like Steering.</div>')
+        P('<h2 class="section">Agentic Quotient — how you operate agents</h2>')
+        P('<div class="disclaimer"><b>The scorecard above grades how you BUILD</b> (gstack). '
+          '<b>The Agentic Quotient grades how you OPERATE AGENTS</b> — orchestration, craft, efficiency, '
+          'and savvy. A custom metric (not part of paxel). MCP-vs-CLI and tool diversity are '
+          '<b>described, not graded</b>, like Steering.</div>')
         P(f'<div class="aq-head"><span class="aq-big">{aq["aq_0_100"]}</span>'
           f'<span class="aq-tier">{_h.escape(aq["tier"])}</span></div>')
         for pillar in aq["pillars"]:
-            P(f'<div class="aq-pillar"><span class="nm"><b>{_h.escape(pillar["name"])}</b> ({pillar["weight"]}%)</span>'
-              f'<span class="vl mono">{pillar["score"]:.0f}</span></div>')
+            P(f'<div class="aq-pillar"><span class="pn">{_h.escape(pillar["name"])}</span>'
+              f'<span class="pv">{pillar["score"]:.0f}</span><span class="pw">/ {pillar["weight"]} weight</span></div>')
             for ax in pillar["axes"]:
                 pct = (ax["score"] / ax["weight"] * 100) if ax["weight"] else 0
                 P(f'<div class="aq-axis"><span class="nm">{_h.escape(ax["name"])}</span>'
