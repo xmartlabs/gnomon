@@ -1793,7 +1793,7 @@ def compute_aq(stats):
         lever = 1.0
     else:
         lever = max(0.0, 1 - (app - 20) / 40)
-    recovery = .85 * b.get("error_recovery_ratio", 0) + .15 * (1 - sat(b.get("api_errors_retries", 0), 50))
+    recovery = .85 * sat(b.get("error_recovery_ratio", 0), 1.0) + .15 * (1 - sat(b.get("api_errors_retries", 0), 50))
     eff_axes = [
         ("Steering leverage", 50, lever, {"actions_per_prompt": app}),
         ("Recovery", 50, recovery, {"recovery_ratio": b.get("error_recovery_ratio", 0),
@@ -1805,8 +1805,7 @@ def compute_aq(stats):
     for name, n in st.get("models", []):
         fam_turns[_model_family(name)] = fam_turns.get(_model_family(name), 0) + n
         total_turns += n
-    real_fams = [f for f in fam_turns if f != "other"]
-    distinct_fams = len(real_fams) if real_fams else len(fam_turns)
+    distinct_fams = len([f for f in fam_turns if f != "other"])  # 0 if no recognized family
     nonopus_share = (sum(n for f, n in fam_turns.items() if f != "opus") / total_turns) if total_turns else 0
     model_tier = .5 * sat(distinct_fams, 3) + .5 * sat(nonopus_share, 0.30)
     cli_calls, mcp_calls = t.get("cli_calls", 0), t.get("mcp_calls", 0)
