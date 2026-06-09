@@ -63,6 +63,16 @@ SCHEDULE_TOOLS = {"ScheduleWakeup", "CronCreate", "CronDelete", "CronList",
 SKILL_TOOLS = {"Skill"}
 ASK_TOOLS = {"AskUserQuestion"}
 
+KNOWN_CLIS = {
+    "git", "gh", "npm", "npx", "yarn", "pnpm", "bun", "python", "python3", "pip",
+    "pip3", "node", "deno", "cargo", "go", "rg", "grep", "sed", "awk", "find",
+    "curl", "wget", "jq", "docker", "kubectl", "make", "xcodebuild", "pod", "expo",
+    "eas", "supabase", "vercel", "psql", "sqlite3", "open", "cp", "mv", "rm",
+    "mkdir", "ls", "cat", "chmod", "ssh", "brew", "tsc", "eslint", "prettier",
+    "vitest", "jest", "pytest", "ruby", "swift", "ffmpeg",
+}
+_CLI_SPLIT = re.compile(r"&&|\|\||\||;|\bthen\b|\bdo\b")
+
 # verbs that mark an MCP tool as read/inspect rather than produce/act
 MCP_INSPECT_HINTS = ("read", "get", "list", "search", "find", "describe",
                      "snapshot", "screenshot", "query", "fetch", "whoami",
@@ -156,6 +166,21 @@ _SHELL_TEST_RE = re.compile(
 
 def bash_runs_tests(cmd):
     return bool(_SHELL_TEST_RE.search(cmd or ""))
+
+
+def _extract_clis(command):
+    """Return the known-CLI heads invoked in a shell command (one per &&/|/;-separated part)."""
+    found = []
+    for part in _CLI_SPLIT.split(command or ""):
+        toks = part.strip().split()
+        i = 0
+        while i < len(toks) and ("=" in toks[i] and not toks[i].startswith("-")):
+            i += 1  # skip leading VAR=val env assignments
+        if i < len(toks):
+            head = toks[i].split("/")[-1]
+            if head in KNOWN_CLIS:
+                found.append(head)
+    return found
 
 
 def _git(cwd, args, timeout=30):
