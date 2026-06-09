@@ -413,6 +413,15 @@ def _codex_tool(p):
     return name, args
 
 
+def _codex_is_injected(text):
+    """True for Codex tooling wrappers (environment context / user instructions) that are
+    sent as `user` messages but are NOT human prompts."""
+    if not text:
+        return False
+    s = text.lstrip()
+    return s.startswith("<environment_context") or s.startswith("<user_instructions")
+
+
 def _codex_events(fp):
     rows = []
     try:
@@ -450,7 +459,7 @@ def _codex_events(fp):
         if pt == "message":
             role = p.get("role")
             text = _texts(p.get("content"))
-            if role == "user" and text:
+            if role == "user" and text and not _codex_is_injected(text):
                 yield {**base, "type": "user", "timestamp": ts,
                        "message": {"role": "user", "content": text}}
             elif role == "assistant":
