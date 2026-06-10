@@ -16,7 +16,7 @@ Fork of [paxel-local](https://github.com/Photobombastic/paxel-local) (by Max Sch
 No dependencies — Python 3 stdlib only.
 
 ```bash
-git clone https://github.com/nicoache1/gnomon
+git clone https://github.com/xmartlabs/gnomon
 cd gnomon
 python3 paxel.py            # reads all detected local transcripts; writes + opens your profile
 ```
