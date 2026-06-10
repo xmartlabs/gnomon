@@ -128,6 +128,8 @@ def parse_ts(ts):
 def line_count(s):
     if not s:
         return 0
+    if not isinstance(s, str):
+        s = str(s)
     return s.count("\n") + (1 if s and not s.endswith("\n") else 0)
 
 
