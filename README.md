@@ -16,10 +16,16 @@ Fork of [paxel-local](https://github.com/Photobombastic/paxel-local) (by Max Sch
 No dependencies — Python 3 stdlib only.
 
 ```bash
-git clone https://github.com/nicoache1/gnomon
+# Option A: run directly (no install)
+python3 <(curl -sL https://raw.githubusercontent.com/xmartlabs/gnomon/main/paxel.py)
+
+# Option B: clone the repo
+git clone https://github.com/xmartlabs/gnomon
 cd gnomon
-python3 paxel.py            # reads all detected local transcripts; writes + opens your profile
+python3 paxel.py
 ```
+
+Both read all detected local transcripts (Claude, Codex, Gemini, Cursor, …) and open your profile. Option A writes outputs to the current directory; Option B writes them to the repo directory.
 
 Restrict to one or more sources:
 

@@ -57,7 +57,8 @@ from datetime import datetime
 # (CLAUDE_CONFIG_DIR, CODEX_HOME), and accept --<source>-dir=PATH overrides (see main())
 # for histories copied off a sandbox, devcontainer, or remote box.
 BASE = os.path.join(os.path.expanduser(os.environ.get("CLAUDE_CONFIG_DIR", "~/.claude")), "projects")
-OUT_DIR = os.path.dirname(os.path.abspath(__file__))
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+OUT_DIR = _script_dir if os.path.isdir(_script_dir) and not _script_dir.startswith("/dev") else os.getcwd()
 
 # ---- tool taxonomy -----------------------------------------------------------
 WRITE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
@@ -1723,6 +1724,8 @@ def main():
                                         compounding_counter += 1
                                 elif name == "Bash":
                                     cmd = inp.get("command", "") or ""
+                                    if isinstance(cmd, list):
+                                        cmd = " && ".join(str(c) for c in cmd)
                                     for _cli in _extract_clis(cmd):
                                         cli_counter[_cli] += 1
                                     if cur_src != "claude":
