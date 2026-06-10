@@ -30,6 +30,19 @@ python3 paxel.py --no-open         # don't auto-open profile.html (headless / CI
 python3 paxel.py --summary         # also write summary.json — the shareable subset
 ```
 
+Scope to a time window (for monthly / quarterly check-ins):
+
+```bash
+python3 paxel.py --last=30d --summary              # rolling last month
+python3 paxel.py --last=90d                        # rolling last quarter (also Nw / Nm)
+python3 paxel.py --since=2026-03-01 --until=2026-05-31   # explicit window (until-day inclusive)
+```
+
+Everything follows the window — **including git churn**, whose `git log --since/--until`
+range tracks the kept events. Events without a timestamp are dropped in windowed runs
+(they can't honor "this period only"); that includes Cursor JSONL-only sessions beyond
+their single file-mtime timestamp.
+
 ### Sandbox / self-hosted / copied histories
 
 Histories don't have to live in their default home-dir locations. gnomon honors the

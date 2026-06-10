@@ -131,6 +131,21 @@ class TestPipeline(unittest.TestCase):
         _, out = _run(self, [])
         self.assertFalse(os.path.exists(os.path.join(out, "summary.json")))
 
+    def test_window_keeps_fixture_range(self):
+        # Fixtures live in 2026 — a window covering them must match the full run.
+        out_text, out = _run(self, ["--since=2020-01-01", "--summary"])
+        self.assertRegex(out_text, r"sessions=[1-9]\d*")
+        with open(os.path.join(out, "summary.json"), encoding="utf-8") as fh:
+            summary = json.load(fh)
+        self.assertEqual(summary["context"]["window"]["since"][:10], "2020-01-01")
+
+    def test_window_excludes_everything(self):
+        # A window before any fixture event must yield zero sessions WITHOUT crashing
+        # (empty-corpus rendering path).
+        out_text, out = _run(self, ["--until=2001-01-01"])
+        self.assertRegex(out_text, r"sessions=0")
+        self.assertTrue(os.path.exists(os.path.join(out, "profile.html")))
+
     @unittest.skipUnless(shutil.which("node"), "node not installed (CI installs it)")
     def test_poster_js_is_valid_syntax(self):
         # The poster JS is a hand-written raw string — the viral artifact. node --check it.
