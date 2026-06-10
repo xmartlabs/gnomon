@@ -16,7 +16,7 @@ Fork of [paxel-local](https://github.com/Photobombastic/paxel-local) (by Max Sch
 No dependencies — Python 3 stdlib only.
 
 ```bash
-git clone https://github.com/nicoache1/gnomon
+git clone https://github.com/xmartlabs/gnomon
 cd gnomon
 python3 paxel.py            # reads all detected local transcripts; writes + opens your profile
 ```
@@ -27,6 +27,7 @@ Restrict to one or more sources:
 python3 paxel.py claude            # Claude Code only
 python3 paxel.py claude codex      # Claude Code + Codex
 python3 paxel.py --no-open         # don't auto-open profile.html (headless / CI)
+python3 paxel.py --summary         # also write summary.json — the shareable subset
 ```
 
 ### Sandbox / self-hosted / copied histories
@@ -49,6 +50,7 @@ python3 paxel.py --codex-dir=~/backups/codex                # root or .../sessio
 | `profile.html` | Branded, shareable profile — scorecard + AQ + signature moves |
 | `report.md` | Human-readable stats |
 | `stats.json` | Machine-readable metrics (incl. the full `agentic` block) |
+| `summary.json` (`--summary`) | Shareable subset: the 8 measured high-signal metrics + monthly progression — no prompts, no quotes, no rubric scores. Built for the [low-cost feedback loop](docs/metrics-evaluation.md) |
 | `narrative_input.md` | Curated excerpts for an optional LLM narrative pass |
 
 > These outputs contain **your** transcript-derived data. They're in `.gitignore` — don't commit them.
@@ -131,11 +133,27 @@ Covers the CLI extractor, Codex injected-message filter, compounding-path matche
 
 Everything runs on-device. For accurate code-churn it shells out to your local `git` (`git log --numstat`) on the repos it finds. No network calls, no uploads.
 
-### Cursor specifics (from upstream)
+### Cursor specifics
 
-- Cursor sessions live in BOTH `state.vscdb` (SQLite) and agent-transcripts JSONL with
-  complementary data: SQLite is the event stream (per-event timestamps + tool error statuses);
-  the JSONL twin backfills the workspace path and edit old/new strings, and stands alone for
-  sessions missing from the DB and for subagent sidechains.
-- Known caveats: workspace slugs with dashes may mis-parse; JSONL-only sessions get a single
-  file-mtime timestamp; `ApplyPatch` churn counts raw patch lines (slight over-estimate).
+**No special run needed.** Cursor is auto-detected like every other source — `python3 paxel.py`
+includes it, `python3 paxel.py cursor` restricts to it. You don't need to close Cursor first:
+the SQLite store is opened read-only (`mode=ro`), nothing is written to it.
+
+**Where it reads from** (two stores, merged and deduped):
+
+| Store | Default location | Carries |
+|-------|------------------|---------|
+| `state.vscdb` (SQLite) | macOS `~/Library/Application Support/Cursor/User/globalStorage/` · Linux `~/.config/Cursor/User/globalStorage/` · Windows `%APPDATA%\Cursor\User\globalStorage\` | Event stream: per-event timestamps, tool error statuses |
+| agent-transcripts JSONL | `~/.cursor/projects/**/agent-transcripts/` | Full tool inputs (edit old/new strings → churn), workspace path, subagent sidechains |
+
+The same modern session exists in **both** with complementary data, so gnomon prefers the
+SQLite copy and backfills workspace path + edit churn from its JSONL twin. JSONL-only
+sessions (and subagent sidechains, which exist only as JSONL) are kept as-is.
+
+**Overrides:** `--cursor-dir=PATH` points at a copied/mounted `projects` dir (root or the
+`projects` subdir both work). The `state.vscdb` path is fixed per platform — there's no
+flag for it, so DB-backed sessions are only read from the local Cursor install.
+
+**Known caveats** (from upstream): workspace slugs with dashes may mis-parse; JSONL-only
+sessions get a single file-mtime timestamp; `ApplyPatch` churn counts raw patch lines
+(slight over-estimate).

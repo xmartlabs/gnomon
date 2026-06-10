@@ -1978,6 +1978,11 @@ def main():
     with open(os.path.join(OUT_DIR, "stats.json"), "w") as f:
         json.dump(stats, f, indent=2, default=str)
 
+    if "--summary" in sys.argv:
+        with open(os.path.join(OUT_DIR, "summary.json"), "w") as f:
+            json.dump(build_summary(stats), f, indent=2, default=str)
+        print("  wrote summary.json (shareable subset — measured metrics + monthly progression)")
+
     write_report(stats)
     write_narrative_input(stats, opening_prompts, longest_prompts)
     scores = compute_scores(stats)
@@ -2021,6 +2026,47 @@ def main():
     print(f"  iteration depth: mean {iteration_mean:.1f} / max {iteration_max} ({heavy_files} files >15x)  "
           f"errors={tool_errors} ({error_rate_per_100_tools:.1f}/100 tools)")
     print(f"  autonomy={autonomy_score}/100  planning_ratio={planning_ratio:.2f}")
+
+
+def build_summary(stats):
+    """The shareable subset for the low-cost feedback loop (docs/metrics-evaluation.md):
+    the 8 high-signal MEASURED metrics + monthly progression, nothing else. By
+    construction it carries no prompts, no quotes, no skill/project names, and no
+    rubric scores (AQ / tier / archetype) — the doc says rubrics are for
+    self-reflection, not for comparing people. Safe to share as-is."""
+    v, b, vel, st, t, c = (stats["volume"], stats["behavior"], stats["velocity"],
+                           stats["stack"], stats["tools"], stats["corpus"])
+    return {
+        "context": {
+            "date_range": c.get("date_range"),
+            "sources": sorted((c.get("sources") or {}).keys()),
+            "total_sessions": v["total_sessions"],
+        },
+        "planning_ratio_explore_to_doing": b["planning_ratio_explore_to_doing"],
+        "errors": {
+            "error_recovery_ratio": b["error_recovery_ratio"],
+            "error_rate_per_100_tools": b["error_rate_per_100_tools"],
+        },
+        "iteration_depth": {
+            "mean": b["iteration_depth_mean"], "median": b["iteration_depth_median"],
+            "p90": b["iteration_depth_p90"], "max": b["iteration_depth_max"],
+            "files_over_15x": b["files_hammered_over_15x"],
+        },
+        "churn": {
+            "git_churn_total": vel["git_churn_total"],
+            "tool_churn_edit_write": vel["tool_churn_edit_write"],
+        },
+        "orchestration": {
+            "fanout_median": b["fanout_median"],
+            "delegate_actions": b["delegate_actions"],
+        },
+        "compounding_writes": st["compounding_writes"],
+        "ecosystem": {
+            "skills_distinct": st["skills_distinct"], "skills_total": st["skills_total"],
+            "mcp_servers_distinct": t["mcp_servers_distinct"],
+        },
+        "progression_monthly": (stats.get("progression") or {}).get("monthly", []),
+    }
 
 
 def bar(n, mx, width=28):
@@ -2225,6 +2271,36 @@ SCORE_NOTES_SHORT = {
     "Execution": "Shipped output, at AI leverage",
     "Planning": "Think before you build",
     "Engineering": "Craft, with little rework",
+}
+
+# Hover tooltips for the AQ pillars and axes — what each one measures, in plain language,
+# grounded in the actual compute_aq formulas (keep in sync if an axis changes). Every
+# pillar/axis name emitted by compute_aq must have an entry (tested).
+AQ_PILLAR_NOTES = {
+    "Breadth": "How much machinery you operate — agents coordinated, skills in rotation, "
+               "tools wired in, structured tracking.",
+    "Craft": "How well you operate it — verified work, grounded edits, and learnings that persist.",
+    "Efficiency": "Leverage per intervention — how far each prompt goes, and how well errors get absorbed.",
+    "Savvy": "Smart choices — routing models to tasks and spending tokens lean.",
+}
+AQ_AXIS_NOTES = {
+    "Orchestration": "Coordination over volume: distinct subagent types, median fan-out per "
+                     "orchestrating session, and harness use — raw agent runs only count as a small floor.",
+    "Skill fluency": "Range and volume of skills you invoke, plus whether process skills "
+                     "(planning, debugging, brainstorming) are in the rotation.",
+    "Tool command (MCP + CLI)": "External reach: distinct MCP servers, distinct CLIs, and "
+                                "loading tool schemas on demand (ToolSearch).",
+    "Discipline": "Structured work: task-tool usage plus planning skills in evidence.",
+    "Verification": "Whether work gets checked: shell test runs and review-type skill invocations.",
+    "Grounding": "Reading before writing — how much the agent explores relative to how much it edits.",
+    "Compounding": "Whether learnings persist: writes to memory/docs/skills, plus retro and planning habits.",
+    "Steering leverage": "Agent actions per prompt, scored as a sweet spot (5–20): enough leash "
+                         "to run, not so loose it drifts.",
+    "Recovery": "Share of tool errors recovered from, minus API-retry noise.",
+    "Model mix": "Using more than one model, with real work routed off your default — "
+                 "match the model to the task.",
+    "Token economy": "Token-lean habits: on-demand schema loading (ToolSearch) and a CLI-first "
+                     "share of tool traffic.",
 }
 
 
@@ -2605,12 +2681,15 @@ def signature_moves(stats):
 
 def growth_edges(stats, scores):
     """Specific next-steps keyed off the user's OWN weakest signals — not generic advice.
-    Each leads with a PRACTICE the reader can adopt today, then names the gstack skill
-    that embodies it (in parens) as an optional, installable upgrade — so the advice is
-    actionable whether or not they run gstack. Only gated edges are returned; top 3,
-    most-urgent first. NOTE for maintainers: advice HTML is trusted/safe-by-construction
-    — never interpolate user/transcript-derived strings (skill, project, tool names)
-    here without html.escape; today every interpolated value is a number or static."""
+    Each leads with a PRACTICE the reader can adopt today; gstack-flavored edges then name
+    the gstack skill that embodies it (in parens) as an optional, installable upgrade.
+    Edges come from BOTH grading systems: the gstack scorecard (how you BUILD) and the AQ
+    pillars in stats["agentic"] (how you OPERATE AGENTS) — so a clean builder with a thin
+    operator side still gets a real edge instead of "you're balanced". Only gated edges
+    are returned; top 3, most-urgent first. NOTE for maintainers: advice HTML is
+    trusted/safe-by-construction — never interpolate user/transcript-derived strings
+    (skill, project, tool names) here without html.escape; today every interpolated value
+    is a number or static."""
     v, b, vel, st = (stats["volume"], stats["behavior"], stats["velocity"], stats["stack"])
     sess = max(v["total_sessions"], 1)
     prompts = max(v["total_prompts"], 1)
@@ -2663,6 +2742,53 @@ def growth_edges(stats, scores):
             f'Engineering is <b>{scores.get("Engineering")}</b>. Add one deliberate review-and-test pass on '
             f'every branch before you ship — that\'s where craft compounds. '
             f'(gstack\'s back half: <code>/review</code>, <code>/qa</code>, <code>/investigate</code>, <code>/retro</code>.)'))
+
+    # AQ-driven edges: any AQ axis filled under 45% of its weight is a candidate. Advised
+    # axes only — excluded on purpose: Verification (covered by the review/test edge above),
+    # Compounding (the /retro fallback already owns it), Steering leverage (steering is
+    # described, not scored — see the NO-steering note above), Recovery / Skill fluency /
+    # Discipline (no single practice maps cleanly onto them). Priority 2.5 + fill*5 keeps
+    # the hard behavioral edges (1.5/2.0) and very-low gstack scores ahead of mild AQ gaps.
+    def _aq_advice(pillar, axis, sig):
+        lead = f'<b>{pillar} · {axis}</b> is your thinnest AQ signal. '
+        if axis == "Orchestration":
+            return ("Multiply yourself", "Run agents in parallel, not in series",
+                lead + f'<b>{sig.get("subagent_types", 0)}</b> distinct subagent types with a median '
+                f'fan-out of <b>{sig.get("fanout_median", 0)}</b>. When a task splits into independent '
+                f'pieces, hand them to parallel subagents in one orchestrating session instead of '
+                f'grinding through them serially.')
+        if axis.startswith("Tool command"):
+            return ("Widen the toolbelt", "Wire your daily services into the agent",
+                lead + f'<b>{sig.get("mcp_servers", 0)}</b> MCP servers and <b>{sig.get("clis", 0)}</b> '
+                f'CLIs in evidence. Connect the things you touch every day — issue tracker, browser, '
+                f'cloud — as MCP servers or CLIs, so the agent reaches them directly instead of through you.')
+        if axis == "Model mix":
+            return ("Route the work", "Match the model to the task",
+                lead + f'<b>{sig.get("distinct_models", 0)}</b> model(s), with only '
+                f'<b>{round(sig.get("offload_share", 0) * 100)}%</b> of turns routed off your default. '
+                f'Send mechanical work — renames, bulk edits, summaries — to a faster model and save '
+                f'the heavyweight for design and review.')
+        if axis == "Token economy":
+            return ("Spend tokens like money", "Keep the context lean",
+                lead + f'<b>{round(sig.get("cli_share", 0) * 100)}%</b> of tool traffic goes through '
+                f'CLIs (vs MCP). Prefer CLIs for bulk operations and load MCP schemas on demand — '
+                f'a leaner context buys longer, sharper runs.')
+        if axis == "Grounding":
+            return ("Read before you write", "Make the agent explore before it edits",
+                lead + f'Your explore-to-doing ratio is <b>{sig.get("planning_ratio", 0)}</b> — edits '
+                f'outpace reading. Ask for a read-the-code pass before changes; grounded edits fail less.')
+        return None
+
+    for p in (stats.get("agentic") or {}).get("pillars", []):
+        for a in p.get("axes", []):
+            w = a.get("weight") or 0
+            fill = (a.get("score", 0) / w) if w else 1.0
+            if fill >= 0.45:
+                continue
+            made = _aq_advice(p.get("name", ""), a.get("name", ""), a.get("signals", {}))
+            if made:
+                eb, title, adv = made
+                pool.append((2.5 + fill * 5, eb, title, adv))
 
     if not pool:
         worst = min(scores, key=scores.get) if scores else ""
@@ -2769,6 +2895,7 @@ _PROFILE_CSS = """<style>
   .aq-pillar .pn{font-family:var(--display);font-size:13px;text-transform:uppercase;letter-spacing:.12em;color:var(--slate);font-weight:700}
   .aq-pillar .pv{font-weight:800;color:var(--beak-deep)}
   .aq-pillar .pw{font-size:12px;color:var(--muted)}
+  .aq-axis .nm[title],.aq-pillar .pn[title]{cursor:help;text-decoration:underline dotted;text-underline-offset:3px;text-decoration-color:var(--muted)}
 </style>"""
 
 
@@ -3018,12 +3145,16 @@ def write_profile_html(stats, archetype, quote, scores, voice=None):
           '<b>described, not graded</b>, like Steering.</div>')
         P(f'<div class="aq-head"><span class="aq-big">{aq["aq_0_100"]}</span>'
           f'<span class="aq-tier">{_h.escape(aq["tier"])}</span></div>')
+        def _tt(note):   # hover tooltip (native title attr); empty note -> no attr
+            return f' title="{_h.escape(note)}"' if note else ""
         for pillar in aq["pillars"]:
-            P(f'<div class="aq-pillar"><span class="pn">{_h.escape(pillar["name"])}</span>'
+            P(f'<div class="aq-pillar"><span class="pn"{_tt(AQ_PILLAR_NOTES.get(pillar["name"], ""))}>'
+              f'{_h.escape(pillar["name"])}</span>'
               f'<span class="pv">{pillar["score"]:.0f}</span><span class="pw">/ {pillar["weight"]} weight</span></div>')
             for ax in pillar["axes"]:
                 pct = (ax["score"] / ax["weight"] * 100) if ax["weight"] else 0
-                P(f'<div class="aq-axis"><span class="nm">{_h.escape(ax["name"])}</span>'
+                P(f'<div class="aq-axis"><span class="nm"{_tt(AQ_AXIS_NOTES.get(ax["name"], ""))}>'
+                  f'{_h.escape(ax["name"])}</span>'
                   f'<span class="track"><span class="fill" style="width:{pct:.0f}%"></span></span>'
                   f'<span class="vl mono">{ax["score"]:.0f}/{ax["weight"]}</span></div>')
         mv = aq["mcp_vs_cli"]
