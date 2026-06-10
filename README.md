@@ -27,6 +27,7 @@ Restrict to one or more sources:
 python3 paxel.py claude            # Claude Code only
 python3 paxel.py claude codex      # Claude Code + Codex
 python3 paxel.py --no-open         # don't auto-open profile.html (headless / CI)
+python3 paxel.py --summary         # also write summary.json — the shareable subset
 ```
 
 ### Sandbox / self-hosted / copied histories
@@ -49,6 +50,7 @@ python3 paxel.py --codex-dir=~/backups/codex                # root or .../sessio
 | `profile.html` | Branded, shareable profile — scorecard + AQ + signature moves |
 | `report.md` | Human-readable stats |
 | `stats.json` | Machine-readable metrics (incl. the full `agentic` block) |
+| `summary.json` (`--summary`) | Shareable subset: the 8 measured high-signal metrics + monthly progression — no prompts, no quotes, no rubric scores. Built for the [low-cost feedback loop](docs/metrics-evaluation.md) |
 | `narrative_input.md` | Curated excerpts for an optional LLM narrative pass |
 
 > These outputs contain **your** transcript-derived data. They're in `.gitignore` — don't commit them.

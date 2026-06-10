@@ -110,6 +110,27 @@ class TestPipeline(unittest.TestCase):
         self.assertEqual({s[0] for s in card["scores"]}, SCORED_AXES)
         self.assertIn("steering", card)              # described row present on the poster too
 
+    def test_summary_flag(self):
+        # --summary writes the shareable subset of docs/metrics-evaluation.md: the 8
+        # measured metrics + monthly progression, and NOTHING from the rubric or any
+        # verbatim text (prompts / quotes / skill names) — safe-to-share by construction.
+        _, out = _run(self, ["--summary"])
+        path = os.path.join(out, "summary.json")
+        self.assertTrue(os.path.exists(path), "summary.json was not written")
+        with open(path, encoding="utf-8") as fh:
+            summary = json.load(fh)
+        self.assertEqual(set(summary), {
+            "context", "planning_ratio_explore_to_doing", "errors", "iteration_depth",
+            "churn", "orchestration", "compounding_writes", "ecosystem",
+            "progression_monthly"})
+        raw = json.dumps(summary).lower()
+        for banned in ("aq_0_100", "archetype", "tier", "top_skills", "prompt_text"):
+            self.assertNotIn(banned, raw, f"rubric/verbatim field leaked: {banned}")
+
+    def test_no_summary_without_flag(self):
+        _, out = _run(self, [])
+        self.assertFalse(os.path.exists(os.path.join(out, "summary.json")))
+
     @unittest.skipUnless(shutil.which("node"), "node not installed (CI installs it)")
     def test_poster_js_is_valid_syntax(self):
         # The poster JS is a hand-written raw string — the viral artifact. node --check it.

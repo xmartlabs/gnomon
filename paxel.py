@@ -1978,6 +1978,11 @@ def main():
     with open(os.path.join(OUT_DIR, "stats.json"), "w") as f:
         json.dump(stats, f, indent=2, default=str)
 
+    if "--summary" in sys.argv:
+        with open(os.path.join(OUT_DIR, "summary.json"), "w") as f:
+            json.dump(build_summary(stats), f, indent=2, default=str)
+        print("  wrote summary.json (shareable subset — measured metrics + monthly progression)")
+
     write_report(stats)
     write_narrative_input(stats, opening_prompts, longest_prompts)
     scores = compute_scores(stats)
@@ -2021,6 +2026,47 @@ def main():
     print(f"  iteration depth: mean {iteration_mean:.1f} / max {iteration_max} ({heavy_files} files >15x)  "
           f"errors={tool_errors} ({error_rate_per_100_tools:.1f}/100 tools)")
     print(f"  autonomy={autonomy_score}/100  planning_ratio={planning_ratio:.2f}")
+
+
+def build_summary(stats):
+    """The shareable subset for the low-cost feedback loop (docs/metrics-evaluation.md):
+    the 8 high-signal MEASURED metrics + monthly progression, nothing else. By
+    construction it carries no prompts, no quotes, no skill/project names, and no
+    rubric scores (AQ / tier / archetype) — the doc says rubrics are for
+    self-reflection, not for comparing people. Safe to share as-is."""
+    v, b, vel, st, t, c = (stats["volume"], stats["behavior"], stats["velocity"],
+                           stats["stack"], stats["tools"], stats["corpus"])
+    return {
+        "context": {
+            "date_range": c.get("date_range"),
+            "sources": sorted((c.get("sources") or {}).keys()),
+            "total_sessions": v["total_sessions"],
+        },
+        "planning_ratio_explore_to_doing": b["planning_ratio_explore_to_doing"],
+        "errors": {
+            "error_recovery_ratio": b["error_recovery_ratio"],
+            "error_rate_per_100_tools": b["error_rate_per_100_tools"],
+        },
+        "iteration_depth": {
+            "mean": b["iteration_depth_mean"], "median": b["iteration_depth_median"],
+            "p90": b["iteration_depth_p90"], "max": b["iteration_depth_max"],
+            "files_over_15x": b["files_hammered_over_15x"],
+        },
+        "churn": {
+            "git_churn_total": vel["git_churn_total"],
+            "tool_churn_edit_write": vel["tool_churn_edit_write"],
+        },
+        "orchestration": {
+            "fanout_median": b["fanout_median"],
+            "delegate_actions": b["delegate_actions"],
+        },
+        "compounding_writes": st["compounding_writes"],
+        "ecosystem": {
+            "skills_distinct": st["skills_distinct"], "skills_total": st["skills_total"],
+            "mcp_servers_distinct": t["mcp_servers_distinct"],
+        },
+        "progression_monthly": (stats.get("progression") or {}).get("monthly", []),
+    }
 
 
 def bar(n, mx, width=28):

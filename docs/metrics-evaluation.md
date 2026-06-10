@@ -54,9 +54,10 @@ Sí sirve como feedback a bajo costo, con tres condiciones:
 
 ## Propuesta de uso como feedback a bajo costo
 
-1. Cada persona corre `python3 paxel.py --no-open` 1×/mes (5 min, local).
-2. Comparte el bloque `progression.monthly` + las 8 métricas de la tabla de arriba
-   (extraíbles con un `jq` de una línea de `stats.json`).
+1. Cada persona corre `python3 paxel.py --no-open --summary` 1×/mes (5 min, local).
+2. Comparte `summary.json`: exactamente las 8 métricas de la tabla de arriba +
+   `progression.monthly`, sin prompts ni quotes ni rúbrica — safe-to-share por
+   construcción (no hace falta el `jq`).
 3. En la 1:1 / retro se mira **el slope propio**, no la comparación entre personas:
    ¿sube planning_ratio? ¿baja error_rate? ¿aparecen compounding_writes?
 4. El profile.html queda como artefacto personal/motivacional, no como evaluación.
