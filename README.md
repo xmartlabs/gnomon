@@ -29,6 +29,19 @@ python3 paxel.py claude codex      # Claude Code + Codex
 python3 paxel.py --no-open         # don't auto-open profile.html (headless / CI)
 ```
 
+### Sandbox / self-hosted / copied histories
+
+Histories don't have to live in their default home-dir locations. gnomon honors the
+same env vars the CLIs use (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`) and accepts explicit
+dir overrides — handy for transcripts mounted or `scp`'d from a sandbox, devcontainer,
+or remote box:
+
+```bash
+python3 paxel.py --claude-dir=/mnt/sandbox-home/.claude     # root or .../projects both work
+python3 paxel.py --codex-dir=~/backups/codex                # root or .../sessions both work
+# also: --gemini-dir, --pi-dir, --opencode-dir
+```
+
 ### Outputs (written to the repo dir, git-ignored)
 
 | File | What |
@@ -49,9 +62,11 @@ Auto-detected from their default local locations:
 | Source | Location | Notes |
 |--------|----------|-------|
 | Claude Code | `~/.claude/projects/**/*.jsonl` | Fullest signal coverage |
-| Codex CLI (OpenAI/GPT) | `~/.codex/**/*.jsonl` | Injected wrappers + seed-sessions filtered |
+| Codex CLI (OpenAI/GPT) | `~/.codex/**/*.jsonl` | Injected wrappers + seed-sessions filtered; model read from `turn_context`; SKILL.md shell-reads counted as skill usage |
 | Gemini CLI | `~/.gemini/**/*.json` | |
 | Others (PI, opencode) | per-tool dirs | parsed where present |
+| Cursor | `state.vscdb` | detected, not yet parsed (experimental) |
+| Google Antigravity | `state.vscdb` (protobuf) | detected; conversation count + date range surfaced as metadata. Transcripts live **server-side**, so it can't be scored honestly |
 
 ---
 
@@ -85,9 +100,20 @@ Three 0–10 axes (Execution / Planning / Engineering) grounded in [gstack](http
 gnomon is multi-source, and metrics are provider-agnostic where possible:
 
 - **Provider-agnostic:** git churn, MCP/CLI tool command, grounding, recovery, steering leverage, compounding (matches `CLAUDE.md` / `AGENTS.md` / `GEMINI.md` / `memory/` / `docs/adr`), and **Model mix** (rewards using >1 model and routing work off your default — no hard-coded model names).
-- **Claude-Code-specific signals** (read 0 for Codex/Gemini, so those users score lower on these): the **skills** system (Skill fluency, and review/meta-skill detection in Craft) and **ToolSearch** (part of Token economy). These reflect Claude Code's ecosystem, not universal capability.
+- **Codex parity fixes:** the active model is read from Codex's `turn_context` (so GPT usage shows up in Model mix instead of reading as model-less), `update_plan` counts as planning (TodoWrite), and shell reads of `skills/<name>/SKILL.md` count as skill usage — Codex has no first-class Skill tool, so that's how skills are actually consumed there.
+- **Claude-Code-specific signals** (still under-read for Codex/Gemini): `attributionSkill` precision and **ToolSearch** (part of Token economy). These reflect Claude Code's ecosystem, not universal capability.
 
-**Bottom line:** scores are most complete for Claude Code. Codex/Gemini profiles are valid but under-read on skill/ToolSearch sub-axes. We surface this rather than hide it.
+**Bottom line:** scores are most complete for Claude Code. Codex/Gemini profiles are valid but slightly under-read on ToolSearch-style sub-axes. We surface this rather than hide it.
+
+---
+
+## Monthly progression
+
+`stats.json["progression"]["monthly"]`, a **Progression** section in `report.md`, and a
+**Your trajectory** chart in `profile.html`: per-month prompts, tool calls, sessions,
+active days, tool-authored churn, and top model. When a plan's monthly limits cap any
+single month's volume, the month-over-month slope is the honest signal — not lifetime
+totals.
 
 ---
 

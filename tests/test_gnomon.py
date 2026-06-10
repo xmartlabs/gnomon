@@ -157,6 +157,106 @@ class TestComputeAqV2(unittest.TestCase):
         self.assertLess(self._orch(paxel.compute_aq(s)), 33)
 
 
+class TestCodexToolMapping(unittest.TestCase):
+    def test_update_plan_is_todowrite(self):
+        name, _ = paxel._codex_tool({"type": "function_call", "name": "update_plan",
+                                     "arguments": "{}"})
+        self.assertEqual(name, "TodoWrite")
+
+    def test_write_stdin_is_bashoutput(self):
+        name, inp = paxel._codex_tool({"type": "function_call", "name": "write_stdin",
+                                       "arguments": '{"chars": "y\\n"}'})
+        self.assertEqual(name, "BashOutput")
+        self.assertEqual(inp, {})
+
+    def test_exec_command_is_bash(self):
+        name, inp = paxel._codex_tool({"type": "function_call", "name": "exec_command",
+                                       "arguments": '{"cmd": "git status"}'})
+        self.assertEqual((name, inp["command"]), ("Bash", "git status"))
+
+
+class TestCodexModelStamping(unittest.TestCase):
+    def test_turn_context_model_flows_to_assistant_events(self):
+        import json, tempfile
+        rows = [
+            {"type": "session_meta", "payload": {"id": "s1", "cwd": "/x"}},
+            {"type": "turn_context", "payload": {"model": "gpt-5.4"}},
+            {"type": "response_item", "timestamp": "2026-01-02T03:04:05Z",
+             "payload": {"type": "message", "role": "user", "content": "fix the bug"}},
+            {"type": "response_item", "timestamp": "2026-01-02T03:04:06Z",
+             "payload": {"type": "message", "role": "assistant",
+                         "content": [{"type": "output_text", "text": "done"}]}},
+            {"type": "response_item", "timestamp": "2026-01-02T03:04:07Z",
+             "payload": {"type": "function_call", "name": "exec_command",
+                         "arguments": "{\"cmd\": \"ls\"}"}},
+        ]
+        with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as f:
+            f.write("\n".join(json.dumps(r) for r in rows))
+            path = f.name
+        try:
+            evs = list(paxel._codex_events(path))
+        finally:
+            os.unlink(path)
+        models = [e["message"].get("model") for e in evs
+                  if e["message"]["role"] == "assistant"]
+        self.assertTrue(models and all(m == "gpt-5.4" for m in models), models)
+
+
+class TestSkillMdRegex(unittest.TestCase):
+    def test_skill_read_detected(self):
+        m = paxel._SKILL_MD_RX.findall(
+            "sed -n '1,80p' .claude/skills/threejs-animation/SKILL.md")
+        self.assertEqual(m, ["threejs-animation"])
+
+    def test_codex_home_skill(self):
+        m = paxel._SKILL_MD_RX.findall("cat /Users/x/.codex/skills/spreadsheet/SKILL.md")
+        self.assertEqual(m, ["spreadsheet"])
+
+    def test_no_false_positive(self):
+        self.assertEqual(paxel._SKILL_MD_RX.findall("cat README.md && ls skills/"), [])
+
+
+class TestProtobufParser(unittest.TestCase):
+    def _varint(self, n):
+        out = b""
+        while True:
+            b7 = n & 0x7F
+            n >>= 7
+            out += bytes([b7 | (0x80 if n else 0)])
+            if not n:
+                return out
+
+    def _len_field(self, fno, payload):
+        return self._varint((fno << 3) | 2) + self._varint(len(payload)) + payload
+
+    def test_roundtrip(self):
+        uuid = b"409ac49c-58d7-46f8-b769-bb5615ac86bb"
+        ts = self._varint(8) + self._varint(1_750_000_000)        # field1 varint seconds
+        record = self._len_field(1, uuid) + self._len_field(3, ts)
+        fields = paxel._pb_fields(record)
+        self.assertEqual(fields[0], (1, 2, uuid))
+        inner = paxel._pb_fields(fields[1][2])
+        self.assertEqual(inner[0], (1, 0, 1_750_000_000))
+
+    def test_garbage_raises(self):
+        with self.assertRaises(Exception):
+            paxel._pb_fields(b"\x00\xff\xff\xff")
+
+
+class TestResolveSourceDir(unittest.TestCase):
+    def test_config_root_resolves_to_inner(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            os.mkdir(os.path.join(d, "projects"))
+            self.assertEqual(paxel._resolve_source_dir(d, "projects"),
+                             os.path.join(d, "projects"))
+
+    def test_direct_dir_kept(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(paxel._resolve_source_dir(d, "projects"), d)
+
+
 class TestCompoundingPath(unittest.TestCase):
     def test_claude_md(self):
         self.assertTrue(paxel._is_compounding_path("/x/CLAUDE.md"))

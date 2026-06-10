@@ -30,8 +30,13 @@ Outputs (in this script's directory):
                         (may contain names/PII from your prompts — keep local)
 
 Sources: Claude Code, Codex CLI, Gemini CLI, Pi, and opencode (auto-detected).
-Cursor is detected but not yet parsed (experimental — see README). Restrict with
-args, e.g. `python3 paxel.py claude` for Claude-only; no args = all detected.
+Cursor and Google Antigravity are detected but not scored (experimental — Antigravity
+keeps transcripts server-side; only conversation metadata exists locally). Restrict
+with args, e.g. `python3 paxel.py claude` for Claude-only; no args = all detected.
+
+Sandbox / self-hosted: honors CLAUDE_CONFIG_DIR and CODEX_HOME, and accepts
+--claude-dir=PATH / --codex-dir=PATH / --gemini-dir=PATH / --pi-dir=PATH /
+--opencode-dir=PATH for histories mounted or copied from another machine.
 One-shot; just re-run to rebuild as sessions accumulate.
 """
 
@@ -47,7 +52,10 @@ import statistics
 from collections import Counter, defaultdict
 from datetime import datetime
 
-BASE = os.path.expanduser("~/.claude/projects")
+# Sandbox / self-hosted friendly: honor the same env vars the CLIs themselves use
+# (CLAUDE_CONFIG_DIR, CODEX_HOME), and accept --<source>-dir=PATH overrides (see main())
+# for histories copied off a sandbox, devcontainer, or remote box.
+BASE = os.path.join(os.path.expanduser(os.environ.get("CLAUDE_CONFIG_DIR", "~/.claude")), "projects")
 OUT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ---- tool taxonomy -----------------------------------------------------------
@@ -73,6 +81,9 @@ KNOWN_CLIS = {
 }
 _CLI_SPLIT = re.compile(r"&&|\|\||\||;|\bthen\b|\bdo\b")
 _COMPOUNDING_RX = re.compile(r"CLAUDE\.md|AGENTS\.md|GEMINI\.md|/memory/|/docs/adr|\.cursorrules", re.I)
+# CLIs without a first-class Skill tool (Codex & friends) use skills by shelling out to
+# read skills/<name>/SKILL.md — credit that as skill usage so they aren't under-read
+_SKILL_MD_RX = re.compile(r"skills/([A-Za-z0-9_.-]+)/SKILL\.md")
 
 # verbs that mark an MCP tool as read/inspect rather than produce/act
 MCP_INSPECT_HINTS = ("read", "get", "list", "search", "find", "describe",
@@ -274,12 +285,30 @@ def pctile(sorted_vals, p):
 # Solid/tested: Claude Code, Codex CLI, Gemini CLI, Pi, opencode.
 # Experimental (detected, not yet parsed): Cursor (SQLite blobs).
 # ---------------------------------------------------------------------------
-CODEX_DIR = os.path.expanduser("~/.codex/sessions")
+CODEX_DIR = os.path.join(os.path.expanduser(os.environ.get("CODEX_HOME", "~/.codex")), "sessions")
 GEMINI_DIR = os.path.expanduser("~/.gemini/tmp")
 CURSOR_DB = os.path.expanduser("~/Library/Application Support/Cursor/User/globalStorage/state.vscdb")
+ANTIGRAVITY_DB = os.path.expanduser(
+    "~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb")
 PI_DIR = os.path.expanduser("~/.pi/agent/sessions")
 OPENCODE_DIR = os.path.expanduser("~/.local/share/opencode")
 ALL_SOURCES = ("claude", "codex", "gemini", "pi", "opencode")
+
+# --<source>-dir=PATH → which module-level dir each flag overrides. For claude/codex the
+# flag may point at either the config root (~/.claude) or the inner transcripts dir;
+# _resolve_source_dir() picks the right one.
+_DIR_FLAGS = {"claude": ("BASE", "projects"), "codex": ("CODEX_DIR", "sessions"),
+              "gemini": ("GEMINI_DIR", None), "pi": ("PI_DIR", None),
+              "opencode": ("OPENCODE_DIR", None)}
+
+
+def _resolve_source_dir(path, inner):
+    """Accept a source dir override as either the tool's config root or the transcripts
+    subdir itself (e.g. --claude-dir=~/.claude OR ~/.claude/projects)."""
+    p = os.path.expanduser(path)
+    if inner and os.path.isdir(os.path.join(p, inner)):
+        return os.path.join(p, inner)
+    return p
 
 
 def discover_sources(selected):
@@ -309,6 +338,114 @@ def note_experimental():
     if found:
         print(f"  note: {', '.join(found)} detected but not yet parsed "
               f"(experimental — PRs welcome, see README)")
+
+
+# ---- Google Antigravity (experimental) ----------------------------------------
+# Antigravity keeps full transcripts server-side; the only local trace is a protobuf
+# blob in state.vscdb (key jetskiStateSync.agentManagerInitState) holding conversation
+# ids, titles and timestamps. We surface conversation count + date range as metadata —
+# never folded into scores (no per-event data to grade honestly).
+
+def _pb_varint(buf, i):
+    val = shift = 0
+    while i < len(buf):
+        b = buf[i]; i += 1
+        val |= (b & 0x7F) << shift
+        if not b & 0x80:
+            return val, i
+        shift += 7
+    raise ValueError("truncated varint")
+
+
+def _pb_fields(buf):
+    """Decode one protobuf message into [(field_no, wire_type, value)]. Raises on
+    malformed input — callers treat any raise as 'not a message'."""
+    i, out = 0, []
+    while i < len(buf):
+        key, i = _pb_varint(buf, i)
+        f, w = key >> 3, key & 7
+        if f == 0:
+            raise ValueError("field 0")
+        if w == 0:
+            v, i = _pb_varint(buf, i)
+        elif w == 1:
+            v, i = buf[i:i + 8], i + 8
+        elif w == 2:
+            ln, i = _pb_varint(buf, i)
+            if i + ln > len(buf):
+                raise ValueError("truncated bytes")
+            v, i = buf[i:i + ln], i + ln
+        elif w == 5:
+            v, i = buf[i:i + 4], i + 4
+        else:
+            raise ValueError(f"wire type {w}")
+        out.append((f, w, v))
+    return out
+
+
+_UUID_RX = re.compile(rb"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+
+def antigravity_summary():
+    """Best-effort read of Antigravity's local conversation metadata. Returns
+    {"conversations": n, "first": iso, "last": iso} or None. Fully local, read-only."""
+    if not os.path.exists(ANTIGRAVITY_DB):
+        return None
+    try:
+        import sqlite3
+        import base64
+        con = sqlite3.connect(f"file:{ANTIGRAVITY_DB}?mode=ro&immutable=1", uri=True)
+        row = con.execute("SELECT value FROM ItemTable WHERE key="
+                          "'jetskiStateSync.agentManagerInitState'").fetchone()
+        con.close()
+        if not row or not row[0]:
+            return None
+        raw = row[0]
+        buf = base64.b64decode(raw if isinstance(raw, (bytes, bytearray)) else str(raw))
+        tmin = tmax = None
+
+        def _scan_ts(b, depth=0):
+            nonlocal tmin, tmax
+            if depth > 6:
+                return
+            for _f, w, v in _pb_fields(b):
+                if w == 0 and 1.3e9 < v < 2.2e9:        # plausible unix seconds
+                    ts = datetime.fromtimestamp(v).astimezone()
+                    tmin = ts if tmin is None or ts < tmin else tmin
+                    tmax = ts if tmax is None or ts > tmax else tmax
+                elif w == 2:
+                    try:
+                        _scan_ts(v, depth + 1)
+                    except Exception:
+                        pass
+
+        convs = 0
+        for f, w, root in _pb_fields(buf):
+            if f != 1 or w != 2:
+                continue
+            try:
+                children = _pb_fields(root)
+            except Exception:
+                continue
+            for cf, cw, cv in children:
+                if cf != 1 or cw != 2:
+                    continue
+                try:
+                    inner = _pb_fields(cv)
+                except Exception:
+                    continue
+                # a conversation record leads with its uuid as field 1
+                if any(g == 1 and gw == 2 and _UUID_RX.match(gv)
+                       for g, gw, gv in inner):
+                    convs += 1
+                    _scan_ts(cv)
+        if not convs:
+            return None
+        return {"conversations": convs,
+                "first": tmin.isoformat() if tmin else None,
+                "last": tmax.isoformat() if tmax else None}
+    except Exception:
+        return None
 
 
 def _texts(content):
@@ -416,6 +553,10 @@ def _codex_tool(p):
     if name in ("apply_patch", "patch", "edit_file", "write_file", "create_file"):
         return "Edit", {"new_string": args.get("patch") or args.get("content") or "",
                         "old_string": "", "file_path": args.get("path") or args.get("file") or ""}
+    if name == "update_plan":          # Codex's plan tool ≈ Claude's TodoWrite
+        return "TodoWrite", args
+    if name == "write_stdin":          # input to a running shell ≈ BashOutput interaction
+        return "BashOutput", {}
     return name, args
 
 
@@ -463,7 +604,14 @@ def _codex_events(fp):
             except Exception:
                 pass
     base = {"sessionId": sid, "cwd": cwd}
+    model = None
     for ev in rows:
+        # the active model lives in turn_context (e.g. "gpt-5.4"), not on the
+        # response items — track it as we stream so assistant turns carry it and
+        # Codex usage shows up in the Model mix instead of reading as model-less
+        if ev.get("type") == "turn_context":
+            model = (ev.get("payload") or {}).get("model") or model
+            continue
         if ev.get("type") != "response_item":
             continue
         ts = ev.get("timestamp")
@@ -477,18 +625,18 @@ def _codex_events(fp):
                        "message": {"role": "user", "content": text}}
             elif role == "assistant":
                 yield {**base, "type": "assistant", "timestamp": ts,
-                       "message": {"role": "assistant",
+                       "message": {"role": "assistant", "model": model,
                                    "content": [{"type": "text", "text": text}] if text else []}}
             # developer/system messages are tooling, not human prompts → skipped
         elif pt == "reasoning":
             yield {**base, "type": "assistant", "timestamp": ts,
-                   "message": {"role": "assistant",
+                   "message": {"role": "assistant", "model": model,
                                "content": [{"type": "thinking",
                                             "thinking": _texts(p.get("content")) or p.get("summary") or ""}]}}
         elif pt in ("function_call", "local_shell_call", "custom_tool_call", "web_search_call"):
             name, inp = _codex_tool(p)
             yield {**base, "type": "assistant", "timestamp": ts,
-                   "message": {"role": "assistant",
+                   "message": {"role": "assistant", "model": model,
                                "content": [{"type": "tool_use", "name": name, "input": inp}]}}
         elif pt == "function_call_output":
             out = p.get("output")
@@ -784,11 +932,32 @@ def main():
     unknown = [s for s in selected if s not in ALL_SOURCES]
     if unknown:
         print(f"  warning: unknown source(s) {unknown} ignored; valid: {', '.join(ALL_SOURCES)}")
+    # --<source>-dir=PATH overrides for sandbox / self-hosted / copied histories
+    # (e.g. --claude-dir=/mnt/sandbox-home/.claude). Env vars CLAUDE_CONFIG_DIR and
+    # CODEX_HOME are honored too (applied at import; flags win).
+    for a in sys.argv[1:]:
+        m = re.match(r"--([a-z]+)-dir=(.+)$", a)
+        if not m:
+            continue
+        src, path = m.group(1), m.group(2)
+        if src not in _DIR_FLAGS:
+            print(f"  warning: unknown flag {a} ignored; valid: "
+                  + ", ".join(f"--{s}-dir=PATH" for s in _DIR_FLAGS))
+            continue
+        gname, inner = _DIR_FLAGS[src]
+        resolved = _resolve_source_dir(path, inner)
+        globals()[gname] = resolved
+        if not os.path.isdir(resolved):
+            print(f"  warning: --{src}-dir path not found: {resolved}")
     sources = discover_sources(selected)
     by_src = Counter(s for s, _, _ in sources)
     print(f"Found {len(sources)} transcript files across "
           f"{', '.join(f'{k}:{v}' for k, v in by_src.items()) or 'no sources'}")
     note_experimental()
+    antigravity = antigravity_summary()
+    if antigravity:
+        print(f"  note: Google Antigravity detected — {antigravity['conversations']} conversations "
+              f"(metadata only; transcripts live server-side, so it can't be scored)")
     if not sources:
         print("\n  No transcripts found in ~/.claude/projects, ~/.codex/sessions, ~/.gemini/tmp, ~/.pi/agent/sessions, or ~/.local/share/opencode/storage.")
         print("  Nothing to analyze — run this where you've actually used a coding agent.")
@@ -857,6 +1026,15 @@ def main():
     all_min_dt = None
     all_max_dt = None
 
+    # monthly progression ("YYYY-MM" buckets) — month-over-month evolution matters more
+    # than lifetime totals when plan limits cap any single month's volume
+    month_prompts = Counter()
+    month_tools = Counter()
+    month_churn = Counter()              # Edit/Write tool-authored line churn
+    month_dates = defaultdict(set)       # month -> active ISO dates
+    month_sessions = defaultdict(set)    # month -> sessionIds seen
+    month_models = defaultdict(Counter)  # month -> model -> assistant turns
+
     # narrative samples
     opening_prompts = []           # (dt, project, text) first genuine prompt per session
     longest_prompts = []           # kept small via periodic trim
@@ -901,6 +1079,7 @@ def main():
                 sid = ev.get("sessionId")
                 cwd = ev.get("cwd")
                 dt = parse_ts(ev.get("timestamp"))
+                mkey = dt.strftime("%Y-%m") if dt is not None else None
 
                 if dt is not None:
                     if all_min_dt is None or dt < all_min_dt:
@@ -910,8 +1089,10 @@ def main():
                     hour_hist[dt.hour] += 1
                     weekday_hist[dt.weekday()] += 1
                     date_set.add(dt.date().isoformat())
+                    month_dates[mkey].add(dt.date().isoformat())
                     if sid:
                         session_ts[sid].append(dt.timestamp())
+                        month_sessions[mkey].add(sid)
                 if sid:
                     session_files[sid].add(fp)
                     source_sessions[cur_src].add(sid)
@@ -952,6 +1133,8 @@ def main():
                             elif cleaned:
                                 prompts_count += 1
                                 source_prompts[cur_src] += 1
+                                if mkey:
+                                    month_prompts[mkey] += 1
                                 prompt_lengths.append(len(cleaned))
                                 if _POLITE_RE.search(cleaned):
                                     polite_prompts += 1
@@ -1008,6 +1191,8 @@ def main():
                     mdl = msg.get("model")
                     if mdl:
                         model_counter[mdl] += 1
+                        if mkey:
+                            month_models[mkey][mdl] += 1
                     if ev.get("attributionSkill"):
                         skill_counter[ev["attributionSkill"]] += 1
                     content = msg.get("content")
@@ -1026,6 +1211,8 @@ def main():
                                 inp = b.get("input", {}) if isinstance(b.get("input"), dict) else {}
                                 tool_use_total += 1
                                 tool_counter[name] += 1
+                                if mkey:
+                                    month_tools[mkey] += 1
                                 cat_counter[classify_tool(name)] += 1
                                 if name.startswith("mcp__"):
                                     mcp_calls += 1
@@ -1062,6 +1249,8 @@ def main():
                                     r = line_count(inp.get("old_string", ""))
                                     lines_added += a
                                     lines_removed += r
+                                    if mkey:
+                                        month_churn[mkey] += a + r
                                     fpth = inp.get("file_path")
                                     if sid and fpth:
                                         file_edit_run[sid][fpth] += 1
@@ -1070,6 +1259,8 @@ def main():
                                 elif name == "Write":
                                     a = line_count(inp.get("content", ""))
                                     lines_added += a
+                                    if mkey:
+                                        month_churn[mkey] += a
                                     fpth = inp.get("file_path")
                                     if sid and fpth:
                                         file_edit_run[sid][fpth] += 1
@@ -1078,8 +1269,12 @@ def main():
                                 elif name == "MultiEdit":
                                     for e in inp.get("edits", []) or []:
                                         if isinstance(e, dict):
-                                            lines_added += line_count(e.get("new_string", ""))
-                                            lines_removed += line_count(e.get("old_string", ""))
+                                            _ea = line_count(e.get("new_string", ""))
+                                            _er = line_count(e.get("old_string", ""))
+                                            lines_added += _ea
+                                            lines_removed += _er
+                                            if mkey:
+                                                month_churn[mkey] += _ea + _er
                                     fpth = inp.get("file_path")
                                     if sid and fpth:
                                         file_edit_run[sid][fpth] += 1
@@ -1096,6 +1291,11 @@ def main():
                                     cmd = inp.get("command", "") or ""
                                     for _cli in _extract_clis(cmd):
                                         cli_counter[_cli] += 1
+                                    if cur_src != "claude":
+                                        # Claude invokes skills via the Skill tool (counted
+                                        # above); other CLIs read SKILL.md through the shell
+                                        for _sm in _SKILL_MD_RX.finditer(cmd):
+                                            skill_counter[_sm.group(1)] += 1
                                     if bash_writes_file(cmd):
                                         bash_write_calls += 1
                                         bash_authored_lines += cmd.count("\n")
@@ -1206,6 +1406,20 @@ def main():
     peak_hours = [h for h, _ in hour_hist.most_common(3)]
     preferred_days = [DOW[d] for d, _ in weekday_hist.most_common(3)]
 
+    progression = []
+    for mk in sorted(set(month_dates) | set(month_prompts) | set(month_tools)):
+        mm = month_models.get(mk, Counter())
+        progression.append({
+            "month": mk,
+            "prompts": month_prompts.get(mk, 0),
+            "tool_calls": month_tools.get(mk, 0),
+            "sessions": len(month_sessions.get(mk, ())),
+            "active_days": len(month_dates.get(mk, ())),
+            "tool_churn_lines": month_churn.get(mk, 0),
+            "models": mm.most_common(3),
+            "top_model": mm.most_common(1)[0][0] if mm else None,
+        })
+
     stats = {
         "scope": "Sources: " + (", ".join(sorted(source_files)) or "none"),
         "generated_local_only": True,
@@ -1220,6 +1434,9 @@ def main():
             "span_days": span_days,
             "active_days": active_days,
             "timezone": f"{tzname} (UTC{tzoffset[:3]}:{tzoffset[3:]})",
+            # metadata only — Antigravity transcripts are server-side, so this is
+            # detected + counted but never folded into scores
+            "antigravity_experimental": antigravity,
         },
         "volume": {
             "total_sessions": total_sessions,
@@ -1299,6 +1516,7 @@ def main():
             "peak_hours_local": peak_hours,
             "preferred_days": preferred_days,
         },
+        "progression": {"monthly": progression},
         "stack": {
             "models": model_counter.most_common(),
             "top_skills": skill_counter.most_common(15),
@@ -1457,6 +1675,20 @@ def write_report(s):
         n = wd.get(d, 0)
         A(f"  - {d} {bar(n, wmx, 24)} {n}")
     A("")
+    prog = s.get("progression", {}).get("monthly") or []
+    if len(prog) >= 2:
+        A("## Progression (monthly)")
+        A("_Month-over-month evolution — the slope matters more than the totals when "
+          "plan limits cap any single month._")
+        pmx = max(p["prompts"] for p in prog) or 1
+        tmx = max(p["tool_calls"] for p in prog) or 1
+        for p in prog:
+            top = f" · top model {p['top_model']}" if p["top_model"] else ""
+            A(f"- **{p['month']}** · prompts {bar(p['prompts'], pmx, 16)} {p['prompts']:,} "
+              f"· tool calls {bar(p['tool_calls'], tmx, 16)} {p['tool_calls']:,} "
+              f"· {p['active_days']} active days · {p['sessions']} sessions"
+              f" · ~{p['tool_churn_lines']:,} lines{top}")
+        A("")
     A("## Stack")
     A(f"- Models: {', '.join(f'{m} ({n})' for m, n in st['models'][:6])}")
     A(f"- Top skills: {', '.join(f'{k} ({n})' for k, n in st['top_skills'][:10]) or '—'}")
@@ -2073,7 +2305,7 @@ _PROFILE_CSS = """<style>
   .card code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;background:#eef1f3;color:var(--beak-deep);padding:1px 5px;border-radius:4px}
   .disclaimer{background:#fff;border:1px solid var(--line);border-left:4px solid var(--beak);border-radius:6px;padding:14px 16px;margin:-6px 0 24px;font-size:13.5px;color:#48535b;line-height:1.55} .disclaimer b{color:var(--text)}
   .score{display:grid;grid-template-columns:160px 1fr 46px;align-items:center;gap:14px;margin:0 0 14px} .score .name{font-weight:600;font-size:15px}
-  .score .track{display:block;height:12px;background:#dde2e6;border-radius:999px;overflow:hidden} .score .fill{display:block;height:100%;min-width:8px;background:linear-gradient(90deg,var(--beak-deep),var(--beak));border-radius:999px}
+  .score .track,.aq-axis .track,.prog-row .track{display:block;height:12px;background:#dde2e6;border-radius:999px;overflow:hidden} .score .fill,.aq-axis .fill,.prog-row .fill{display:block;height:100%;min-width:8px;background:linear-gradient(90deg,var(--beak-deep),var(--beak));border-radius:999px}
   .score .val{font-weight:800;text-align:right} .score .note{grid-column:1/-1;color:var(--muted);font-size:13px;margin:-6px 0 4px;padding-left:174px}
   @media(max-width:560px){.score .note{padding-left:0}}
   .steerread{display:grid;grid-template-columns:160px 1fr;align-items:baseline;gap:14px;margin:4px 0 6px;padding-top:14px;border-top:1px solid var(--line)} .steerread .sr-k{font-weight:600;font-size:15px}
@@ -2091,6 +2323,9 @@ _PROFILE_CSS = """<style>
   .aq-tier{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--beak-deep);border:1px solid var(--beak);border-radius:999px;padding:4px 11px}
   .aq-axis{display:grid;grid-template-columns:200px 1fr 56px;align-items:center;gap:14px;margin:0 0 12px}
   .aq-axis .nm{font-weight:600;font-size:14px} .aq-axis .vl{font-weight:800;text-align:right}
+  .prog-row{display:grid;grid-template-columns:74px 1fr 260px;align-items:center;gap:14px;margin:0 0 10px}
+  .prog-row .nm{font-weight:700;font-size:13px} .prog-row .vl{font-size:12.5px;color:var(--muted);text-align:right;white-space:nowrap}
+  @media(max-width:640px){.prog-row{grid-template-columns:64px 1fr;}.prog-row .vl{display:none}}
   .aq-split{margin-top:18px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:15px 16px}
   .aq-split .bar{display:flex;height:28px;border-radius:6px;overflow:hidden;font-size:11.5px;font-weight:700;margin:8px 0}
   .aq-split .cli{background:var(--beak-deep);color:#fff;display:flex;align-items:center;padding:0 12px}
@@ -2361,6 +2596,19 @@ def write_profile_html(stats, archetype, quote, scores, voice=None):
           f'<p class="meta"><b>Tool diversity</b> · {aq["tool_diversity"]["distinct"]} distinct tools, '
           f'entropy {aq["tool_diversity"]["entropy"]} — high range available, concentrated use. Not penalized.</p>'
           '</div>')
+    prog = (stats.get("progression") or {}).get("monthly") or []
+    if len(prog) >= 2:
+        P('<h2 class="section">Your trajectory</h2>')
+        P('<p class="lead">Month by month. When plan limits cap any single month, '
+          'the <b>slope</b> is the honest signal — not the lifetime totals.</p>')
+        _tmx = max(p["tool_calls"] for p in prog) or 1
+        for p in prog:
+            _pct = max(2, round(p["tool_calls"] / _tmx * 100))
+            _top = f' · {_h.escape(_pretty_model(p["top_model"]))}' if p["top_model"] else ""
+            P(f'<div class="prog-row"><span class="nm mono">{_h.escape(p["month"])}</span>'
+              f'<span class="track"><span class="fill" style="width:{_pct}%"></span></span>'
+              f'<span class="vl">{p["tool_calls"]:,} calls · {p["prompts"]:,} prompts · '
+              f'{p["active_days"]}d{_top}</span></div>')
     if moves:
         P('<h2 class="section">Your signature moves</h2>')
         P('<p class="lead">The patterns in how you direct the AI, pulled from your real sessions. The tag on each '
