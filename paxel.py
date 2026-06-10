@@ -2791,6 +2791,16 @@ def _card(q, a, d, flag=False):
     return f'<div class="{cls}"><p class="q">{q}</p><p class="a">{a}</p><p class="d">{d}</p></div>'
 
 
+def _hero_lead(archetype):
+    """The HTML hero says "You're a {archetype}" — but the "The …" archetypes (The Architect/
+    Director/Builder/Bulldozer) would read "You're a The Architect". Drop the article for those.
+    The archetype string itself is never altered, so the poster keeps its "The Architect." title.
+    (No archetype starts with a vowel, so "a" is always right for the rest.)
+    NOTE: gnomon's hero headline is the AQ tier (an adjective — "Elite"), rendered with a bare
+    "You're"; this helper is kept for upstream parity (tests + future merges)."""
+    return "You're" if (archetype or "")[:4].lower() == "the " else "You're a"
+
+
 def write_profile_html(stats, archetype, quote, scores, voice=None):
     import html as _h
     v, vel, b, r, t, st, c = (stats["volume"], stats["velocity"], stats["behavior"],
