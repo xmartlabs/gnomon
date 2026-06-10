@@ -151,10 +151,84 @@ class TestComputeAqV2(unittest.TestCase):
         self.assertGreater(self._orch(paxel.compute_aq(orchestrator)),
                            self._orch(paxel.compute_aq(grinder)))
 
+    def test_every_pillar_and_axis_has_tooltip_note(self):
+        # Every pillar/axis compute_aq emits must have a plain-language tooltip note,
+        # so the HTML report never shows an unexplained bar.
+        for p in self.aq["pillars"]:
+            self.assertIn(p["name"], paxel.AQ_PILLAR_NOTES)
+            for a in p["axes"]:
+                self.assertIn(a["name"], paxel.AQ_AXIS_NOTES)
+
     def test_volume_alone_cannot_max_orchestration(self):
         # 10x the agent_runs but no coordination (fanout=1) -> still capped below full.
         s = _sample_stats(); s["tools"]["agent_calls"] = 5000; s["behavior"]["fanout_median"] = 1
         self.assertLess(self._orch(paxel.compute_aq(s)), 33)
+
+
+def _edge_stats(agentic=None):
+    """Minimal stats for growth_edges: healthy build signals so only AQ edges fire."""
+    return {
+        "volume": {"total_sessions": 100, "total_prompts": 1000},
+        "behavior": {"error_rate_per_100_tools": 1, "iteration_depth_max": 5,
+                     "files_hammered_over_15x": 0, "shell_test_runs": 100},
+        "velocity": {},
+        "stack": {"top_skills": [("code-review", 60), ("tdd", 50)]},
+        "agentic": agentic or {},
+    }
+
+
+def _axis(name, weight, fill, signals=None):
+    return {"name": name, "weight": weight, "score": round(weight * fill, 1),
+            "signals": signals or {}}
+
+
+HEALTHY_SCORES = {"Execution": 8, "Planning": 8, "Engineering": 8}
+
+
+class TestGrowthEdgesAq(unittest.TestCase):
+    def test_weak_aq_axis_fires_edge(self):
+        # gstack scorecard healthy but Orchestration thin -> AQ edge, not "balanced".
+        agentic = {"pillars": [{"name": "Breadth", "weight": 30, "axes": [
+            _axis("Orchestration", 33, 0.2,
+                  {"agent_runs": 3, "subagent_types": 1, "fanout_median": 1})]}]}
+        edges = paxel.growth_edges(_edge_stats(agentic), dict(HEALTHY_SCORES))
+        self.assertTrue(any("Orchestration" in adv for _, _, adv in edges), edges)
+
+    def test_healthy_aq_falls_through_to_balanced(self):
+        agentic = {"pillars": [{"name": "Breadth", "weight": 30, "axes": [
+            _axis("Orchestration", 33, 0.9), _axis("Tool command (MCP + CLI)", 28, 0.8)]}]}
+        edges = paxel.growth_edges(_edge_stats(agentic), dict(HEALTHY_SCORES))
+        self.assertEqual(len(edges), 1)
+        self.assertIn("depth", edges[0][1].lower())   # the "balanced -> depth" fallback
+
+    def test_unadvised_axes_never_fire(self):
+        # Steering leverage / Recovery are deliberately not advised, however low.
+        agentic = {"pillars": [{"name": "Efficiency", "weight": 20, "axes": [
+            _axis("Steering leverage", 50, 0.1), _axis("Recovery", 50, 0.1)]}]}
+        edges = paxel.growth_edges(_edge_stats(agentic), dict(HEALTHY_SCORES))
+        self.assertTrue(all("Steering" not in adv and "Recovery" not in adv
+                            for _, _, adv in edges), edges)
+
+    def test_capped_at_three_most_urgent_first(self):
+        agentic = {"pillars": [
+            {"name": "Breadth", "weight": 30, "axes": [
+                _axis("Orchestration", 33, 0.1), _axis("Tool command (MCP + CLI)", 28, 0.3)]},
+            {"name": "Savvy", "weight": 15, "axes": [
+                _axis("Model mix", 50, 0.2), _axis("Token economy", 50, 0.4)]},
+            {"name": "Craft", "weight": 35, "axes": [_axis("Grounding", 30, 0.25)]},
+        ]}
+        edges = paxel.growth_edges(_edge_stats(agentic), dict(HEALTHY_SCORES))
+        self.assertEqual(len(edges), 3)
+        self.assertIn("Orchestration", edges[0][2])   # lowest fill ranks first
+
+    def test_aq_edges_compose_with_gstack_edges(self):
+        # A weak gstack axis still wins over a milder AQ gap.
+        agentic = {"pillars": [{"name": "Savvy", "weight": 15, "axes": [
+            _axis("Model mix", 50, 0.4)]}]}
+        scores = dict(HEALTHY_SCORES, Planning=3)
+        edges = paxel.growth_edges(_edge_stats(agentic), scores)
+        self.assertIn("Plan", edges[0][0])            # Planning edge first (priority 3)
+        self.assertTrue(any("Model mix" in adv for _, _, adv in edges))
 
 
 class TestCodexToolMapping(unittest.TestCase):
