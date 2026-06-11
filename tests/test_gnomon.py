@@ -165,6 +165,35 @@ class TestComputeAqV2(unittest.TestCase):
         self.assertLess(self._orch(paxel.compute_aq(s)), 33)
 
 
+class TestParseWindow(unittest.TestCase):
+    def test_no_flags(self):
+        self.assertEqual(paxel.parse_window([]), (None, None))
+
+    def test_since_and_until_inclusive_day(self):
+        since, until = paxel.parse_window(["--since=2026-03-01", "--until=2026-03-31"])
+        self.assertEqual(since.date().isoformat(), "2026-03-01")
+        # --until keeps the WHOLE end day: internally exclusive next-midnight
+        self.assertEqual(until.date().isoformat(), "2026-04-01")
+        self.assertIsNotNone(since.tzinfo)
+
+    def test_last_rolling(self):
+        from datetime import datetime, timedelta
+        now = datetime(2026, 6, 10).astimezone()
+        for flag, days in (("--last=90d", 90), ("--last=12w", 84),
+                           ("--last=3m", 90), ("--last=45", 45)):
+            since, until = paxel.parse_window([flag], now=now)
+            self.assertEqual(since, now - timedelta(days=days), flag)
+            self.assertIsNone(until, flag)
+
+    def test_bad_values_ignored(self):
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.assertEqual(paxel.parse_window(["--since=03/01/2026", "--last=3q"]),
+                             (None, None))
+        self.assertEqual(buf.getvalue().count("warning"), 2)
+
+
 def _edge_stats(agentic=None):
     """Minimal stats for growth_edges: healthy build signals so only AQ edges fire."""
     return {
