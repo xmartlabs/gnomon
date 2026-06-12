@@ -58,6 +58,17 @@ Sí sirve como feedback a bajo costo, con tres condiciones:
 
 ## Propuesta de uso como feedback a bajo costo
 
+### Camino manual (local)
+
+1. Cada persona corre `python3 paxel.py --no-open --summary --last=30d` 1×/mes (5 min,
+   local) — la ventana hace cada summary comparable período a período, no acumulativo.
+2. Comparte `summary.json`: exactamente las 8 métricas de la tabla de arriba +
+   `progression.monthly`, sin prompts ni quotes ni rúbrica — safe-to-share por
+   construcción (no hace falta el `jq`).
+3. En la 1:1 / retro se mira **el slope propio**, no la comparación entre personas:
+   ¿sube planning_ratio? ¿baja error_rate? ¿aparecen compounding_writes?
+4. El profile.html queda como artefacto personal/motivacional, no como evaluación.
+
 ### Camino automatizado (opt-in vía mirdash)
 
 1. Cada persona corre `uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights`

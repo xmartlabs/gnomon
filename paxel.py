@@ -51,7 +51,7 @@ import contextlib
 import subprocess
 import statistics
 from collections import Counter, defaultdict
-from datetime import datetime, timezone as _tz
+from datetime import datetime, timedelta, timezone as _tz
 
 # Sandbox / self-hosted friendly: honor the same env vars the CLIs themselves use
 # (CLAUDE_CONFIG_DIR, CODEX_HOME), and accept --<source>-dir=PATH overrides (see main())
@@ -315,6 +315,43 @@ ALL_SOURCES = ("claude", "codex", "gemini", "pi", "opencode", "cursor")
 _DIR_FLAGS = {"claude": ("BASE", "projects"), "codex": ("CODEX_DIR", "sessions"),
               "gemini": ("GEMINI_DIR", None), "pi": ("PI_DIR", None),
               "opencode": ("OPENCODE_DIR", None), "cursor": ("CURSOR_DIR", "projects")}
+
+
+def parse_window(argv, now=None):
+    """Time-window flags → (since_dt, until_dt), tz-aware local datetimes, either None.
+
+    --since=YYYY-MM-DD   inclusive start of window
+    --until=YYYY-MM-DD   inclusive END DAY (internally exclusive next-midnight, so
+                         --until=2026-03-31 keeps the whole 31st)
+    --last=N[d|w|m]      rolling window ending now (d=days, w=weeks, m=30-day months);
+                         overrides --since/--until
+
+    Bad values warn and are ignored (same spirit as unknown sources/flags)."""
+    since = until = None
+    for a in argv:
+        m = re.match(r"--(since|until)=(\d{4}-\d{2}-\d{2})$", a)
+        if m:
+            try:
+                dt = datetime.fromisoformat(m.group(2)).astimezone()
+            except ValueError:
+                print(f"  warning: bad date in {a} ignored (use YYYY-MM-DD)")
+                continue
+            if m.group(1) == "since":
+                since = dt
+            else:
+                until = dt + timedelta(days=1)
+            continue
+        if a.startswith(("--since=", "--until=")):
+            print(f"  warning: bad date in {a} ignored (use YYYY-MM-DD)")
+            continue
+        m = re.match(r"--last=(\d+)([dwm]?)$", a)
+        if m:
+            days = int(m.group(1)) * {"": 1, "d": 1, "w": 7, "m": 30}[m.group(2)]
+            end = now or datetime.now().astimezone()
+            return end - timedelta(days=days), None    # open-ended: up to now
+        if a.startswith("--last="):
+            print(f"  warning: bad value in {a} ignored (use --last=N[d|w|m])")
+    return since, until
 
 
 def _resolve_source_dir(path, inner):
@@ -1415,6 +1452,15 @@ def main():
     by_src = Counter(s for s, _, _ in sources)
     print(f"Found {len(sources)} transcript files across "
           f"{', '.join(f'{k}:{v}' for k, v in by_src.items()) or 'no sources'}")
+    # Optional time window (--since/--until/--last): events outside it are skipped, so
+    # every downstream metric — INCLUDING git churn, whose since/until follow the kept
+    # events' date range — reads the same window. Timestampless events are DROPPED when
+    # a window is active (they can't honor "this period only"); Cursor JSONL-only
+    # sessions ride their single file-mtime timestamp.
+    since_dt, until_dt = parse_window(sys.argv[1:])
+    if since_dt or until_dt:
+        print(f"  window: {since_dt.date() if since_dt else '…'} → "
+              f"{(until_dt - timedelta(days=1)).date() if until_dt else 'now'}")
     sources, cursor_twins = _cursor_dedup(sources)
     antigravity = antigravity_summary()
     if antigravity:
@@ -1509,6 +1555,15 @@ def main():
     source_prompts = Counter()           # source -> genuine prompts
 
     for cur_src, fp, fmt in sources:
+        # mtime pre-filter: a file last written before the window start can't contain
+        # in-window events — skip the parse entirely (big win on ~38k codex seeds).
+        # No mtime skip for --until: old events can live in recently-written files.
+        if since_dt is not None:
+            try:
+                if datetime.fromtimestamp(os.path.getmtime(fp)).astimezone() < since_dt:
+                    continue
+            except OSError:
+                pass
         files_parsed += 1
         source_files[cur_src] += 1
         if files_parsed % 300 == 0:
@@ -1544,6 +1599,11 @@ def main():
                 sid = ev.get("sessionId")
                 cwd = ev.get("cwd")
                 dt = parse_ts(ev.get("timestamp"))
+                if (since_dt is not None or until_dt is not None) and (
+                        dt is None                                   # undatable: can't
+                        or (since_dt is not None and dt < since_dt)  # honor "this period
+                        or (until_dt is not None and dt >= until_dt)):  # only" — drop
+                    continue
                 mkey = dt.strftime("%Y-%m") if dt is not None else None
 
                 # Date-window gate: when --since/--until is active, skip events
@@ -1931,10 +1991,6 @@ def main():
             "files_parsed": files_parsed,
             "lines_total": lines_total,
             "lines_unparseable": lines_bad,
-            # When a date window is active, date_range reflects the *requested* bounds
-            # so downstream charting gets a clean, distinct label per windowed run:
-            #   [since.isoformat(), until.isoformat()]  (exclusive-until preserved as-is)
-            # When no window → actual corpus min/max (unchanged behavior).
             "date_range": (
                 [win_since.isoformat() if win_since is not None else (all_min_dt.isoformat() if all_min_dt else None),
                  win_until.isoformat() if win_until is not None else (all_max_dt.isoformat() if all_max_dt else None)]
@@ -1942,6 +1998,9 @@ def main():
                 [all_min_dt.isoformat() if all_min_dt else None,
                  all_max_dt.isoformat() if all_max_dt else None]
             ),
+            "window": ({"since": since_dt.isoformat() if since_dt else None,
+                        "until": until_dt.isoformat() if until_dt else None}
+                       if (since_dt or until_dt) else None),
             "span_days": span_days,
             "active_days": active_days,
             "timezone": f"{tzname} (UTC{tzoffset[:3]}:{tzoffset[3:]})",
@@ -2153,6 +2212,7 @@ def build_summary(stats):
     return {
         "context": {
             "date_range": c.get("date_range"),
+            "window": c.get("window"),
             "sources": sorted((c.get("sources") or {}).keys()),
             "total_sessions": v["total_sessions"],
         },
