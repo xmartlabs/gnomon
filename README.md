@@ -1,6 +1,6 @@
 # gnomon
 
-> A local builder-profiler for AI-assisted coding. Reads your agent transcripts on-device and grades **how you build** (gstack) and **how well you operate agents** (Agentic Quotient). Nothing leaves your machine.
+> A local builder-profiler for AI-assisted coding. Reads your agent transcripts on-device and grades **how you build** (gstack) and **how well you operate agents** (Agentic Quotient). Everything runs locally — nothing leaves your machine. For AI-powered analysis and to track your evolution over time, run the separate opt-in command `uvx xl-ai-insights`.
 
 _gnomon (γνώμων): the part of a sundial that casts the shadow — "the one that knows/judges." It measures by what you cast._
 
@@ -33,7 +33,73 @@ Restrict to one or more sources:
 python3 paxel.py claude            # Claude Code only
 python3 paxel.py claude codex      # Claude Code + Codex
 python3 paxel.py --no-open         # don't auto-open profile.html (headless / CI)
-python3 paxel.py --summary         # also write summary.json — the shareable subset
+python3 paxel.py --summary         # also write summary.json to disk
+```
+
+`python3 paxel.py` is 100% local — no network, nothing leaves your machine.
+
+### Sharing your profile (opt-in)
+
+To upload `summary.json` and view your evolution over time, run the separate `xl-ai-insights` command:
+
+```bash
+# Until published to PyPI — run directly from the repo
+uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights
+
+# Once published to PyPI
+uvx xl-ai-insights
+
+# Alternative with pipx
+pipx run xl-ai-insights
+```
+
+It accepts the same source arguments as `paxel.py`:
+
+```bash
+uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights claude
+uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --no-open
+```
+
+What happens when you run it:
+
+1. Runs `paxel.py` locally (bundled) to compute your metrics.
+2. Opens your browser to mirdash for a one-time browser login (loopback callback on `127.0.0.1:8799`).
+3. Uploads `summary.json` (see below) — associated with your account via the login session.
+4. Opens your report page in the browser.
+
+If the browser can't open (headless/CI) or the auth times out (120 s), the command prints a warning and exits cleanly — nothing is uploaded. If you don't want to share at all, just don't run it.
+
+**What is uploaded — exactly.** `xl-ai-insights` uploads the same `summary.json` that `python3 paxel.py --summary` writes to disk:
+
+- `context` — date range, list of detected sources, total session count
+- `planning_ratio_explore_to_doing`
+- `errors` — error recovery ratio + error rate per 100 tool calls
+- `iteration_depth` — mean, median, p90, max, files hammered >15×
+- `churn` — git churn total + tool-authored churn (Edit/Write)
+- `orchestration` — fanout median + delegate action count
+- `compounding_writes`
+- `ecosystem` — distinct skills, total skill uses, distinct MCP servers
+- `progression_monthly` — per-month counts (prompts, tools, sessions, active days, tool churn lines) plus the **names of AI models used that month** (top model + per-model turn counts, up to 3 models per month)
+- `profile` — computed AQ/archetype/scorecard block used by the report UI
+
+**What is NOT uploaded:** prompts, verbatim quotes, project names, file paths, `narrative_input.md` contents, and `stats.json`. The mirdash server associates the upload with your account via your login token; `xl-ai-insights` itself sends no email or PII. Note: model names (e.g. `claude-opus-4`, `gpt-5.4`) are included in `progression_monthly`, and the computed `profile` block is uploaded too.
+
+### Overriding the mirdash URL
+
+For `xl-ai-insights`, precedence (first match wins):
+
+| Method | How |
+|--------|-----|
+| CLI flag | `--mirdash-base=https://your-server.example.com` |
+| Env var | `GNOMON_MIRDASH_BASE=https://your-server.example.com` |
+| Config file | `~/.config/gnomon/config.json` with `{"mirdash_base": "https://your-server.example.com"}` |
+| Default | `https://mirdash.xmartlabs.com` |
+
+The config file is optional and only needed to override the default. It lives outside the repo (`~/.config/gnomon/`) so it won't be committed.
+
+```bash
+# Dev / self-hosted override
+uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --mirdash-base=http://localhost:3000
 ```
 
 ### Sandbox / self-hosted / copied histories
@@ -56,7 +122,7 @@ python3 paxel.py --codex-dir=~/backups/codex                # root or .../sessio
 | `profile.html` | Branded, shareable profile — scorecard + AQ + signature moves |
 | `report.md` | Human-readable stats |
 | `stats.json` | Machine-readable metrics (incl. the full `agentic` block) |
-| `summary.json` (`--summary`) | Shareable subset: the 8 measured high-signal metrics + monthly progression — no prompts, no quotes, no rubric scores. Built for the [low-cost feedback loop](docs/metrics-evaluation.md) |
+| `summary.json` (`--summary`) | Shareable subset: the 8 measured high-signal metrics + `progression_monthly` + computed `profile` block — no prompts or verbatim quotes. Built for the [low-cost feedback loop](docs/metrics-evaluation.md) |
 | `narrative_input.md` | Curated excerpts for an optional LLM narrative pass |
 
 > These outputs contain **your** transcript-derived data. They're in `.gitignore` — don't commit them.
@@ -137,7 +203,9 @@ Covers the CLI extractor, Codex injected-message filter, compounding-path matche
 
 ## Privacy
 
-Everything runs on-device. For accurate code-churn it shells out to your local `git` (`git log --numstat`) on the repos it finds. No network calls, no uploads.
+All analysis runs on-device. For accurate code-churn it shells out to your local `git` (`git log --numstat`) on the repos it finds. `python3 paxel.py` makes zero network calls — nothing leaves your machine.
+
+If you run `uvx xl-ai-insights`, it makes one outbound network call: a POST of `summary.json` (described above under "What is uploaded") to mirdash after you authenticate. No prompts, no quotes, no project names are ever sent. Running `xl-ai-insights` is entirely opt-in.
 
 ### Cursor specifics
 

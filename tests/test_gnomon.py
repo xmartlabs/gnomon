@@ -344,5 +344,325 @@ class TestCompoundingPath(unittest.TestCase):
         self.assertFalse(paxel._is_compounding_path(None))
 
 
+def _full_stats(sessions=10, tool_calls=5000):
+    """Minimal but complete stats dict satisfying compute_scores, score_breakdown,
+    compute_aq, pick_archetype, steering_reading, and build_summary."""
+    aq = paxel.compute_aq({
+        "tools": {"tool_diversity": 50, "tool_entropy_normalized": 0.5,
+                  "mcp_calls": 200, "mcp_servers_distinct": 5,
+                  "clis_distinct": 20, "cli_calls": 1000,
+                  "toolsearch_calls": 100, "task_tool_calls": 400, "agent_calls": 80},
+        "stack": {"skills_distinct": 15, "skills_total": 500, "subagent_types_distinct": 3,
+                  "subagent_types": [("general-purpose", 50)],
+                  "top_skills": [("code-review", 80), ("superpowers:writing-plans", 60),
+                                 ("tdd", 40), ("brainstorm", 30)],
+                  "skills_all": [("code-review", 80), ("superpowers:writing-plans", 60),
+                                 ("tdd", 40), ("brainstorm", 30)],
+                  "compounding_writes": 12,
+                  "models": [("claude-opus-4-7", 5000), ("claude-haiku-4-5", 1000)]},
+        "behavior": {"fanout_median": 3, "shell_test_runs": 50, "actions_per_prompt": 10,
+                     "error_recovery_ratio": 0.9, "api_errors_retries": 5,
+                     "planning_ratio_explore_to_doing": 0.7},
+    })
+    return {
+        "corpus": {"date_range": ["2026-01-01", "2026-06-01"], "sources": {"claude": {}},
+                   "files_parsed": 20, "lines_total": 5000, "lines_unparseable": 0,
+                   "span_days": 150, "active_days": 60,
+                   "timezone": "UTC (UTC+00:00)", "antigravity_experimental": {}},
+        "volume": {"total_sessions": sessions, "total_prompts": sessions * 30,
+                   "command_invocations": 10, "avg_prompt_length_chars": 120.0,
+                   "median_prompt_length_chars": 80.0, "assistant_turns": sessions * 50,
+                   "tool_calls_total": tool_calls, "thinking_blocks": sessions * 8},
+        "tools": {"tool_diversity": 50, "tool_entropy_normalized": 0.5,
+                  "mcp_calls": 200, "native_calls": 800, "mcp_share": 0.2,
+                  "top_tools": [("Bash", 500), ("Read", 300)], "category_breakdown": {},
+                  "mcp_servers": [], "mcp_servers_distinct": 5,
+                  "clis": [], "clis_distinct": 20, "cli_calls": 1000,
+                  "toolsearch_calls": 100, "task_tool_calls": 400, "agent_calls": 80},
+        "velocity": {"git_churn_total": 8000, "git_insertions": 6000, "git_deletions": 2000,
+                     "git_commits_real": 50, "git_velocity_lines_per_hour": 100.0,
+                     "git_repos_with_commits": 3, "git_repos_seen": 4, "git_per_repo": [],
+                     "tool_churn_edit_write": 10000, "tool_lines_added": 7000,
+                     "tool_lines_removed": 3000, "tool_velocity_lines_per_hour": 150.0,
+                     "shell_write_calls": 20, "shell_authored_lines_est": 500,
+                     "active_hours": 40.0, "git_commits_grep": 50},
+        "behavior": {"planning_ratio_explore_to_doing": 0.7, "explore_actions": 200,
+                     "produce_actions": 80, "execute_actions": 100, "delegate_actions": 30,
+                     "avg_session_minutes": 45.0, "median_session_minutes": 40.0,
+                     "longest_run_minutes": 120.0, "polite_prompts": 5,
+                     "error_recovery_ratio": 0.9, "error_rate_per_100_tools": 2.5,
+                     "tool_errors": 125, "recovered_errors": 112, "api_errors_retries": 5,
+                     "fanout_median": 3, "iteration_depth_mean": 3.5,
+                     "iteration_depth_median": 3.0, "iteration_depth_p90": 7,
+                     "iteration_depth_max": 20, "files_hammered_over_15x": 1,
+                     "actions_per_prompt": 10.0, "questions_asked": 15,
+                     "background_tasks": 10, "scheduled_actions": 2, "shell_test_runs": 50},
+        "rhythm": {"hour_histogram_local": {str(h): 0 for h in range(24)},
+                   "weekday_histogram": {}, "peak_hours_local": [], "preferred_days": []},
+        "progression": {"monthly": []},
+        "stack": {"models": [("claude-opus-4-7", 5000), ("claude-haiku-4-5", 1000)],
+                  "top_skills": [("code-review", 80), ("superpowers:writing-plans", 60),
+                                 ("tdd", 40), ("brainstorm", 30)],
+                  "skills_distinct": 15, "skills_total": 500, "subagent_types_distinct": 3,
+                  "skills_all": [("code-review", 80), ("superpowers:writing-plans", 60),
+                                 ("tdd", 40), ("brainstorm", 30)],
+                  "compounding_writes": 12,
+                  "subagent_types": [("general-purpose", 50)],
+                  "top_projects": []},
+        "autonomy": {"autonomy_score_0_100": 50, "components": {
+            "actions_per_prompt": 22.0, "delegation": 30.0,
+            "scheduling_background": 5.0, "low_question_rate": 10.0}},
+        "agentic": aq,
+    }
+
+
+def _zero_stats():
+    """Stats dict with zero activity — tests the empty-corpus guard path."""
+    s = _full_stats(sessions=0, tool_calls=0)
+    s["volume"]["total_sessions"] = 0
+    s["volume"]["tool_calls_total"] = 0
+    return s
+
+
+class TestScoreBreakdown(unittest.TestCase):
+    def setUp(self):
+        self.stats = _full_stats()
+        self.bd = paxel.score_breakdown(self.stats)
+        self.cs = paxel.compute_scores(self.stats)
+
+    def test_three_axes_present(self):
+        self.assertEqual(set(self.bd), {"execution", "planning", "engineering"})
+
+    def test_execution_has_three_subs(self):
+        self.assertEqual(len(self.bd["execution"]["subs"]), 3)
+
+    def test_planning_has_three_subs(self):
+        self.assertEqual(len(self.bd["planning"]["subs"]), 3)
+
+    def test_engineering_has_five_subs(self):
+        self.assertEqual(len(self.bd["engineering"]["subs"]), 5)
+
+    def test_pct_in_0_1_for_all_subs(self):
+        for axis, d in self.bd.items():
+            for s in d["subs"]:
+                self.assertGreaterEqual(s["pct"], 0.0, f"{axis}/{s['label']}")
+                self.assertLessEqual(s["pct"], 1.0, f"{axis}/{s['label']}")
+
+    def test_exactly_one_is_drag_per_axis(self):
+        for axis, d in self.bd.items():
+            drags = [s for s in d["subs"] if s["is_drag"]]
+            self.assertEqual(len(drags), 1, f"{axis}: expected exactly 1 is_drag, got {drags}")
+
+    def test_value_equals_compute_scores(self):
+        """Core invariant: score_breakdown values must equal compute_scores values exactly."""
+        self.assertEqual(self.bd["execution"]["value"], self.cs["Execution"])
+        self.assertEqual(self.bd["planning"]["value"], self.cs["Planning"])
+        self.assertEqual(self.bd["engineering"]["value"], self.cs["Engineering"])
+
+    def test_drag_note_is_string(self):
+        for axis, d in self.bd.items():
+            self.assertIsInstance(d["drag_note"], str, axis)
+            self.assertGreater(len(d["drag_note"]), 0, axis)
+
+    def test_gloss_present(self):
+        for axis, d in self.bd.items():
+            self.assertIsInstance(d["gloss"], str, axis)
+            self.assertGreater(len(d["gloss"]), 0, axis)
+
+    def test_empty_corpus_returns_well_formed_zeros(self):
+        bd = paxel.score_breakdown(_zero_stats())
+        self.assertEqual(set(bd), {"execution", "planning", "engineering"})
+        for axis, d in bd.items():
+            self.assertEqual(d["value"], 0.0, axis)
+            drags = [s for s in d["subs"] if s["is_drag"]]
+            self.assertEqual(len(drags), 1, axis)
+            for s in d["subs"]:
+                self.assertGreaterEqual(s["pct"], 0.0)
+                self.assertLessEqual(s["pct"], 1.0)
+
+    def test_empty_corpus_value_matches_compute_scores(self):
+        zs = _zero_stats()
+        bd = paxel.score_breakdown(zs)
+        cs = paxel.compute_scores(zs)
+        self.assertEqual(bd["execution"]["value"], cs["Execution"])
+        self.assertEqual(bd["planning"]["value"], cs["Planning"])
+        self.assertEqual(bd["engineering"]["value"], cs["Engineering"])
+
+    def test_display_consistency_your_value_over_target_equals_pct(self):
+        """For 'higher'-direction subs with no floor involved, pct must equal
+        clamp(your_value/target) within floating-point tolerance.  Guards the bar-fill
+        display invariant for the non-trivial full-stats fixture (plenty of prompts, so
+        delegation floor doesn't fire).  Checked only for the four straightforward rate subs:
+        Committed-code rate, Ship fidelity (execution), Explore-before-build, Plan ceremony
+        (planning).  Does NOT assert on 'lower'-direction engineering subs or delegation."""
+        tol = 1e-6
+        checked = {
+            "execution": {"Committed-code rate", "Ship fidelity"},
+            "planning": {"Explore-before-build", "Plan ceremony"},
+        }
+        for axis, labels in checked.items():
+            for sub in self.bd[axis]["subs"]:
+                if sub["label"] in labels:
+                    raw = sub["your_value"] / sub["target"]
+                    expected_pct = max(0.0, min(1.0, raw))   # clamp(your_value/target)
+                    self.assertAlmostEqual(
+                        sub["pct"], expected_pct, delta=tol,
+                        msg=f"{axis}/{sub['label']}: pct={sub['pct']!r} != clamp(your_value/target)={expected_pct!r}",
+                    )
+
+    # ---- narrative field tests ----
+
+    _VALID_VERDICTS = {"excellent", "good", "adequate", "weak", "poor"}
+
+    def test_sub_has_narrative_fields(self):
+        """Every sub in every axis must carry verdict, score_pct, display_value,
+        display_target, and narrative with the right types and constraints."""
+        for axis, d in self.bd.items():
+            for s in d["subs"]:
+                ctx = f"{axis}/{s['label']}"
+                self.assertIn(s["verdict"], self._VALID_VERDICTS, ctx)
+                self.assertIsInstance(s["score_pct"], int, ctx)
+                self.assertGreaterEqual(s["score_pct"], 0, ctx)
+                self.assertLessEqual(s["score_pct"], 100, ctx)
+                self.assertIsInstance(s["display_value"], str, ctx)
+                self.assertGreater(len(s["display_value"]), 0, ctx)
+                self.assertIsInstance(s["display_target"], str, ctx)
+                self.assertGreater(len(s["display_target"]), 0, ctx)
+                self.assertIsInstance(s["narrative"], str, ctx)
+                self.assertIn(s["label"], s["narrative"], ctx)
+
+    def test_axis_has_narrative_fields(self):
+        """Every axis must carry axis_verdict, score_out_of_10, drag_narrative,
+        and axis_narrative with the right types and constraints."""
+        for axis, d in self.bd.items():
+            ctx = axis
+            self.assertIn(d["axis_verdict"], self._VALID_VERDICTS, ctx)
+            self.assertIsInstance(d["score_out_of_10"], str, ctx)
+            self.assertIn("/", d["score_out_of_10"], ctx)
+            self.assertIsInstance(d["drag_narrative"], str, ctx)
+            self.assertGreater(len(d["drag_narrative"]), 0, ctx)
+            self.assertIsInstance(d["axis_narrative"], str, ctx)
+            self.assertIn(axis.capitalize(), d["axis_narrative"], ctx)
+
+    def test_verdict_consistency(self):
+        """verdict must match score_pct thresholds exactly."""
+        for axis, d in self.bd.items():
+            for s in d["subs"]:
+                ctx = f"{axis}/{s['label']}"
+                pct = s["score_pct"]
+                if pct >= 90:
+                    expected = "excellent"
+                elif pct >= 70:
+                    expected = "good"
+                elif pct >= 50:
+                    expected = "adequate"
+                elif pct >= 30:
+                    expected = "weak"
+                else:
+                    expected = "poor"
+                self.assertEqual(s["verdict"], expected,
+                                 f"{ctx}: score_pct={pct}, expected verdict={expected!r}, got={s['verdict']!r}")
+
+    def test_empty_corpus_has_narrative_fields(self):
+        """Zero-activity output must carry all narrative fields on both subs and axes."""
+        bd = paxel.score_breakdown(_zero_stats())
+        valid_verdicts = {"excellent", "good", "adequate", "weak", "poor"}
+        for axis, d in bd.items():
+            ctx = f"zero/{axis}"
+            # axis-level
+            self.assertIn(d["axis_verdict"], valid_verdicts, ctx)
+            self.assertIsInstance(d["score_out_of_10"], str, ctx)
+            self.assertIn("/", d["score_out_of_10"], ctx)
+            self.assertIsInstance(d["drag_narrative"], str, ctx)
+            self.assertGreater(len(d["drag_narrative"]), 0, ctx)
+            self.assertIsInstance(d["axis_narrative"], str, ctx)
+            # sub-level
+            for s in d["subs"]:
+                sctx = f"zero/{axis}/{s['label']}"
+                self.assertIn(s["verdict"], valid_verdicts, sctx)
+                self.assertIsInstance(s["score_pct"], int, sctx)
+                self.assertGreaterEqual(s["score_pct"], 0, sctx)
+                self.assertLessEqual(s["score_pct"], 100, sctx)
+                self.assertIsInstance(s["display_value"], str, sctx)
+                self.assertGreater(len(s["display_value"]), 0, sctx)
+                self.assertIsInstance(s["display_target"], str, sctx)
+                self.assertGreater(len(s["display_target"]), 0, sctx)
+                self.assertIsInstance(s["narrative"], str, sctx)
+
+    def test_direction_in_display_target(self):
+        """For 'lower'-direction subs, display_target must start with the le-sign prefix;
+        for 'higher'-direction subs it must not."""
+        for axis, d in self.bd.items():
+            for s in d["subs"]:
+                ctx = f"{axis}/{s['label']}"
+                if s["direction"] == "lower":
+                    self.assertTrue(s["display_target"].startswith("≤"),
+                                    f"{ctx}: lower-direction target should start with ≤, got {s['display_target']!r}")
+                else:
+                    self.assertFalse(s["display_target"].startswith("≤"),
+                                     f"{ctx}: higher-direction target should not start with ≤, got {s['display_target']!r}")
+
+
+class TestBuildSummaryProfile(unittest.TestCase):
+    def setUp(self):
+        self.stats = _full_stats()
+        self.summary = paxel.build_summary(self.stats)
+
+    def test_original_keys_preserved(self):
+        expected_original = {
+            "context", "planning_ratio_explore_to_doing", "errors", "iteration_depth",
+            "churn", "orchestration", "compounding_writes", "ecosystem",
+            "progression_monthly",
+        }
+        self.assertTrue(expected_original.issubset(set(self.summary)))
+
+    def test_profile_key_present(self):
+        self.assertIn("profile", self.summary)
+
+    def test_profile_has_expected_sub_keys(self):
+        prof = self.summary["profile"]
+        self.assertEqual(set(prof), {"aq", "archetype", "scores", "steering",
+                                     "growth_edges", "signature_moves", "model_usage"})
+
+    def test_profile_aq_is_dict(self):
+        self.assertIsInstance(self.summary["profile"]["aq"], dict)
+
+    def test_profile_archetype_has_title_and_quote(self):
+        arch = self.summary["profile"]["archetype"]
+        self.assertIn("title", arch)
+        self.assertIn("quote", arch)
+        self.assertIsInstance(arch["title"], str)
+        self.assertIsInstance(arch["quote"], str)
+        self.assertGreater(len(arch["title"]), 0)
+        self.assertGreater(len(arch["quote"]), 0)
+
+    def test_profile_scores_has_three_axes(self):
+        self.assertEqual(set(self.summary["profile"]["scores"]),
+                         {"execution", "planning", "engineering"})
+
+    def test_profile_steering_has_label(self):
+        st = self.summary["profile"]["steering"]
+        self.assertIn("label", st)
+        self.assertIn("detail", st)
+
+    def test_no_prompt_text_in_summary(self):
+        import json
+        raw = json.dumps(self.summary).lower()
+        for banned in ("top_skills", "prompt_text"):
+            self.assertNotIn(banned, raw, f"verbatim field leaked: {banned}")
+
+    def test_empty_corpus_profile_well_formed(self):
+        summary = paxel.build_summary(_zero_stats())
+        prof = summary["profile"]
+        self.assertEqual(set(prof), {"aq", "archetype", "scores", "steering",
+                                     "growth_edges", "signature_moves", "model_usage"})
+        # scores all zero
+        for axis in ("execution", "planning", "engineering"):
+            self.assertEqual(prof["scores"][axis]["value"], 0.0)
+        # archetype present
+        self.assertIn("title", prof["archetype"])
+        self.assertIn("quote", prof["archetype"])
+
+
 if __name__ == "__main__":
     unittest.main()

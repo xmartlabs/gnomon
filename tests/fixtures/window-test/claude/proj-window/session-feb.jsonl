@@ -1,0 +1,5 @@
+{"type":"user","sessionId":"win-feb-1","cwd":"/proj","timestamp":"2025-02-10T11:00:00.000Z","message":{"role":"user","content":"february prompt one"}}
+{"type":"assistant","sessionId":"win-feb-1","cwd":"/proj","timestamp":"2025-02-10T11:00:05.000Z","message":{"role":"assistant","model":"claude-opus-4-8","content":[{"type":"text","text":"feb response"},{"type":"tool_use","name":"Edit","input":{"file_path":"/proj/b.py","old_string":"x","new_string":"y"}}]}}
+{"type":"user","sessionId":"win-feb-1","cwd":"/proj","timestamp":"2025-02-10T11:00:06.000Z","message":{"role":"user","content":[{"type":"tool_result","content":"ok","is_error":false}]}}
+{"type":"user","sessionId":"win-feb-1","cwd":"/proj","timestamp":"2025-02-20T14:00:00.000Z","message":{"role":"user","content":"february prompt two"}}
+{"type":"assistant","sessionId":"win-feb-1","cwd":"/proj","timestamp":"2025-02-20T14:00:05.000Z","message":{"role":"assistant","model":"claude-opus-4-8","content":[{"type":"text","text":"response"}]}}
