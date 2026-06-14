@@ -1415,25 +1415,6 @@ def main():
     # --<source>-dir=PATH overrides for sandbox / self-hosted / copied histories
     # (e.g. --claude-dir=/mnt/sandbox-home/.claude). Env vars CLAUDE_CONFIG_DIR and
     # CODEX_HOME are honored too (applied at import; flags win).
-    # --since=YYYY-MM-DD / --until=YYYY-MM-DD optional date window (both optional,
-    # independent). since is inclusive at 00:00:00Z; until is exclusive (i.e. a
-    # single month is --since=2025-02-01 --until=2025-03-01).
-    win_since = None   # timezone-aware datetime or None
-    win_until = None   # timezone-aware datetime or None
-    for a in sys.argv[1:]:
-        if a.startswith("--since="):
-            val = a[len("--since="):]
-            try:
-                win_since = datetime.strptime(val, "%Y-%m-%d").replace(tzinfo=_tz.utc)
-            except ValueError:
-                print(f"  warning: --since value {val!r} is not YYYY-MM-DD — ignored")
-        elif a.startswith("--until="):
-            val = a[len("--until="):]
-            try:
-                win_until = datetime.strptime(val, "%Y-%m-%d").replace(tzinfo=_tz.utc)
-            except ValueError:
-                print(f"  warning: --until value {val!r} is not YYYY-MM-DD — ignored")
-    _win_active = win_since is not None or win_until is not None
     for a in sys.argv[1:]:
         m = re.match(r"--([a-z]+)-dir=(.+)$", a)
         if not m:
@@ -1605,21 +1586,6 @@ def main():
                         or (until_dt is not None and dt >= until_dt)):  # only" — drop
                     continue
                 mkey = dt.strftime("%Y-%m") if dt is not None else None
-
-                # Date-window gate: when --since/--until is active, skip events
-                # with no timestamp and events outside [since, until).
-                # Compare on the event's LOCAL calendar date so the window matches
-                # how mkey/progression_monthly bucket months (parse_ts normalizes to
-                # local time). Converting to UTC here would slide near-midnight events
-                # into the adjacent month/day for users outside UTC.
-                if _win_active:
-                    if dt is None:
-                        continue
-                    _ev_date = dt.date()
-                    if win_since is not None and _ev_date < win_since.date():
-                        continue
-                    if win_until is not None and _ev_date >= win_until.date():
-                        continue
 
                 if dt is not None:
                     # Synthetic timestamps (Cursor JSONL events past the first, stamped with
@@ -1906,17 +1872,10 @@ def main():
     # Gold-standard churn: real git insertions/deletions, capturing EVERY committed
     # change however it was made (Edit, Bash heredoc, sed, vim...). 100% local.
     # When a date window is active, churn must cover the REQUESTED window — not just
-    # the min/max of transcript activity that fell inside it. Otherwise a month with
-    # sparse transcript days (e.g. only June 30) undercounts commits made on the other
-    # days of that month while still labeling itself with the full window range.
-    if _win_active:
-        # Bare YYYY-MM-DD bounds so git interprets them as LOCAL midnight — matching
-        # the event gate above, which keeps rows by local calendar date (dt.date()).
-        # win_since/win_until are UTC-tagged; .isoformat() would hand git a UTC instant
-        # (e.g. 2025-02-01T00:00:00+00:00), which for users outside UTC slides to the
-        # previous local day and pulls boundary commits the event gate excluded.
-        gc_since = win_since.strftime("%Y-%m-%d") if win_since is not None else (all_min_dt.isoformat() if all_min_dt else "1970-01-01")
-        gc_until = win_until.strftime("%Y-%m-%d") if win_until is not None else (all_max_dt.isoformat() if all_max_dt else "2100-01-01")
+    # the min/max of transcript activity that fell inside it.
+    if since_dt is not None or until_dt is not None:
+        gc_since = since_dt.strftime("%Y-%m-%d") if since_dt is not None else (all_min_dt.isoformat() if all_min_dt else "1970-01-01")
+        gc_until = until_dt.strftime("%Y-%m-%d") if until_dt is not None else (all_max_dt.isoformat() if all_max_dt else "2100-01-01")
     else:
         gc_since = all_min_dt.isoformat() if all_min_dt else "1970-01-01"
         gc_until = all_max_dt.isoformat() if all_max_dt else "2100-01-01"
@@ -1992,9 +1951,9 @@ def main():
             "lines_total": lines_total,
             "lines_unparseable": lines_bad,
             "date_range": (
-                [win_since.isoformat() if win_since is not None else (all_min_dt.isoformat() if all_min_dt else None),
-                 win_until.isoformat() if win_until is not None else (all_max_dt.isoformat() if all_max_dt else None)]
-                if _win_active else
+                [since_dt.isoformat() if since_dt is not None else (all_min_dt.isoformat() if all_min_dt else None),
+                 (until_dt - timedelta(days=1)).isoformat() if until_dt is not None else (all_max_dt.isoformat() if all_max_dt else None)]
+                if (since_dt is not None or until_dt is not None) else
                 [all_min_dt.isoformat() if all_min_dt else None,
                  all_max_dt.isoformat() if all_max_dt else None]
             ),

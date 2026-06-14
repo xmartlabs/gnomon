@@ -580,10 +580,12 @@ def main():
     today = datetime.date.today()
 
     # =========================================================================
-    # --init path: backfill loop over last 12 months (one login)
+    # --init / --backfill paths: upload N monthly windows (one login)
     # =========================================================================
-    if mode == "init":
-        windows = month_windows(12, today)
+    if mode in ("init", "backfill"):
+        n_months = token_count
+        windows = month_windows(n_months, today)
+
         token_idx = 0
         uploaded = 0
         last_report_url = None
@@ -605,53 +607,10 @@ def main():
                     print(f"  ↑ {label} uploaded")
             # empty/error: don't advance token_idx
 
+        verb = "initialised" if mode == "init" else "backfilled"
         if not quiet:
-            print(f"  initialised {uploaded}/{len(windows)} months")
+            print(f"  {verb} {uploaded}/{len(windows)} months")
 
-        # Print the final URL unconditionally (the --quiet contract permits it); gate
-        # only the browser open on --no-open so a batch run never finishes URL-less.
-        if last_report_url:
-            full_report = urllib.parse.urljoin(mirdash_base + "/", last_report_url)
-            print(f"  Report ready: {full_report}")
-            if not no_open:
-                try:
-                    webbrowser.open(full_report)
-                except Exception as exc:
-                    print(f"  warning: could not open report in browser: {exc}")
-        return
-
-    # =========================================================================
-    # --backfill=N path (existing loop, unchanged behaviour)
-    # =========================================================================
-    if mode == "backfill":
-        backfill_n = token_count
-        windows = month_windows(backfill_n, today)
-
-        token_idx = 0
-        uploaded = 0
-        last_report_url = None
-
-        for since, until, label in windows:
-            if token_idx >= len(tokens):
-                print("  warning: ran out of tokens before all months were uploaded — stopping")
-                break
-
-            report_url = _upload_window(
-                mirdash_base, tokens[token_idx], paxel_src,
-                paxel_forward, since, until, label, verbose, quiet,
-            )
-            if report_url is not None:
-                last_report_url = report_url
-                uploaded += 1
-                token_idx += 1
-                if not quiet:
-                    print(f"  ↑ {label} uploaded")
-
-        if not quiet:
-            print(f"  backfilled {uploaded}/{backfill_n} months")
-
-        # Print the final URL unconditionally (the --quiet contract permits it); gate
-        # only the browser open on --no-open so a batch run never finishes URL-less.
         if last_report_url:
             full_report = urllib.parse.urljoin(mirdash_base + "/", last_report_url)
             print(f"  Report ready: {full_report}")

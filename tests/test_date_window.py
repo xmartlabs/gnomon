@@ -165,16 +165,14 @@ class TestWindowBoundary(unittest.TestCase):
         self.assertEqual(stats["volume"]["total_prompts"], 4,
                          "March events should be excluded when until=2025-03-01")
 
-    def test_exact_boundary_event_excluded(self):
-        """An event exactly at until boundary is excluded (exclusive until)."""
-        # The first march event is 2025-03-05T08:00:00Z
-        # Setting until=2025-03-05 means midnight 2025-03-05T00:00:00Z → event at 08:00 excluded
-        _, stats = _run(self, ["--since=2025-03-05", "--until=2025-03-05"])
-        # since == until means empty window → 0 prompts
-        self.assertEqual(stats["volume"]["total_prompts"], 0)
-
     def test_single_day_window_includes_that_day(self):
-        """since=2025-03-05 until=2025-03-06 includes events on 2025-03-05."""
+        """--until is inclusive: since=2025-03-05 until=2025-03-05 includes Mar 5."""
+        _, stats = _run(self, ["--since=2025-03-05", "--until=2025-03-05"])
+        # Mar 5 has 1 genuine user prompt — inclusive end means the day is kept
+        self.assertEqual(stats["volume"]["total_prompts"], 1)
+
+    def test_single_day_via_next_day_until(self):
+        """since=2025-03-05 until=2025-03-06 also includes Mar 5 (and not Mar 6)."""
         _, stats = _run(self, ["--since=2025-03-05", "--until=2025-03-06"])
         # Mar 5 has 1 genuine user prompt
         self.assertEqual(stats["volume"]["total_prompts"], 1)
@@ -209,22 +207,16 @@ class TestWindowedGitChurnBounds(unittest.TestCase):
 
     def test_windowed_churn_uses_requested_bounds(self):
         """With --since/--until, churn is scanned over the full requested window —
-        even though the earliest Feb event is Feb 10, the since bound must be Feb 1."""
+        even though the earliest Feb event is Feb 10, the since bound must be Feb 1.
+        --until is inclusive-end, so --until=2025-03-01 internally becomes 2025-03-02
+        (exclusive next-midnight), and git churn gets 2025-03-02 to include March 1."""
         since, until = self._capture_churn_args(["--since=2025-02-01", "--until=2025-03-01"])
         self.assertTrue(since.startswith("2025-02-01"),
                         f"churn since should be the requested window start, got {since!r}")
-        self.assertTrue(until.startswith("2025-03-01"),
-                        f"churn until should be the requested window end, got {until!r}")
-        # Bounds must be bare YYYY-MM-DD (local midnight), not a UTC instant — otherwise
-        # git slides the boundary to the previous local day for users outside UTC, pulling
-        # in commits the local-calendar-date event gate already excluded.
-        for bound in (since, until):
-            self.assertNotIn("T", bound,
-                             f"churn bound should be bare YYYY-MM-DD, got {bound!r}")
-            self.assertNotIn("+00:00", bound,
-                             f"churn bound should be local-midnight, not a UTC instant, got {bound!r}")
+        self.assertTrue(until.startswith("2025-03-02"),
+                        f"churn until should be the day after the inclusive --until, got {until!r}")
         self.assertEqual(since, "2025-02-01")
-        self.assertEqual(until, "2025-03-01")
+        self.assertEqual(until, "2025-03-02")
 
     def test_no_window_churn_uses_data_minmax(self):
         """Without a window, churn bounds remain the actual corpus min/max (unchanged)."""
