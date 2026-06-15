@@ -1526,6 +1526,12 @@ def main():
     month_sessions = defaultdict(set)    # month -> sessionIds seen
     month_models = defaultdict(Counter)  # month -> model -> assistant turns
 
+    # token usage accumulators (keyed by raw model id)
+    _zero_tok = lambda: {"input": 0, "output": 0, "cache_read": 0, "cache_creation": 0}
+    model_tokens = defaultdict(_zero_tok)        # raw model id -> {input, output, cache_read, cache_creation}
+    month_tokens = defaultdict(_zero_tok)        # month key -> {input, output, cache_read, cache_creation}
+    month_model_tokens = defaultdict(lambda: defaultdict(_zero_tok))  # month -> model -> token counts
+
     # narrative samples
     opening_prompts = []           # (dt, project, text) first genuine prompt per session
     longest_prompts = []           # kept small via periodic trim
@@ -1706,6 +1712,26 @@ def main():
                         model_counter[mdl] += 1
                         if mkey:
                             month_models[mkey][mdl] += 1
+                        # ---- token usage extraction (fully defensive) -------
+                        _u = msg.get("usage") or {}
+                        def _tok(k): return int(_u.get(k) or 0)
+                        _ti  = _tok("input_tokens")
+                        _to  = _tok("output_tokens")
+                        _tcr = _tok("cache_read_input_tokens")
+                        _tcc = _tok("cache_creation_input_tokens")
+                        model_tokens[mdl]["input"]          += _ti
+                        model_tokens[mdl]["output"]         += _to
+                        model_tokens[mdl]["cache_read"]     += _tcr
+                        model_tokens[mdl]["cache_creation"] += _tcc
+                        if mkey:
+                            month_tokens[mkey]["input"]          += _ti
+                            month_tokens[mkey]["output"]         += _to
+                            month_tokens[mkey]["cache_read"]     += _tcr
+                            month_tokens[mkey]["cache_creation"] += _tcc
+                            month_model_tokens[mkey][mdl]["input"]          += _ti
+                            month_model_tokens[mkey][mdl]["output"]         += _to
+                            month_model_tokens[mkey][mdl]["cache_read"]     += _tcr
+                            month_model_tokens[mkey][mdl]["cache_creation"] += _tcc
                     if ev.get("attributionSkill"):
                         skill_counter[ev["attributionSkill"]] += 1
                     content = msg.get("content")
@@ -1930,6 +1956,11 @@ def main():
     progression = []
     for mk in sorted(set(month_dates) | set(month_prompts) | set(month_tools)):
         mm = month_models.get(mk, Counter())
+        _mt = month_tokens.get(mk) or {}
+        _ti  = _mt.get("input", 0)
+        _to  = _mt.get("output", 0)
+        _tcr = _mt.get("cache_read", 0)
+        _tcc = _mt.get("cache_creation", 0)
         progression.append({
             "month": mk,
             "prompts": month_prompts.get(mk, 0),
@@ -1939,6 +1970,11 @@ def main():
             "tool_churn_lines": month_churn.get(mk, 0),
             "models": mm.most_common(3),
             "top_model": mm.most_common(1)[0][0] if mm else None,
+            "tokens_input": _ti,
+            "tokens_output": _to,
+            "tokens_cache_read": _tcr,
+            "tokens_cache_creation": _tcc,
+            "tokens_total": _ti + _to + _tcr + _tcc,
         })
 
     stats = {
@@ -2068,6 +2104,34 @@ def main():
             },
         },
     }
+    # ---- aggregate token_usage block ----------------------------------------
+    _all_tok_input  = sum(v["input"]          for v in model_tokens.values())
+    _all_tok_output = sum(v["output"]         for v in model_tokens.values())
+    _all_tok_cr     = sum(v["cache_read"]     for v in model_tokens.values())
+    _all_tok_cc     = sum(v["cache_creation"] for v in model_tokens.values())
+    # order by total tokens desc (consistent with model_usage ordering in _build_profile)
+    _by_model_tok = sorted(
+        model_tokens.items(),
+        key=lambda kv: kv[1]["input"] + kv[1]["output"] + kv[1]["cache_read"] + kv[1]["cache_creation"],
+        reverse=True,
+    )
+    stats["token_usage"] = {
+        "total_input": _all_tok_input,
+        "total_output": _all_tok_output,
+        "total_cache_read": _all_tok_cr,
+        "total_cache_creation": _all_tok_cc,
+        "by_model": [
+            {
+                "model_id": m,
+                "model": _pretty_model(m),
+                "input": tok["input"],
+                "output": tok["output"],
+                "cache_read": tok["cache_read"],
+                "cache_creation": tok["cache_creation"],
+            }
+            for m, tok in _by_model_tok
+        ],
+    }
     stats["agentic"] = compute_aq(stats)
 
     with open(os.path.join(OUT_DIR, "stats.json"), "w") as f:
@@ -2142,9 +2206,19 @@ def _build_profile(stats):
     # top 12 for payload size. So if >12 models exist the shown pcts sum to <1
     # (the dropped tail is honestly missing), never an inflated 100%.
     total = sum(n for _, n in all_models)
+    _tok_by_model = {e["model_id"]: e for e in (stats.get("token_usage") or {}).get("by_model") or []}
     model_usage = (
         [
-            {"model": _pretty_model(m), "count": int(n), "pct": round(n / total, 3)}
+            {
+                "model_id": m,
+                "model": _pretty_model(m),
+                "count": int(n),
+                "pct": round(n / total, 3),
+                "tokens_input":          (_tok_by_model.get(m) or {}).get("input", 0),
+                "tokens_output":         (_tok_by_model.get(m) or {}).get("output", 0),
+                "tokens_cache_read":     (_tok_by_model.get(m) or {}).get("cache_read", 0),
+                "tokens_cache_creation": (_tok_by_model.get(m) or {}).get("cache_creation", 0),
+            }
             for m, n in all_models[:12]  # most_common() already desc
         ]
         if total > 0 else []
@@ -2200,6 +2274,11 @@ def build_summary(stats):
         },
         "progression_monthly": (stats.get("progression") or {}).get("monthly", []),
         "profile": _build_profile(stats),
+        "token_usage": stats.get("token_usage") or {
+            "total_input": 0, "total_output": 0,
+            "total_cache_read": 0, "total_cache_creation": 0,
+            "by_model": [],
+        },
     }
 
 
