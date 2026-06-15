@@ -494,6 +494,22 @@ class TestGrowthEdgesStructured(unittest.TestCase):
         self.assertIsNotNone(reflex_edge, f"Expected review/test edge; got {structured}")
         self.assertIn("/qa", reflex_edge["commands"])
 
+    def test_planning_review_skills_do_not_trigger_review_reflex_edge(self):
+        from tests.test_gnomon import _full_stats
+        s = _full_stats()
+        s["stack"]["top_skills"] = [("plan-eng-review", 200), ("superpowers:writing-plans", 60)]
+        s["stack"]["skills_all"] = s["stack"]["top_skills"]
+        s["behavior"]["shell_test_runs"] = 0
+        sb = paxel.score_breakdown(s)
+        sc = {
+            "Execution": sb["execution"]["value"],
+            "Planning": sb["planning"]["value"],
+            "Engineering": sb["engineering"]["value"],
+        }
+        structured = paxel.growth_edges_structured(s, sc)
+        reflex_edge = next((i for i in structured if "reflex" in i["eyebrow"].lower()), None)
+        self.assertIsNone(reflex_edge, structured)
+
 
 class TestSignatureMovesStructured(unittest.TestCase):
     def setUp(self):

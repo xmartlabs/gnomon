@@ -293,6 +293,36 @@ def _usage_int(usage, k):
         return 0
 
 
+# Skills whose terminal name ends in "-review" but are PLANNING ceremonies, not
+# verification — they live in plan_skills for the Planning pillar. Counting them as
+# review would inflate Verification and fire the review-reflex edge for planners.
+_PLANNING_REVIEW_TAILS = frozenset((
+    "ceo-review", "eng-review", "design-review",
+    "plan-eng-review", "plan-ceo-review", "plan-design-review",
+))
+
+
+def _is_review_skill_name(name):
+    """True for actual review/verification skills, false for planning-review ceremonies.
+
+    We want `code-review`, `requesting-code-review`, `verify`, `cerberus`, a bare
+    terminal `review`, and any other `*-review` verification skill (e.g.
+    `caveman-review`, `security-review`, `hand-review`) — but NOT planning ceremonies
+    like `plan-eng-review` or `ceo-review`, which are planning rather than verification."""
+    s = str(name or "").lower()
+    if any(k in s for k in ("code-review", "requesting-code-review", "cerberus", "verify")):
+        return True
+    tail = s.split(":")[-1].split("/")[-1]
+    if tail in _PLANNING_REVIEW_TAILS or tail.startswith("plan"):
+        return False
+    return tail == "review" or tail.endswith("-review")
+
+
+def _review_skill_uses(skills):
+    """Count only true review/verification skill invocations from a skills list."""
+    return sum(n for k, n in skills if _is_review_skill_name(k))
+
+
 # ---------------------------------------------------------------------------
 # Multi-source discovery + translators. Each non-Claude format is translated
 # into Claude-shaped event dicts so the single aggregation loop in main() works
@@ -1906,7 +1936,11 @@ def main():
     # the min/max of transcript activity that fell inside it.
     if since_dt is not None or until_dt is not None:
         gc_since = since_dt.strftime("%Y-%m-%d") if since_dt is not None else (all_min_dt.isoformat() if all_min_dt else "1970-01-01")
-        gc_until = until_dt.strftime("%Y-%m-%d") if until_dt is not None else (all_max_dt.isoformat() if all_max_dt else "2100-01-01")
+        # until_dt is already the exclusive next-midnight (parse_window added a day), so
+        # passing it straight to git --until keeps the whole requested last day. Subtracting
+        # a day here would drop every commit made on that final calendar day.
+        gc_until = (until_dt.strftime("%Y-%m-%d")
+                    if until_dt is not None else (all_max_dt.isoformat() if all_max_dt else "2100-01-01"))
     else:
         gc_since = all_min_dt.isoformat() if all_min_dt else "1970-01-01"
         gc_until = all_max_dt.isoformat() if all_max_dt else "2100-01-01"
@@ -2973,7 +3007,7 @@ def compute_aq(stats):
     ]
 
     # ---- Pillar 2: Craft ----
-    review_n = skill_uses(["code-review", "cerberus", "verify", "requesting-code-review", "review"])
+    review_n = _review_skill_uses(skills)
     verification = .5 * sat(b.get("shell_test_runs", 0), 150) + .5 * sat(review_n, 100)
     grounding = sat(b.get("planning_ratio_explore_to_doing", 0), 1.0)
     compounding = (.6 * sat(st.get("compounding_writes", 0), 30)
@@ -3087,7 +3121,7 @@ def _signature_moves_pool(stats):
     deleg = b["delegate_actions"] + b["background_tasks"]
     raw = []   # (strength 0..1, tag, title, evidence_html)
 
-    rev = sk("review", "code-review")
+    rev = _review_skill_uses(st.get("top_skills", []))
     if rev >= 50 and rev >= sess * 0.5:
         raw.append((_clamp(rev / (sess * 2)), "Review",
             "You review more than you write",
@@ -3171,7 +3205,7 @@ def _growth_edges_pool(stats, scores):
     def sk(*needles):
         return sum(n for k, n in st.get("top_skills", []) if any(nd in k.lower() for nd in needles))
 
-    rev = sk("review", "code-review")
+    rev = _review_skill_uses(st.get("top_skills", []))
     tdd = sk("test", "tdd", "qa") + b.get("shell_test_runs", 0)   # named test skills + CLI test runs
     err = b["error_rate_per_100_tools"]
     raw = []   # (priority, eyebrow, title, advice_html, axis)
@@ -3212,7 +3246,7 @@ def _growth_edges_pool(stats, scores):
             f'(gstack front-loads this with <code>/office-hours</code> + <code>/autoplan</code>.)',
             None))
 
-    eng_skills = sk("review", "qa", "investigate", "retro")
+    eng_skills = _review_skill_uses(st.get("top_skills", [])) + sk("qa", "investigate", "retro")
     if scores.get("Engineering", 10) < 6 and eng_skills < sess * 0.3:
         raw.append((scores.get("Engineering", 10) + 0.1, "Boil the lake",
             "Run a quality pass before you ship",

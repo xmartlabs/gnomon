@@ -164,6 +164,30 @@ class TestComputeAqV2(unittest.TestCase):
         s = _sample_stats(); s["tools"]["agent_calls"] = 5000; s["behavior"]["fanout_median"] = 1
         self.assertLess(self._orch(paxel.compute_aq(s)), 33)
 
+    def test_verification_does_not_count_planning_review_skills(self):
+        s = _sample_stats()
+        s["stack"]["top_skills"] = [("plan-eng-review", 10)]
+        s["stack"]["skills_all"] = [("plan-eng-review", 10)]
+        s["behavior"]["shell_test_runs"] = 0
+        aq = paxel.compute_aq(s)
+        craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
+        verification = next(a for a in craft["axes"] if a["name"] == "Verification")
+        self.assertEqual(verification["signals"]["review_skills"], 0)
+        self.assertEqual(verification["score"], 0.0)
+
+    def test_verification_counts_real_review_skills(self):
+        # Genuine *-review verification skills (caveman-review, security-review) must
+        # count toward Verification — they are not planning ceremonies.
+        s = _sample_stats()
+        s["stack"]["top_skills"] = [("caveman-review", 40), ("security-review", 30)]
+        s["stack"]["skills_all"] = [("caveman-review", 40), ("security-review", 30)]
+        s["behavior"]["shell_test_runs"] = 0
+        aq = paxel.compute_aq(s)
+        craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
+        verification = next(a for a in craft["axes"] if a["name"] == "Verification")
+        self.assertEqual(verification["signals"]["review_skills"], 70)
+        self.assertGreater(verification["score"], 0.0)
+
 
 class TestParseWindow(unittest.TestCase):
     def test_no_flags(self):

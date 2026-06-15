@@ -9,6 +9,7 @@ Covers:
 """
 
 import datetime
+import calendar
 import os
 import sys
 import unittest
@@ -253,7 +254,7 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         self.assertEqual(mock_upload.call_args[0][1], "tok1")
 
     def test_current_month_nonempty_paxel_args_contain_since_until(self):
-        """Paxel is called with --since=YYYY-MM-01 and --until=1st-of-next-month."""
+        """Paxel is called with an inclusive month window for paxel.py."""
         mock_paxel, _ = self._run_main(
             argv=["--no-open"],
             run_paxel_side_effect=[_make_summary(sessions=3)],
@@ -267,6 +268,11 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         # since must be 1st of the month
         since_val = since_args[0].split("=", 1)[1]
         self.assertTrue(since_val.endswith("-01"), f"since={since_val} should end in -01")
+        since_d = datetime.date.fromisoformat(since_val)
+        until_val = until_args[0].split("=", 1)[1]
+        until_d = datetime.date.fromisoformat(until_val)
+        last_day = calendar.monthrange(since_d.year, since_d.month)[1]
+        self.assertEqual(until_d, datetime.date(since_d.year, since_d.month, last_day))
 
     def test_current_month_empty_fallback_uses_progression_monthly(self):
         """Empty current month → all-time paxel run → picks latest month → 1 upload."""
@@ -291,7 +297,7 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         self.assertEqual(mock_upload.call_count, 1)
 
     def test_current_month_empty_fallback_paxel_args_for_latest_month(self):
-        """Fallback window paxel call uses --since/--until for the latest data month."""
+        """Fallback window paxel call uses paxel's inclusive month-end semantics."""
         prog = [{"month": "2025-02"}]
         mock_paxel, mock_upload = self._run_main(
             argv=["--no-open"],
@@ -305,7 +311,7 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         # Third paxel call must include --since=2025-02-01
         call3_args = mock_paxel.call_args_list[2][0][1]
         self.assertIn("--since=2025-02-01", call3_args)
-        self.assertIn("--until=2025-03-01", call3_args)
+        self.assertIn("--until=2025-02-28", call3_args)
 
     def test_current_month_empty_no_progression_exits_cleanly(self):
         """Empty current month + all-time has no data → clean exit, no upload."""

@@ -161,6 +161,11 @@ def month_windows(n, today):
     return windows
 
 
+def _paxel_until_arg(exclusive_until_iso):
+    """Translate an exclusive month-window bound to paxel's inclusive --until date."""
+    return (datetime.date.fromisoformat(exclusive_until_iso) - datetime.timedelta(days=1)).isoformat()
+
+
 def _tokens_from_query(parsed_qs):
     """Extract a list of tokens from a parse_qs result dict.
 
@@ -488,7 +493,7 @@ def _upload_window(mirdash_base, token, paxel_src, paxel_args_base, since, until
     """
     window_args = paxel_args_base + [
         f"--since={since}",
-        f"--until={until}",
+        f"--until={_paxel_until_arg(until)}",
         "--summary",
         "--no-open",
     ]
@@ -632,7 +637,7 @@ def main():
     # --- Try the current month first ---
     window_args = paxel_forward + [
         f"--since={since}",
-        f"--until={until}",
+        f"--until={_paxel_until_arg(until)}",
         "--summary",
         "--no-open",
     ]
@@ -688,7 +693,7 @@ def main():
 
     fb_args = paxel_forward + [
         f"--since={fb_since}",
-        f"--until={fb_until}",
+        f"--until={_paxel_until_arg(fb_until)}",
         "--summary",
         "--no-open",
     ]
