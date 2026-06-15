@@ -238,6 +238,16 @@ class TestDefensiveUsageHandling(unittest.TestCase):
         self.assertEqual(tu["total_input"], 50)
         self.assertEqual(tu["total_output"], 3)
 
+    def test_non_numeric_string_does_not_crash_and_contributes_zero(self):
+        """Genuinely non-numeric string (e.g. 'abc') must not raise and must contribute 0."""
+        stats = self._run_single({"input_tokens": "abc", "output_tokens": "n/a",
+                                  "cache_read_input_tokens": "?", "cache_creation_input_tokens": "x"})
+        tu = stats["token_usage"]
+        self.assertEqual(tu["total_input"], 0)
+        self.assertEqual(tu["total_output"], 0)
+        self.assertEqual(tu["total_cache_read"], 0)
+        self.assertEqual(tu["total_cache_creation"], 0)
+
     def test_by_model_zero_counts_present(self):
         """Even with zero tokens the model still appears in by_model (it was used)."""
         stats = self._run_single({})

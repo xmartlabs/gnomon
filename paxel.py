@@ -1530,7 +1530,6 @@ def main():
     _zero_tok = lambda: {"input": 0, "output": 0, "cache_read": 0, "cache_creation": 0}
     model_tokens = defaultdict(_zero_tok)        # raw model id -> {input, output, cache_read, cache_creation}
     month_tokens = defaultdict(_zero_tok)        # month key -> {input, output, cache_read, cache_creation}
-    month_model_tokens = defaultdict(lambda: defaultdict(_zero_tok))  # month -> model -> token counts
 
     # narrative samples
     opening_prompts = []           # (dt, project, text) first genuine prompt per session
@@ -1714,7 +1713,11 @@ def main():
                             month_models[mkey][mdl] += 1
                         # ---- token usage extraction (fully defensive) -------
                         _u = msg.get("usage") or {}
-                        def _tok(k): return int(_u.get(k) or 0)
+                        def _tok(k):
+                            try:
+                                return int(_u.get(k) or 0)
+                            except (TypeError, ValueError):
+                                return 0
                         _ti  = _tok("input_tokens")
                         _to  = _tok("output_tokens")
                         _tcr = _tok("cache_read_input_tokens")
@@ -1728,10 +1731,6 @@ def main():
                             month_tokens[mkey]["output"]         += _to
                             month_tokens[mkey]["cache_read"]     += _tcr
                             month_tokens[mkey]["cache_creation"] += _tcc
-                            month_model_tokens[mkey][mdl]["input"]          += _ti
-                            month_model_tokens[mkey][mdl]["output"]         += _to
-                            month_model_tokens[mkey][mdl]["cache_read"]     += _tcr
-                            month_model_tokens[mkey][mdl]["cache_creation"] += _tcc
                     if ev.get("attributionSkill"):
                         skill_counter[ev["attributionSkill"]] += 1
                     content = msg.get("content")
