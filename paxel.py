@@ -282,6 +282,17 @@ def pctile(sorted_vals, p):
     return sorted_vals[k]
 
 
+def _usage_int(usage, k):
+    """Return usage[k] as int; handles str/float coercion; missing/None/bad → 0."""
+    v = usage.get(k)
+    if v is None:
+        return 0
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return 0
+
+
 # ---------------------------------------------------------------------------
 # Multi-source discovery + translators. Each non-Claude format is translated
 # into Claude-shaped event dicts so the single aggregation loop in main() works
@@ -1713,15 +1724,10 @@ def main():
                             month_models[mkey][mdl] += 1
                         # ---- token usage extraction (fully defensive) -------
                         _u = msg.get("usage") or {}
-                        def _tok(k):
-                            try:
-                                return int(_u.get(k) or 0)
-                            except (TypeError, ValueError):
-                                return 0
-                        _ti  = _tok("input_tokens")
-                        _to  = _tok("output_tokens")
-                        _tcr = _tok("cache_read_input_tokens")
-                        _tcc = _tok("cache_creation_input_tokens")
+                        _ti  = _usage_int(_u, "input_tokens")
+                        _to  = _usage_int(_u, "output_tokens")
+                        _tcr = _usage_int(_u, "cache_read_input_tokens")
+                        _tcc = _usage_int(_u, "cache_creation_input_tokens")
                         model_tokens[mdl]["input"]          += _ti
                         model_tokens[mdl]["output"]         += _to
                         model_tokens[mdl]["cache_read"]     += _tcr
@@ -1953,7 +1959,7 @@ def main():
     preferred_days = [DOW[d] for d, _ in weekday_hist.most_common(3)]
 
     progression = []
-    for mk in sorted(set(month_dates) | set(month_prompts) | set(month_tools)):
+    for mk in sorted(set(month_dates) | set(month_prompts) | set(month_tools) | set(month_tokens)):
         mm = month_models.get(mk, Counter())
         _mt = month_tokens.get(mk) or {}
         _ti  = _mt.get("input", 0)
