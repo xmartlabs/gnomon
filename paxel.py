@@ -690,12 +690,62 @@ def iter_events(fp, fmt, cursor_twins=None):
         yield from _cursor_sqlite_events(fp, cursor_twins)
 
 
+def _patch_churn(text):
+    """Parse a *** Begin/End Patch block and return (new_string, old_string, file_path).
+
+    Counts '+' lines as additions (new_string) and '-' lines as deletions (old_string),
+    skipping patch-header markers (+++, ---, *** , @@).  The first *** Update/Add/Delete
+    File directive is used as file_path.  Delete File patches carry no content lines —
+    churn is captured via git_churn instead.
+    """
+    file_path = ""
+    add_lines = []
+    del_lines = []
+    in_patch = False
+    for raw in (text or "").splitlines():
+        line = raw.rstrip("\r")
+        if line == "*** Begin Patch":
+            in_patch = True
+            continue
+        if line == "*** End Patch":
+            break
+        if not in_patch:
+            continue
+        # file directives
+        if line.startswith("*** "):
+            for directive in ("Update File: ", "Add File: ", "Delete File: "):
+                if line.startswith("*** " + directive):
+                    if not file_path:
+                        file_path = line[len("*** " + directive):]
+                    break
+            continue
+        # hunk header
+        if line.startswith("@@"):
+            continue
+        # content lines
+        if line.startswith("+++") or line.startswith("---"):
+            continue  # unified-diff file headers, not content
+        if line.startswith("+"):
+            add_lines.append(line[1:])
+        elif line.startswith("-"):
+            del_lines.append(line[1:])
+        # context lines (no prefix) are ignored for churn
+    return "\n".join(add_lines) + ("\n" if add_lines else ""), \
+           "\n".join(del_lines) + ("\n" if del_lines else ""), \
+           file_path
+
+
 def _codex_tool(p):
     """Map a Codex tool/function call to a Claude-shaped (name, input) tool_use."""
     pt = p.get("type")
     if pt == "web_search_call":
         return "WebSearch", {}
     name = p.get("name") or pt or "tool"
+    # custom_tool_call (real apply_patch) carries the patch in payload.input, not arguments
+    if pt == "custom_tool_call" and name == "apply_patch":
+        raw_patch = p.get("input") or ""
+        new_s, old_s, fpath = _patch_churn(raw_patch)
+        return "Edit", {"new_string": new_s, "old_string": old_s, "file_path": fpath}
     try:
         args = json.loads(p.get("arguments") or "{}")
     except Exception:
@@ -746,11 +796,18 @@ def _codex_events(fp):
         return
     sid = os.path.basename(fp).split(".")[0]
     cwd = None
-    for ev in rows:                       # first pass: session id + working dir
+    is_subagent = False          # A6: set when this session was spawned as a subagent
+    for ev in rows:                       # first pass: session id + working dir + subagent flag
         p = ev.get("payload") or {}
         if ev.get("type") == "session_meta":
             sid = p.get("id") or sid
             cwd = p.get("cwd") or cwd
+            # A6: detect thread_spawn → this session was launched as a delegate
+            src = p.get("source")
+            if isinstance(src, dict):
+                sub = src.get("subagent") or {}
+                if isinstance(sub, dict) and sub.get("thread_spawn"):
+                    is_subagent = True
         elif ev.get("type") == "response_item" and p.get("type") == "function_call":
             try:
                 a = json.loads(p.get("arguments") or "{}")
@@ -758,13 +815,34 @@ def _codex_events(fp):
             except Exception:
                 pass
     base = {"sessionId": sid, "cwd": cwd}
+
+    # A6: emit a synthetic Agent tool_use event so the delegate counter increments
+    if is_subagent:
+        yield {**base, "type": "assistant", "timestamp": None,
+               "message": {"role": "assistant", "model": None,
+                           "content": [{"type": "tool_use", "name": "Agent",
+                                        "input": {"subagent_type": "codex-subagent"}}]}}
+
     model = None
+    last_token_usage = None          # A8: final cumulative token_count for the session
+    last_token_ts = None
     for ev in rows:
         # the active model lives in turn_context (e.g. "gpt-5.4"), not on the
         # response items — track it as we stream so assistant turns carry it and
         # Codex usage shows up in the Model mix instead of reading as model-less
         if ev.get("type") == "turn_context":
             model = (ev.get("payload") or {}).get("model") or model
+            continue
+        # A8: token_count arrives as event_msg, not response_item — capture the
+        # last cumulative total_token_usage so we can attribute it to this session
+        if ev.get("type") == "event_msg":
+            p_em = ev.get("payload") or {}
+            if p_em.get("type") == "token_count":
+                info = p_em.get("info") or {}
+                ttu = info.get("total_token_usage")
+                if isinstance(ttu, dict) and ttu.get("total_tokens"):
+                    last_token_usage = ttu
+                    last_token_ts = ev.get("timestamp")
             continue
         if ev.get("type") != "response_item":
             continue
@@ -798,6 +876,26 @@ def _codex_events(fp):
             yield {**base, "type": "user", "timestamp": ts,
                    "message": {"role": "user",
                                "content": [{"type": "tool_result", "is_error": bool(is_err)}]}}
+
+    # A8: emit a single synthetic assistant event carrying the session's cumulative token
+    # usage so it lands in the model-mix accumulator.  Map Codex fields → Claude shape:
+    #   input  = input_tokens - cached_input_tokens  (non-cached portion)
+    #   cache_read = cached_input_tokens
+    #   output = output_tokens + reasoning_output_tokens
+    if last_token_usage and model:
+        raw_inp  = int(last_token_usage.get("input_tokens") or 0)
+        cached   = int(last_token_usage.get("cached_input_tokens") or 0)
+        raw_out  = int(last_token_usage.get("output_tokens") or 0)
+        reasoning = int(last_token_usage.get("reasoning_output_tokens") or 0)
+        usage = {
+            "input_tokens": max(raw_inp - cached, 0),
+            "output_tokens": raw_out + reasoning,
+            "cache_read_input_tokens": cached,
+            "cache_creation_input_tokens": 0,
+        }
+        yield {**base, "type": "assistant", "timestamp": last_token_ts,
+               "__codex_usage__": True,
+               "message": {"role": "assistant", "model": model, "usage": usage, "content": []}}
 
 
 def _gemini_events(fp):

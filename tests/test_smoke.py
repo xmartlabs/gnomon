@@ -418,5 +418,263 @@ class TestGeminiEventsAdapter(unittest.TestCase):
         self.assertTrue(str(cwd).startswith("/"), f"cwd should be absolute, got: {cwd!r}")
 
 
+# ---------------------------------------------------------------------------
+# Codex parser fixes: A7 (apply_patch churn), A8 (token_count), A6 (subagent)
+# ---------------------------------------------------------------------------
+
+class TestPatchChurn(unittest.TestCase):
+    """_patch_churn must parse *** Begin/End Patch blocks correctly."""
+
+    def test_additions_and_deletions_extracted(self):
+        patch = (
+            "*** Begin Patch\n"
+            "*** Update File: src/foo.py\n"
+            "@@\n"
+            "-old line one\n"
+            "-old line two\n"
+            "+new line one\n"
+            "+new line two\n"
+            "+new line three\n"
+            "*** End Patch\n"
+        )
+        new_s, old_s, fpath = paxel._patch_churn(patch)
+        self.assertEqual(fpath, "src/foo.py")
+        self.assertEqual(paxel.line_count(new_s), 3)
+        self.assertEqual(paxel.line_count(old_s), 2)
+
+    def test_add_file_has_only_additions(self):
+        patch = (
+            "*** Begin Patch\n"
+            "*** Add File: lib/new.py\n"
+            "+import os\n"
+            "+\n"
+            "+print('hello')\n"
+            "*** End Patch\n"
+        )
+        new_s, old_s, fpath = paxel._patch_churn(patch)
+        self.assertEqual(fpath, "lib/new.py")
+        self.assertEqual(paxel.line_count(new_s), 3)
+        self.assertEqual(paxel.line_count(old_s), 0)
+
+    def test_delete_file_has_no_content(self):
+        patch = (
+            "*** Begin Patch\n"
+            "*** Delete File: old/dead.py\n"
+            "*** End Patch\n"
+        )
+        new_s, old_s, fpath = paxel._patch_churn(patch)
+        self.assertEqual(fpath, "old/dead.py")
+        self.assertEqual(paxel.line_count(new_s), 0)
+        self.assertEqual(paxel.line_count(old_s), 0)
+
+    def test_plus_plus_plus_header_excluded(self):
+        """+++ and --- unified-diff file headers must NOT be counted as content."""
+        patch = (
+            "*** Begin Patch\n"
+            "*** Update File: x.py\n"
+            "+++ x.py\n"
+            "--- x.py\n"
+            "+actual addition\n"
+            "*** End Patch\n"
+        )
+        new_s, old_s, fpath = paxel._patch_churn(patch)
+        self.assertEqual(paxel.line_count(new_s), 1)
+        self.assertEqual(paxel.line_count(old_s), 0)
+
+    def test_context_lines_not_counted(self):
+        patch = (
+            "*** Begin Patch\n"
+            "*** Update File: y.go\n"
+            "@@\n"
+            " context line\n"
+            "+added\n"
+            " another context\n"
+            "*** End Patch\n"
+        )
+        new_s, old_s, fpath = paxel._patch_churn(patch)
+        self.assertEqual(paxel.line_count(new_s), 1)
+        self.assertEqual(paxel.line_count(old_s), 0)
+
+    def test_empty_input_returns_empty(self):
+        new_s, old_s, fpath = paxel._patch_churn("")
+        self.assertEqual(fpath, "")
+        self.assertEqual(new_s, "")
+        self.assertEqual(old_s, "")
+
+    def test_multi_hunk_sums_all_hunks(self):
+        patch = (
+            "*** Begin Patch\n"
+            "*** Update File: z.py\n"
+            "@@\n"
+            "+hunk1 add\n"
+            "-hunk1 del\n"
+            "@@\n"
+            "+hunk2 add\n"
+            "+hunk2 add2\n"
+            "*** End Patch\n"
+        )
+        new_s, old_s, fpath = paxel._patch_churn(patch)
+        self.assertEqual(paxel.line_count(new_s), 3)
+        self.assertEqual(paxel.line_count(old_s), 1)
+
+
+class TestCodexToolCustomApplyPatch(unittest.TestCase):
+    """_codex_tool must parse custom_tool_call apply_patch from payload.input."""
+
+    def _make_payload(self, patch_text):
+        return {
+            "type": "custom_tool_call",
+            "name": "apply_patch",
+            "input": patch_text,
+        }
+
+    def test_returns_edit_name(self):
+        p = self._make_payload(
+            "*** Begin Patch\n*** Update File: a.py\n+x=1\n*** End Patch\n"
+        )
+        name, inp = paxel._codex_tool(p)
+        self.assertEqual(name, "Edit")
+
+    def test_new_string_has_additions(self):
+        patch = "*** Begin Patch\n*** Update File: b.py\n+line1\n+line2\n*** End Patch\n"
+        _, inp = paxel._codex_tool(self._make_payload(patch))
+        self.assertEqual(paxel.line_count(inp["new_string"]), 2)
+
+    def test_old_string_has_deletions(self):
+        patch = "*** Begin Patch\n*** Update File: c.py\n-del1\n-del2\n-del3\n*** End Patch\n"
+        _, inp = paxel._codex_tool(self._make_payload(patch))
+        self.assertEqual(paxel.line_count(inp["old_string"]), 3)
+
+    def test_file_path_extracted(self):
+        patch = "*** Begin Patch\n*** Update File: src/main.go\n+x\n*** End Patch\n"
+        _, inp = paxel._codex_tool(self._make_payload(patch))
+        self.assertEqual(inp["file_path"], "src/main.go")
+
+    def test_delete_file_returns_path_only(self):
+        patch = "*** Begin Patch\n*** Delete File: dead/code.py\n*** End Patch\n"
+        _, inp = paxel._codex_tool(self._make_payload(patch))
+        self.assertEqual(inp["file_path"], "dead/code.py")
+        self.assertEqual(paxel.line_count(inp["new_string"]), 0)
+        self.assertEqual(paxel.line_count(inp["old_string"]), 0)
+
+
+class TestCodexEventsFixture(unittest.TestCase):
+    """_codex_events over the real-format fixture (A7 + A8)."""
+
+    FP = os.path.join(FIX, "codex", "session-codex.jsonl")
+
+    def setUp(self):
+        self.events = list(paxel._codex_events(self.FP))
+
+    def test_yields_user_prompt(self):
+        users = [e for e in self.events if e.get("type") == "user"
+                 and isinstance(e.get("message", {}).get("content"), str)]
+        self.assertTrue(users, "no user prompt event found")
+
+    def test_yields_edit_tool_use(self):
+        """apply_patch custom_tool_call must produce an Edit tool_use."""
+        tool_uses = [
+            b
+            for e in self.events if e.get("type") == "assistant"
+            for b in (e.get("message", {}).get("content") or [])
+            if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("name") == "Edit"
+        ]
+        self.assertTrue(tool_uses, "no Edit tool_use found from apply_patch")
+
+    def test_edit_has_nonzero_churn(self):
+        """The apply_patch fixture has add and del lines — both new_string and old_string
+        must be non-empty so the churn accumulator gets both additions and deletions."""
+        tool_uses = [
+            b
+            for e in self.events if e.get("type") == "assistant"
+            for b in (e.get("message", {}).get("content") or [])
+            if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("name") == "Edit"
+        ]
+        self.assertTrue(tool_uses)
+        self.assertGreater(paxel.line_count(tool_uses[0]["input"].get("new_string", "")), 0)
+        self.assertGreater(paxel.line_count(tool_uses[0]["input"].get("old_string", "")), 0)
+
+    def test_token_usage_event_emitted(self):
+        """A8: a synthetic assistant event carrying usage must be present."""
+        usage_events = [
+            e for e in self.events
+            if e.get("type") == "assistant" and e.get("__codex_usage__")
+        ]
+        self.assertTrue(usage_events, "no __codex_usage__ event found")
+
+    def test_token_usage_values_correct(self):
+        """A8: fixture has total input=5000, cached=3000, output=120, reasoning=80.
+        Expected: input=5000-3000=2000, cache_read=3000, output=120+80=200."""
+        usage_events = [e for e in self.events if e.get("__codex_usage__")]
+        self.assertTrue(usage_events)
+        u = usage_events[0]["message"]["usage"]
+        self.assertEqual(u["input_tokens"], 2000)
+        self.assertEqual(u["cache_read_input_tokens"], 3000)
+        self.assertEqual(u["output_tokens"], 200)
+        self.assertEqual(u["cache_creation_input_tokens"], 0)
+
+    def test_token_usage_model_is_set(self):
+        """A8: usage event must carry the model from turn_context."""
+        usage_events = [e for e in self.events if e.get("__codex_usage__")]
+        self.assertTrue(usage_events)
+        self.assertEqual(usage_events[0]["message"].get("model"), "gpt-5.4")
+
+
+class TestCodexEventsSubagent(unittest.TestCase):
+    """A6: a session with source.subagent.thread_spawn must emit an Agent tool_use."""
+
+    def _make_events(self, is_subagent):
+        import tempfile, json as _json
+        src = ({"subagent": {"thread_spawn": {
+            "parent_thread_id": "parent-123", "depth": 1,
+            "agent_nickname": "Ramanujan", "agent_role": "worker"}}}
+               if is_subagent else "cli")
+        rows = [
+            {"type": "session_meta", "timestamp": "2026-01-01T10:00:00Z",
+             "payload": {"id": "sub-sess-1", "cwd": "/work", "source": src,
+                         "model_provider": "openai"}},
+            {"type": "turn_context", "timestamp": "2026-01-01T10:00:01Z",
+             "payload": {"model": "gpt-5.4"}},
+            {"type": "response_item", "timestamp": "2026-01-01T10:00:02Z",
+             "payload": {"type": "message", "role": "user",
+                         "content": [{"type": "input_text", "text": "do something"}]}},
+            {"type": "response_item", "timestamp": "2026-01-01T10:00:03Z",
+             "payload": {"type": "message", "role": "assistant",
+                         "content": [{"type": "output_text", "text": "done"}]}},
+        ]
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as fh:
+            for row in rows:
+                fh.write(_json.dumps(row) + "\n")
+            return fh.name
+
+    def test_subagent_session_emits_agent_tool_use(self):
+        import tempfile
+        fp = self._make_events(is_subagent=True)
+        try:
+            events = list(paxel._codex_events(fp))
+        finally:
+            os.unlink(fp)
+        agent_uses = [
+            b for e in events if e.get("type") == "assistant"
+            for b in (e.get("message", {}).get("content") or [])
+            if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("name") == "Agent"
+        ]
+        self.assertTrue(agent_uses, "no Agent tool_use emitted for subagent session")
+
+    def test_non_subagent_session_no_agent_tool_use(self):
+        import tempfile
+        fp = self._make_events(is_subagent=False)
+        try:
+            events = list(paxel._codex_events(fp))
+        finally:
+            os.unlink(fp)
+        agent_uses = [
+            b for e in events if e.get("type") == "assistant"
+            for b in (e.get("message", {}).get("content") or [])
+            if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("name") == "Agent"
+        ]
+        self.assertEqual(agent_uses, [], "Agent tool_use must NOT be emitted for non-subagent session")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

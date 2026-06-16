@@ -568,5 +568,84 @@ class TestGeminiTokenMapping(unittest.TestCase):
         self.assertEqual(entry["cache_read"], 800)
 
 
+# ---------------------------------------------------------------------------
+# 8. Codex token_count → model-mix (A8)
+# ---------------------------------------------------------------------------
+
+class TestCodexTokenMapping(unittest.TestCase):
+    """_codex_events must translate token_count event_msg into a usage-bearing assistant
+    event, and the full pipeline must produce a token_usage row for the Codex model.
+
+    Fixture values (tests/fixtures/codex/session-codex.jsonl):
+      total_token_usage: input=5000, cached=3000, output=120, reasoning=80
+    Expected Claude-shape:
+      input_tokens              = input - cached = 2000
+      output_tokens             = output + reasoning = 200
+      cache_read_input_tokens   = cached = 3000
+      cache_creation_input_tokens = 0
+    """
+
+    FP = os.path.join(FIX, "codex", "session-codex.jsonl")
+
+    def setUp(self):
+        self.events = list(paxel._codex_events(self.FP))
+        self.usage_events = [e for e in self.events if e.get("__codex_usage__")]
+
+    def test_usage_event_present(self):
+        self.assertTrue(self.usage_events, "no __codex_usage__ assistant event found")
+
+    def test_input_tokens_minus_cached(self):
+        u = self.usage_events[0]["message"]["usage"]
+        self.assertEqual(u["input_tokens"], 2000)
+
+    def test_output_tokens_folds_reasoning(self):
+        u = self.usage_events[0]["message"]["usage"]
+        self.assertEqual(u["output_tokens"], 200)
+
+    def test_cache_read_from_cached(self):
+        u = self.usage_events[0]["message"]["usage"]
+        self.assertEqual(u["cache_read_input_tokens"], 3000)
+
+    def test_cache_creation_is_zero(self):
+        u = self.usage_events[0]["message"]["usage"]
+        self.assertEqual(u["cache_creation_input_tokens"], 0)
+
+    def test_model_is_set(self):
+        self.assertEqual(self.usage_events[0]["message"]["model"], "gpt-5.4")
+
+    def test_full_pipeline_codex_model_in_token_usage(self):
+        """Running paxel.main() with only the Codex fixture must yield a gpt-5.4 token row."""
+        out = tempfile.mkdtemp(prefix="paxel-codex-tok-")
+        codex_dir = os.path.dirname(self.FP)
+        self.addCleanup(shutil.rmtree, out, ignore_errors=True)
+        empty = tempfile.mkdtemp(prefix="paxel-codex-empty-")
+        self.addCleanup(shutil.rmtree, empty, ignore_errors=True)
+        overrides = dict(
+            BASE=empty,
+            CODEX_DIR=codex_dir,
+            GEMINI_DIR=empty,
+            PI_DIR=empty,
+            OPENCODE_DIR=empty,
+            CURSOR_DIR=empty,
+            CURSOR_DB=os.path.join(empty, "nope.vscdb"),
+        )
+        argv = ["paxel.py", "--no-open"]
+        buf = io.StringIO()
+        with mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
+                mock.patch.object(sys, "argv", argv), \
+                contextlib.redirect_stdout(buf):
+            paxel.main()
+        with open(os.path.join(out, "stats.json")) as fh:
+            stats = json.load(fh)
+        by_model = stats["token_usage"]["by_model"]
+        model_ids = [e["model_id"] for e in by_model]
+        self.assertIn("gpt-5.4", model_ids,
+                      f"gpt-5.4 not in token_usage.by_model: {model_ids}")
+        entry = next(e for e in by_model if e["model_id"] == "gpt-5.4")
+        self.assertEqual(entry["input"], 2000)
+        self.assertEqual(entry["output"], 200)
+        self.assertEqual(entry["cache_read"], 3000)
+
+
 if __name__ == "__main__":
     unittest.main()
