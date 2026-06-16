@@ -14,9 +14,13 @@ Sí sirve como feedback a bajo costo, con tres condiciones:
 2. **Mirar la progresión mensual, no los totales.** Con cuentas de USD 20 el límite
    mensual capea el volumen — el slope mes a mes es la señal honesta (ya implementado:
    `stats.json["progression"]["monthly"]`).
-3. **Correrlo cada uno en su máquina y compartir solo `stats.json`** (sin
-   `narrative_input.md`, que contiene prompts verbatim). Cero costo de infra, cero
-   data saliendo de la máquina salvo lo que cada uno decida compartir.
+3. **El loop de feedback automatizado es opt-in vía `uvx xl-ai-insights`.** Corre
+   el análisis local, sube `summary.json` a mirdash y abre el reporte
+   directamente. Ese resumen incluye las 8 métricas medidas, `progression_monthly`
+   y un bloque `profile` calculado; no incluye prompts ni quotes verbatim.
+   `python3 paxel.py` sigue siendo 100% local, cero red. Para el camino sin red:
+   `python3 paxel.py --summary` y compartir `summary.json` manualmente (ver
+   "Propuesta de uso" abajo).
 
 ## Métricas con mejor señal para perfil (en orden)
 
@@ -54,6 +58,8 @@ Sí sirve como feedback a bajo costo, con tres condiciones:
 
 ## Propuesta de uso como feedback a bajo costo
 
+### Camino manual (local)
+
 1. Cada persona corre `python3 paxel.py --no-open --summary --last=30d` 1×/mes (5 min,
    local) — la ventana hace cada summary comparable período a período, no acumulativo.
 2. Comparte `summary.json`: exactamente las 8 métricas de la tabla de arriba +
@@ -63,5 +69,25 @@ Sí sirve como feedback a bajo costo, con tres condiciones:
    ¿sube planning_ratio? ¿baja error_rate? ¿aparecen compounding_writes?
 4. El profile.html queda como artefacto personal/motivacional, no como evaluación.
 
-Costo total: cero infra, ~5 min/persona/mes. Riesgo principal: tratar la rúbrica como
-ranking — mitigado usando solo las métricas medidas.
+### Camino automatizado (opt-in vía mirdash)
+
+1. Cada persona corre `uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights`
+   1×/mes (~5 min). Una vez publicado en PyPI: `uvx xl-ai-insights`.
+2. El comando corre `paxel.py` localmente, abre el navegador para un login rápido,
+   sube `summary.json` a mirdash, y abre el reporte automáticamente.
+3. En la 1:1 / retro se mira **el slope propio** en mirdash, no la comparación
+   entre personas: ¿sube `planning_ratio`? ¿baja `error_rate`? ¿aparecen
+   `compounding_writes`?
+4. El `profile.html` local queda como artefacto personal/motivacional, no como
+   evaluación.
+
+### Camino alternativo (máxima privacidad, sin red)
+
+1. Corre `python3 paxel.py --summary` (todo on-device, cero red).
+2. Comparte `summary.json` manualmente: incluye exactamente las 8 métricas de la
+   tabla de arriba, `progression_monthly` y el bloque `profile`, sin prompts ni
+   quotes verbatim (no hace falta el `jq`).
+3. Mismo análisis en la 1:1 / retro: slope propio, no ranking entre personas.
+
+Costo total (ambos caminos): ~5 min/persona/mes. Riesgo principal: tratar la rúbrica
+como ranking — mitigado usando solo las métricas medidas.

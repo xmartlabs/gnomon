@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xl-ai-insights"
+version = "0.1.0"
+description = "Analyze your local paxel builder profile with mirdash and get AI-powered tips"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Xmartlabs", email = "mirland@xmartlabs.com" }]
+requires-python = ">=3.8"
+dependencies = []
+
+[project.scripts]
+xl-ai-insights = "xl_ai_insights:main"
+
+[tool.setuptools]
+py-modules = ["paxel", "xl_ai_insights", "progress_server"]
+
+# tern.png is not yet committed to the repo (the PNG asset is missing).
+# Once added, uncomment the stanza below to bundle it with the wheel:
+# [tool.setuptools.data-files]
+# "." = ["tern.png"]

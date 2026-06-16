@@ -51,7 +51,7 @@ import contextlib
 import subprocess
 import statistics
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as _tz
 
 # Sandbox / self-hosted friendly: honor the same env vars the CLIs themselves use
 # (CLAUDE_CONFIG_DIR, CODEX_HOME), and accept --<source>-dir=PATH overrides (see main())
@@ -280,6 +280,47 @@ def pctile(sorted_vals, p):
         return 0
     k = max(0, min(len(sorted_vals) - 1, int(round((p / 100) * (len(sorted_vals) - 1)))))
     return sorted_vals[k]
+
+
+def _usage_int(usage, k):
+    """Return usage[k] as int; handles str/float coercion; missing/None/bad → 0."""
+    v = usage.get(k)
+    if v is None:
+        return 0
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return 0
+
+
+# Skills whose terminal name ends in "-review" but are PLANNING ceremonies, not
+# verification — they live in plan_skills for the Planning pillar. Counting them as
+# review would inflate Verification and fire the review-reflex edge for planners.
+_PLANNING_REVIEW_TAILS = frozenset((
+    "ceo-review", "eng-review", "design-review",
+    "plan-eng-review", "plan-ceo-review", "plan-design-review",
+))
+
+
+def _is_review_skill_name(name):
+    """True for actual review/verification skills, false for planning-review ceremonies.
+
+    We want `code-review`, `requesting-code-review`, `verify`, `cerberus`, a bare
+    terminal `review`, and any other `*-review` verification skill (e.g.
+    `caveman-review`, `security-review`, `hand-review`) — but NOT planning ceremonies
+    like `plan-eng-review` or `ceo-review`, which are planning rather than verification."""
+    s = str(name or "").lower()
+    if any(k in s for k in ("code-review", "requesting-code-review", "cerberus", "verify")):
+        return True
+    tail = s.split(":")[-1].split("/")[-1]
+    if tail in _PLANNING_REVIEW_TAILS or tail.startswith("plan"):
+        return False
+    return tail == "review" or tail.endswith("-review")
+
+
+def _review_skill_uses(skills):
+    """Count only true review/verification skill invocations from a skills list."""
+    return sum(n for k, n in skills if _is_review_skill_name(k))
 
 
 # ---------------------------------------------------------------------------
@@ -1108,14 +1149,23 @@ def _cursor_jsonl_events(fp):
             role = obj.get("role")
             msg = obj.get("message") if isinstance(obj.get("message"), dict) else {}
             ts = obj.get("timestamp") or msg.get("timestamp")
-            if ts is None and first:
+            # Stamp EVERY timestampless event with the file mtime — not just the first —
+            # so monthly/backfill date-window runs don't drop later prompts/tool calls of
+            # a JSONL-only Cursor session (the window gate skips dt-None events). The first
+            # event is the session's representative point and feeds the hour/weekday
+            # histograms; later mtime-stamped events are flagged synthetic so they're
+            # excluded from those histograms (avoiding a fake spike in one bucket) while
+            # still being counted as prompts/tool calls inside the window.
+            synth_ts = False
+            if ts is None:
                 ts = mtime_iso
+                synth_ts = not first
             content = msg.get("content")
             if role == "user":
                 text = _cursor_clean_prompt(_texts(content))
                 if text:
                     first = False
-                    yield {**base, "type": "user", "timestamp": ts,
+                    yield {**base, "type": "user", "timestamp": ts, "__synth_ts__": synth_ts,
                            "message": {"role": "user", "content": text}}
             elif role == "assistant":
                 blocks = _cursor_jsonl_blocks(content)
@@ -1123,17 +1173,17 @@ def _cursor_jsonl_events(fp):
                 blocks = [b for b in blocks if b.get("type") != "tool_result"]
                 if blocks:
                     first = False
-                    yield {**base, "type": "assistant", "timestamp": ts,
+                    yield {**base, "type": "assistant", "timestamp": ts, "__synth_ts__": synth_ts,
                            "message": {"role": "assistant", "model": msg.get("model"),
                                        "content": blocks}}
                 if tool_results:
-                    yield {**base, "type": "user", "timestamp": ts,
+                    yield {**base, "type": "user", "timestamp": ts, "__synth_ts__": synth_ts,
                            "message": {"role": "user", "content": tool_results}}
             elif role is None and obj.get("type") == "turn_ended":
                 # status-only marker line; a failed turn is the closest thing the JSONL
                 # format has to an API error signal ("aborted" = user stop, not an error)
                 if str(obj.get("status") or "").lower() in ("error", "failed"):
-                    yield {**base, "type": "system", "timestamp": ts,
+                    yield {**base, "type": "system", "timestamp": ts, "__synth_ts__": synth_ts,
                            "isApiErrorMessage": True}
 
 
@@ -1517,6 +1567,11 @@ def main():
     month_sessions = defaultdict(set)    # month -> sessionIds seen
     month_models = defaultdict(Counter)  # month -> model -> assistant turns
 
+    # token usage accumulators (keyed by raw model id)
+    _zero_tok = lambda: {"input": 0, "output": 0, "cache_read": 0, "cache_creation": 0}
+    model_tokens = defaultdict(_zero_tok)        # raw model id -> {input, output, cache_read, cache_creation}
+    month_tokens = defaultdict(_zero_tok)        # month key -> {input, output, cache_read, cache_creation}
+
     # narrative samples
     opening_prompts = []           # (dt, project, text) first genuine prompt per session
     longest_prompts = []           # kept small via periodic trim
@@ -1579,16 +1634,23 @@ def main():
                 mkey = dt.strftime("%Y-%m") if dt is not None else None
 
                 if dt is not None:
+                    # Synthetic timestamps (Cursor JSONL events past the first, stamped with
+                    # the file mtime) must reach the date window / month bucket so windowed
+                    # runs count them, but must NOT distort the hour/weekday histograms or
+                    # session-duration math with a pile of identical fake instants.
+                    _synth_ts = ev.get("__synth_ts__")
                     if all_min_dt is None or dt < all_min_dt:
                         all_min_dt = dt
                     if all_max_dt is None or dt > all_max_dt:
                         all_max_dt = dt
-                    hour_hist[dt.hour] += 1
-                    weekday_hist[dt.weekday()] += 1
+                    if not _synth_ts:
+                        hour_hist[dt.hour] += 1
+                        weekday_hist[dt.weekday()] += 1
                     date_set.add(dt.date().isoformat())
                     month_dates[mkey].add(dt.date().isoformat())
                     if sid:
-                        session_ts[sid].append(dt.timestamp())
+                        if not _synth_ts:
+                            session_ts[sid].append(dt.timestamp())
                         month_sessions[mkey].add(sid)
                 if sid:
                     session_files[sid].add(fp)
@@ -1690,6 +1752,21 @@ def main():
                         model_counter[mdl] += 1
                         if mkey:
                             month_models[mkey][mdl] += 1
+                        # ---- token usage extraction (fully defensive) -------
+                        _u = msg.get("usage") or {}
+                        _ti  = _usage_int(_u, "input_tokens")
+                        _to  = _usage_int(_u, "output_tokens")
+                        _tcr = _usage_int(_u, "cache_read_input_tokens")
+                        _tcc = _usage_int(_u, "cache_creation_input_tokens")
+                        model_tokens[mdl]["input"]          += _ti
+                        model_tokens[mdl]["output"]         += _to
+                        model_tokens[mdl]["cache_read"]     += _tcr
+                        model_tokens[mdl]["cache_creation"] += _tcc
+                        if mkey:
+                            month_tokens[mkey]["input"]          += _ti
+                            month_tokens[mkey]["output"]         += _to
+                            month_tokens[mkey]["cache_read"]     += _tcr
+                            month_tokens[mkey]["cache_creation"] += _tcc
                     if ev.get("attributionSkill"):
                         skill_counter[ev["attributionSkill"]] += 1
                     content = msg.get("content")
@@ -1855,9 +1932,19 @@ def main():
 
     # Gold-standard churn: real git insertions/deletions, capturing EVERY committed
     # change however it was made (Edit, Bash heredoc, sed, vim...). 100% local.
-    gc = git_churn(list(project_activity.keys()),
-                   all_min_dt.isoformat() if all_min_dt else "1970-01-01",
-                   all_max_dt.isoformat() if all_max_dt else "2100-01-01")
+    # When a date window is active, churn must cover the REQUESTED window — not just
+    # the min/max of transcript activity that fell inside it.
+    if since_dt is not None or until_dt is not None:
+        gc_since = since_dt.strftime("%Y-%m-%d") if since_dt is not None else (all_min_dt.isoformat() if all_min_dt else "1970-01-01")
+        # until_dt is already the exclusive next-midnight (parse_window added a day), so
+        # passing it straight to git --until keeps the whole requested last day. Subtracting
+        # a day here would drop every commit made on that final calendar day.
+        gc_until = (until_dt.strftime("%Y-%m-%d")
+                    if until_dt is not None else (all_max_dt.isoformat() if all_max_dt else "2100-01-01"))
+    else:
+        gc_since = all_min_dt.isoformat() if all_min_dt else "1970-01-01"
+        gc_until = all_max_dt.isoformat() if all_max_dt else "2100-01-01"
+    gc = git_churn(list(project_activity.keys()), gc_since, gc_until)
     git_velocity = (gc["churn"] / active_hours) if active_hours > 0 else 0
 
     explore = cat_counter.get("explore", 0) + thinking_blocks
@@ -1906,8 +1993,13 @@ def main():
     preferred_days = [DOW[d] for d, _ in weekday_hist.most_common(3)]
 
     progression = []
-    for mk in sorted(set(month_dates) | set(month_prompts) | set(month_tools)):
+    for mk in sorted(set(month_dates) | set(month_prompts) | set(month_tools) | set(month_tokens)):
         mm = month_models.get(mk, Counter())
+        _mt = month_tokens.get(mk) or {}
+        _ti  = _mt.get("input", 0)
+        _to  = _mt.get("output", 0)
+        _tcr = _mt.get("cache_read", 0)
+        _tcc = _mt.get("cache_creation", 0)
         progression.append({
             "month": mk,
             "prompts": month_prompts.get(mk, 0),
@@ -1917,6 +2009,11 @@ def main():
             "tool_churn_lines": month_churn.get(mk, 0),
             "models": mm.most_common(3),
             "top_model": mm.most_common(1)[0][0] if mm else None,
+            "tokens_input": _ti,
+            "tokens_output": _to,
+            "tokens_cache_read": _tcr,
+            "tokens_cache_creation": _tcc,
+            "tokens_total": _ti + _to + _tcr + _tcc,
         })
 
     stats = {
@@ -1928,9 +2025,13 @@ def main():
             "files_parsed": files_parsed,
             "lines_total": lines_total,
             "lines_unparseable": lines_bad,
-            "date_range": [all_min_dt.isoformat() if all_min_dt else None,
-                            all_max_dt.isoformat() if all_max_dt else None],
-            # the --since/--until/--last filter this run was scoped to (None = full history)
+            "date_range": (
+                [since_dt.isoformat() if since_dt is not None else (all_min_dt.isoformat() if all_min_dt else None),
+                 (until_dt - timedelta(days=1)).isoformat() if until_dt is not None else (all_max_dt.isoformat() if all_max_dt else None)]
+                if (since_dt is not None or until_dt is not None) else
+                [all_min_dt.isoformat() if all_min_dt else None,
+                 all_max_dt.isoformat() if all_max_dt else None]
+            ),
             "window": ({"since": since_dt.isoformat() if since_dt else None,
                         "until": until_dt.isoformat() if until_dt else None}
                        if (since_dt or until_dt) else None),
@@ -2042,6 +2143,34 @@ def main():
             },
         },
     }
+    # ---- aggregate token_usage block ----------------------------------------
+    _all_tok_input  = sum(v["input"]          for v in model_tokens.values())
+    _all_tok_output = sum(v["output"]         for v in model_tokens.values())
+    _all_tok_cr     = sum(v["cache_read"]     for v in model_tokens.values())
+    _all_tok_cc     = sum(v["cache_creation"] for v in model_tokens.values())
+    # order by total tokens desc (consistent with model_usage ordering in _build_profile)
+    _by_model_tok = sorted(
+        model_tokens.items(),
+        key=lambda kv: kv[1]["input"] + kv[1]["output"] + kv[1]["cache_read"] + kv[1]["cache_creation"],
+        reverse=True,
+    )
+    stats["token_usage"] = {
+        "total_input": _all_tok_input,
+        "total_output": _all_tok_output,
+        "total_cache_read": _all_tok_cr,
+        "total_cache_creation": _all_tok_cc,
+        "by_model": [
+            {
+                "model_id": m,
+                "model": _pretty_model(m),
+                "input": tok["input"],
+                "output": tok["output"],
+                "cache_read": tok["cache_read"],
+                "cache_creation": tok["cache_creation"],
+            }
+            for m, tok in _by_model_tok
+        ],
+    }
     stats["agentic"] = compute_aq(stats)
 
     with open(os.path.join(OUT_DIR, "stats.json"), "w") as f:
@@ -2097,12 +2226,59 @@ def main():
     print(f"  autonomy={autonomy_score}/100  planning_ratio={planning_ratio:.2f}")
 
 
+def _build_profile(stats):
+    """Assemble the `profile` sub-dict for build_summary: level, per-axis scores with
+    explainable drill-down, archetype, and steering style. All values are computed or
+    count-based — no prompts, no verbatim quotes, no skill/project names beyond what
+    compute_aq already exposes. Defensive: if stats lacks the grading keys (e.g. a
+    zero-activity corpus) it still returns a well-formed dict."""
+    aq = stats.get("agentic", {})
+    sb = score_breakdown(stats)
+    arch_scores = {
+        "Execution": sb["execution"]["value"],
+        "Planning": sb["planning"]["value"],
+        "Engineering": sb["engineering"]["value"],
+    }
+    arch_title, arch_quote = pick_archetype(stats, arch_scores)
+    all_models = (stats.get("stack") or {}).get("models") or []
+    # pct is a GLOBAL share: total counts ALL models, then we cap the list to the
+    # top 12 for payload size. So if >12 models exist the shown pcts sum to <1
+    # (the dropped tail is honestly missing), never an inflated 100%.
+    total = sum(n for _, n in all_models)
+    _tok_by_model = {e["model_id"]: e for e in (stats.get("token_usage") or {}).get("by_model") or []}
+    model_usage = (
+        [
+            {
+                "model_id": m,
+                "model": _pretty_model(m),
+                "count": int(n),
+                "pct": round(n / total, 3),
+                "tokens_input":          (_tok_by_model.get(m) or {}).get("input", 0),
+                "tokens_output":         (_tok_by_model.get(m) or {}).get("output", 0),
+                "tokens_cache_read":     (_tok_by_model.get(m) or {}).get("cache_read", 0),
+                "tokens_cache_creation": (_tok_by_model.get(m) or {}).get("cache_creation", 0),
+            }
+            for m, n in all_models[:12]  # most_common() already desc
+        ]
+        if total > 0 else []
+    )
+    return {
+        "aq": aq,
+        "archetype": {"title": arch_title, "quote": arch_quote},
+        "scores": sb,
+        "steering": steering_reading(stats),
+        "growth_edges": growth_edges_structured(stats, arch_scores),
+        "signature_moves": signature_moves_structured(stats),
+        "model_usage": model_usage,
+    }
+
+
 def build_summary(stats):
     """The shareable subset for the low-cost feedback loop (docs/metrics-evaluation.md):
-    the 8 high-signal MEASURED metrics + monthly progression, nothing else. By
-    construction it carries no prompts, no quotes, no skill/project names, and no
-    rubric scores (AQ / tier / archetype) — the doc says rubrics are for
-    self-reflection, not for comparing people. Safe to share as-is."""
+    the 8 high-signal MEASURED metrics + monthly progression + rubric profile block.
+    The profile sub-dict carries scores/level/archetype/steering; all values are computed
+    or count-based — no prompts, no verbatim quotes, no raw skill/project names.
+    Safe to share as-is."""
     v, b, vel, st, t, c = (stats["volume"], stats["behavior"], stats["velocity"],
                            stats["stack"], stats["tools"], stats["corpus"])
     return {
@@ -2136,6 +2312,12 @@ def build_summary(stats):
             "mcp_servers_distinct": t["mcp_servers_distinct"],
         },
         "progression_monthly": (stats.get("progression") or {}).get("monthly", []),
+        "profile": _build_profile(stats),
+        "token_usage": stats.get("token_usage") or {
+            "total_input": 0, "total_output": 0,
+            "total_cache_read": 0, "total_cache_creation": 0,
+            "by_model": [],
+        },
     }
 
 
@@ -2436,6 +2618,67 @@ def _ev(credit, ev):
     return 0.5 * (1 - ev) + ev * credit
 
 
+def _verdict(pct):
+    """Map 0..1 pct to human-readable verdict."""
+    if pct >= 0.9: return "excellent"
+    if pct >= 0.7: return "good"
+    if pct >= 0.5: return "adequate"
+    if pct >= 0.3: return "weak"
+    return "poor"
+
+def _axis_verdict(value):
+    """Map 0..10 axis score to verdict."""
+    if value >= 8.0: return "excellent"
+    if value >= 6.5: return "good"
+    if value >= 5.0: return "adequate"
+    if value >= 3.0: return "weak"
+    return "poor"
+
+def _fmt_val(value, unit):
+    """Format a measured value with its unit for display."""
+    if abs(value) >= 100:
+        return f"{value:,.0f} {unit}"
+    return f"{value:.2g} {unit}"
+
+def _fmt_target(target, unit, direction):
+    """Format target with direction prefix for lower-is-better metrics."""
+    pfx = "≤ " if direction == "lower" else ""
+    if abs(target) >= 100:
+        return f"{pfx}{target:,.0f} {unit}"
+    return f"{pfx}{target:.2g} {unit}"
+
+def _sub_narrative(label, verdict, display_value, display_target, direction, score_pct):
+    """Build one canonical sentence explaining a sub-metric."""
+    if direction == "higher":
+        if score_pct >= 90:
+            rel = "well above target"
+        elif score_pct >= 50:
+            rel = "approaching target"
+        else:
+            rel = "below target"
+    else:
+        if score_pct >= 90:
+            rel = "well within target"
+        elif score_pct >= 50:
+            rel = "near target threshold"
+        else:
+            rel = "above target threshold"
+    return (f"{label} is {verdict} ({display_value}, target {display_target}"
+            f" — {rel}, scoring {score_pct}%).")
+
+def _enrich_sub(sub):
+    """Add narrative fields to a score_breakdown sub dict, in-place."""
+    p = sub["pct"]
+    sub["verdict"] = _verdict(p)
+    sub["score_pct"] = round(p * 100)
+    sub["display_value"] = _fmt_val(sub["your_value"], sub["unit"])
+    sub["display_target"] = _fmt_target(sub["target"], sub["unit"], sub["direction"])
+    sub["narrative"] = _sub_narrative(
+        sub["label"], sub["verdict"], sub["display_value"],
+        sub["display_target"], sub["direction"], sub["score_pct"])
+    return sub
+
+
 def compute_scores(stats):
     # THREE graded axes (Execution/Planning/Engineering), grounded in gstack (module note
     # above) and then hardened by a gstack self-audit. Steering is NOT scored here — it's
@@ -2519,6 +2762,184 @@ def compute_scores(stats):
             "Engineering": round(engineering, 1)}
 
 
+def score_breakdown(stats):
+    """Per-axis sub-component breakdown for the dashboard UI. Returns the same three
+    axes as compute_scores with per-sub pct/value/target fields so the UI can show WHY
+    a score is high or low.  The formula constants are intentionally kept in sync with
+    compute_scores via the equality assertion in tests; any drift will fail the test.
+    NOTE: keep constants aligned with compute_scores (above) — any formula change must
+    be made in BOTH places; the test_value_equals_compute_scores test enforces this."""
+    v, b, vel = stats.get("volume", {}), stats.get("behavior", {}), stats.get("velocity", {})
+    # Guard: no real activity → well-formed zeros (mirrors compute_scores early-return)
+    if v.get("total_sessions", 0) == 0 or v.get("tool_calls_total", 0) == 0:
+        def _zero_sub(label, target, unit, weight, direction):
+            return {"label": label, "your_value": 0.0, "target": target, "unit": unit,
+                    "weight": weight, "pct": 0.5, "direction": direction, "is_drag": False,
+                    "verdict": "adequate", "score_pct": 50,
+                    "display_value": _fmt_val(0.0, unit),
+                    "display_target": _fmt_target(target, unit, direction),
+                    "narrative": f"No activity recorded for {label}."}
+        def _zero_axis(gloss, subs_spec):
+            subs = [_zero_sub(*sp) for sp in subs_spec]
+            subs[0]["is_drag"] = True   # deterministic sentinel for the no-activity case;
+                                        # NOT a meaningful weakest-sub signal (all values are 0)
+            return {"value": 0.0, "gloss": gloss, "drag_note": "No activity recorded.", "subs": subs,
+                    "axis_verdict": "poor", "score_out_of_10": "0.0 / 10",
+                    "drag_narrative": "No activity recorded.",
+                    "axis_narrative": "No activity recorded."}
+        return {
+            "execution": _zero_axis("How much you ship, at AI leverage", [
+                ("Committed-code rate", 400, "lines/hr", 0.40, "higher"),
+                ("Ship fidelity",       0.5, "committed/generated", 0.25, "higher"),
+                ("Delegation & parallelism", 0.30, "agent-runs/prompt", 0.35, "higher"),
+            ]),
+            "planning": _zero_axis("Think before you build", [
+                ("Explore-before-build", 0.65, "explore/doing ratio", 0.45, "higher"),
+                ("Reasoning depth",     12.0, "thinking blocks/session", 0.30, "higher"),
+                ("Plan ceremony",        0.8, "plan-skills/session", 0.25, "higher"),
+            ]),
+            "engineering": _zero_axis("Craft and low rework", [
+                ("Low rework",       2.0, "mean file-edit depth", 0.30, "lower"),
+                ("Clean iteration",  3.0, "p90 file-edit depth",  0.25, "lower"),
+                ("Focus",           0.25, "hammered-files/session", 0.20, "lower"),
+                ("Quality ceremony", 3.0, "quality-skills/session", 0.15, "higher"),
+                ("Low errors",      10.0, "errors/100 tools", 0.10, "lower"),
+            ]),
+        }
+
+    sess = max(v["total_sessions"], 1)
+    prompts = max(v["total_prompts"], 1)
+    hours = max(vel.get("active_hours", 0.1), 0.1)
+    ev = _evidence(stats)
+
+    # --- EXECUTION ---
+    git_cov = max(vel.get("git_repos_with_commits", 0) / max(vel.get("git_repos_seen", 1), 1), 0.7)
+    eff_git_churn = vel.get("git_churn_total", 0) / git_cov
+    fidelity = eff_git_churn / max(vel.get("tool_churn_edit_write", 1), 1)
+    rate_pct       = _clamp((eff_git_churn / hours) / 400)
+    fidelity_pct   = _clamp(fidelity / 0.5)
+    deleg_raw      = (b.get("delegate_actions", 0) + b.get("background_tasks", 0)) / max(prompts * 0.3, 1)
+    deleg_pct      = _clamp(deleg_raw)
+    execution_val  = round(10 * (0.40 * rate_pct + 0.25 * fidelity_pct + 0.35 * deleg_pct), 1)
+    exec_subs = [
+        {"label": "Committed-code rate", "your_value": eff_git_churn / hours,
+         "target": 400, "unit": "lines/hr", "weight": 0.40, "pct": rate_pct,
+         "direction": "higher", "is_drag": False},
+        {"label": "Ship fidelity", "your_value": fidelity,
+         "target": 0.5, "unit": "committed/generated", "weight": 0.25, "pct": fidelity_pct,
+         "direction": "higher", "is_drag": False},
+        # your_value is the raw measured agent-runs/prompt (denominator: actual prompts).
+        # pct matches compute_scores' clamp (denominator: prompts*0.3) and equals
+        # your_value/target in the normal regime (prompts ≥ 4).  For tiny corpora
+        # (prompts < 4) the score's floor (max(prompts*0.3, 1)) causes pct to diverge
+        # from your_value/target — DO NOT change pct to derive from your_value, as that
+        # would break the value==compute_scores invariant for small-corpus inputs.
+        # The UI must fill bars from pct, not recompute from your_value/target.
+        {"label": "Delegation & parallelism",
+         "your_value": (b.get("delegate_actions", 0) + b.get("background_tasks", 0)) / max(prompts, 1),
+         "target": 0.30, "unit": "agent-runs/prompt", "weight": 0.35, "pct": deleg_pct,
+         "direction": "higher", "is_drag": False},
+    ]
+    exec_subs = [_enrich_sub(s) for s in exec_subs]
+
+    # --- PLANNING ---
+    plan_skills = _skill_uses_any(stats, ("brainstorm", "writing-plan", "plan", "spec",
+                                          "office-hours", "autoplan", "grill", "ceo-review",
+                                          "eng-review", "design-review"))
+    explore_pct       = _clamp(b.get("planning_ratio_explore_to_doing", 0) / 0.65)
+    thinking_raw      = v.get("thinking_blocks", 0) / sess
+    thinking_pct      = _clamp(thinking_raw / 12.0)
+    plan_skill_raw    = plan_skills / sess
+    plan_skill_pct    = _clamp(plan_skill_raw / 0.8)
+    planning_val      = round(10 * (0.45 * explore_pct + 0.30 * thinking_pct + 0.25 * plan_skill_pct), 1)
+    plan_subs = [
+        {"label": "Explore-before-build",
+         "your_value": b.get("planning_ratio_explore_to_doing", 0),
+         "target": 0.65, "unit": "explore/doing ratio", "weight": 0.45, "pct": explore_pct,
+         "direction": "higher", "is_drag": False},
+        {"label": "Reasoning depth", "your_value": thinking_raw,
+         "target": 12.0, "unit": "thinking blocks/session", "weight": 0.30, "pct": thinking_pct,
+         "direction": "higher", "is_drag": False},
+        {"label": "Plan ceremony", "your_value": plan_skill_raw,
+         "target": 0.8, "unit": "plan-skills/session", "weight": 0.25, "pct": plan_skill_pct,
+         "direction": "higher", "is_drag": False},
+    ]
+    plan_subs = [_enrich_sub(s) for s in plan_subs]
+
+    # --- ENGINEERING ---
+    eng_skills = _skill_uses_any(stats, ("code-review", "test", "tdd", "qa", "investigate",
+                                         "retro", "learn", "cso", "karpathy", "debug")) \
+        + b.get("shell_test_runs", 0)
+    rework_pct   = _ev(1 - _clamp((b.get("iteration_depth_mean", 0) - 2) / 8), ev)
+    iter_pct     = _ev(1 - _clamp((b.get("iteration_depth_p90", 0) - 3) / 9), ev)
+    focus_pct    = _ev(1 - _clamp((b.get("files_hammered_over_15x", 0) / sess) / 0.25), ev)
+    qual_raw     = eng_skills / sess
+    qual_pct     = _clamp(qual_raw / 3.0)
+    err_pct      = _ev(1 - _clamp(b.get("error_rate_per_100_tools", 0) / 10), ev)
+    engineering_val = round(10 * (0.30 * rework_pct + 0.25 * iter_pct + 0.20 * focus_pct
+                                  + 0.15 * qual_pct + 0.10 * err_pct), 1)
+    eng_subs = [
+        {"label": "Low rework", "your_value": b.get("iteration_depth_mean", 0),
+         "target": 2.0, "unit": "mean file-edit depth", "weight": 0.30, "pct": rework_pct,
+         "direction": "lower", "is_drag": False},
+        {"label": "Clean iteration", "your_value": b.get("iteration_depth_p90", 0),
+         "target": 3.0, "unit": "p90 file-edit depth", "weight": 0.25, "pct": iter_pct,
+         "direction": "lower", "is_drag": False},
+        {"label": "Focus", "your_value": b.get("files_hammered_over_15x", 0) / sess,
+         "target": 0.25, "unit": "hammered-files/session", "weight": 0.20, "pct": focus_pct,
+         "direction": "lower", "is_drag": False},
+        {"label": "Quality ceremony", "your_value": qual_raw,
+         "target": 3.0, "unit": "quality-skills/session", "weight": 0.15, "pct": qual_pct,
+         "direction": "higher", "is_drag": False},
+        {"label": "Low errors", "your_value": b.get("error_rate_per_100_tools", 0),
+         "target": 10.0, "unit": "errors/100 tools", "weight": 0.10, "pct": err_pct,
+         "direction": "lower", "is_drag": False},
+    ]
+    eng_subs = [_enrich_sub(s) for s in eng_subs]
+
+    def _mark_drag(axis_name, subs, gloss):
+        """Flag the sub with the smallest weight*pct contribution; build a drag_note."""
+        drag_idx = min(range(len(subs)), key=lambda i: subs[i]["weight"] * subs[i]["pct"])
+        for i, s in enumerate(subs):
+            s["is_drag"] = (i == drag_idx)
+        d = subs[drag_idx]
+        if d["direction"] == "higher":
+            note = (f"{d['label']} is dragging this down — "
+                    f"{d['your_value']:.2g} {d['unit']}, target ~{d['target']:.2g}.")
+        else:
+            note = (f"{d['label']} is dragging this down — "
+                    f"{d['your_value']:.2g} {d['unit']} (target ≤{d['target']:.2g}).")
+        _axis_values = {
+            "execution": execution_val,
+            "planning": planning_val,
+            "engineering": engineering_val,
+        }
+        drag_sub = subs[drag_idx]
+        best_sub = max(subs, key=lambda s: s["pct"])
+        av = _axis_verdict(_axis_values[axis_name])
+        dir_hint = "higher is better" if drag_sub["direction"] == "higher" else "lower is better"
+        drag_narr = (
+            f"{drag_sub['label']} is the weakest contributor, scoring {drag_sub['score_pct']}%. "
+            f"Your value: {drag_sub['display_value']} (target: {drag_sub['display_target']}, {dir_hint}).")
+        axis_name_display = axis_name.capitalize()
+        axis_narr = (
+            f"{axis_name_display} scores {_axis_values[axis_name]}/10 ({av}). "
+            f"Strongest: {best_sub['label']} ({best_sub['score_pct']}%); "
+            f"weakest: {drag_sub['label']} ({drag_sub['score_pct']}%).")
+        return {"value": _axis_values[axis_name],
+                "gloss": gloss, "drag_note": note, "subs": subs,
+                "axis_verdict": av,
+                "score_out_of_10": f"{_axis_values[axis_name]} / 10",
+                "drag_narrative": drag_narr,
+                "axis_narrative": axis_narr}
+
+    return {
+        "execution": _mark_drag("execution", exec_subs, "How much you ship, at AI leverage"),
+        "planning":  _mark_drag("planning",  plan_subs, "Think before you build"),
+        "engineering": _mark_drag("engineering", eng_subs, "Craft and low rework"),
+    }
+
+
 def steering_reading(stats):
     """Steering is DESCRIBED, not graded (see compute_scores for why). We report how you run
     agents — long leash vs short leash — as a fact, with no implied good/bad. Returns a short
@@ -2586,7 +3007,7 @@ def compute_aq(stats):
     ]
 
     # ---- Pillar 2: Craft ----
-    review_n = skill_uses(["code-review", "cerberus", "verify", "requesting-code-review", "review"])
+    review_n = _review_skill_uses(skills)
     verification = .5 * sat(b.get("shell_test_runs", 0), 150) + .5 * sat(review_n, 100)
     grounding = sat(b.get("planning_ratio_explore_to_doing", 0), 1.0)
     compounding = (.6 * sat(st.get("compounding_writes", 0), 30)
@@ -2676,15 +3097,18 @@ def pick_archetype(stats, scores):
     return rung, q
 
 
-def signature_moves(stats):
-    """Named decision-patterns ('signature moves') drawn from real session behavior,
-    each tagged with the gstack sprint stage it expresses. Only moves whose gate
-    actually fires are returned (we never pad) — top 5 by a comparable 0..1 strength.
-    Cites measured numbers, NEVER raw prompt text, so the profile stays shareable
-    without leaking session content. NOTE for maintainers: evidence HTML is trusted /
-    safe-by-construction — never interpolate user/transcript-derived strings (skill,
-    project, tool names) here without html.escape; today every value is a number or a
-    static template (the lone tool-name use is gated to == "Bash" and emits a literal)."""
+def _signature_moves_pool(stats):
+    """Build the sorted+sliced pool of signature moves as dicts.
+
+    Returns a list of up to 5 dicts with keys:
+        tag, title, evidence_html
+    sorted by descending strength, already sliced to [:5].
+    Single source of truth — both the HTML wrapper and the structured emitter
+    read from here, so the two outputs can never drift.
+    MAINTAINERS: evidence_html is trusted / safe-by-construction — every value
+    interpolated below is a number or a static template. NEVER interpolate
+    user/transcript-derived strings (skill, project, tool names) without
+    html.escape (the lone tool-name use is gated to == "Bash" and emits a literal)."""
     v, b, vel, t, st = (stats["volume"], stats["behavior"], stats["velocity"],
                         stats["tools"], stats["stack"])
     sess = max(v["total_sessions"], 1)
@@ -2695,17 +3119,17 @@ def signature_moves(stats):
 
     top_tool = (str(t["top_tools"][0][0]) if t["top_tools"] else "")
     deleg = b["delegate_actions"] + b["background_tasks"]
-    pool = []   # (strength 0..1, gstack-tag, title, evidence_html)
+    raw = []   # (strength 0..1, tag, title, evidence_html)
 
-    rev = sk("review", "code-review")
+    rev = _review_skill_uses(st.get("top_skills", []))
     if rev >= 50 and rev >= sess * 0.5:
-        pool.append((_clamp(rev / (sess * 2)), "Review",
+        raw.append((_clamp(rev / (sess * 2)), "Review",
             "You review more than you write",
             f'<b>{rev:,}</b> code-review passes — one of your most-used skills. '
             f'You don\'t trust a diff until a second set of eyes has seen it.'))
 
     if b["planning_ratio_explore_to_doing"] >= 0.55 and b["iteration_depth_max"] >= 40:
-        pool.append((_clamp(b["iteration_depth_max"] / 100.0), "Think → Build",
+        raw.append((_clamp(b["iteration_depth_max"] / 100.0), "Think → Build",
             "Plan wide, then grind narrow",
             f'A <b>{b["planning_ratio_explore_to_doing"]:.2f}</b> explore-to-build ratio — you read and '
             f'search far more than you type — yet you\'ll hammer one file <b>{b["iteration_depth_max"]}×</b> '
@@ -2713,53 +3137,67 @@ def signature_moves(stats):
 
     if deleg >= 100 and deleg >= prompts * 0.3:
         shell = " with the shell as your top tool" if top_tool == "Bash" else ""
-        pool.append((_clamp(deleg / (prompts * 0.8)), "Build",
+        raw.append((_clamp(deleg / (prompts * 0.8)), "Build",
             "You run a team, not a tool",
             f'<b>{deleg:,}</b> delegated &amp; backgrounded agent runs{shell}. '
             f'You parallelize and grind rather than babysit one chat.'))
 
     tb = v["thinking_blocks"]
     if tb / sess >= 8:
-        pool.append((_clamp((tb / sess) / 30.0), "Think",
+        raw.append((_clamp((tb / sess) / 30.0), "Think",
             "You think before you touch the diff",
             f'<b>{tb:,}</b> reasoning blocks (~{tb // sess}/session) before edits land — '
             f'you deliberate hard, then commit.'))
 
     plan = sk("brainstorm", "writing-plan", "autoplan", "spec")
     if plan >= 30 and plan >= sess * 0.35:
-        pool.append((_clamp(plan / float(sess)), "Plan",
+        raw.append((_clamp(plan / float(sess)), "Plan",
             "You write the plan before the code",
             f'<b>{plan:,}</b> planning &amp; brainstorming runs — you scaffold the decision '
             f'before the implementation, gstack-style.'))
 
     qrate = b["questions_asked"] / prompts
     if qrate < 0.03 and prompts > 200:
-        pool.append((0.45, "User Sovereignty",
+        raw.append((0.45, "User Sovereignty",
             "You direct, you don't deliberate",
             f'The agent stopped to ask you on just <b>{qrate*100:.0f}%</b> of {prompts:,} prompts — '
             f'you point it and let it run, rather than getting pulled into a back-and-forth.'))
 
     if vel["shell_authored_lines_est"] >= 20000 and top_tool == "Bash":
-        pool.append((_clamp(vel["shell_authored_lines_est"] / 80000.0), "Build",
+        raw.append((_clamp(vel["shell_authored_lines_est"] / 80000.0), "Build",
             "You live in the shell",
             f'~<b>{vel["shell_authored_lines_est"]:,}</b> lines authored through Bash heredocs and '
             f'redirects — real work most profilers never even see.'))
 
-    pool.sort(key=lambda x: -x[0])
-    return [(tag, title, ev) for _, tag, title, ev in pool[:5]]
+    raw.sort(key=lambda x: -x[0])
+    return [{"tag": tag, "title": title, "evidence_html": ev}
+            for _, tag, title, ev in raw[:5]]
 
 
-def growth_edges(stats, scores):
-    """Specific next-steps keyed off the user's OWN weakest signals — not generic advice.
-    Each leads with a PRACTICE the reader can adopt today; gstack-flavored edges then name
-    the gstack skill that embodies it (in parens) as an optional, installable upgrade.
-    Edges come from BOTH grading systems: the gstack scorecard (how you BUILD) and the AQ
-    pillars in stats["agentic"] (how you OPERATE AGENTS) — so a clean builder with a thin
-    operator side still gets a real edge instead of "you're balanced". Only gated edges
-    are returned; top 3, most-urgent first. NOTE for maintainers: advice HTML is
-    trusted/safe-by-construction — never interpolate user/transcript-derived strings
-    (skill, project, tool names) here without html.escape; today every interpolated value
-    is a number or static."""
+def signature_moves(stats):
+    """Named decision-patterns ('signature moves') drawn from real session behavior,
+    each tagged with the gstack sprint stage it expresses. Only moves whose gate
+    actually fires are returned (we never pad) — top 5 by a comparable 0..1 strength.
+    Cites measured numbers, NEVER raw prompt text, so the profile stays shareable
+    without leaking session content. NOTE for maintainers: evidence HTML is trusted /
+    safe-by-construction — never interpolate user/transcript-derived strings (skill,
+    project, tool names) here without html.escape; today every value is a number or a
+    static template (the lone tool-name use is gated to == "Bash" and emits a literal)."""
+    return [(d["tag"], d["title"], d["evidence_html"])
+            for d in _signature_moves_pool(stats)]
+
+
+def _growth_edges_pool(stats, scores):
+    """Build the sorted+sliced pool of growth edges as dicts.
+
+    Returns a list of up to 3 dicts with keys:
+        priority, eyebrow, title, advice_html, axis
+    sorted ascending by priority (lowest = most urgent), already sliced to [:3].
+    axis is the AQ axis name string for AQ-driven edges, else None.
+    Single source of truth for both the HTML wrapper and the structured emitter.
+    MAINTAINERS: advice_html is trusted / safe-by-construction — every interpolated
+    value is a number or a static template. NEVER interpolate user/transcript-derived
+    strings (skill, project, tool names) here without html.escape."""
     v, b, vel, st = (stats["volume"], stats["behavior"], stats["velocity"], stats["stack"])
     sess = max(v["total_sessions"], 1)
     prompts = max(v["total_prompts"], 1)
@@ -2767,10 +3205,10 @@ def growth_edges(stats, scores):
     def sk(*needles):
         return sum(n for k, n in st.get("top_skills", []) if any(nd in k.lower() for nd in needles))
 
-    rev = sk("review", "code-review")
+    rev = _review_skill_uses(st.get("top_skills", []))
     tdd = sk("test", "tdd", "qa") + b.get("shell_test_runs", 0)   # named test skills + CLI test runs
     err = b["error_rate_per_100_tools"]
-    pool = []   # (priority: lower = more urgent / shows first, eyebrow, title, advice_html)
+    raw = []   # (priority, eyebrow, title, advice_html, axis)
 
     # NO steering edge: hands-on cadence has no good/bad end (it's described, not scored — see
     # steering_reading), so telling an autonomous operator to "steer harder" is exactly the
@@ -2779,39 +3217,43 @@ def growth_edges(stats, scores):
     # Only fires when we genuinely see few tests — and it SAYS what it can and can't detect, so a
     # CLI tester is never told "0 test runs" as though it were fact.
     if rev >= 50 and tdd < max(rev * 0.1, 5):
-        pool.append((1.5, "Add a reflex",
+        raw.append((1.5, "Add a reflex",
             "Pair your review reflex with a test reflex",
             f'We spotted <b>{rev:,}</b> code-reviews but only <b>{tdd}</b> test runs — counting named test '
             f'skills <i>and</i> shell runners like <code>pytest</code> / <code>go test</code> / '
             f'<code>npm test</code>. If you test some other way we can\'t see, skip this. If tests really '
             f'are thin, make the double-check a <i>regression test</i>: one for every bug you fix. '
-            f'(gstack\'s <code>/qa</code> does this.)'))
+            f'(gstack\'s <code>/qa</code> does this.)',
+            None))
 
     # High iteration is only "whack-a-mole" if it's THRASH — so we require an elevated error rate
     # alongside it. A clean deep-iterator (low errors) is doing deliberate work, not flailing, and
     # is left alone (this also spares agent-driven iteration, which tends to keep errors low).
     if (b["iteration_depth_max"] >= 40 or b["files_hammered_over_15x"] >= 10) and err >= 5:
-        pool.append((2.0, "Stop the grind",
+        raw.append((2.0, "Stop the grind",
             "When a file fights back, root-cause it",
             f'<b>{b["iteration_depth_max"]}×</b> on one file and <b>{b["files_hammered_over_15x"]}</b> files '
             f'past 15 edits, next to ~<b>{err}</b> errors per 100 tool calls — that pairing reads as '
             f'retry-thrash more than deliberate iteration. When a file resists past ~15 tries, find the root '
-            f'cause before the next edit. (gstack names this <code>/investigate</code>.)'))
+            f'cause before the next edit. (gstack names this <code>/investigate</code>.)',
+            None))
 
     if scores.get("Planning", 10) < 6:
-        pool.append((scores.get("Planning", 10), "Plan first",
+        raw.append((scores.get("Planning", 10), "Plan first",
             "Spend more time in Think + Plan",
             f'Planning is <b>{scores.get("Planning")}</b>. Sketch the plan and reframe the ask <i>before</i> '
             f'writing code — it\'s the cheapest place to catch a wrong turn. '
-            f'(gstack front-loads this with <code>/office-hours</code> + <code>/autoplan</code>.)'))
+            f'(gstack front-loads this with <code>/office-hours</code> + <code>/autoplan</code>.)',
+            None))
 
-    eng_skills = sk("review", "qa", "investigate", "retro")
+    eng_skills = _review_skill_uses(st.get("top_skills", [])) + sk("qa", "investigate", "retro")
     if scores.get("Engineering", 10) < 6 and eng_skills < sess * 0.3:
-        pool.append((scores.get("Engineering", 10) + 0.1, "Boil the lake",
+        raw.append((scores.get("Engineering", 10) + 0.1, "Boil the lake",
             "Run a quality pass before you ship",
             f'Engineering is <b>{scores.get("Engineering")}</b>. Add one deliberate review-and-test pass on '
             f'every branch before you ship — that\'s where craft compounds. '
-            f'(gstack\'s back half: <code>/review</code>, <code>/qa</code>, <code>/investigate</code>, <code>/retro</code>.)'))
+            f'(gstack\'s back half: <code>/review</code>, <code>/qa</code>, <code>/investigate</code>, <code>/retro</code>.)',
+            None))
 
     # AQ-driven edges: any AQ axis filled under 45% of its weight is a candidate. Advised
     # axes only — excluded on purpose: Verification (covered by the review/test edge above),
@@ -2858,39 +3300,153 @@ def growth_edges(stats, scores):
             made = _aq_advice(p.get("name", ""), a.get("name", ""), a.get("signals", {}))
             if made:
                 eb, title, adv = made
-                pool.append((2.5 + fill * 5, eb, title, adv))
+                raw.append((2.5 + fill * 5, eb, title, adv, a.get("name", "")))
 
-    if not pool:
+    if not raw:
         worst = min(scores, key=scores.get) if scores else ""
         wv = scores.get(worst, 10)
         if worst and wv < 6.5:
             # Nothing specific fired, but an axis IS low — don't claim "balanced" when the scorecard
             # shows otherwise. Point at the softest axis honestly instead.
-            pool.append((8.5, "Closest to an edge", f'Your softest axis is {worst}',
+            raw.append((8.5, "Closest to an edge", f'Your softest axis is {worst}',
                 f'Nothing jumped out as a single clear next-step, but <b>{worst}</b> at <b>{wv}</b> is your '
-                f'lowest axis — the cheapest place to gain. See how {worst} is scored above and lean there.'))
+                f'lowest axis — the cheapest place to gain. See how {worst} is scored above and lean there.',
+                None))
         else:
-            pool.append((9.0, "Go deeper",
+            raw.append((9.0, "Go deeper",
                 "You're balanced — your edge is depth",
                 'You\'re even across the build sprint, so the next gear isn\'t a weak spot to patch — it\'s depth. '
                 'Add a short retro after each session and let the learnings compound session over session. '
-                '(gstack names this <code>/retro</code> — the Reflect stage.)'))
+                '(gstack names this <code>/retro</code> — the Reflect stage.)',
+                None))
 
-    pool.sort(key=lambda x: x[0])
-    return [(eb, title, adv) for _, eb, title, adv in pool[:3]]
+    raw.sort(key=lambda x: x[0])
+    return [{"priority": pri, "eyebrow": eb, "title": title, "advice_html": adv, "axis": axis}
+            for pri, eb, title, adv, axis in raw[:3]]
+
+
+def growth_edges(stats, scores):
+    """Specific next-steps keyed off the user's OWN weakest signals — not generic advice.
+    Each leads with a PRACTICE the reader can adopt today; gstack-flavored edges then name
+    the gstack skill that embodies it (in parens) as an optional, installable upgrade.
+    Edges come from BOTH grading systems: the gstack scorecard (how you BUILD) and the AQ
+    pillars in stats["agentic"] (how you OPERATE AGENTS) — so a clean builder with a thin
+    operator side still gets a real edge instead of "you're balanced". Only gated edges
+    are returned; top 3, most-urgent first. NOTE for maintainers: advice HTML is
+    trusted/safe-by-construction — never interpolate user/transcript-derived strings
+    (skill, project, tool names) here without html.escape; today every interpolated value
+    is a number or static."""
+    return [(d["eyebrow"], d["title"], d["advice_html"])
+            for d in _growth_edges_pool(stats, scores)]
+
+
+def _strip_html(s):
+    """Remove HTML tags and unescape HTML entities, returning plain text.
+
+    Handles: <b>, <i>, <code>, and any other tags; entities &amp;, &lt;, &gt;,
+    &quot;, &#39;, &#x27;.  Collapses internal whitespace to single spaces and
+    strips leading/trailing whitespace.  Input is trusted safe-by-construction
+    (same provenance as the advice_html / evidence_html strings)."""
+    if not s:
+        return ""
+    # Strip all HTML tags
+    text = re.sub(r"<[^>]+>", "", s)
+    # Unescape HTML entities (ordered so &amp; doesn't re-escape other entities)
+    text = text.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"')
+    text = text.replace("&#39;", "'").replace("&#x27;", "'")
+    text = text.replace("&amp;", "&")
+    # Collapse whitespace
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _commands_in(s):
+    """Return ordered, de-duplicated list of slash-commands found inside <code>…</code>.
+
+    A slash-command is any <code> body that starts with '/'.  Order matches first
+    appearance; duplicates are dropped.  Used to extract actionable commands from
+    advice_html without any HTML parsing dependency."""
+    if not s:
+        return []
+    seen = []
+    for m in re.finditer(r"<code>(/[^<]+)</code>", s):
+        cmd = m.group(1)
+        if cmd not in seen:
+            seen.append(cmd)
+    return seen
+
+
+def growth_edges_structured(stats, scores):
+    """Structured version of growth_edges for the dashboard payload.
+
+    Returns a list of up to 3 dicts:
+        eyebrow   – short action label
+        title     – longer title
+        advice    – plain-text advice (HTML stripped, entities unescaped)
+        commands  – ordered de-duped list of /slash-commands mentioned in the advice
+        axis      – AQ axis name if this is an AQ-driven edge, else None
+        severity  – "high" (priority < 2) | "medium" (< 5) | "low" (>= 5)
+                    In practice "high" is the review/test-reflex edge or a near-zero
+                    gstack axis; most edges are "medium"; "low" is the balanced fallbacks.
+
+    HTML path is unchanged — this reads the same pool as growth_edges()."""
+    result = []
+    for item in _growth_edges_pool(stats, scores):
+        p = item["priority"]
+        severity = "high" if p < 2 else ("medium" if p < 5 else "low")
+        result.append({
+            "eyebrow": item["eyebrow"],
+            "title": item["title"],
+            "advice": _strip_html(item["advice_html"]),
+            "commands": _commands_in(item["advice_html"]),
+            "axis": item["axis"],
+            "severity": severity,
+        })
+    return result
+
+
+def signature_moves_structured(stats):
+    """Structured version of signature_moves for the dashboard payload.
+
+    Returns a list of up to 5 dicts:
+        tag      – gstack sprint stage tag
+        title    – move title
+        evidence – plain-text evidence (HTML stripped, entities unescaped)
+
+    HTML path is unchanged — this reads the same pool as signature_moves()."""
+    return [
+        {
+            "tag": item["tag"],
+            "title": item["title"],
+            "evidence": _strip_html(item["evidence_html"]),
+        }
+        for item in _signature_moves_pool(stats)
+    ]
 
 
 def _pretty_model(m):
-    # "claude-opus-4-7" -> "Opus 4.7"; "claude-3-5-sonnet-20241022" -> "Sonnet 3.5"
-    m = re.sub(r"^claude-", "", m or "")
-    m = re.sub(r"-\d{6,}$", "", m)              # drop trailing date
-    parts = [p for p in m.split("-") if p]
-    words = [p for p in parts if not p.isdigit()]
-    nums = [p for p in parts if p.isdigit()]
-    name = (words[0].upper() if words and len(words[0]) <= 3 else
-            words[0].capitalize()) if words else (m or "?")
-    ver = ".".join(nums[:2])
-    return f"{name} {ver}".strip() if ver else name
+    # "claude-opus-4-7" -> "Opus 4.7"; "claude-3-5-sonnet-20241022" -> "Sonnet 3.5";
+    # "gpt-5.4" -> "GPT 5.4"; "gpt-5-codex" -> "GPT 5 Codex"; "gemini-2.5-pro" -> "Gemini 2.5 Pro".
+    s = re.sub(r"^claude-", "", m or "")
+    s = re.sub(r"-\d{6,}$", "", s)              # drop trailing date snapshot
+    parts = [p for p in s.split("-") if p]
+    # A version token STARTS with a digit ("4", "5.4", "4.1", "2.5", "4o"); everything
+    # else is a name/qualifier word ("opus", "gpt", "codex", "pro"). The old code kept
+    # only pure-digit tokens, so dotted OpenAI/Gemini versions ("5.4", "2.5") were
+    # dropped and distinct models (gpt-5.4, gpt-4.1) both collapsed to a bare "GPT".
+    vers = [p for p in parts if p[:1].isdigit()]
+    words = [p for p in parts if not p[:1].isdigit()]
+    if not words:
+        return m or "?"
+    head = words[0]
+    name = head.upper() if len(head) <= 3 else head.capitalize()
+    # Claude splits its version across single-integer segments ("4","7" -> "4.7");
+    # OpenAI/Gemini carry it in one dotted token ("5.4"). Join only the split case.
+    if len(vers) >= 2 and all(v.isdigit() for v in vers):
+        ver = ".".join(vers[:2])
+    else:
+        ver = vers[0] if vers else ""
+    extra = " ".join(w.capitalize() for w in words[1:])
+    return " ".join(t for t in (name, ver, extra) if t)
 
 
 def _img_data_uri(path):

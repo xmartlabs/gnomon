@@ -42,12 +42,17 @@ SCORED_AXES = {"Execution", "Planning", "Engineering"}
 
 
 def _run(testcase, args):
-    """Run paxel.main() over the fixtures into a fresh temp OUT_DIR; return (stdout, out_dir)."""
+    """Run paxel.main() over the fixtures into a fresh temp OUT_DIR; return (stdout, out_dir).
+
+    --no-open prevents browser windows from opening in CI.  Tests that want to
+    exercise the share flow should call paxel.main() directly with a tailored argv.
+    """
     out = tempfile.mkdtemp(prefix="paxel-test-")
     testcase.addCleanup(shutil.rmtree, out, ignore_errors=True)
     tern = os.path.join(ROOT, "tern.png")          # poster logo loads from OUT_DIR/tern.png
     if os.path.exists(tern):
         shutil.copy(tern, os.path.join(out, "tern.png"))
+    # --no-open prevents browser windows in CI.
     argv = ["paxel.py"] + args + ["--no-open"]
     buf = io.StringIO()
     with mock.patch.multiple(paxel, OUT_DIR=out, **SRC_DIRS), \
@@ -122,10 +127,15 @@ class TestPipeline(unittest.TestCase):
         self.assertEqual(set(summary), {
             "context", "planning_ratio_explore_to_doing", "errors", "iteration_depth",
             "churn", "orchestration", "compounding_writes", "ecosystem",
-            "progression_monthly"})
+            "progression_monthly", "profile", "token_usage"})
+        # profile must have the expected sub-keys
+        prof = summary["profile"]
+        self.assertEqual(set(prof), {"aq", "archetype", "scores", "steering",
+                                     "growth_edges", "signature_moves", "model_usage"})
+        # no raw prompt/verbatim text in the shareable summary
         raw = json.dumps(summary).lower()
-        for banned in ("aq_0_100", "archetype", "tier", "top_skills", "prompt_text"):
-            self.assertNotIn(banned, raw, f"rubric/verbatim field leaked: {banned}")
+        for banned in ("top_skills", "prompt_text"):
+            self.assertNotIn(banned, raw, f"verbatim field leaked: {banned}")
 
     def test_no_summary_without_flag(self):
         _, out = _run(self, [])
