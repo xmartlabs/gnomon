@@ -151,7 +151,7 @@ def month_windows(n, today, window_months=1):
       until = first day of the month AFTER the anchor (exclusive)
       label = 'YYYY-MM' (the anchor month — the END month of the window)
 
-    window_months=1 reproduces the legacy single-calendar-month windows (since change = None).
+    window_months=1 reproduces the legacy single-calendar-month windows.
     """
     windows = []
     # Work backwards: month index 0 = current month, 1 = previous, …
