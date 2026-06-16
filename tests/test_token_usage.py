@@ -14,6 +14,7 @@ import io
 import json
 import os
 import shutil
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -662,37 +663,86 @@ class TestCursorTokenExtraction(unittest.TestCase):
         # We'll use the real fixture and verify the event stream directly.
         db_path = os.path.join(FIX, "cursor", "state.vscdb")
         # Since the fixture is real SQLite, _cursor_sqlite_events will read from it.
-        # We just need to verify it yields a usage event for Cursor if tokenCount is present.
+        # We expect a usage event for the cursor bubble with tokenCount.
         events = list(paxel._cursor_sqlite_events(db_path))
         # Filter for assistant events with model:"cursor" and usage
         usage_events = [e for e in events if e.get("type") == "assistant"
                         and e.get("message", {}).get("model") == "cursor"
                         and e.get("message", {}).get("usage")]
-        # If the fixture has a token-bearing type-2 bubble, we should see at least one
-        if usage_events:
-            ev = usage_events[0]
-            usage = ev["message"]["usage"]
-            # Verify it has the Claude-shape fields
-            self.assertIn("input_tokens", usage)
-            self.assertIn("output_tokens", usage)
-            self.assertIn("cache_read_input_tokens", usage)
-            self.assertIn("cache_creation_input_tokens", usage)
-            # Values should be ints, and at least some should be non-zero
-            self.assertIsInstance(usage["input_tokens"], int)
-            self.assertIsInstance(usage["output_tokens"], int)
+        # The fixture has a token-bearing type-2 bubble, so we must see at least one
+        self.assertTrue(usage_events, "Expected at least one cursor usage event with tokenCount")
+        ev = usage_events[0]
+        usage = ev["message"]["usage"]
+        # Verify it has the Claude-shape fields
+        self.assertIn("input_tokens", usage)
+        self.assertIn("output_tokens", usage)
+        self.assertIn("cache_read_input_tokens", usage)
+        self.assertIn("cache_creation_input_tokens", usage)
+        # Values should be ints, and at least some should be non-zero
+        self.assertIsInstance(usage["input_tokens"], int)
+        self.assertIsInstance(usage["output_tokens"], int)
+        self.assertEqual(usage["input_tokens"], 350, "Expected 350 input tokens from fixture")
+        self.assertEqual(usage["output_tokens"], 150, "Expected 150 output tokens from fixture")
 
     def test_cursor_zero_tokens_does_not_emit_usage_event(self):
-        """Type-2 bubbles with zero tokenCount or missing tokenCount should not emit
-        a separate usage event (guard prevents spurious rows)."""
-        # This tests that we DON'T create a usage event when tokens are 0.
-        # The fixture may or may not have such bubbles, so this is more of a
-        # defensive test via unit testing of the function directly.
-        # For now, we rely on the full-pipeline test below to verify the guard.
-        pass
+        """Type-2 bubbles with zero tokenCount or missing tokenCount should not produce
+        a cursor model entry in the final statistics (guard prevents spurious rows)."""
+        # Build a minimal fixture with just type-2 bubbles but NO tokenCount,
+        # run paxel.main(), and verify no "cursor" entry appears in token_usage.
+        out = tempfile.mkdtemp(prefix="paxel-cursor-zero-tok-")
+        cursor_dir = os.path.join(FIX, "cursor", "projects")
+        # Create a temporary database with only zero-token bubbles
+        import tempfile as tf
+        import shutil as sh
+        temp_db = tf.NamedTemporaryFile(suffix=".vscdb", delete=False)
+        temp_db.close()
+        self.addCleanup(sh.rmtree, out, ignore_errors=True)
+        self.addCleanup(lambda: os.unlink(temp_db.name) if os.path.exists(temp_db.name) else None)
+
+        empty = tempfile.mkdtemp(prefix="paxel-cursor-zero-empty-")
+        self.addCleanup(shutil.rmtree, empty, ignore_errors=True)
+
+        # Create a minimal zero-token database for this test
+        conn = sqlite3.connect(temp_db.name)
+        conn.execute("CREATE TABLE cursorDiskKV (key TEXT PRIMARY KEY, value BLOB)")
+        conn.execute("INSERT INTO cursorDiskKV VALUES (?, ?)",
+                     ("composerData:zero-session",
+                      json.dumps({"fullConversationHeadersOnly": [
+                          {"bubbleId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "type": 2}
+                      ]})))
+        conn.execute("INSERT INTO cursorDiskKV VALUES (?, ?)",
+                     ("bubbleId:zero-session:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                      json.dumps({"type": 2, "createdAt": "2026-01-01T10:00:00.000Z",
+                                  "text": "no tokens"})))
+        conn.commit()
+        conn.close()
+
+        overrides = dict(
+            BASE=empty,
+            CODEX_DIR=empty,
+            GEMINI_DIR=empty,
+            PI_DIR=empty,
+            OPENCODE_DIR=empty,
+            CURSOR_DIR=cursor_dir,
+            CURSOR_DB=temp_db.name,
+        )
+        argv = ["paxel.py", "--no-open"]
+        buf = io.StringIO()
+        with mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
+                mock.patch.object(sys, "argv", argv), \
+                contextlib.redirect_stdout(buf):
+            paxel.main()
+        with open(os.path.join(out, "stats.json")) as fh:
+            stats = json.load(fh)
+        by_model = stats["token_usage"]["by_model"]
+        model_ids = [e["model_id"] for e in by_model]
+        # No cursor entry should appear when there are no tokens
+        self.assertNotIn("cursor", model_ids,
+                         f"cursor should not appear when tokens are zero; by_model: {model_ids}")
 
     def test_full_pipeline_cursor_model_in_token_usage(self):
         """Running paxel.main() with only the Cursor fixture must yield a "cursor"
-        token row if the fixture has token-bearing bubbles."""
+        token row with the expected token counts."""
         out = tempfile.mkdtemp(prefix="paxel-cursor-tok-")
         cursor_dir = os.path.join(FIX, "cursor", "projects")
         cursor_db = os.path.join(FIX, "cursor", "state.vscdb")
@@ -718,14 +768,17 @@ class TestCursorTokenExtraction(unittest.TestCase):
             stats = json.load(fh)
         by_model = stats["token_usage"]["by_model"]
         model_ids = [e["model_id"] for e in by_model]
-        # If the fixture has token-bearing type-2 bubbles, "cursor" should be in the list
-        if "cursor" in model_ids:
-            entry = next(e for e in by_model if e["model_id"] == "cursor")
-            # Verify the entry has the expected shape
-            self.assertIn("model", entry)
-            self.assertEqual(entry["model"], "Cursor")
-            self.assertIn("input", entry)
-            self.assertIn("output", entry)
+        # The fixture has token-bearing type-2 bubbles, so "cursor" must be in the list
+        self.assertIn("cursor", model_ids,
+                      f"cursor not in token_usage.by_model: {model_ids}")
+        entry = next(e for e in by_model if e["model_id"] == "cursor")
+        # Verify the entry has the expected shape and values
+        self.assertIn("model", entry)
+        self.assertEqual(entry["model"], "Cursor")
+        self.assertIn("input", entry)
+        self.assertIn("output", entry)
+        self.assertEqual(entry["input"], 350, "Expected 350 input tokens")
+        self.assertEqual(entry["output"], 150, "Expected 150 output tokens")
 
 
 if __name__ == "__main__":

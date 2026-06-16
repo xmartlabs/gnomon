@@ -1505,25 +1505,33 @@ def _cursor_sqlite_events(db_path, twins=None):
                     yield {**base, "type": "user", "timestamp": ts,
                            "message": {"role": "user", "content": text}}
             elif btype == 2:
-                if blocks:
-                    yield {**base, "type": "assistant", "timestamp": ts,
-                           "message": {"role": "assistant", "content": blocks}}
-                # A4: Extract tokenCount from bubble and emit with model:"cursor" + usage.
+                # A4: Extract tokenCount from bubble and attach model:"cursor" + usage to
+                # the assistant event (single event, not separate phantom turn).
                 # Guard: only if tokens are non-zero (avoids spurious rows).
                 tok_count = bubble.get("tokenCount")
+                msg = {"role": "assistant"}
+                usage = None
                 if isinstance(tok_count, dict):
                     input_tok = int(tok_count.get("inputTokens") or 0)
                     output_tok = int(tok_count.get("outputTokens") or 0)
                     if input_tok > 0 or output_tok > 0:
+                        msg["model"] = "cursor"
                         usage = {
                             "input_tokens": input_tok,
                             "output_tokens": output_tok,
                             "cache_read_input_tokens": 0,
                             "cache_creation_input_tokens": 0,
                         }
-                        yield {**base, "type": "assistant", "timestamp": ts,
-                               "message": {"role": "assistant", "model": "cursor",
-                                           "usage": usage, "content": []}}
+                        msg["usage"] = usage
+                if blocks:
+                    msg["content"] = blocks
+                    yield {**base, "type": "assistant", "timestamp": ts,
+                           "message": msg}
+                elif usage:
+                    # Blocks-empty but has tokens: emit usage-only event (with empty content)
+                    msg["content"] = []
+                    yield {**base, "type": "assistant", "timestamp": ts,
+                           "message": msg}
                 if tool_err is not None:
                     yield {**base, "type": "user", "timestamp": ts,
                            "message": {"role": "user",
