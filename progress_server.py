@@ -223,6 +223,13 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     document.getElementById('batch-sub').textContent = processed + ' / ' + total + ' months';
   }
 
+  function snapToTarget() {
+    if (displayPct < targetPct) {
+      displayPct = targetPct;
+      renderRing(displayPct);
+    }
+  }
+
   function startTicker() {
     if (tickId) return;
     tickId = setInterval(function() {
@@ -351,6 +358,7 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     if (isBatch) {
       setMonthState(d.month, d.label, 'done');
       updateRing();
+      snapToTarget();
     } else {
       setStep('step-upload', 'done');
     }
@@ -362,6 +370,7 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     if (isBatch) {
       setMonthState(d.month, d.label, 'skip');
       updateRing();
+      snapToTarget();
     }
   });
 
@@ -371,6 +380,7 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     if (isBatch) {
       setMonthState(d.month, d.label, 'skip');
       updateRing();
+      snapToTarget();
     }
   });
 
