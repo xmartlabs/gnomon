@@ -256,7 +256,7 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
     def test_current_month_nonempty_paxel_args_contain_since_until(self):
         """Paxel is called with an inclusive month window for paxel.py."""
         mock_paxel, _ = self._run_main(
-            argv=["--no-open"],
+            argv=["--no-open", "--window=1"],
             run_paxel_side_effect=[_make_summary(sessions=3)],
             upload_return_values=["/r"],
         )
@@ -300,7 +300,7 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         """Fallback window paxel call uses paxel's inclusive month-end semantics."""
         prog = [{"month": "2025-02"}]
         mock_paxel, mock_upload = self._run_main(
-            argv=["--no-open"],
+            argv=["--no-open", "--window=1"],
             run_paxel_side_effect=[
                 _make_summary(sessions=0),
                 _make_summary(sessions=8, progression_monthly=prog),

@@ -88,6 +88,40 @@ def _resolve_mirdash_base(argv):
 # Maximum batch size supported by the mirdash auth endpoint.
 _MAX_BACKFILL = 12
 
+# Default window size when --window is absent.
+_DEFAULT_WINDOW_MONTHS = 6
+
+
+def parse_window(argv):
+    """Return the window_months value from argv.
+
+    --window=N  → int(N) if N >= 1, else warning + default
+    absent      → default (_DEFAULT_WINDOW_MONTHS)
+    invalid N   → warning + default
+    """
+    for a in argv:
+        m = re.match(r"--window=(.+)$", a)
+        if m:
+            raw = m.group(1)
+            try:
+                n = int(raw)
+            except ValueError:
+                print(
+                    f"  warning: --window={raw!r} is not a valid integer"
+                    f" — using default {_DEFAULT_WINDOW_MONTHS}",
+                    file=sys.stderr,
+                )
+                return _DEFAULT_WINDOW_MONTHS
+            if n < 1:
+                print(
+                    f"  warning: --window={n} must be >= 1"
+                    f" — using default {_DEFAULT_WINDOW_MONTHS}",
+                    file=sys.stderr,
+                )
+                return _DEFAULT_WINDOW_MONTHS
+            return n
+    return _DEFAULT_WINDOW_MONTHS
+
 
 def parse_backfill(argv):
     """Return the backfill count from argv, or None if --backfill is absent.
@@ -520,7 +554,7 @@ def _summary_is_empty(summary):
 
 
 def _upload_window(mirdash_base, token, paxel_src, paxel_args_base, since, until, label,
-                   verbose, quiet, keep_artifacts=False):
+                   verbose, quiet, keep_artifacts=False, window_months=_DEFAULT_WINDOW_MONTHS):
     """Run paxel for one calendar window and upload the summary.
 
     Returns the reportUrl string on success, or None if the window should be
@@ -547,6 +581,7 @@ def _upload_window(mirdash_base, token, paxel_src, paxel_args_base, since, until
             print(f"  skip {label} — no activity")
         return None
 
+    summary.setdefault("context", {})["window_months"] = window_months
     try:
         return _upload_summary(mirdash_base, token, summary)
     except Exception as exc:
@@ -555,7 +590,8 @@ def _upload_window(mirdash_base, token, paxel_src, paxel_args_base, since, until
 
 
 def _upload_window_web(mirdash_base, token, paxel_src, paxel_args_base, since, until, label,
-                       verbose, server, index, total, keep_artifacts=False):
+                       verbose, server, index, total, keep_artifacts=False,
+                       window_months=_DEFAULT_WINDOW_MONTHS):
     """Run paxel for one calendar window, push SSE events, and upload.
 
     Returns the reportUrl string on success, or None if skipped/error.
@@ -578,6 +614,7 @@ def _upload_window_web(mirdash_base, token, paxel_src, paxel_args_base, since, u
         server.push_event("skipped", {"month": label, "label": label, "reason": "no activity"})
         return None
 
+    summary.setdefault("context", {})["window_months"] = window_months
     server.push_event("uploading", {"month": label, "label": label, "index": index, "total": total})
 
     try:
@@ -590,7 +627,7 @@ def _upload_window_web(mirdash_base, token, paxel_src, paxel_args_base, since, u
 
 
 def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,
-              keep_artifacts=False):
+              keep_artifacts=False, window_months=_DEFAULT_WINDOW_MONTHS):
     """Web progress mode: auth + progress in browser, minimal console output."""
     from progress_server import ProgressServer
 
@@ -600,7 +637,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
     except OSError as exc:
         print(f"  warning: could not bind localhost:{port} ({exc}) — falling back to console mode")
         _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,
-                      keep_artifacts=keep_artifacts)
+                      keep_artifacts=keep_artifacts, window_months=window_months)
         return
 
     redirect_uri = f"http://127.0.0.1:{port}/callback"
@@ -637,10 +674,10 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
     today = datetime.date.today()
 
     if mode in ("init", "backfill"):
-        windows = month_windows(token_count, today)
+        windows = month_windows(token_count, today, window_months=window_months)
         month_labels = [label for _, _, label in windows]
     else:
-        month_labels = [month_windows(1, today)[0][2]]
+        month_labels = [month_windows(1, today, window_months=window_months)[0][2]]
 
     server.push_event("auth_ok", {
         "message": "Authenticated",
@@ -660,6 +697,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
                 mirdash_base, tokens[token_idx], paxel_src,
                 paxel_forward, since, until, label, verbose, server, i, len(windows),
                 keep_artifacts=keep_artifacts,
+                window_months=window_months,
             )
             if report_url is not None and report_url != "UPLOAD_ERROR":
                 last_report_url = report_url
@@ -684,12 +722,13 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
         return
 
     # --- Default: current month ---
-    since, until, label = month_windows(1, today)[0]
+    since, until, label = month_windows(1, today, window_months=window_months)[0]
 
     report_url = _upload_window_web(
         mirdash_base, tokens[0], paxel_src,
         paxel_forward, since, until, label, verbose, server, 0, 1,
         keep_artifacts=keep_artifacts,
+        window_months=window_months,
     )
 
     if report_url == "UPLOAD_ERROR":
@@ -733,12 +772,13 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
 
     fallback_year, fallback_mo = int(fallback_month[:4]), int(fallback_month[5:7])
     fallback_date = datetime.date(fallback_year, fallback_mo, 1)
-    fb_since, fb_until, fb_label = month_windows(1, fallback_date)[0]
+    fb_since, fb_until, fb_label = month_windows(1, fallback_date, window_months=window_months)[0]
 
     report_url = _upload_window_web(
         mirdash_base, tokens[0], paxel_src,
         paxel_forward, fb_since, fb_until, fb_label, verbose, server, 0, 1,
         keep_artifacts=keep_artifacts,
+        window_months=window_months,
     )
 
     if report_url is not None:
@@ -759,7 +799,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
 
 
 def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,
-                  keep_artifacts=False):
+                  keep_artifacts=False, window_months=_DEFAULT_WINDOW_MONTHS):
     """Console mode: original behavior with full terminal output."""
     port = 8799
     redirect_uri = f"http://127.0.0.1:{port}/callback"
@@ -793,7 +833,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
 
     if mode in ("init", "backfill"):
         n_months = token_count
-        windows = month_windows(n_months, today)
+        windows = month_windows(n_months, today, window_months=window_months)
 
         token_idx = 0
         uploaded = 0
@@ -808,6 +848,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
                 mirdash_base, tokens[token_idx], paxel_src,
                 paxel_forward, since, until, label, verbose, quiet,
                 keep_artifacts=keep_artifacts,
+                window_months=window_months,
             )
             if report_url is not None:
                 last_report_url = report_url
@@ -830,7 +871,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
                     print(f"  warning: could not open report in browser: {exc}")
         return
 
-    since, until, label = month_windows(1, today)[0]
+    since, until, label = month_windows(1, today, window_months=window_months)[0]
 
     if not quiet:
         print(f"  Computing your build profile for {label}…")
@@ -846,6 +887,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
     if summary is not None and not _summary_is_empty(summary):
         if not quiet:
             print("  Uploading metrics summary to mirdash…")
+        summary.setdefault("context", {})["window_months"] = window_months
         try:
             report_url = _upload_summary(mirdash_base, tokens[0], summary)
         except Exception as exc:
@@ -883,7 +925,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
 
     fallback_year, fallback_mo = int(fallback_month[:4]), int(fallback_month[5:7])
     fallback_date = datetime.date(fallback_year, fallback_mo, 1)
-    fb_since, fb_until, fb_label = month_windows(1, fallback_date)[0]
+    fb_since, fb_until, fb_label = month_windows(1, fallback_date, window_months=window_months)[0]
 
     if not quiet:
         print(f"  Uploading most recent month with data: {fb_label}…")
@@ -902,6 +944,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
 
     if not quiet:
         print("  Uploading metrics summary to mirdash…")
+    fb_summary.setdefault("context", {})["window_months"] = window_months
     try:
         report_url = _upload_summary(mirdash_base, tokens[0], fb_summary)
     except Exception as exc:
@@ -932,6 +975,9 @@ def main():
     console = "--console" in argv
     keep_artifacts = "--keep-artifacts" in argv
 
+    # Parse --window=N (trailing N-month scoring window; default 6)
+    window_months = parse_window(argv)
+
     # Determine operating mode
     mode, token_count = decide_mode(argv)
 
@@ -939,13 +985,14 @@ def main():
     paxel_literal_flags = {"--summary", "--no-open"}
 
     # Build paxel args: strip wrapper-only flags, literal flags, backfill/init flags,
-    # and mirdash overrides; keep source names and dir overrides
+    # mirdash overrides, and window override; keep source names and dir overrides
     paxel_forward = [
         a for a in argv
         if a not in wrapper_flags
         and a not in paxel_literal_flags
         and not re.match(r"--mirdash-base=", a)
         and not re.match(r"--backfill(=.*)?$", a)
+        and not re.match(r"--window=", a)
         and a != "--init"
     ]
 
@@ -953,10 +1000,10 @@ def main():
 
     if console:
         _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,
-                      keep_artifacts)
+                      keep_artifacts, window_months=window_months)
     else:
         _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,
-                  keep_artifacts)
+                  keep_artifacts, window_months=window_months)
 
 
 if __name__ == "__main__":
