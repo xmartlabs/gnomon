@@ -2621,9 +2621,7 @@ def write_report(s):
     if _missing > 0:
         _cov = (f" — note this is **partial**: only {vel['git_repos_with_commits']} of "
                 f"{vel['git_repos_seen']} repos were counted (the rest are missing from disk, have no "
-                f"commits under your git email, or were too large to scan in time). "
-                f"The Execution score nudges its throughput term up modestly (≤1.4×) to avoid "
-                f"penalizing you for repos paxel couldn't read")
+                f"commits under your git email, or were too large to scan in time)")
     else:
         _cov = ""
     A(f"- Tool-only churn (Edit/Write — what most profilers see): {vel['tool_churn_edit_write']:,} lines. "
@@ -2766,8 +2764,8 @@ REPO_URL = "https://github.com/Photobombastic/paxel-local"
 # Plain-language explanation shown under each score bar — what the axis measures, in
 # human terms, no jargon. (The gstack grounding lives in the disclaimer + README, not here.)
 SCORE_NOTES = {
-    "Execution": "How much you ship, and how fast — your committed-code rate, how much of what "
-                 "you generate actually lands in git, and how hard you delegate to agents.",
+    "Execution": "How much you produce, and how efficiently — your tool output rate (Edit/Write "
+                 "lines per active hour) and how hard you delegate to agents.",
     "Planning": "How much you think before you build — exploring before writing, reasoning "
                 "depth, and laying out a plan first. (Prompt length was dropped — terse expert "
                 "prompts shouldn't score below verbose ones.)",
