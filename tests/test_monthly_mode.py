@@ -349,6 +349,16 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         self.assertEqual(mock_paxel.call_count, 1)   # no all-time run, no fallback run
         self.assertEqual(mock_upload.call_count, 0)
 
+    def test_current_month_paxel_error_console_no_fallback(self):
+        """Same guard on the console path (--console): paxel failure → no fallback, no upload."""
+        mock_paxel, mock_upload = self._run_main(
+            argv=["--no-open", "--console"],
+            run_paxel_side_effect=[None],
+            upload_return_values=[],
+        )
+        self.assertEqual(mock_paxel.call_count, 1)
+        self.assertEqual(mock_upload.call_count, 0)
+
 
 # ---------------------------------------------------------------------------
 # Orchestration tests: --init mode (mocked)
