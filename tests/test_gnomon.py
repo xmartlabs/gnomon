@@ -486,8 +486,16 @@ class TestScoreBreakdown(unittest.TestCase):
     def test_three_axes_present(self):
         self.assertEqual(set(self.bd), {"execution", "planning", "engineering"})
 
-    def test_execution_has_three_subs(self):
-        self.assertEqual(len(self.bd["execution"]["subs"]), 3)
+    def test_execution_has_two_subs(self):
+        self.assertEqual(len(self.bd["execution"]["subs"]), 2)
+
+    def test_execution_sub_labels(self):
+        """Execution must have exactly 'Tool output rate' and 'Delegation & parallelism';
+        the removed subs ('Committed-code rate', 'Ship fidelity') must be absent."""
+        labels = {s["label"] for s in self.bd["execution"]["subs"]}
+        self.assertEqual(labels, {"Tool output rate", "Delegation & parallelism"})
+        self.assertNotIn("Committed-code rate", labels)
+        self.assertNotIn("Ship fidelity", labels)
 
     def test_planning_has_three_subs(self):
         self.assertEqual(len(self.bd["planning"]["subs"]), 3)
@@ -545,12 +553,12 @@ class TestScoreBreakdown(unittest.TestCase):
         """For 'higher'-direction subs with no floor involved, pct must equal
         clamp(your_value/target) within floating-point tolerance.  Guards the bar-fill
         display invariant for the non-trivial full-stats fixture (plenty of prompts, so
-        delegation floor doesn't fire).  Checked only for the four straightforward rate subs:
-        Committed-code rate, Ship fidelity (execution), Explore-before-build, Plan ceremony
-        (planning).  Does NOT assert on 'lower'-direction engineering subs or delegation."""
+        delegation floor doesn't fire).  Checked only for the three straightforward rate subs:
+        Tool output rate (execution), Explore-before-build, Plan ceremony (planning).
+        Does NOT assert on 'lower'-direction engineering subs or delegation."""
         tol = 1e-6
         checked = {
-            "execution": {"Committed-code rate", "Ship fidelity"},
+            "execution": {"Tool output rate"},
             "planning": {"Explore-before-build", "Plan ceremony"},
         }
         for axis, labels in checked.items():

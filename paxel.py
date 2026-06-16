@@ -2960,22 +2960,23 @@ def compute_scores(stats):
     ev = _evidence(stats)   # 0..1 confidence; gates the inverse terms so a thin corpus
                             # can't read as flawless (no-op at ev=1.0 for any real user).
 
-    # EXECUTION — shipped output at AI leverage. Three signals, no overlap with other axes:
-    #   (a) RATE: gold-standard git churn per active hour (coverage-corrected — git often
-    #       sees only some repos; we nudge ≤1.4× by coverage rather than penalize, and the
-    #       report discloses it). (b) FIDELITY: how much of what you GENERATED actually got
-    #       committed — git churn vs tool churn — the audit's headline "are you shipping or
-    #       just exploring" signal (also coverage-corrected). (c) DELEGATION/parallelism.
-    #   Dropped vs the old version: actions_per_prompt (now in steering_reading, described
-    #   not scored) and raw session length (the audit called it noise — a long distracted
-    #   session isn't execution).
-    git_cov = max(vel["git_repos_with_commits"] / max(vel["git_repos_seen"], 1), 0.7)
-    eff_git_churn = vel["git_churn_total"] / git_cov
-    fidelity = eff_git_churn / max(vel["tool_churn_edit_write"], 1)
+    # EXECUTION — shipped output at AI leverage. Two signals, no overlap with other axes:
+    #   (a) TOOL OUTPUT RATE: tool_churn_edit_write (lines autorated by the agent) per active
+    #       hour — honest and source-agnostic.  TARGET=1000 lines/hr is provisional (p75-p90
+    #       of prod distribution as of 2026-06, N=8 users, Claude-only data).  MUST be
+    #       recalibrated to p75-p90 after Workstream A fixes Gemini/Codex parsers — those
+    #       fixes will inflate tool_churn and shift the distribution upward (~1200-1500 est).
+    #   (b) DELEGATION/parallelism.
+    #   Removed: committed-code rate (git_churn/hours/400) — saturated at pct=1.0 due to
+    #   inflated git_churn (generated/lockfile/merge commits); and ship fidelity
+    #   (git_churn/tool_churn) — numerator inflated + denominator under-counted →
+    #   metric was not truthful.
+    _EXECUTION_OUTPUT_TARGET = 1000  # lines/hr; provisional — recalibrate post-parser fixes
+    out_rate   = vel["tool_churn_edit_write"] / hours
+    out_pct    = _clamp(out_rate / _EXECUTION_OUTPUT_TARGET)
     execution = 10 * (
-        0.40 * _clamp((eff_git_churn / hours) / 400)                      # committed-code rate, coverage-corrected
-        + 0.25 * _clamp(fidelity / 0.5)                                   # ship-vs-generate fidelity (committed / generated)
-        + 0.35 * _clamp((b["delegate_actions"] + b["background_tasks"]) / max(prompts * 0.3, 1)))  # delegation/parallelism
+        0.60 * out_pct                                                     # tool output rate
+        + 0.40 * _clamp((b["delegate_actions"] + b["background_tasks"]) / max(prompts * 0.3, 1)))  # delegation/parallelism
 
     # PLANNING — think before you build. Behavior-led.
     # DROPPED the avg_prompt_length term (was 0.25): it is experience-INVERTING — expertise
@@ -3047,9 +3048,8 @@ def score_breakdown(stats):
                     "axis_narrative": "No activity recorded."}
         return {
             "execution": _zero_axis("How much you ship, at AI leverage", [
-                ("Committed-code rate", 400, "lines/hr", 0.40, "higher"),
-                ("Ship fidelity",       0.5, "committed/generated", 0.25, "higher"),
-                ("Delegation & parallelism", 0.30, "agent-runs/prompt", 0.35, "higher"),
+                ("Tool output rate",          1000, "lines/hr autoradas", 0.60, "higher"),
+                ("Delegation & parallelism",  0.30, "agent-runs/prompt",  0.40, "higher"),
             ]),
             "planning": _zero_axis("Think before you build", [
                 ("Explore-before-build", 0.65, "explore/doing ratio", 0.45, "higher"),
@@ -3071,21 +3071,19 @@ def score_breakdown(stats):
     ev = _evidence(stats)
 
     # --- EXECUTION ---
-    git_cov = max(vel.get("git_repos_with_commits", 0) / max(vel.get("git_repos_seen", 1), 1), 0.7)
-    eff_git_churn = vel.get("git_churn_total", 0) / git_cov
-    fidelity = eff_git_churn / max(vel.get("tool_churn_edit_write", 1), 1)
-    rate_pct       = _clamp((eff_git_churn / hours) / 400)
-    fidelity_pct   = _clamp(fidelity / 0.5)
+    # TARGET provisional: p75-p90 of prod distribution (2026-06, N=8, Claude-only).
+    # Must be recalibrated after Workstream A parser fixes — Gemini/Codex will inflate
+    # tool_churn, shifting the distribution upward (estimated real target: ~1200-1500).
+    _EXECUTION_OUTPUT_TARGET = 1000  # lines/hr; see note above
+    out_rate       = vel.get("tool_churn_edit_write", 0) / hours
+    out_pct        = _clamp(out_rate / _EXECUTION_OUTPUT_TARGET)
     deleg_raw      = (b.get("delegate_actions", 0) + b.get("background_tasks", 0)) / max(prompts * 0.3, 1)
     deleg_pct      = _clamp(deleg_raw)
-    execution_val  = round(10 * (0.40 * rate_pct + 0.25 * fidelity_pct + 0.35 * deleg_pct), 1)
+    execution_val  = round(10 * (0.60 * out_pct + 0.40 * deleg_pct), 1)
     exec_subs = [
-        {"label": "Committed-code rate", "your_value": eff_git_churn / hours,
-         "target": 400, "unit": "lines/hr", "weight": 0.40, "pct": rate_pct,
-         "direction": "higher", "is_drag": False},
-        {"label": "Ship fidelity", "your_value": fidelity,
-         "target": 0.5, "unit": "committed/generated", "weight": 0.25, "pct": fidelity_pct,
-         "direction": "higher", "is_drag": False},
+        {"label": "Tool output rate", "your_value": out_rate,
+         "target": _EXECUTION_OUTPUT_TARGET, "unit": "lines/hr autoradas", "weight": 0.60,
+         "pct": out_pct, "direction": "higher", "is_drag": False},
         # your_value is the raw measured agent-runs/prompt (denominator: actual prompts).
         # pct matches compute_scores' clamp (denominator: prompts*0.3) and equals
         # your_value/target in the normal regime (prompts ≥ 4).  For tiny corpora
@@ -3095,7 +3093,7 @@ def score_breakdown(stats):
         # The UI must fill bars from pct, not recompute from your_value/target.
         {"label": "Delegation & parallelism",
          "your_value": (b.get("delegate_actions", 0) + b.get("background_tasks", 0)) / max(prompts, 1),
-         "target": 0.30, "unit": "agent-runs/prompt", "weight": 0.35, "pct": deleg_pct,
+         "target": 0.30, "unit": "agent-runs/prompt", "weight": 0.40, "pct": deleg_pct,
          "direction": "higher", "is_drag": False},
     ]
     exec_subs = [_enrich_sub(s) for s in exec_subs]
