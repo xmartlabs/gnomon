@@ -337,6 +337,18 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         )
         self.assertEqual(mock_upload.call_count, 0)
 
+    def test_current_month_paxel_error_does_not_fall_back(self):
+        """A paxel run FAILURE (None) on the current month must NOT trigger the
+        historical-month fallback — that would upload stale data and mislabel the
+        current month as empty. Expect exactly 1 paxel run and 0 uploads."""
+        mock_paxel, mock_upload = self._run_main(
+            argv=["--no-open"],
+            run_paxel_side_effect=[None],   # current-month paxel run failed
+            upload_return_values=[],
+        )
+        self.assertEqual(mock_paxel.call_count, 1)   # no all-time run, no fallback run
+        self.assertEqual(mock_upload.call_count, 0)
+
 
 # ---------------------------------------------------------------------------
 # Orchestration tests: --init mode (mocked)
@@ -443,6 +455,77 @@ class TestHeadlessAuthCleanExit(unittest.TestCase):
         mock_capture.assert_not_called()
         mock_paxel.assert_not_called()
         mock_upload.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Failure-mode plumbing: report-url sentinels, dir-flag absolutization
+# ---------------------------------------------------------------------------
+
+
+class TestIsReportUrl(unittest.TestCase):
+    def test_real_url_is_report_url(self):
+        self.assertTrue(xl_ai_insights._is_report_url("/report/abc"))
+
+    def test_none_is_not_report_url(self):
+        self.assertFalse(xl_ai_insights._is_report_url(None))
+
+    def test_paxel_error_sentinel_is_not_report_url(self):
+        self.assertFalse(xl_ai_insights._is_report_url(xl_ai_insights._PAXEL_ERROR))
+
+    def test_upload_error_sentinel_is_not_report_url(self):
+        self.assertFalse(xl_ai_insights._is_report_url(xl_ai_insights._UPLOAD_ERROR))
+
+
+class TestUploadWindowWebSentinels(unittest.TestCase):
+    """_upload_window_web distinguishes paxel failure / empty / upload failure / success."""
+
+    def _call(self, run_paxel_return=None, run_paxel_side=None, upload_side=None):
+        server = MagicMock()
+        with (
+            patch.object(xl_ai_insights, "_run_paxel",
+                         return_value=run_paxel_return, side_effect=run_paxel_side),
+            patch.object(xl_ai_insights, "_upload_summary", side_effect=upload_side),
+        ):
+            return xl_ai_insights._upload_window_web(
+                "https://m", "tok", "/paxel.py", [], "2025-12-01", "2026-01-01",
+                "2025-12", False, server, 0, 1,
+            )
+
+    def test_paxel_failure_returns_paxel_error_sentinel(self):
+        self.assertEqual(self._call(run_paxel_return=None), xl_ai_insights._PAXEL_ERROR)
+
+    def test_empty_summary_returns_none(self):
+        empty = _make_summary(sessions=0)
+        self.assertIsNone(self._call(run_paxel_return=empty))
+
+    def test_upload_exception_returns_upload_error_sentinel(self):
+        good = _make_summary(sessions=5)
+        result = self._call(run_paxel_return=good, upload_side=RuntimeError("boom"))
+        self.assertEqual(result, xl_ai_insights._UPLOAD_ERROR)
+
+    def test_success_returns_report_url(self):
+        good = _make_summary(sessions=5)
+        result = self._call(run_paxel_return=good, upload_side=["/report/m"])
+        self.assertEqual(result, "/report/m")
+
+
+class TestAbsolutizeDirFlags(unittest.TestCase):
+    def test_relative_dir_flag_made_absolute(self):
+        out = xl_ai_insights._absolutize_dir_flags(["--claude-dir=./backup/.claude"])
+        self.assertEqual(out[0], "--claude-dir=" + os.path.abspath("./backup/.claude"))
+        self.assertTrue(out[0].split("=", 1)[1].startswith("/"))
+
+    def test_absolute_dir_flag_unchanged(self):
+        out = xl_ai_insights._absolutize_dir_flags(["--codex-dir=/abs/path"])
+        self.assertEqual(out, ["--codex-dir=/abs/path"])
+
+    def test_home_dir_flag_expanded(self):
+        out = xl_ai_insights._absolutize_dir_flags(["--gemini-dir=~/x"])
+        self.assertEqual(out[0], "--gemini-dir=" + os.path.abspath(os.path.expanduser("~/x")))
+
+    def test_non_dir_flags_and_sources_untouched(self):
+        args = ["claude", "--mirdash-base=https://m", "--quiet"]
+        self.assertEqual(xl_ai_insights._absolutize_dir_flags(args), args)
 
 
 if __name__ == "__main__":

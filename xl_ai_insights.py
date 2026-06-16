@@ -92,6 +92,34 @@ _MAX_BACKFILL = 12
 # Default window size when --window is absent.
 _DEFAULT_WINDOW_MONTHS = 6
 
+# Sentinels returned by the web upload helper so callers can tell a real reportUrl
+# apart from the two distinct failure modes (paxel run failed vs. upload POST failed).
+_PAXEL_ERROR = "PAXEL_ERROR"
+_UPLOAD_ERROR = "UPLOAD_ERROR"
+
+
+def _is_report_url(value):
+    """True only for a real reportUrl — not None and not a failure sentinel."""
+    return value is not None and value not in (_PAXEL_ERROR, _UPLOAD_ERROR)
+
+
+def _absolutize_dir_flags(args):
+    """Rewrite relative --<source>-dir=PATH values to absolute paths.
+
+    paxel runs from a temporary working directory, so a relative override like
+    --claude-dir=./backup would resolve against that temp dir and silently find
+    nothing. Resolve such paths against the caller's current working directory
+    here, before forwarding. Absolute paths and non-dir flags pass through unchanged.
+    """
+    out = []
+    for a in args:
+        m = re.match(r"(--[a-z]+-dir=)(.+)$", a)
+        if m:
+            out.append(m.group(1) + os.path.abspath(os.path.expanduser(m.group(2))))
+        else:
+            out.append(a)
+    return out
+
 
 def parse_window(argv):
     """Return the window_months value from argv.
@@ -602,7 +630,9 @@ def _upload_window_web(mirdash_base, token, paxel_src, paxel_args_base, since, u
                        window_months=_DEFAULT_WINDOW_MONTHS):
     """Run paxel for one calendar window, push SSE events, and upload.
 
-    Returns the reportUrl string on success, or None if skipped/error.
+    Returns the reportUrl string on success, or one of the failure sentinels:
+    `_PAXEL_ERROR` (paxel run failed), `_UPLOAD_ERROR` (upload POST failed), or
+    None when the window is genuinely empty (no activity — a normal skip).
     """
     window_args = paxel_args_base + [
         f"--since={since}",
@@ -616,7 +646,7 @@ def _upload_window_web(mirdash_base, token, paxel_src, paxel_args_base, since, u
     summary = _run_paxel(paxel_src, window_args, verbose, keep_artifacts=keep_artifacts)
     if summary is None:
         server.push_event("skipped", {"month": label, "label": label, "reason": "paxel error"})
-        return None
+        return _PAXEL_ERROR
 
     if _summary_is_empty(summary):
         server.push_event("skipped", {"month": label, "label": label, "reason": "no activity"})
@@ -631,7 +661,7 @@ def _upload_window_web(mirdash_base, token, paxel_src, paxel_args_base, since, u
         return report_url
     except Exception as exc:
         server.push_event("error_msg", {"month": label, "label": label, "message": str(exc)})
-        return "UPLOAD_ERROR"
+        return _UPLOAD_ERROR
 
 
 def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,
@@ -707,7 +737,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
                 keep_artifacts=keep_artifacts,
                 window_months=window_months,
             )
-            if report_url is not None and report_url != "UPLOAD_ERROR":
+            if _is_report_url(report_url):
                 last_report_url = report_url
                 uploaded += 1
                 token_idx += 1
@@ -739,14 +769,24 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
         window_months=window_months,
     )
 
-    if report_url == "UPLOAD_ERROR":
+    if report_url == _UPLOAD_ERROR:
         server.push_event("done", {"reportUrl": "", "uploaded": 0, "total": 1, "noOpen": True,
                                     "mirdashBase": mirdash_base})
         print(f"  error: upload failed for {label}")
         server.shutdown()
         return
 
-    if report_url is not None:
+    if report_url == _PAXEL_ERROR:
+        # paxel itself failed (error already printed by _run_paxel). Do NOT fall through
+        # to the historical-month fallback — that would upload stale data and report the
+        # current month as empty, masking the real failure.
+        server.push_event("done", {"reportUrl": "", "uploaded": 0, "total": 1, "noOpen": True,
+                                    "mirdashBase": mirdash_base})
+        print(f"  error: could not compute {label} — nothing was shared")
+        server.shutdown()
+        return
+
+    if _is_report_url(report_url):
         server.push_event("done", {
             "reportUrl": report_url,
             "mirdashBase": mirdash_base,
@@ -759,7 +799,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
         server.shutdown()
         return
 
-    # Fallback: current month empty — find most recent month with data
+    # Fallback: current month genuinely empty (report_url is None) — find most recent month with data
     all_time_args = paxel_forward + ["--summary", "--no-open"]
     all_time_summary = _run_paxel(paxel_src, all_time_args, verbose, keep_artifacts=keep_artifacts)
 
@@ -789,7 +829,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
         window_months=window_months,
     )
 
-    if report_url is not None:
+    if _is_report_url(report_url):
         full_report = urllib.parse.urljoin(mirdash_base + "/", report_url)
         server.push_event("done", {
             "reportUrl": report_url,
@@ -799,6 +839,10 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
             "noOpen": no_open,
         })
         print(f"  ✓ {fb_label} uploaded → {full_report}")
+    elif report_url == _UPLOAD_ERROR:
+        server.push_event("done", {"reportUrl": "", "uploaded": 0, "total": 1, "noOpen": True,
+                                    "mirdashBase": mirdash_base})
+        print(f"  error: upload failed for {fb_label}")
     else:
         server.push_event("done", {"reportUrl": "", "uploaded": 0, "total": 1, "noOpen": True})
         print("  nothing to share (no sessions found)")
@@ -892,7 +936,13 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
     ]
     summary = _run_paxel(paxel_src, window_args, verbose, keep_artifacts=keep_artifacts)
 
-    if summary is not None and not _summary_is_empty(summary):
+    if summary is None:
+        # paxel failed (error already printed by _run_paxel). Do NOT fall through to the
+        # historical-month fallback — that would upload stale data and report the current
+        # month as empty, masking the real failure.
+        sys.exit(1)
+
+    if not _summary_is_empty(summary):
         if not quiet:
             print("  Uploading metrics summary to mirdash…")
         summary.setdefault("context", {})["window_months"] = window_months
@@ -1003,6 +1053,9 @@ def main():
         and not re.match(r"--window(=.*)?$", a)
         and a != "--init"
     ]
+    # Resolve relative --<source>-dir overrides against the caller's cwd before paxel
+    # runs from its temp directory (see _absolutize_dir_flags).
+    paxel_forward = _absolutize_dir_flags(paxel_forward)
 
     mirdash_base = _resolve_mirdash_base(argv)
 
