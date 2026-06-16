@@ -303,5 +303,120 @@ class TestUnits(unittest.TestCase):
         self.assertNotIn("Steering", zero)
 
 
+class TestCanonToolGeminiMappings(unittest.TestCase):
+    """_canon_tool must map Gemini-native tool names to Claude taxonomy."""
+
+    def test_write_file_maps_to_Write(self):
+        self.assertEqual(paxel._canon_tool("write_file"), "Write")
+
+    def test_read_file_maps_to_Read(self):
+        self.assertEqual(paxel._canon_tool("read_file"), "Read")
+
+    def test_run_shell_command_maps_to_Bash(self):
+        self.assertEqual(paxel._canon_tool("run_shell_command"), "Bash")
+
+    def test_search_file_content_maps_to_Grep(self):
+        self.assertEqual(paxel._canon_tool("search_file_content"), "Grep")
+
+    def test_find_line_numbers_maps_to_Grep(self):
+        self.assertEqual(paxel._canon_tool("find_line_numbers"), "Grep")
+
+
+class TestGeminiEventsAdapter(unittest.TestCase):
+    """_gemini_events must parse real-format Gemini session JSON correctly."""
+
+    FP = os.path.join(FIX, "gemini", "session-gemini.json")
+
+    def setUp(self):
+        self.events = list(paxel._gemini_events(self.FP))
+
+    def test_yields_user_event(self):
+        users = [e for e in self.events if e.get("type") == "user"
+                 and isinstance(e.get("message", {}).get("content"), str)]
+        self.assertTrue(users, "no plain user prompt event found")
+
+    def test_yields_assistant_event(self):
+        asst = [e for e in self.events if e.get("type") == "assistant"]
+        self.assertTrue(asst, "no assistant event found")
+
+    def test_assistant_has_thinking_block(self):
+        asst = [e for e in self.events if e.get("type") == "assistant"]
+        self.assertTrue(asst)
+        blocks = asst[0]["message"]["content"]
+        thinking = [b for b in blocks if b.get("type") == "thinking"]
+        self.assertTrue(thinking, "no thinking block in assistant content")
+
+    def test_assistant_has_tool_use_blocks(self):
+        asst = [e for e in self.events if e.get("type") == "assistant"]
+        self.assertTrue(asst)
+        blocks = asst[0]["message"]["content"]
+        tool_uses = [b for b in blocks if b.get("type") == "tool_use"]
+        self.assertTrue(tool_uses, "no tool_use blocks in assistant content")
+
+    def test_tool_use_names_are_canonical(self):
+        asst = [e for e in self.events if e.get("type") == "assistant"]
+        blocks = asst[0]["message"]["content"]
+        tool_uses = [b for b in blocks if b.get("type") == "tool_use"]
+        names = {b["name"] for b in tool_uses}
+        # write_file -> Write, run_shell_command -> Bash
+        self.assertIn("Write", names)
+        self.assertIn("Bash", names)
+
+    def test_tool_result_event_emitted(self):
+        # After the assistant event there should be a user event with tool_result blocks
+        user_tool_result_events = [
+            e for e in self.events
+            if e.get("type") == "user"
+            and isinstance(e.get("message", {}).get("content"), list)
+            and any(b.get("type") == "tool_result"
+                    for b in e["message"]["content"]
+                    if isinstance(b, dict))
+        ]
+        self.assertTrue(user_tool_result_events, "no tool_result user event found")
+
+    def test_error_tool_result_has_is_error_true(self):
+        # The fixture has one toolCall with status "error" — its result must have is_error=True
+        tool_results = [
+            b
+            for e in self.events
+            if e.get("type") == "user"
+            and isinstance(e.get("message", {}).get("content"), list)
+            for b in e["message"]["content"]
+            if isinstance(b, dict) and b.get("type") == "tool_result"
+        ]
+        self.assertTrue(any(b.get("is_error") for b in tool_results),
+                        "no is_error=True tool_result found for the error toolCall")
+
+    def test_assistant_usage_mapped(self):
+        asst = [e for e in self.events if e.get("type") == "assistant"]
+        self.assertTrue(asst)
+        usage = asst[0]["message"].get("usage")
+        self.assertIsNotNone(usage, "usage missing from assistant message")
+        # input_tokens == m.tokens.input
+        self.assertEqual(usage["input_tokens"], 1500)
+        # output_tokens == output + thoughts (42 + 120 = 162)
+        self.assertEqual(usage["output_tokens"], 162)
+        # cache_read_input_tokens == cached (800)
+        self.assertEqual(usage["cache_read_input_tokens"], 800)
+        # cache_creation_input_tokens == 0
+        self.assertEqual(usage["cache_creation_input_tokens"], 0)
+
+    def test_assistant_model_field(self):
+        asst = [e for e in self.events if e.get("type") == "assistant"]
+        self.assertTrue(asst)
+        self.assertEqual(asst[0]["message"].get("model"), "gemini-2.5-pro")
+
+    def test_cwd_is_non_none(self):
+        # fixture has dir_path="/Users/mirland/projects/myapp" on the git commit toolCall
+        asst = [e for e in self.events if e.get("type") == "assistant"]
+        self.assertTrue(asst)
+        self.assertIsNotNone(asst[0].get("cwd"), "cwd should be resolved from dir_path")
+
+    def test_cwd_is_absolute_path(self):
+        asst = [e for e in self.events if e.get("type") == "assistant"]
+        cwd = asst[0].get("cwd")
+        self.assertTrue(str(cwd).startswith("/"), f"cwd should be absolute, got: {cwd!r}")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

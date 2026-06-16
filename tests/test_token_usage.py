@@ -490,5 +490,83 @@ class TestZeroActivityTokenUsage(unittest.TestCase):
         self.assertEqual(self.stats["token_usage"]["by_model"], [])
 
 
+
+# ---------------------------------------------------------------------------
+# 7. Gemini adapter — token mapping via real-format fixture
+# ---------------------------------------------------------------------------
+
+class TestGeminiTokenMapping(unittest.TestCase):
+    """_gemini_events must translate m.tokens into Claude-style usage keys.
+
+    Fixture values (from tests/fixtures/gemini/session-gemini.json):
+      input=1500, output=42, cached=800, thoughts=120, total=2462
+
+    Expected translation:
+      input_tokens              = input  = 1500
+      output_tokens             = output + thoughts = 42 + 120 = 162
+      cache_read_input_tokens   = cached = 800
+      cache_creation_input_tokens = 0
+    """
+
+    FP = os.path.join(FIX, "gemini", "session-gemini.json")
+
+    def setUp(self):
+        self.events = list(paxel._gemini_events(self.FP))
+        self.asst = [e for e in self.events if e.get("type") == "assistant"]
+
+    def test_assistant_event_present(self):
+        self.assertTrue(self.asst, "no assistant event from gemini fixture")
+
+    def test_usage_input_tokens(self):
+        usage = self.asst[0]["message"].get("usage", {})
+        self.assertEqual(usage.get("input_tokens"), 1500)
+
+    def test_usage_output_tokens_folds_thoughts(self):
+        usage = self.asst[0]["message"].get("usage", {})
+        self.assertEqual(usage.get("output_tokens"), 162)  # 42 + 120
+
+    def test_usage_cache_read_from_cached(self):
+        usage = self.asst[0]["message"].get("usage", {})
+        self.assertEqual(usage.get("cache_read_input_tokens"), 800)
+
+    def test_usage_cache_creation_is_zero(self):
+        usage = self.asst[0]["message"].get("usage", {})
+        self.assertEqual(usage.get("cache_creation_input_tokens"), 0)
+
+    def test_full_pipeline_gemini_model_appears_in_token_usage(self):
+        """Running paxel.main() against only the Gemini fixture must yield a token row
+        for gemini-2.5-pro."""
+        out = tempfile.mkdtemp(prefix="paxel-gemini-tok-")
+        gemini_dir = os.path.join(FIX, "gemini")
+        self.addCleanup(shutil.rmtree, out, ignore_errors=True)
+        argv = ["paxel.py", "--no-open"]
+        buf = io.StringIO()
+        empty = tempfile.mkdtemp(prefix="paxel-gemini-empty-")
+        self.addCleanup(shutil.rmtree, empty, ignore_errors=True)
+        overrides = dict(
+            BASE=empty,
+            CODEX_DIR=empty,
+            GEMINI_DIR=gemini_dir,
+            PI_DIR=empty,
+            OPENCODE_DIR=empty,
+            CURSOR_DIR=empty,
+            CURSOR_DB=os.path.join(empty, "nope.vscdb"),
+        )
+        with mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
+                mock.patch.object(sys, "argv", argv), \
+                contextlib.redirect_stdout(buf):
+            paxel.main()
+        with open(os.path.join(out, "stats.json")) as fh:
+            stats = json.load(fh)
+        by_model = stats["token_usage"]["by_model"]
+        model_ids = [e["model_id"] for e in by_model]
+        self.assertIn("gemini-2.5-pro", model_ids,
+                      f"gemini-2.5-pro not in token_usage.by_model: {model_ids}")
+        entry = next(e for e in by_model if e["model_id"] == "gemini-2.5-pro")
+        self.assertEqual(entry["input"], 1500)
+        self.assertEqual(entry["output"], 162)
+        self.assertEqual(entry["cache_read"], 800)
+
+
 if __name__ == "__main__":
     unittest.main()
