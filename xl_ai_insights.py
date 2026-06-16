@@ -15,6 +15,7 @@ Usage:
 
     source        e.g. claude, codex, gemini — same as paxel.py (default: all)
     --mirdash-base=URL  override the mirdash server URL
+    --window=N    trailing window size in months for each scored point (default 6)
     --no-open     skip redirecting to the mirdash report at the end
     --quiet       only print errors and the final report URL
     --verbose     also show paxel's full stdout/stderr
@@ -100,6 +101,13 @@ def parse_window(argv):
     invalid N   → warning + default
     """
     for a in argv:
+        if a == "--window":
+            print(
+                f"  warning: --window needs a value (use --window=N)"
+                f" — using default {_DEFAULT_WINDOW_MONTHS}",
+                file=sys.stderr,
+            )
+            return _DEFAULT_WINDOW_MONTHS
         m = re.match(r"--window=(.+)$", a)
         if m:
             raw = m.group(1)
@@ -992,7 +1000,7 @@ def main():
         and a not in paxel_literal_flags
         and not re.match(r"--mirdash-base=", a)
         and not re.match(r"--backfill(=.*)?$", a)
-        and not re.match(r"--window=", a)
+        and not re.match(r"--window(=.*)?$", a)
         and a != "--init"
     ]
 

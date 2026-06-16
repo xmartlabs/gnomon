@@ -60,6 +60,13 @@ class TestParseWindow(unittest.TestCase):
     def test_default_is_6(self):
         self.assertEqual(_DEFAULT_WINDOW_MONTHS, 6)
 
+    def test_bare_window_warns_and_returns_default(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            result = parse_window(["--window", "6"])
+        self.assertEqual(result, _DEFAULT_WINDOW_MONTHS)
+        self.assertIn("warning", buf.getvalue())
+
 
 # ---------------------------------------------------------------------------
 # --window= is stripped from paxel_forward (does NOT reach paxel)
@@ -214,14 +221,6 @@ class TestWindowMonthsInPayload(unittest.TestCase):
         )
         self.assertEqual(len(uploaded), 1)
         self.assertEqual(uploaded[0]["context"]["window_months"], _DEFAULT_WINDOW_MONTHS)
-
-    def test_fallback_month_payload_contains_window_months(self):
-        """Fallback (current month empty) path: see TestWindowMonthsFallbackPayload below."""
-        # Full fallback-path coverage is in TestWindowMonthsFallbackPayload,
-        # which correctly provides progression_monthly.  This test just checks
-        # that the backfill path stamps window_months (already covered by
-        # test_backfill_payload_contains_window_months).
-        pass
 
     def test_backfill_payload_contains_window_months(self):
         """--backfill mode: every uploaded summary has context.window_months."""
