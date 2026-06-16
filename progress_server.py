@@ -175,9 +175,9 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
         <circle class="fill" id="ring-fill" cx="40" cy="40" r="35"
           stroke-dasharray="219.9" stroke-dashoffset="219.9"/>
       </svg>
-      <span class="pct" id="ring-pct">0%</span>
+      <span class="pct" id="ring-count">0/0</span>
     </div>
-    <p class="sub" id="batch-sub">0 / 0 months</p>
+    <p class="sub" id="batch-sub">months processed</p>
     <div class="pill-grid" id="pill-grid"></div>
   </div>
 
@@ -214,36 +214,25 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
   var tickId = null;
 
   function renderRing(pct) {
-    document.getElementById('ring-pct').textContent = pct + '%';
     document.getElementById('ring-fill').setAttribute('stroke-dashoffset', CIRC * (1 - pct / 100));
   }
 
   function updateRing() {
     targetPct = total > 0 ? Math.round(processed / total * 100) : 0;
-    document.getElementById('batch-sub').textContent = processed + ' / ' + total + ' months';
-  }
-
-  function snapToTarget() {
-    if (displayPct < targetPct) {
-      displayPct = targetPct;
-      renderRing(displayPct);
-    }
+    document.getElementById('ring-count').textContent = processed + '/' + total;
+    document.getElementById('batch-sub').textContent = processed === 1 ? 'month processed' : 'months processed';
   }
 
   function startTicker() {
     if (tickId) return;
     tickId = setInterval(function() {
       if (displayPct < targetPct) {
-        displayPct++;
+        var delta = targetPct - displayPct;
+        var step = Math.max(1, Math.ceil(delta / 4));
+        displayPct = Math.min(targetPct, displayPct + step);
         renderRing(displayPct);
       }
-    }, 1000);
-  }
-
-  function setMidTarget(index) {
-    var stepSize = 100 / total;
-    var midPct = Math.round((index + 0.5) * stepSize);
-    if (midPct > targetPct) targetPct = midPct;
+    }, 250);
   }
 
   var MN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -334,7 +323,6 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     if (isBatch) {
       document.getElementById('title').textContent = 'Uploading metrics';
       setMonthState(d.month, d.label, 'active');
-      setMidTarget(d.index);
     } else {
       document.getElementById('title').textContent = 'Processing ' + d.label;
       setStep('step-analyze', 'active');
@@ -358,7 +346,6 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     if (isBatch) {
       setMonthState(d.month, d.label, 'done');
       updateRing();
-      snapToTarget();
     } else {
       setStep('step-upload', 'done');
     }
@@ -370,7 +357,6 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     if (isBatch) {
       setMonthState(d.month, d.label, 'skip');
       updateRing();
-      snapToTarget();
     }
   });
 
@@ -380,7 +366,6 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     if (isBatch) {
       setMonthState(d.month, d.label, 'skip');
       updateRing();
-      snapToTarget();
     }
   });
 
@@ -388,7 +373,7 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     const d = JSON.parse(e.data);
     es.close();
     if (tickId) { clearInterval(tickId); tickId = null; }
-    if (isBatch) { displayPct = 100; renderRing(100); }
+    if (isBatch) { updateRing(); displayPct = targetPct; renderRing(displayPct); }
     showDone(d);
   });
 
