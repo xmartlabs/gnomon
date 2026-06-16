@@ -209,11 +209,34 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     else si.textContent = '\\u00B7';
   }
 
-  function updateRing() {
-    const pct = total > 0 ? Math.round(processed / total * 100) : 0;
+  var targetPct = 0;
+  var displayPct = 0;
+  var tickId = null;
+
+  function renderRing(pct) {
     document.getElementById('ring-pct').textContent = pct + '%';
-    document.getElementById('ring-fill').setAttribute('stroke-dashoffset', CIRC * (1 - processed / total));
+    document.getElementById('ring-fill').setAttribute('stroke-dashoffset', CIRC * (1 - pct / 100));
+  }
+
+  function updateRing() {
+    targetPct = total > 0 ? Math.round(processed / total * 100) : 0;
     document.getElementById('batch-sub').textContent = processed + ' / ' + total + ' months';
+  }
+
+  function startTicker() {
+    if (tickId) return;
+    tickId = setInterval(function() {
+      if (displayPct < targetPct) {
+        displayPct++;
+        renderRing(displayPct);
+      }
+    }, 1000);
+  }
+
+  function setMidTarget(index) {
+    var stepSize = 100 / total;
+    var midPct = Math.round((index + 0.5) * stepSize);
+    if (midPct > targetPct) targetPct = midPct;
   }
 
   var MN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -237,6 +260,7 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
       monthEls[m] = el;
     });
     updateRing();
+    startTicker();
   }
 
   function setMonthState(month, label, state) {
@@ -303,6 +327,7 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     if (isBatch) {
       document.getElementById('title').textContent = 'Uploading metrics';
       setMonthState(d.month, d.label, 'active');
+      setMidTarget(d.index);
     } else {
       document.getElementById('title').textContent = 'Processing ' + d.label;
       setStep('step-analyze', 'active');
@@ -352,6 +377,8 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
   es.addEventListener('done', function(e) {
     const d = JSON.parse(e.data);
     es.close();
+    if (tickId) { clearInterval(tickId); tickId = null; }
+    if (isBatch) { displayPct = 100; renderRing(100); }
     showDone(d);
   });
 
