@@ -8,9 +8,11 @@ Extends the one-shot auth callback into a multi-request HTTP server that:
 No external dependencies — Python 3 stdlib only.
 """
 
+import html
 import http.server
 import json
 import queue
+import sys
 import threading
 import time
 import urllib.parse
@@ -46,7 +48,7 @@ _PROGRESS_PAGE = """\
   --bg-base:#1a1f27;--bg-surface:#222831;--bg-elev:#2a3038;
   --text-primary:#f0f0f0;--text-secondary:#c7cacf;--text-muted:#85888f;
   --border:rgba(255,255,255,.078);--accent:#ee1a64;--accent-light:rgba(238,26,100,.14);
-  --purple:#5d5fee;--ok:#34d399;--danger:#f87171;
+  --purple:#5d5fee;--ok:#34d399;--danger:#f87171;--warn:#fbbf24;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
@@ -107,6 +109,18 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
 .step.active .si{animation:spin 1.2s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
+/* Failed step */
+.step.failed{color:var(--danger)}
+.step.failed .si{background:rgba(248,113,113,.14);color:var(--danger)}
+
+/* Sign-in fallback button */
+.signin{display:none;margin:14px auto 4px;padding:11px 20px;border-radius:10px;
+  font-family:'Outfit',sans-serif;font-weight:600;font-size:14px;text-decoration:none;
+  color:#fff;background:linear-gradient(135deg,var(--accent),var(--purple));
+  box-shadow:0 6px 18px rgba(238,26,100,.28);transition:transform .15s,box-shadow .15s}
+.signin:not(.hidden){display:inline-block}
+.signin:hover{transform:translateY(-1px);box-shadow:0 8px 22px rgba(238,26,100,.36)}
+
 /* --- Batch progress --- */
 .batch{display:none}
 .batch .ring{width:72px;height:72px;margin:0 auto 14px;position:relative}
@@ -125,7 +139,10 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
 .pill.pending{background:var(--bg-elev);color:var(--text-muted);border:1px solid transparent}
 .pill.skip{background:transparent;color:var(--text-muted);border:1px solid var(--border);opacity:.5;
   text-decoration:line-through;font-size:9px}
+.pill.failed{background:rgba(248,113,113,.1);color:var(--danger);border:1px solid rgba(248,113,113,.28);font-weight:600}
 .pill .pi{display:block;font-size:12px;margin-bottom:2px}
+.pill.active .pi{animation:uprise 1s ease-in-out infinite}
+@keyframes uprise{0%{transform:translateY(2px);opacity:.4}50%{transform:translateY(-2px);opacity:1}100%{transform:translateY(2px);opacity:.4}}
 
 /* --- Done state --- */
 .redir{display:inline-flex;align-items:center;gap:6px;
@@ -157,12 +174,15 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     <svg id="icon-check" class="hidden" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
   </div>
 
-  <h1 id="title">Procesando&hellip;</h1>
+  <h1 id="title">Esperando inicio de sesi&oacute;n&hellip;</h1>
   <p class="sub" id="subtitle"></p>
 
-  <!-- Single-month steps -->
-  <div id="single" class="steps">
-    <div class="step done" id="step-auth"><span class="si">&check;</span> Authenticated</div>
+  <!-- Sign-in fallback (revealed if auth hasn't arrived) -->
+  <a id="signin" class="signin hidden" href="__AUTH_URL__">Iniciar sesi&oacute;n con mirdash</a>
+
+  <!-- Single-month steps (hidden until authenticated — no fake progress pre-login) -->
+  <div id="single" class="steps hidden">
+    <div class="step done" id="step-auth"><span class="si">&check;</span> <span class="label">Authenticated</span></div>
     <div class="step active" id="step-analyze"><span class="si">&circlearrowleft;</span> <span class="label">Analyzing metrics&hellip;</span></div>
     <div class="step pending" id="step-upload"><span class="si">&middot;</span> <span class="label">Upload to mirdash</span></div>
   </div>
@@ -196,8 +216,23 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
   let isBatch = false;
   let total = 1;
   let processed = 0;
+  let failed = 0;
   let monthEls = {};
   let mirdashBase = '';
+  let authed = false;
+
+  // Reveal the sign-in fallback if auth hasn't arrived shortly after load.
+  // Covers the case where the user closed the mirdash login tab and only has
+  // this progress page open — they can re-trigger login without re-running.
+  setTimeout(function() {
+    if (!authed) {
+      var btn = document.getElementById('signin');
+      if (btn && btn.getAttribute('href') && btn.getAttribute('href') !== '__AUTH_URL__') {
+        document.getElementById('subtitle').textContent = '\\u00BFNo se abri\\u00F3 el login? Inici\\u00E1 sesi\\u00F3n para continuar.';
+        btn.classList.remove('hidden');
+      }
+    }
+  }, 3500);
 
   function setStep(id, state) {
     const el = document.getElementById(id);
@@ -206,6 +241,7 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     const si = el.querySelector('.si');
     if (state === 'done') si.textContent = '\\u2713';
     else if (state === 'active') si.textContent = '\\u21BB';
+    else if (state === 'failed') si.textContent = '\\u2715';
     else si.textContent = '\\u00B7';
   }
 
@@ -265,8 +301,9 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     el.className = 'pill ' + state;
     var icon = '\\u00B7';
     if (state === 'done') icon = '\\u2713';
-    else if (state === 'active') icon = '\\u21BB';
+    else if (state === 'active') icon = '\\u2191';
     else if (state === 'skip') icon = '\\u2014';
+    else if (state === 'failed') icon = '\\u2715';
     el.innerHTML = '<span class="pi">' + icon + '</span>' + shortMonth(month);
   }
 
@@ -277,10 +314,31 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     document.getElementById('icon-check').classList.remove('hidden');
 
     const uploaded = data.uploaded || 0;
+    const failedCount = data.failed || 0;
     const h1 = document.getElementById('title');
     const sub = document.getElementById('subtitle');
 
-    if (uploaded > 0) {
+    if (uploaded > 0 && failedCount > 0) {
+      // Partial: some uploaded, some failed.
+      icon.className = 'icon-wrap icon-progress';
+      icon.style.background = 'rgba(251,191,36,.12)';
+      icon.style.borderColor = 'rgba(251,191,36,.3)';
+      document.getElementById('icon-check').style.stroke = 'var(--warn)';
+      h1.textContent = 'Subida parcial';
+      h1.style.color = 'var(--warn)';
+      sub.textContent = uploaded + (uploaded === 1 ? ' mes subido' : ' meses subidos') + ', ' +
+        failedCount + (failedCount === 1 ? ' fall\\u00F3' : ' fallaron') + ' \\u2014 revis\\u00E1 la terminal.';
+    } else if (failedCount > 0) {
+      // Total failure.
+      icon.className = 'icon-wrap icon-progress';
+      icon.style.background = 'rgba(248,113,113,.12)';
+      icon.style.borderColor = 'rgba(248,113,113,.3)';
+      document.getElementById('icon-check').style.stroke = 'var(--danger)';
+      h1.textContent = 'Fall\\u00F3 la subida';
+      h1.style.color = 'var(--danger)';
+      sub.textContent = 'No se pudo subir \\u2014 revis\\u00E1 la terminal.';
+      if (!isBatch) setStep('step-upload', 'failed');
+    } else if (uploaded > 0) {
       icon.className = 'icon-wrap icon-done';
       h1.textContent = 'Profile updated!';
       h1.style.color = 'var(--ok)';
@@ -292,7 +350,7 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
       sub.textContent = 'No activity found in the selected period.';
     }
 
-    if (!isBatch) {
+    if (!isBatch && uploaded > 0 && failedCount === 0) {
       setStep('step-upload', 'done');
     }
 
@@ -313,8 +371,18 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
 
   es.addEventListener('auth_ok', function(e) {
     const data = JSON.parse(e.data);
+    authed = true;
     mirdashBase = data.mirdashBase || '';
-    if (data.months && data.months.length > 1) initBatch(data.months);
+    var btn = document.getElementById('signin');
+    if (btn) btn.classList.add('hidden');
+    document.getElementById('title').textContent = 'Procesando\\u2026';
+    document.getElementById('subtitle').textContent = '';
+    if (data.months && data.months.length > 1) {
+      initBatch(data.months);
+    } else {
+      // Reveal the steps only now that auth actually happened.
+      document.getElementById('single').classList.remove('hidden');
+    }
   });
 
   es.addEventListener('analyzing', function(e) {
@@ -363,9 +431,15 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
   es.addEventListener('error_msg', function(e) {
     const d = JSON.parse(e.data);
     processed++;
+    failed++;
     if (isBatch) {
-      setMonthState(d.month, d.label, 'skip');
+      setMonthState(d.month, d.label, 'failed');
       updateRing();
+    } else {
+      setStep('step-analyze', 'done');
+      setStep('step-upload', 'failed');
+      var lbl = document.querySelector('#step-upload .label');
+      if (lbl) lbl.textContent = 'Fall\\u00F3 la subida';
     }
   });
 
@@ -377,11 +451,30 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     showDone(d);
   });
 
+  es.addEventListener('auth_timeout', function(e) {
+    authed = false;
+    if (tickId) { clearInterval(tickId); tickId = null; }
+    setStep('step-auth', 'failed');
+    var lbl = document.querySelector('#step-auth .label');
+    if (lbl) lbl.textContent = 'Inicio de sesi\\u00F3n expirado';
+    document.getElementById('title').textContent = 'Inicio de sesi\\u00F3n expirado';
+    document.getElementById('title').style.color = 'var(--text-muted)';
+    document.getElementById('subtitle').textContent = 'Volv\\u00E9 a correr el comando o inici\\u00E1 sesi\\u00F3n arriba.';
+    var btn = document.getElementById('signin');
+    if (btn && btn.getAttribute('href') && btn.getAttribute('href') !== '__AUTH_URL__') {
+      btn.classList.remove('hidden');
+    }
+  });
+
   es.onerror = function() {
-    // Server shut down unexpectedly — show a fallback message
+    // Server shut down unexpectedly — show a fallback message.
+    // If we never authenticated, this is likely the auth window closing; keep
+    // the sign-in affordance honest rather than implying work was in progress.
     es.close();
-    document.getElementById('title').textContent = 'Connection lost';
-    document.getElementById('subtitle').textContent = 'Check your terminal for results.';
+    if (authed) {
+      document.getElementById('title').textContent = 'Connection lost';
+      document.getElementById('subtitle').textContent = 'Check your terminal for results.';
+    }
   };
 })();
 </script>
@@ -393,11 +486,19 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
 class ProgressServer:
     """Local HTTP server for auth callback and SSE progress updates."""
 
-    def __init__(self, port=8799):
+    def __init__(self, port=8799, auth_url=""):
         self._port = port
+        self._auth_url = auth_url
         self._auth_event = threading.Event()
         self._tokens = None
-        self._event_queue = queue.Queue()
+        # SSE is broadcast: every connected client gets its own queue, and
+        # push_event fans out to all of them. A history buffer lets a client
+        # that connects late (or after navigating, e.g. in-page re-login) catch
+        # up on prior events — crucially `auth_ok`. A single shared queue would
+        # split events across tabs, leaving the UI stuck mid-flow.
+        self._clients = []
+        self._history = []
+        self._clients_lock = threading.Lock()
         self._shutdown_event = threading.Event()
         self._server = None
         self._thread = None
@@ -425,7 +526,10 @@ class ProgressServer:
                 if tokens and not parent._auth_event.is_set():
                     parent._tokens = tokens
                     parent._auth_event.set()
-                body = _PROGRESS_PAGE.encode("utf-8")
+                page = _PROGRESS_PAGE.replace(
+                    "__AUTH_URL__", html.escape(parent._auth_url, quote=True)
+                )
+                body = page.encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
@@ -439,23 +543,50 @@ class ProgressServer:
                 self.send_header("Connection", "keep-alive")
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
+
+                # Register this client and snapshot history atomically so no
+                # event is missed or duplicated between replay and registration.
+                client_q = queue.Queue()
+                with parent._clients_lock:
+                    backlog = list(parent._history)
+                    parent._clients.append(client_q)
+
+                def _send(evt):
+                    line = f"event: {evt['type']}\ndata: {json.dumps(evt['data'])}\n\n"
+                    self.wfile.write(line.encode("utf-8"))
+                    self.wfile.flush()
+
                 try:
+                    for evt in backlog:
+                        _send(evt)
                     while not parent._shutdown_event.is_set():
                         try:
-                            evt = parent._event_queue.get(timeout=15)
-                            line = f"event: {evt['type']}\ndata: {json.dumps(evt['data'])}\n\n"
-                            self.wfile.write(line.encode("utf-8"))
-                            self.wfile.flush()
+                            _send(client_q.get(timeout=15))
                         except queue.Empty:
                             self.wfile.write(b": keepalive\n\n")
                             self.wfile.flush()
                 except (BrokenPipeError, ConnectionResetError, OSError):
                     pass
+                finally:
+                    with parent._clients_lock:
+                        try:
+                            parent._clients.remove(client_q)
+                        except ValueError:
+                            pass
 
             def log_message(self, fmt, *args):
                 pass
 
-        self._server = http.server.ThreadingHTTPServer(("127.0.0.1", port), _Handler)
+        class _QuietThreadingHTTPServer(http.server.ThreadingHTTPServer):
+            def handle_error(self, request, client_address):
+                # Browser tabs navigating away / reloading reset their sockets;
+                # that's expected churn for the SSE + re-login flow, not a fault.
+                exc = sys.exc_info()[1]
+                if isinstance(exc, (BrokenPipeError, ConnectionResetError)):
+                    return
+                super().handle_error(request, client_address)
+
+        self._server = _QuietThreadingHTTPServer(("127.0.0.1", port), _Handler)
         self._server.daemon_threads = True
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
@@ -471,8 +602,12 @@ class ProgressServer:
         return None
 
     def push_event(self, event_type, data):
-        """Push an SSE event to connected browser clients."""
-        self._event_queue.put({"type": event_type, "data": data})
+        """Broadcast an SSE event to all connected clients and record history."""
+        evt = {"type": event_type, "data": data}
+        with self._clients_lock:
+            self._history.append(evt)
+            for client_q in self._clients:
+                client_q.put(evt)
 
     def shutdown(self, delay=1.0):
         """Stop the server after a short delay (lets browser receive final events)."""

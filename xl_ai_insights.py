@@ -41,6 +41,11 @@ import webbrowser
 
 # How long _capture_cli_token waits for the browser auth callback before giving up.
 _SHARE_AUTH_TIMEOUT = 120
+# Web mode keeps a live progress page that offers in-page re-login, so the
+# server must outlive a single missed callback. Give the user time to notice,
+# close a stray tab, and sign in again without the callback landing on a dead
+# port. The user can always Ctrl-C to abort sooner.
+_WEB_AUTH_TIMEOUT = 600
 
 # ---------------------------------------------------------------------------
 # Config / URL resolution helpers
@@ -409,7 +414,7 @@ def _wait_for_auth_tokens(server, port):
     """Prefer progress-server auth, but keep legacy token mocks usable in tests."""
     if _capture_cli_token is not _ORIGINAL_CAPTURE_CLI_TOKEN:
         return _capture_cli_token(port=port, timeout=_SHARE_AUTH_TIMEOUT)
-    return server.wait_for_auth(timeout=_SHARE_AUTH_TIMEOUT)
+    return server.wait_for_auth(timeout=_WEB_AUTH_TIMEOUT)
 
 
 # ---------------------------------------------------------------------------
@@ -645,7 +650,9 @@ def _upload_window_web(mirdash_base, token, paxel_src, paxel_args_base, since, u
 
     summary = _run_paxel(paxel_src, window_args, verbose, keep_artifacts=keep_artifacts)
     if summary is None:
-        server.push_event("skipped", {"month": label, "label": label, "reason": "paxel error"})
+        # paxel failed to compute this window — surface it as a failure (red),
+        # not a "skip" (which the UI reserves for genuinely empty windows).
+        server.push_event("error_msg", {"month": label, "label": label, "message": "paxel error"})
         return _PAXEL_ERROR
 
     if _summary_is_empty(summary):
@@ -670,18 +677,18 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
     from progress_server import ProgressServer
 
     port = 8799
+    redirect_uri = f"http://127.0.0.1:{port}/callback"
+    auth_url = f"{mirdash_base}/cli-auth?redirect_uri={urllib.parse.quote(redirect_uri, safe='')}"
+    if token_count > 1:
+        auth_url += f"&count={token_count}"
+
     try:
-        server = ProgressServer(port=port)
+        server = ProgressServer(port=port, auth_url=auth_url)
     except OSError as exc:
         print(f"  warning: could not bind localhost:{port} ({exc}) — falling back to console mode")
         _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,
                       keep_artifacts=keep_artifacts, window_months=window_months)
         return
-
-    redirect_uri = f"http://127.0.0.1:{port}/callback"
-    auth_url = f"{mirdash_base}/cli-auth?redirect_uri={urllib.parse.quote(redirect_uri, safe='')}"
-    if token_count > 1:
-        auth_url += f"&count={token_count}"
 
     if not quiet:
         print(f"\n  → See progress at {server.url}")
@@ -700,7 +707,9 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
     tokens = _wait_for_auth_tokens(server, port)
     if not tokens:
         print("  Authentication cancelled or timed out — nothing was analysed or shared.")
-        server.shutdown(delay=0)
+        # Tell any open progress page the truth instead of leaving it spinning.
+        server.push_event("auth_timeout", {})
+        server.shutdown(delay=1.0)
         sys.exit(0)
 
     paxel_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "paxel.py")
@@ -726,6 +735,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
     if mode in ("init", "backfill"):
         token_idx = 0
         uploaded = 0
+        failed = 0
         last_report_url = None
 
         for i, (since, until, label) in enumerate(windows):
@@ -741,11 +751,14 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
                 last_report_url = report_url
                 uploaded += 1
                 token_idx += 1
+            elif report_url in (_UPLOAD_ERROR, _PAXEL_ERROR):
+                failed += 1
 
         server.push_event("done", {
             "reportUrl": last_report_url or "",
             "mirdashBase": mirdash_base,
             "uploaded": uploaded,
+            "failed": failed,
             "total": len(windows),
             "noOpen": no_open,
         })
@@ -753,10 +766,19 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
         if last_report_url:
             full_report = urllib.parse.urljoin(mirdash_base + "/", last_report_url)
             if not quiet:
-                print(f"  ✓ {uploaded}/{len(windows)} months uploaded")
+                msg = f"  ✓ {uploaded}/{len(windows)} months uploaded"
+                if failed:
+                    msg += f" ({failed} failed)"
+                print(msg)
             print(f"  Report ready: {full_report}")
+        elif failed:
+            print(f"  error: {failed}/{len(windows)} months failed to upload — nothing was shared")
 
         server.shutdown()
+        # Hard-fail only when nothing made it through; partial success still
+        # exits 0 (the UI and terminal already flag the failed months).
+        if failed and uploaded == 0:
+            sys.exit(1)
         return
 
     # --- Default: current month ---
@@ -770,21 +792,21 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
     )
 
     if report_url == _UPLOAD_ERROR:
-        server.push_event("done", {"reportUrl": "", "uploaded": 0, "total": 1, "noOpen": True,
-                                    "mirdashBase": mirdash_base})
+        server.push_event("done", {"reportUrl": "", "uploaded": 0, "failed": 1, "total": 1,
+                                    "noOpen": True, "mirdashBase": mirdash_base})
         print(f"  error: upload failed for {label}")
         server.shutdown()
-        return
+        sys.exit(1)
 
     if report_url == _PAXEL_ERROR:
         # paxel itself failed (error already printed by _run_paxel). Do NOT fall through
         # to the historical-month fallback — that would upload stale data and report the
         # current month as empty, masking the real failure.
-        server.push_event("done", {"reportUrl": "", "uploaded": 0, "total": 1, "noOpen": True,
-                                    "mirdashBase": mirdash_base})
+        server.push_event("done", {"reportUrl": "", "uploaded": 0, "failed": 1, "total": 1,
+                                    "noOpen": True, "mirdashBase": mirdash_base})
         print(f"  error: could not compute {label} — nothing was shared")
         server.shutdown()
-        return
+        sys.exit(1)
 
     if _is_report_url(report_url):
         server.push_event("done", {
@@ -840,9 +862,11 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
         })
         print(f"  ✓ {fb_label} uploaded → {full_report}")
     elif report_url == _UPLOAD_ERROR:
-        server.push_event("done", {"reportUrl": "", "uploaded": 0, "total": 1, "noOpen": True,
-                                    "mirdashBase": mirdash_base})
+        server.push_event("done", {"reportUrl": "", "uploaded": 0, "failed": 1, "total": 1,
+                                    "noOpen": True, "mirdashBase": mirdash_base})
         print(f"  error: upload failed for {fb_label}")
+        server.shutdown()
+        sys.exit(1)
     else:
         server.push_event("done", {"reportUrl": "", "uploaded": 0, "total": 1, "noOpen": True})
         print("  nothing to share (no sessions found)")

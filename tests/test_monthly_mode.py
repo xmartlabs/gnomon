@@ -518,6 +518,38 @@ class TestUploadWindowWebSentinels(unittest.TestCase):
         result = self._call(run_paxel_return=good, upload_side=["/report/m"])
         self.assertEqual(result, "/report/m")
 
+    def _events(self, **kw):
+        """Run _upload_window_web and return the list of pushed event types."""
+        server = MagicMock()
+        with (
+            patch.object(xl_ai_insights, "_run_paxel",
+                         return_value=kw.get("run_paxel_return"),
+                         side_effect=kw.get("run_paxel_side")),
+            patch.object(xl_ai_insights, "_upload_summary", side_effect=kw.get("upload_side")),
+        ):
+            xl_ai_insights._upload_window_web(
+                "https://m", "tok", "/paxel.py", [], "2025-12-01", "2026-01-01",
+                "2025-12", False, server, 0, 1,
+            )
+        return [c.args[0] for c in server.push_event.call_args_list]
+
+    def test_paxel_failure_pushes_error_not_skipped(self):
+        # paxel error must surface as a failure (error_msg), not a skip — the UI
+        # reserves "skipped" for genuinely empty windows.
+        events = self._events(run_paxel_return=None)
+        self.assertIn("error_msg", events)
+        self.assertNotIn("skipped", events)
+
+    def test_empty_summary_pushes_skipped(self):
+        events = self._events(run_paxel_return=_make_summary(sessions=0))
+        self.assertIn("skipped", events)
+        self.assertNotIn("error_msg", events)
+
+    def test_upload_failure_pushes_error_msg(self):
+        events = self._events(run_paxel_return=_make_summary(sessions=5),
+                              upload_side=RuntimeError("boom"))
+        self.assertIn("error_msg", events)
+
 
 class TestAbsolutizeDirFlags(unittest.TestCase):
     def test_relative_dir_flag_made_absolute(self):
