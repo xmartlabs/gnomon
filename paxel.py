@@ -350,6 +350,11 @@ def _cursor_db_path():
 CURSOR_DB = _cursor_db_path()
 ALL_SOURCES = ("claude", "codex", "gemini", "pi", "opencode", "cursor")
 
+# Sources that permanently cannot dispatch subagents (no Agent tool facility).
+# A corpus whose active sources are ALL in this set will show fanout_median=None
+# rather than a misleading 0.
+_AGENT_UNSUPPORTED_SOURCES = frozenset({"gemini"})
+
 # --<source>-dir=PATH → which module-level dir each flag overrides. For claude/codex the
 # flag may point at either the config root (~/.claude) or the inner transcripts dir;
 # _resolve_source_dir() picks the right one.
@@ -2182,19 +2187,38 @@ def main():
     entropy = -sum((c / tot) * math.log2(c / tot) for c in tool_counter.values())
     norm_entropy = entropy / math.log2(tool_diversity) if tool_diversity > 1 else 0
 
-    error_recovery_ratio = (recovered_errors / tool_errors) if tool_errors else 0
-    error_rate_per_100_tools = (tool_errors / tool_use_total * 100) if tool_use_total else 0
+    # Null-honesty: metrics that depend on tool-level events cannot be measured when
+    # the only active sources never produced any tool calls at all (e.g. a transcript
+    # format whose parser currently emits no tool_use).  Real 0 (a Claude session with
+    # zero errors) is kept as-is; only the "counter is 0 because we never saw a tool
+    # call" case becomes None.  Downstream scoring treats None as missing (same as 0).
+    _no_tool_activity = (tool_use_total == 0 and bool(source_sessions))
+
+    error_recovery_ratio = (
+        None if _no_tool_activity else
+        (recovered_errors / tool_errors) if tool_errors else 0
+    )
+    error_rate_per_100_tools = (
+        None if _no_tool_activity else
+        (tool_errors / tool_use_total * 100) if tool_use_total else 0
+    )
     # Fan-out / coordination: among sessions that DISPATCH agents, how many do you
     # coordinate at once? Median (robust to one big fan-out outlier). A serial grinder
     # firing N agents one-per-session reads 1; a real orchestrator reads its team size.
     _fanouts = [n for n in agents_per_session.values() if n > 0]
-    fanout_median = statistics.median(_fanouts) if _fanouts else 0
+    _all_sources_no_agent = bool(source_sessions) and (
+        set(source_sessions.keys()) <= _AGENT_UNSUPPORTED_SOURCES
+    )
+    fanout_median = (
+        None if (_no_tool_activity or (_all_sources_no_agent and not _fanouts)) else
+        (statistics.median(_fanouts) if _fanouts else 0)
+    )
     _depths = sorted(edits_per_file_events)
-    iteration_mean = statistics.mean(_depths) if _depths else 0
-    iteration_median = statistics.median(_depths) if _depths else 0
-    iteration_p90 = pctile(_depths, 90)
-    iteration_max = max(_depths) if _depths else 0
-    heavy_files = sum(1 for d in _depths if d > 15)   # files hammered >15x in one session
+    iteration_mean = None if _no_tool_activity else (statistics.mean(_depths) if _depths else 0)
+    iteration_median = None if _no_tool_activity else (statistics.median(_depths) if _depths else 0)
+    iteration_p90 = None if _no_tool_activity else pctile(_depths, 90)
+    iteration_max = None if _no_tool_activity else (max(_depths) if _depths else 0)
+    heavy_files = None if _no_tool_activity else sum(1 for d in _depths if d > 15)
 
     actions_per_prompt = (tool_use_total / prompts_count) if prompts_count else 0
     # autonomy proxy 0-100: weighted blend, transparent + bounded
@@ -2319,14 +2343,14 @@ def main():
             "median_session_minutes": round(median_session_min, 1),
             "longest_run_minutes": round(longest_run_min, 1),
             "polite_prompts": polite_prompts,
-            "error_recovery_ratio": round(error_recovery_ratio, 3),
-            "error_rate_per_100_tools": round(error_rate_per_100_tools, 1),
+            "error_recovery_ratio": round(error_recovery_ratio, 3) if error_recovery_ratio is not None else None,
+            "error_rate_per_100_tools": round(error_rate_per_100_tools, 1) if error_rate_per_100_tools is not None else None,
             "tool_errors": tool_errors,
             "recovered_errors": recovered_errors,
             "api_errors_retries": api_errors,
             "fanout_median": fanout_median,
-            "iteration_depth_mean": round(iteration_mean, 2),
-            "iteration_depth_median": round(iteration_median, 2),
+            "iteration_depth_mean": round(iteration_mean, 2) if iteration_mean is not None else None,
+            "iteration_depth_median": round(iteration_median, 2) if iteration_median is not None else None,
             "iteration_depth_p90": iteration_p90,
             "iteration_depth_max": iteration_max,
             "files_hammered_over_15x": heavy_files,
@@ -2443,8 +2467,10 @@ def main():
     print(f"  sessions={total_sessions}  prompts={prompts_count}  tool_calls={tool_use_total}")
     print(f"  git churn={gc['churn']:,} lines (gold std, {gc['repos_with_commits']}/{gc['repos_seen']} repos)  "
           f"vs tool-only={total_churn:,}  git velocity={git_velocity:.0f} ln/hr")
-    print(f"  iteration depth: mean {iteration_mean:.1f} / max {iteration_max} ({heavy_files} files >15x)  "
-          f"errors={tool_errors} ({error_rate_per_100_tools:.1f}/100 tools)")
+    _idm_str = f"{iteration_mean:.1f}" if iteration_mean is not None else "—"
+    _erp_str = f"{error_rate_per_100_tools:.1f}" if error_rate_per_100_tools is not None else "—"
+    print(f"  iteration depth: mean {_idm_str} / max {iteration_max} ({heavy_files} files >15x)  "
+          f"errors={tool_errors} ({_erp_str}/100 tools)")
     print(f"  autonomy={autonomy_score}/100  planning_ratio={planning_ratio:.2f}")
 
 
@@ -2608,11 +2634,21 @@ def write_report(s):
     A(f"- Planning ratio (explore : doing): **{b['planning_ratio_explore_to_doing']}** "
       f"(explore {b['explore_actions']:,} vs doing {b['produce_actions']+b['execute_actions']+b['delegate_actions']:,})")
     A(f"- Avg session: **{b['avg_session_minutes']:.0f} min** (median {b['median_session_minutes']:.0f})")
-    A(f"- Errors: **{b['tool_errors']:,} tool errors** ({b['error_rate_per_100_tools']} per 100 tool calls); "
-      f"{b['recovered_errors']:,} recovered ({b['error_recovery_ratio']*100:.0f}%); {b['api_errors_retries']} API retries")
-    A(f"- Iteration depth (edits/file before commit): mean **{b['iteration_depth_mean']:.1f}**, "
-      f"median {b['iteration_depth_median']:.0f}, p90 {b['iteration_depth_p90']}, "
-      f"**max {b['iteration_depth_max']}** — {b['files_hammered_over_15x']} files hammered >15× in one session")
+    _err_rate = b['error_rate_per_100_tools']
+    _err_recov = b['error_recovery_ratio']
+    _err_recov_pct = f"{_err_recov*100:.0f}%" if _err_recov is not None else "—"
+    _err_rate_str = f"{_err_rate}" if _err_rate is not None else "—"
+    A(f"- Errors: **{b['tool_errors']:,} tool errors** ({_err_rate_str} per 100 tool calls); "
+      f"{b['recovered_errors']:,} recovered ({_err_recov_pct}); {b['api_errors_retries']} API retries")
+    _idm = b['iteration_depth_mean']; _idmed = b['iteration_depth_median']
+    _idp90 = b['iteration_depth_p90']; _idmax = b['iteration_depth_max']
+    _heavy = b['files_hammered_over_15x']
+    if _idm is None:
+        A("- Iteration depth (edits/file before commit): — (not measured for this source)")
+    else:
+        A(f"- Iteration depth (edits/file before commit): mean **{_idm:.1f}**, "
+          f"median {_idmed:.0f}, p90 {_idp90}, "
+          f"**max {_idmax}** — {_heavy} files hammered >15× in one session")
     A(f"- Actions per prompt: **{b['actions_per_prompt']:.1f}** · "
       f"questions asked: {b['questions_asked']} · background: {b['background_tasks']} · scheduled: {b['scheduled_actions']}\n")
     A("## Rhythm")
@@ -2974,11 +3010,11 @@ def compute_scores(stats):
                                          "retro", "learn", "cso", "karpathy", "debug")) \
         + b.get("shell_test_runs", 0)   # CLI tests (pytest/go test/…) count as quality work too
     engineering = 10 * (
-        0.30 * _ev(1 - _clamp((b["iteration_depth_mean"] - 2) / 8), ev)  # low rework: got files right early
-        + 0.25 * _ev(1 - _clamp((b["iteration_depth_p90"] - 3) / 9), ev)  # clean iteration: low typical depth
-        + 0.20 * _ev(1 - _clamp((b["files_hammered_over_15x"] / sess) / 0.25), ev)  # focused: few hammered files
+        0.30 * _ev(1 - _clamp(((b.get("iteration_depth_mean") or 0) - 2) / 8), ev)  # low rework: got files right early
+        + 0.25 * _ev(1 - _clamp(((b.get("iteration_depth_p90") or 0) - 3) / 9), ev)  # clean iteration: low typical depth
+        + 0.20 * _ev(1 - _clamp(((b.get("files_hammered_over_15x") or 0) / sess) / 0.25), ev)  # focused: few hammered files
         + 0.15 * _clamp((eng_skills / sess) / 3.0)                       # quality ceremonies: review/qa/investigate
-        + 0.10 * _ev(1 - _clamp(b["error_rate_per_100_tools"] / 10), ev))  # low error rate: root-cause discipline
+        + 0.10 * _ev(1 - _clamp((b.get("error_rate_per_100_tools") or 0) / 10), ev))  # low error rate: root-cause discipline
 
     return {"Execution": round(execution, 1), "Planning": round(planning, 1),
             "Engineering": round(engineering, 1)}
@@ -3092,28 +3128,28 @@ def score_breakdown(stats):
     eng_skills = _skill_uses_any(stats, ("code-review", "test", "tdd", "qa", "investigate",
                                          "retro", "learn", "cso", "karpathy", "debug")) \
         + b.get("shell_test_runs", 0)
-    rework_pct   = _ev(1 - _clamp((b.get("iteration_depth_mean", 0) - 2) / 8), ev)
-    iter_pct     = _ev(1 - _clamp((b.get("iteration_depth_p90", 0) - 3) / 9), ev)
-    focus_pct    = _ev(1 - _clamp((b.get("files_hammered_over_15x", 0) / sess) / 0.25), ev)
+    rework_pct   = _ev(1 - _clamp(((b.get("iteration_depth_mean") or 0) - 2) / 8), ev)
+    iter_pct     = _ev(1 - _clamp(((b.get("iteration_depth_p90") or 0) - 3) / 9), ev)
+    focus_pct    = _ev(1 - _clamp(((b.get("files_hammered_over_15x") or 0) / sess) / 0.25), ev)
     qual_raw     = eng_skills / sess
     qual_pct     = _clamp(qual_raw / 3.0)
-    err_pct      = _ev(1 - _clamp(b.get("error_rate_per_100_tools", 0) / 10), ev)
+    err_pct      = _ev(1 - _clamp((b.get("error_rate_per_100_tools") or 0) / 10), ev)
     engineering_val = round(10 * (0.30 * rework_pct + 0.25 * iter_pct + 0.20 * focus_pct
                                   + 0.15 * qual_pct + 0.10 * err_pct), 1)
     eng_subs = [
-        {"label": "Low rework", "your_value": b.get("iteration_depth_mean", 0),
+        {"label": "Low rework", "your_value": b.get("iteration_depth_mean") or 0,
          "target": 2.0, "unit": "mean file-edit depth", "weight": 0.30, "pct": rework_pct,
          "direction": "lower", "is_drag": False},
-        {"label": "Clean iteration", "your_value": b.get("iteration_depth_p90", 0),
+        {"label": "Clean iteration", "your_value": b.get("iteration_depth_p90") or 0,
          "target": 3.0, "unit": "p90 file-edit depth", "weight": 0.25, "pct": iter_pct,
          "direction": "lower", "is_drag": False},
-        {"label": "Focus", "your_value": b.get("files_hammered_over_15x", 0) / sess,
+        {"label": "Focus", "your_value": (b.get("files_hammered_over_15x") or 0) / sess,
          "target": 0.25, "unit": "hammered-files/session", "weight": 0.20, "pct": focus_pct,
          "direction": "lower", "is_drag": False},
         {"label": "Quality ceremony", "your_value": qual_raw,
          "target": 3.0, "unit": "quality-skills/session", "weight": 0.15, "pct": qual_pct,
          "direction": "higher", "is_drag": False},
-        {"label": "Low errors", "your_value": b.get("error_rate_per_100_tools", 0),
+        {"label": "Low errors", "your_value": b.get("error_rate_per_100_tools") or 0,
          "target": 10.0, "unit": "errors/100 tools", "weight": 0.10, "pct": err_pct,
          "direction": "lower", "is_drag": False},
     ]
@@ -3201,7 +3237,7 @@ def compute_aq(stats):
 
     # ---- Pillar 1: Breadth (unchanged axes) ----
     agent_runs = t.get("agent_calls", 0)
-    fanout = b.get("fanout_median", 0)
+    fanout = b.get("fanout_median") or 0  # None (unmeasured) treated as 0 for AQ
     o_harn = 1.0 if (any(re.search(r"harness|trisel", str(k), re.I)
                          for k, _ in st.get("subagent_types", [])) or has_skill(["trisel"])) else 0.6
     # Coordination over volume: fan-out (agents coordinated per orchestrating session)
@@ -3250,10 +3286,10 @@ def compute_aq(stats):
         lever = 1.0
     else:
         lever = max(0.0, 1 - (app - 20) / 40)
-    recovery = .85 * sat(b.get("error_recovery_ratio", 0), 1.0) + .15 * (1 - sat(b.get("api_errors_retries", 0), 50))
+    recovery = .85 * sat(b.get("error_recovery_ratio") or 0, 1.0) + .15 * (1 - sat(b.get("api_errors_retries", 0), 50))
     eff_axes = [
         ("Steering leverage", 50, lever, {"actions_per_prompt": app}),
-        ("Recovery", 50, recovery, {"recovery_ratio": b.get("error_recovery_ratio", 0),
+        ("Recovery", 50, recovery, {"recovery_ratio": b.get("error_recovery_ratio") or 0,
          "api_retries": b.get("api_errors_retries", 0)}),
     ]
 
@@ -3350,8 +3386,8 @@ def _signature_moves_pool(stats):
             f'<b>{rev:,}</b> code-review passes — one of your most-used skills. '
             f'You don\'t trust a diff until a second set of eyes has seen it.'))
 
-    if b["planning_ratio_explore_to_doing"] >= 0.55 and b["iteration_depth_max"] >= 40:
-        raw.append((_clamp(b["iteration_depth_max"] / 100.0), "Think → Build",
+    if b["planning_ratio_explore_to_doing"] >= 0.55 and (b.get("iteration_depth_max") or 0) >= 40:
+        raw.append((_clamp((b["iteration_depth_max"] or 0) / 100.0), "Think → Build",
             "Plan wide, then grind narrow",
             f'A <b>{b["planning_ratio_explore_to_doing"]:.2f}</b> explore-to-build ratio — you read and '
             f'search far more than you type — yet you\'ll hammer one file <b>{b["iteration_depth_max"]}×</b> '
@@ -3429,7 +3465,7 @@ def _growth_edges_pool(stats, scores):
 
     rev = _review_skill_uses(st.get("top_skills", []))
     tdd = sk("test", "tdd", "qa") + b.get("shell_test_runs", 0)   # named test skills + CLI test runs
-    err = b["error_rate_per_100_tools"]
+    err = b.get("error_rate_per_100_tools") or 0  # None (unmeasured) treated as 0 for edge thresholds
     raw = []   # (priority, eyebrow, title, advice_html, axis)
 
     # NO steering edge: hands-on cadence has no good/bad end (it's described, not scored — see
@@ -3451,10 +3487,10 @@ def _growth_edges_pool(stats, scores):
     # High iteration is only "whack-a-mole" if it's THRASH — so we require an elevated error rate
     # alongside it. A clean deep-iterator (low errors) is doing deliberate work, not flailing, and
     # is left alone (this also spares agent-driven iteration, which tends to keep errors low).
-    if (b["iteration_depth_max"] >= 40 or b["files_hammered_over_15x"] >= 10) and err >= 5:
+    if ((b.get("iteration_depth_max") or 0) >= 40 or (b.get("files_hammered_over_15x") or 0) >= 10) and err >= 5:
         raw.append((2.0, "Stop the grind",
             "When a file fights back, root-cause it",
-            f'<b>{b["iteration_depth_max"]}×</b> on one file and <b>{b["files_hammered_over_15x"]}</b> files '
+            f'<b>{b.get("iteration_depth_max") or 0}×</b> on one file and <b>{b.get("files_hammered_over_15x") or 0}</b> files '
             f'past 15 edits, next to ~<b>{err}</b> errors per 100 tool calls — that pairing reads as '
             f'retry-thrash more than deliberate iteration. When a file resists past ~15 tries, find the root '
             f'cause before the next edit. (gstack names this <code>/investigate</code>.)',
@@ -3488,7 +3524,7 @@ def _growth_edges_pool(stats, scores):
         if axis == "Orchestration":
             return ("Multiply yourself", "Run agents in parallel, not in series",
                 lead + f'<b>{sig.get("subagent_types", 0)}</b> distinct subagent types with a median '
-                f'fan-out of <b>{sig.get("fanout_median", 0)}</b>. When a task splits into independent '
+                f'fan-out of <b>{sig.get("fanout_median") or 0}</b>. When a task splits into independent '
                 f'pieces, hand them to parallel subagents in one orchestrating session instead of '
                 f'grinding through them serially.')
         if axis.startswith("Tool command"):
@@ -3836,11 +3872,18 @@ def write_profile_html(stats, archetype, quote, scores, voice=None):
               f'Edit/Write touched <b>{vel["tool_churn_edit_write"]:,}</b> lines and the shell ~{vel["shell_authored_lines_est"]:,} '
               f'more — but only <b>{vel["git_churn_total"]:,}</b> actually landed in committed git history. '
               f'That committed number is the honest one.'),
-        _card("How hard do you grind?", f'{b["iteration_depth_max"]}× on one file',
-              f'Your deepest single-file grind in one session — and {b["files_hammered_over_15x"]} files went past 15 edits. '
-              f'Your typical file, though? About {b["iteration_depth_mean"]:.1f}.'),
-        _card("How often do things break?", f'{b["tool_errors"]:,} errors, {round(b["error_recovery_ratio"]*100)}% recovered',
-              f'Roughly {b["error_rate_per_100_tools"]} per 100 tool calls — and you kept going after almost all of them.'),
+        _card("How hard do you grind?",
+              f'{b["iteration_depth_max"]}× on one file' if b["iteration_depth_max"] is not None else "—",
+              (f'Your deepest single-file grind in one session — and {b["files_hammered_over_15x"]} files went past 15 edits. '
+               f'Your typical file, though? About {b["iteration_depth_mean"]:.1f}.'
+               if b["iteration_depth_mean"] is not None else
+               'Iteration depth not measured for this source.')),
+        _card("How often do things break?",
+              (f'{b["tool_errors"]:,} errors, {round(b["error_recovery_ratio"]*100)}% recovered'
+               if b["error_recovery_ratio"] is not None else f'{b["tool_errors"]:,} errors'),
+              (f'Roughly {b["error_rate_per_100_tools"]} per 100 tool calls — and you kept going after almost all of them.'
+               if b["error_rate_per_100_tools"] is not None else
+               'Error rate not measured for this source.')),
         _card("Which model do you reach for?", model_a, model_d),
         _card("When do you do your best work?", tod, f'You do your heaviest work around {h12}.'),
         _card("Do you take weekends off?", weekend_a, weekend_d),
@@ -3963,7 +4006,7 @@ def write_profile_html(stats, archetype, quote, scores, voice=None):
       f'<div><span class="n mono">{vel["git_churn_total"]:,}</span><span class="l">lines committed to git</span></div>'
       f'<div><span class="n mono">{vel["tool_churn_edit_write"]:,}</span><span class="l">lines via Edit/Write</span></div>'
       f'<div><span class="n mono">~{vel["shell_authored_lines_est"]:,}</span><span class="l">lines in the shell</span></div>'
-      f'<div><span class="n mono">{b["iteration_depth_max"]}</span><span class="l">max edits, one file</span></div>'
+      f'<div><span class="n mono">{b["iteration_depth_max"] if b["iteration_depth_max"] is not None else "—"}</span><span class="l">max edits, one file</span></div>'
       f'<div><span class="n mono">{b["delegate_actions"]:,}</span><span class="l">agents you ran</span></div></div>')
     P('<div class="share"><span class="lbl">Share:</span>'
       '<a id="share-x" class="btn x" href="#" target="_blank" rel="noopener">'

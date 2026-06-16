@@ -676,5 +676,108 @@ class TestCodexEventsSubagent(unittest.TestCase):
         self.assertEqual(agent_uses, [], "Agent tool_use must NOT be emitted for non-subagent session")
 
 
+# ---------------------------------------------------------------------------
+# A5: null honesty for unmeasured metrics
+# ---------------------------------------------------------------------------
+
+def _run_single_source(testcase, source_name, gemini_dir=None, claude_dir=None):
+    """Run paxel over fixtures with only one source active; return stats dict."""
+    _empty = tempfile.mkdtemp(prefix="paxel-empty-")
+    testcase.addCleanup(shutil.rmtree, _empty, ignore_errors=True)
+    dirs = dict(
+        BASE=claude_dir or _empty,
+        CODEX_DIR=_empty,
+        GEMINI_DIR=gemini_dir or _empty,
+        PI_DIR=_empty,
+        OPENCODE_DIR=_empty,
+        CURSOR_DIR=_empty,
+        CURSOR_DB=os.path.join(_empty, "nonexistent.vscdb"),
+    )
+    out = tempfile.mkdtemp(prefix="paxel-test-null-")
+    testcase.addCleanup(shutil.rmtree, out, ignore_errors=True)
+    buf = io.StringIO()
+    argv = ["paxel.py", source_name, "--no-open"]
+    with mock.patch.multiple(paxel, OUT_DIR=out, **dirs), \
+            mock.patch.object(sys, "argv", argv), \
+            contextlib.redirect_stdout(buf):
+        paxel.main()
+    with open(os.path.join(out, "stats.json"), encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+class TestNullHonestyMetrics(unittest.TestCase):
+    """A5: fanout_median must be None for Gemini-only (can't dispatch agents);
+    Claude-only must keep real 0 values, not null."""
+
+    def test_claude_only_fanout_is_real_zero(self):
+        # Claude CAN dispatch agents — a corpus where it didn't shows real 0, not null.
+        stats = _run_single_source(self, "claude",
+                                   claude_dir=SRC_DIRS["BASE"])
+        b = stats["behavior"]
+        self.assertEqual(b["fanout_median"], 0,
+                         "Claude-only corpus with no delegation must show real 0, not null")
+
+    def test_claude_only_error_rate_is_real(self):
+        # Claude emits tool_result events so error_rate is always measurable.
+        stats = _run_single_source(self, "claude",
+                                   claude_dir=SRC_DIRS["BASE"])
+        b = stats["behavior"]
+        self.assertIsNotNone(b["error_rate_per_100_tools"],
+                             "Claude-only error_rate must be a real value, not null")
+        self.assertIsNotNone(b["error_recovery_ratio"],
+                             "Claude-only error_recovery must be a real value, not null")
+
+    def test_claude_only_iteration_depth_is_real(self):
+        stats = _run_single_source(self, "claude",
+                                   claude_dir=SRC_DIRS["BASE"])
+        b = stats["behavior"]
+        self.assertIsNotNone(b["iteration_depth_mean"],
+                             "Claude-only iteration_depth_mean must be a real value, not null")
+
+    def test_gemini_only_fanout_is_null(self):
+        # Gemini has no subagent dispatch facility — fanout_median must be None.
+        stats = _run_single_source(self, "gemini",
+                                   gemini_dir=SRC_DIRS["GEMINI_DIR"])
+        b = stats["behavior"]
+        self.assertIsNone(b["fanout_median"],
+                          "Gemini-only corpus must show fanout_median=None (can't dispatch agents)")
+
+    def test_gemini_only_error_rate_is_real(self):
+        # Post-A1, Gemini emits tool_result events with is_error flags — error_rate is real.
+        stats = _run_single_source(self, "gemini",
+                                   gemini_dir=SRC_DIRS["GEMINI_DIR"])
+        b = stats["behavior"]
+        self.assertIsNotNone(b["error_rate_per_100_tools"],
+                             "Gemini-only error_rate must be a real value after A1 parser fix")
+        self.assertIsNotNone(b["error_recovery_ratio"],
+                             "Gemini-only error_recovery must be a real value after A1 parser fix")
+
+    def test_gemini_only_iteration_depth_is_real(self):
+        # Post-A1, Gemini emits Write tool_use events — iteration_depth is real.
+        stats = _run_single_source(self, "gemini",
+                                   gemini_dir=SRC_DIRS["GEMINI_DIR"])
+        b = stats["behavior"]
+        self.assertIsNotNone(b["iteration_depth_mean"],
+                             "Gemini-only iteration_depth must be a real value after A1 parser fix")
+
+    def test_null_fanout_passes_through_to_summary(self):
+        # build_summary must emit JSON null (not 0) for fanout when it's None.
+        stats = _run_single_source(self, "gemini",
+                                   gemini_dir=SRC_DIRS["GEMINI_DIR"])
+        summary = paxel.build_summary(stats)
+        self.assertIsNone(summary["orchestration"]["fanout_median"],
+                          "build_summary must preserve None for fanout in Gemini-only corpus")
+
+    def test_null_fanout_does_not_crash_aq_scoring(self):
+        # compute_aq and compute_scores must be tolerant of fanout_median=None.
+        stats = _run_single_source(self, "gemini",
+                                   gemini_dir=SRC_DIRS["GEMINI_DIR"])
+        self.assertIsNone(stats["behavior"]["fanout_median"])
+        aq = paxel.compute_aq(stats)
+        self.assertIn("aq_0_100", aq)
+        scores = paxel.compute_scores(stats)
+        self.assertEqual(set(scores), {"Execution", "Planning", "Engineering"})
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
