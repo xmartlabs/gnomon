@@ -59,7 +59,13 @@ It accepts the same source arguments as `paxel.py`:
 uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights claude
 uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --no-open
 uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --keep-artifacts
+uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --window=3
 ```
+
+Each scored point is computed over a **trailing window of `--window=N` calendar
+months** (default 6) ending at its anchor month, so a single weak month doesn't
+tank the score. `--window=1` scores each month on its own. The window applies to
+normal monthly runs and to `--backfill`/`--init`.
 
 What happens when you run it:
 
