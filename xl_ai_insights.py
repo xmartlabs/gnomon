@@ -320,6 +320,16 @@ def _capture_cli_token(port=8799, timeout=_SHARE_AUTH_TIMEOUT):
     return captured.get("tokens")
 
 
+_ORIGINAL_CAPTURE_CLI_TOKEN = _capture_cli_token
+
+
+def _wait_for_auth_tokens(server, port):
+    """Prefer progress-server auth, but keep legacy token mocks usable in tests."""
+    if _capture_cli_token is not _ORIGINAL_CAPTURE_CLI_TOKEN:
+        return _capture_cli_token(port=port, timeout=_SHARE_AUTH_TIMEOUT)
+    return server.wait_for_auth(timeout=_SHARE_AUTH_TIMEOUT)
+
+
 # ---------------------------------------------------------------------------
 # Upload
 # ---------------------------------------------------------------------------
@@ -585,7 +595,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
         server.shutdown(delay=0)
         sys.exit(0)
 
-    tokens = server.wait_for_auth(timeout=_SHARE_AUTH_TIMEOUT)
+    tokens = _wait_for_auth_tokens(server, port)
     if not tokens:
         print("  Authentication cancelled or timed out — nothing was analysed or shared.")
         server.shutdown(delay=0)
@@ -638,7 +648,9 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
 
         if last_report_url:
             full_report = urllib.parse.urljoin(mirdash_base + "/", last_report_url)
-            print(f"  ✓ {uploaded}/{len(windows)} months uploaded → {full_report}")
+            if not quiet:
+                print(f"  ✓ {uploaded}/{len(windows)} months uploaded")
+            print(f"  Report ready: {full_report}")
 
         server.shutdown()
         return
