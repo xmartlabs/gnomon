@@ -139,28 +139,38 @@ def latest_month_with_data(progression_monthly):
     return max(months)
 
 
-def month_windows(n, today):
+def month_windows(n, today, window_months=1):
     """Return a list of (since_iso, until_iso, label) for the last *n* calendar months.
 
+    Each entry spans `window_months` calendar months ending at (and including) an anchor month.
     Oldest month first; the last entry is the current (possibly partial) month.
     *today* is a datetime.date; the function never calls datetime.now() itself.
 
-    since = YYYY-MM-01 (inclusive)
-    until = first day of the NEXT month (exclusive)
-    label = 'YYYY-MM'
+    For each anchor month:
+      since = YYYY-MM-01 (inclusive) = first day of the month that is (window_months - 1) months before anchor
+      until = first day of the month AFTER the anchor (exclusive)
+      label = 'YYYY-MM' (the anchor month — the END month of the window)
+
+    window_months=1 reproduces the legacy single-calendar-month windows (since change = None).
     """
     windows = []
     # Work backwards: month index 0 = current month, 1 = previous, …
     for i in range(n - 1, -1, -1):
-        # Subtract i months from today's year/month
-        total_months = today.year * 12 + (today.month - 1) - i
-        year = total_months // 12
-        month = total_months % 12 + 1  # 1-based
-        since = datetime.date(year, month, 1)
-        # until = first day of the next month
-        _, last_day = calendar.monthrange(year, month)
-        until = since + datetime.timedelta(days=last_day)
-        windows.append((since.isoformat(), until.isoformat(), f"{year:04d}-{month:02d}"))
+        # Compute the anchor month (end of the window)
+        anchor_total_months = today.year * 12 + (today.month - 1) - i
+        anchor_year = anchor_total_months // 12
+        anchor_month = anchor_total_months % 12 + 1  # 1-based
+
+        # Compute the start month (window_months - 1) months before the anchor
+        start_total_months = anchor_total_months - (window_months - 1)
+        start_year = start_total_months // 12
+        start_month = start_total_months % 12 + 1  # 1-based
+
+        since = datetime.date(start_year, start_month, 1)
+        # until = first day of the month after the anchor
+        _, last_day = calendar.monthrange(anchor_year, anchor_month)
+        until = datetime.date(anchor_year, anchor_month, 1) + datetime.timedelta(days=last_day)
+        windows.append((since.isoformat(), until.isoformat(), f"{anchor_year:04d}-{anchor_month:02d}"))
     return windows
 
 

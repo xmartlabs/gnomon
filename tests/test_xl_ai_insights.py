@@ -1,5 +1,6 @@
 import os
 import contextlib
+import datetime
 import io
 import shutil
 import sys
@@ -275,6 +276,158 @@ class TestKeepArtifactsPropagation(unittest.TestCase):
                 "2026-01", False, server, 0, 1, keep_artifacts=True,
             )
         self.assertTrue(mock_run.call_args.kwargs["keep_artifacts"])
+
+
+class TestMonthWindows(unittest.TestCase):
+    """Test month_windows function with window_months parameter."""
+
+    def test_window_months_1_legacy_single_month(self):
+        """window_months=1 should produce single-calendar-month windows (legacy behavior)."""
+        today = datetime.date(2026, 6, 16)
+        windows = xl_ai_insights.month_windows(3, today, window_months=1)
+
+        # Should be 3 months: 2026-04, 2026-05, 2026-06 (oldest first)
+        self.assertEqual(len(windows), 3)
+
+        # Check 2026-04 (first/oldest)
+        since, until, label = windows[0]
+        self.assertEqual(label, "2026-04")
+        self.assertEqual(since, "2026-04-01")
+        self.assertEqual(until, "2026-05-01")
+
+        # Check 2026-05 (middle)
+        since, until, label = windows[1]
+        self.assertEqual(label, "2026-05")
+        self.assertEqual(since, "2026-05-01")
+        self.assertEqual(until, "2026-06-01")
+
+        # Check 2026-06 (last/newest, the current month)
+        since, until, label = windows[2]
+        self.assertEqual(label, "2026-06")
+        self.assertEqual(since, "2026-06-01")
+        self.assertEqual(until, "2026-07-01")
+
+    def test_window_months_6_current_month(self):
+        """window_months=6 with current month 2026-06 should span 6 months."""
+        today = datetime.date(2026, 6, 16)
+        windows = xl_ai_insights.month_windows(1, today, window_months=6)
+
+        self.assertEqual(len(windows), 1)
+        since, until, label = windows[0]
+
+        # Label should be the anchor (end) month
+        self.assertEqual(label, "2026-06")
+        # Window should span from 2026-01-01 to 2026-07-01 (6 months: Jan through Jun)
+        self.assertEqual(since, "2026-01-01")
+        self.assertEqual(until, "2026-07-01")
+
+    def test_window_months_6_with_year_boundary(self):
+        """window_months=6 with n=2 should handle year boundary crossing correctly."""
+        today = datetime.date(2026, 6, 16)
+        windows = xl_ai_insights.month_windows(2, today, window_months=6)
+
+        self.assertEqual(len(windows), 2)
+
+        # First window: anchor 2026-05, spans 6 months (2025-12 through 2026-05)
+        since, until, label = windows[0]
+        self.assertEqual(label, "2026-05")
+        self.assertEqual(since, "2025-12-01")
+        self.assertEqual(until, "2026-06-01")
+
+        # Second window: anchor 2026-06, spans 6 months (2026-01 through 2026-06)
+        since, until, label = windows[1]
+        self.assertEqual(label, "2026-06")
+        self.assertEqual(since, "2026-01-01")
+        self.assertEqual(until, "2026-07-01")
+
+    def test_window_months_default_is_1(self):
+        """Default window_months should be 1 (legacy behavior)."""
+        today = datetime.date(2026, 6, 16)
+        windows_default = xl_ai_insights.month_windows(2, today)
+        windows_explicit = xl_ai_insights.month_windows(2, today, window_months=1)
+
+        self.assertEqual(len(windows_default), len(windows_explicit))
+        for d, e in zip(windows_default, windows_explicit):
+            self.assertEqual(d, e)
+
+    def test_window_months_label_always_anchor_month(self):
+        """Label should always be the anchor (end) month, never the start month."""
+        today = datetime.date(2026, 6, 16)
+        windows = xl_ai_insights.month_windows(3, today, window_months=4)
+
+        # All labels should be the anchor months (oldest first in order)
+        labels = [label for _, _, label in windows]
+        self.assertEqual(labels, ["2026-04", "2026-05", "2026-06"])
+
+        # Verify that the first window (anchor 2026-04) starts 3 months before (2026-01)
+        since, _, _ = windows[0]
+        self.assertEqual(since, "2026-01-01")
+
+    def test_window_months_3_at_year_start(self):
+        """window_months=3 with anchor near year start should handle year boundary."""
+        today = datetime.date(2026, 2, 1)
+        windows = xl_ai_insights.month_windows(2, today, window_months=3)
+
+        self.assertEqual(len(windows), 2)
+
+        # First window: anchor 2026-01, spans 3 months (2025-11 through 2026-01)
+        since, until, label = windows[0]
+        self.assertEqual(label, "2026-01")
+        self.assertEqual(since, "2025-11-01")
+        self.assertEqual(until, "2026-02-01")
+
+        # Second window: anchor 2026-02, spans 3 months (2025-12 through 2026-02)
+        since, until, label = windows[1]
+        self.assertEqual(label, "2026-02")
+        self.assertEqual(since, "2025-12-01")
+        self.assertEqual(until, "2026-03-01")
+
+    def test_window_months_february_leap_year(self):
+        """Verify correct handling of February in a leap year."""
+        # 2024 is a leap year
+        today = datetime.date(2024, 2, 15)
+        windows = xl_ai_insights.month_windows(1, today, window_months=1)
+
+        self.assertEqual(len(windows), 1)
+        since, until, label = windows[0]
+        self.assertEqual(label, "2024-02")
+        self.assertEqual(since, "2024-02-01")
+        # February 2024 has 29 days, so until = 2024-03-01
+        self.assertEqual(until, "2024-03-01")
+
+    def test_window_months_february_non_leap_year(self):
+        """Verify correct handling of February in a non-leap year."""
+        today = datetime.date(2025, 2, 15)
+        windows = xl_ai_insights.month_windows(1, today, window_months=1)
+
+        self.assertEqual(len(windows), 1)
+        since, until, label = windows[0]
+        self.assertEqual(label, "2025-02")
+        self.assertEqual(since, "2025-02-01")
+        # February 2025 has 28 days, so until = 2025-03-01
+        self.assertEqual(until, "2025-03-01")
+
+    def test_window_months_single_window_spanning_two_years(self):
+        """window_months larger than 12 can span across year boundaries."""
+        today = datetime.date(2026, 6, 15)
+        windows = xl_ai_insights.month_windows(1, today, window_months=12)
+
+        self.assertEqual(len(windows), 1)
+        since, until, label = windows[0]
+        self.assertEqual(label, "2026-06")
+        # 12 months before June 2026 is July 2025
+        self.assertEqual(since, "2025-07-01")
+        self.assertEqual(until, "2026-07-01")
+
+    def test_window_months_n_equals_1_with_different_window_sizes(self):
+        """n=1 with different window sizes should only return the current month window."""
+        today = datetime.date(2026, 6, 16)
+
+        for window_size in [1, 2, 3, 6, 12]:
+            windows = xl_ai_insights.month_windows(1, today, window_months=window_size)
+            self.assertEqual(len(windows), 1, f"Failed for window_size={window_size}")
+            _, _, label = windows[0]
+            self.assertEqual(label, "2026-06", f"Failed for window_size={window_size}")
 
 
 if __name__ == "__main__":
