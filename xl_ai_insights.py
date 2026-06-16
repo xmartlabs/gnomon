@@ -11,7 +11,7 @@ Nothing from your transcripts, prompts, or project names is ever sent — only
 the measured metrics paxel already computes (see docs/metrics-evaluation.md).
 
 Usage:
-    xl-ai-insights [source ...] [--mirdash-base=URL] [--no-open] [--quiet] [--verbose] [--console]
+    xl-ai-insights [source ...] [--mirdash-base=URL] [--no-open] [--quiet] [--verbose] [--console] [--keep-artifacts]
 
     source        e.g. claude, codex, gemini — same as paxel.py (default: all)
     --mirdash-base=URL  override the mirdash server URL
@@ -19,6 +19,8 @@ Usage:
     --quiet       only print errors and the final report URL
     --verbose     also show paxel's full stdout/stderr
     --console     show progress in the terminal instead of the browser
+    --keep-artifacts
+                  keep paxel's temporary output directory for debugging
 
 No dependencies beyond the Python 3 standard library.
 """
@@ -449,12 +451,19 @@ def _format_summary(summary: dict, quiet: bool = False) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _run_paxel(paxel_src, paxel_args, verbose):
+def _run_paxel(paxel_src, paxel_args, verbose, keep_artifacts=False):
     """Run paxel.py in a temp directory and return the parsed summary dict.
 
     Returns the summary dict on success, or None on failure (errors already printed).
     """
-    with tempfile.TemporaryDirectory(prefix="xl-ai-insights-") as tmp:
+    temp_context = None
+    if keep_artifacts:
+        tmp = tempfile.mkdtemp(prefix="xl-ai-insights-")
+    else:
+        temp_context = tempfile.TemporaryDirectory(prefix="xl-ai-insights-")
+        tmp = temp_context.name
+
+    try:
         tmp_paxel = os.path.join(tmp, "paxel.py")
         shutil.copy2(paxel_src, tmp_paxel)
 
@@ -486,6 +495,11 @@ def _run_paxel(paxel_src, paxel_args, verbose):
         except Exception as exc:
             print(f"  error: could not read summary.json: {exc}")
             return None
+    finally:
+        if keep_artifacts:
+            print(f"  Artifacts kept at: {os.path.abspath(tmp)}")
+        elif temp_context is not None:
+            temp_context.cleanup()
 
 
 def _summary_is_empty(summary):
@@ -495,7 +509,8 @@ def _summary_is_empty(summary):
     return ctx.get("total_sessions", 0) == 0 or not dr[0] or not dr[1]
 
 
-def _upload_window(mirdash_base, token, paxel_src, paxel_args_base, since, until, label, verbose, quiet):
+def _upload_window(mirdash_base, token, paxel_src, paxel_args_base, since, until, label,
+                   verbose, quiet, keep_artifacts=False):
     """Run paxel for one calendar window and upload the summary.
 
     Returns the reportUrl string on success, or None if the window should be
@@ -512,7 +527,7 @@ def _upload_window(mirdash_base, token, paxel_src, paxel_args_base, since, until
     if not quiet:
         print(f"  Analysing {label}…")
 
-    summary = _run_paxel(paxel_src, window_args, verbose)
+    summary = _run_paxel(paxel_src, window_args, verbose, keep_artifacts=keep_artifacts)
     if summary is None:
         print(f"  skip {label} — paxel error")
         return None
@@ -530,7 +545,7 @@ def _upload_window(mirdash_base, token, paxel_src, paxel_args_base, since, until
 
 
 def _upload_window_web(mirdash_base, token, paxel_src, paxel_args_base, since, until, label,
-                       verbose, server, index, total):
+                       verbose, server, index, total, keep_artifacts=False):
     """Run paxel for one calendar window, push SSE events, and upload.
 
     Returns the reportUrl string on success, or None if skipped/error.
@@ -544,7 +559,7 @@ def _upload_window_web(mirdash_base, token, paxel_src, paxel_args_base, since, u
 
     server.push_event("analyzing", {"month": label, "label": label, "index": index, "total": total})
 
-    summary = _run_paxel(paxel_src, window_args, verbose)
+    summary = _run_paxel(paxel_src, window_args, verbose, keep_artifacts=keep_artifacts)
     if summary is None:
         server.push_event("skipped", {"month": label, "label": label, "reason": "paxel error"})
         return None
@@ -564,7 +579,8 @@ def _upload_window_web(mirdash_base, token, paxel_src, paxel_args_base, since, u
         return "UPLOAD_ERROR"
 
 
-def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose):
+def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,
+              keep_artifacts=False):
     """Web progress mode: auth + progress in browser, minimal console output."""
     from progress_server import ProgressServer
 
@@ -573,7 +589,8 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
         server = ProgressServer(port=port)
     except OSError as exc:
         print(f"  warning: could not bind localhost:{port} ({exc}) — falling back to console mode")
-        _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose)
+        _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,
+                      keep_artifacts=keep_artifacts)
         return
 
     redirect_uri = f"http://127.0.0.1:{port}/callback"
@@ -632,6 +649,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
             report_url = _upload_window_web(
                 mirdash_base, tokens[token_idx], paxel_src,
                 paxel_forward, since, until, label, verbose, server, i, len(windows),
+                keep_artifacts=keep_artifacts,
             )
             if report_url is not None and report_url != "UPLOAD_ERROR":
                 last_report_url = report_url
@@ -661,6 +679,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
     report_url = _upload_window_web(
         mirdash_base, tokens[0], paxel_src,
         paxel_forward, since, until, label, verbose, server, 0, 1,
+        keep_artifacts=keep_artifacts,
     )
 
     if report_url == "UPLOAD_ERROR":
@@ -685,7 +704,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
 
     # Fallback: current month empty — find most recent month with data
     all_time_args = paxel_forward + ["--summary", "--no-open"]
-    all_time_summary = _run_paxel(paxel_src, all_time_args, verbose)
+    all_time_summary = _run_paxel(paxel_src, all_time_args, verbose, keep_artifacts=keep_artifacts)
 
     if all_time_summary is None or _summary_is_empty(all_time_summary):
         server.push_event("done", {"reportUrl": "", "uploaded": 0, "total": 1, "noOpen": True})
@@ -709,6 +728,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
     report_url = _upload_window_web(
         mirdash_base, tokens[0], paxel_src,
         paxel_forward, fb_since, fb_until, fb_label, verbose, server, 0, 1,
+        keep_artifacts=keep_artifacts,
     )
 
     if report_url is not None:
@@ -728,7 +748,8 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
     server.shutdown()
 
 
-def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose):
+def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,
+                  keep_artifacts=False):
     """Console mode: original behavior with full terminal output."""
     port = 8799
     redirect_uri = f"http://127.0.0.1:{port}/callback"
@@ -776,6 +797,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
             report_url = _upload_window(
                 mirdash_base, tokens[token_idx], paxel_src,
                 paxel_forward, since, until, label, verbose, quiet,
+                keep_artifacts=keep_artifacts,
             )
             if report_url is not None:
                 last_report_url = report_url
@@ -809,7 +831,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
         "--summary",
         "--no-open",
     ]
-    summary = _run_paxel(paxel_src, window_args, verbose)
+    summary = _run_paxel(paxel_src, window_args, verbose, keep_artifacts=keep_artifacts)
 
     if summary is not None and not _summary_is_empty(summary):
         if not quiet:
@@ -836,7 +858,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
         print(f"  No activity in {label} yet — checking for most recent month with data…")
 
     all_time_args = paxel_forward + ["--summary", "--no-open"]
-    all_time_summary = _run_paxel(paxel_src, all_time_args, verbose)
+    all_time_summary = _run_paxel(paxel_src, all_time_args, verbose, keep_artifacts=keep_artifacts)
 
     if all_time_summary is None or _summary_is_empty(all_time_summary):
         print("  nothing to share (no sessions found)")
@@ -862,7 +884,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
         "--summary",
         "--no-open",
     ]
-    fb_summary = _run_paxel(paxel_src, fb_args, verbose)
+    fb_summary = _run_paxel(paxel_src, fb_args, verbose, keep_artifacts=keep_artifacts)
 
     if fb_summary is None or _summary_is_empty(fb_summary):
         print("  nothing to share (no sessions found)")
@@ -893,11 +915,12 @@ def main():
     argv = sys.argv[1:]
 
     # Flags consumed by this wrapper (not forwarded to paxel)
-    wrapper_flags = {"--no-open", "--quiet", "--verbose", "--console"}
+    wrapper_flags = {"--no-open", "--quiet", "--verbose", "--console", "--keep-artifacts"}
     no_open = "--no-open" in argv
     quiet = "--quiet" in argv
     verbose = "--verbose" in argv
     console = "--console" in argv
+    keep_artifacts = "--keep-artifacts" in argv
 
     # Determine operating mode
     mode, token_count = decide_mode(argv)
@@ -919,9 +942,11 @@ def main():
     mirdash_base = _resolve_mirdash_base(argv)
 
     if console:
-        _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose)
+        _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,
+                      keep_artifacts)
     else:
-        _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose)
+        _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,
+                  keep_artifacts)
 
 
 if __name__ == "__main__":

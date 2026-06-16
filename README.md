@@ -58,6 +58,7 @@ It accepts the same source arguments as `paxel.py`:
 ```bash
 uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights claude
 uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --no-open
+uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --keep-artifacts
 ```
 
 What happens when you run it:
@@ -66,6 +67,13 @@ What happens when you run it:
 2. Opens your browser to mirdash for a one-time browser login (loopback callback on `127.0.0.1:8799`).
 3. Uploads `summary.json` (see below) — associated with your account via the login session.
 4. Opens your report page in the browser.
+
+By default, `xl-ai-insights` writes paxel outputs to a temporary directory and
+removes them when the run finishes. This applies to normal monthly runs,
+`--backfill`, and `--init` on macOS, Linux, and Windows. For debugging, pass
+`--keep-artifacts` to preserve that temporary output directory and print its
+absolute path. The preserved directory may include `narrative_input.md`, which
+contains local transcript excerpts; don't upload or share it.
 
 If the browser can't open (headless/CI) or the auth times out (120 s), the command prints a warning and exits cleanly — nothing is uploaded. If you don't want to share at all, just don't run it.
 
