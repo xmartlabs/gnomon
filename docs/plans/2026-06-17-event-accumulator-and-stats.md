@@ -10,6 +10,8 @@
 
 **Reference:** `CONTEXT.md` (terms), `docs/adr/0001-paxel-stays-single-file.md`.
 
+**Test runner:** this project has NO pytest — it is stdlib `unittest`. Use `python3 -m unittest tests.<module>` for one module and `python3 -m unittest discover -s tests` for the full suite. (Plan steps below that say `pytest` mean the unittest equivalent.)
+
 ---
 
 ### Task 0: Freeze the golden stats.json
