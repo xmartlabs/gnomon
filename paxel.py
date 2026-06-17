@@ -2820,14 +2820,21 @@ def _build_monthly_noticed_stats(
         active_hours_m, longest_run_m = _active_hours_and_longest_run(
             month_session_ts.get(mk, {}), gap_cap_s, burst_gap_s)
 
-        ids = _iteration_depth_stats(month_edits_per_file.get(mk, []), no_tool_activity)
         m_tool_total = month_tools_count.get(mk, 0)
+        # Per-month null-honesty: a month with zero tool calls is not measurable
+        # even if the surrounding window has tool activity.
+        m_no_tool = (m_tool_total == 0)
+        ids = _iteration_depth_stats(month_edits_per_file.get(mk, []), m_no_tool)
         err_rate = _error_rate_per_100(
-            month_tool_errors.get(mk, 0), m_tool_total, no_tool_activity)
+            month_tool_errors.get(mk, 0), m_tool_total, m_no_tool)
         recov = _error_recovery_ratio(
-            month_recovered_errors.get(mk, 0), month_tool_errors.get(mk, 0), no_tool_activity)
+            month_recovered_errors.get(mk, 0), month_tool_errors.get(mk, 0), m_no_tool)
         fanouts = [n for n in month_fanouts.get(mk, {}).values() if n > 0]
-        fan_med = _fanout_median(fanouts, no_tool_activity, all_sources_no_agent)
+        # NOTE: all_sources_no_agent is still window-level (per-month source tracking
+        # not available); m_no_tool already forces None for tool-less months, covering
+        # the primary case.  Residual: an all-agent-incapable month inside an
+        # agent-capable window still returns 0 (not None) for fanout_median.
+        fan_med = _fanout_median(fanouts, m_no_tool, all_sources_no_agent)
 
         partial = {
             "volume": {
