@@ -212,6 +212,736 @@ class Stats:
 
 # ---- end Stats dataclasses ---------------------------------------------------
 
+
+# A churn result with all git-derived values zeroed — used when finalize() is given
+# churn=None (e.g. unit tests with no git repo). Mirrors git_churn()'s return shape.
+_ZERO_CHURN = {
+    "repos_seen": 0,
+    "repos_with_commits": 0,
+    "insertions": 0,
+    "deletions": 0,
+    "churn": 0,
+    "commits": 0,
+    "per_repo": [],
+}
+
+
+class EventAccumulator:
+    """Encapsulates main()'s accumulator state, per-file/event folding, and the
+    final derivation into a Stats object. Behavior is a verbatim move of main()'s
+    loop + derive + Stats assembly — see Task 2 of the refactor.
+
+    Interface:
+      consume_file(source, events) — fold one file's events (owns per-file reset +
+                                     codex empty-seed skip + window event-drop)
+      cwds()                       — project cwds seen (input to git_churn)
+      window()                     — (since_iso, until_iso) for git_churn
+      finalize(churn)              — derive metrics, return a Stats object (NOT asdict);
+                                     churn=None => zero git velocity
+      voice_samples()              — verbatim go-to / cryptic / crash-out + opening/
+                                     longest prompts (LOCAL ONLY, never on stats.json)
+    """
+
+    GAP_CAP_S = 600                   # cap idle gaps at 10 min when summing active time
+    BURST_GAP_S = 1800                # a gap > 30 min ends a contiguous work "run"
+
+    def __init__(self, window=(None, None)):
+        self._since, self._until = window
+
+        # ---- accumulators ----------------------------------------------------
+        self._files_parsed = 0
+        self._lines_total = 0
+        self._lines_bad = 0
+
+        self._session_ts = defaultdict(list)   # sessionId -> [epoch seconds]
+        self._session_files = defaultdict(set)
+        self._file_seq = 0                      # per-consume_file identity counter
+
+        self._prompts_count = 0
+        self._polite_prompts = 0
+        self._prompt_lengths = []
+        self._phrase_counts = Counter()
+        self._phrase_repr = {}
+        self._phrase_sess = defaultdict(set)
+        self._cryptic_cands = []
+        self._crashout_cands = []
+        self._command_invocations = 0
+
+        self._assistant_turns = 0
+        self._text_blocks = 0
+        self._thinking_blocks = 0
+        self._thinking_chars = 0
+        self._tool_use_total = 0
+        self._tool_counter = Counter()
+        self._cat_counter = Counter()
+        self._mcp_calls = 0
+        self._native_calls = 0
+
+        self._model_counter = Counter()
+        self._skill_counter = Counter()
+        self._subagent_counter = Counter()
+        self._agents_per_session = defaultdict(int)
+        self._mcp_server_counter = Counter()
+        self._cli_counter = Counter()
+        self._compounding_counter = 0
+        self._project_activity = Counter()
+        self._project_sessions = defaultdict(set)
+
+        self._lines_added = 0
+        self._lines_removed = 0
+        self._edits_per_file_events = []
+        self._git_commits = 0
+        self._background_tasks = 0
+        self._scheduled_actions = 0
+        self._questions_asked = 0
+
+        self._tool_errors = 0
+        self._api_errors = 0
+        self._recovered_errors = 0
+
+        self._bash_write_calls = 0
+        self._bash_authored_lines = 0
+        self._shell_test_runs = 0
+
+        self._hour_hist = Counter()
+        self._weekday_hist = Counter()
+        self._date_set = set()
+        self._all_min_dt = None
+        self._all_max_dt = None
+
+        self._month_prompts = Counter()
+        self._month_tools = Counter()
+        self._month_churn = Counter()
+        self._month_dates = defaultdict(set)
+        self._month_sessions = defaultdict(set)
+        self._month_models = defaultdict(Counter)
+
+        _zero_tok = lambda: {"input": 0, "output": 0, "cache_read": 0, "cache_creation": 0}
+        self._model_tokens = defaultdict(_zero_tok)
+        self._month_tokens = defaultdict(_zero_tok)
+
+        self._opening_prompts = []
+        self._longest_prompts = []
+
+        self._seen_session_open = set()
+        self._source_files = Counter()
+        self._source_sessions = defaultdict(set)
+        self._source_prompts = Counter()
+
+    def consume_file(self, source, events):
+        """Fold one file's events. `source` is the source format/name (e.g. "claude",
+        "codex"); `events` is an iterable of Claude-shaped event dicts (iter_events
+        output). Owns the codex empty-seed skip, the per-file reset, and the
+        since/until window event-drop."""
+        cur_src = source
+        since_dt, until_dt = self._since, self._until
+        _ev_list = list(events)
+
+        self._files_parsed += 1
+        self._source_files[cur_src] += 1
+        # per-file identity marker for session_files (a fallback session count when no
+        # timestamps); main() uses the file path — any stable per-file token works.
+        self._file_seq += 1
+        _file_tok = self._file_seq
+
+        # per-session, per-file ordered state for error-recovery + iteration depth
+        pending_error = defaultdict(bool)
+        file_edit_run = defaultdict(lambda: defaultdict(int))
+
+        # Codex emits ~37k empty "seed" sessions (only injected wrappers + a 2+2 probe).
+        # If a codex file has no genuine human prompt after filtering, skip it entirely so
+        # it doesn't inflate session counts and drag the scores.
+        if cur_src == "codex" and not any(
+            e.get("type") == "user"
+            and isinstance((e.get("message") or {}).get("content"), str)
+            and (e.get("message") or {}).get("content", "").strip()
+            for e in _ev_list
+        ):
+            self._source_files[cur_src] -= 1
+            self._files_parsed -= 1
+            return
+
+        for ev in _ev_list:
+            if ev.get("__bad__"):
+                self._lines_bad += 1
+                continue
+            self._lines_total += 1
+
+            etype = ev.get("type")
+            sid = ev.get("sessionId")
+            cwd = ev.get("cwd")
+            dt = parse_ts(ev.get("timestamp"))
+            if (since_dt is not None or until_dt is not None) and (
+                    dt is None
+                    or (since_dt is not None and dt < since_dt)
+                    or (until_dt is not None and dt >= until_dt)):
+                continue
+            mkey = dt.strftime("%Y-%m") if dt is not None else None
+
+            if dt is not None:
+                _synth_ts = ev.get("__synth_ts__")
+                if self._all_min_dt is None or dt < self._all_min_dt:
+                    self._all_min_dt = dt
+                if self._all_max_dt is None or dt > self._all_max_dt:
+                    self._all_max_dt = dt
+                if not _synth_ts:
+                    self._hour_hist[dt.hour] += 1
+                    self._weekday_hist[dt.weekday()] += 1
+                self._date_set.add(dt.date().isoformat())
+                self._month_dates[mkey].add(dt.date().isoformat())
+                if sid:
+                    if not _synth_ts:
+                        self._session_ts[sid].append(dt.timestamp())
+                    self._month_sessions[mkey].add(sid)
+            if sid:
+                self._session_files[sid].add(_file_tok)
+                self._source_sessions[cur_src].add(sid)
+            if cwd:
+                self._project_activity[cwd] += 1
+                if sid:
+                    self._project_sessions[cwd].add(sid)
+
+            msg = ev.get("message") if isinstance(ev.get("message"), dict) else None
+
+            # ---- API error / retry events (system + assistant) ----------
+            if ev.get("isApiErrorMessage") or ev.get("apiErrorStatus"):
+                self._api_errors += 1
+            if etype == "system" and ev.get("retryAttempt"):
+                self._api_errors += 1
+
+            # ---- genuine user prompts -----------------------------------
+            if etype == "user" and msg is not None:
+                if (ev.get("isMeta") or ev.get("isCompactSummary")
+                        or ev.get("isVisibleInTranscriptOnly") or ev.get("isSidechain")):
+                    pass  # injected / non-human / subagent-dispatch instruction
+                else:
+                    content = msg.get("content")
+                    text = None
+                    if isinstance(content, str):
+                        text = content
+                    elif isinstance(content, list):
+                        parts = [b.get("text", "") for b in content
+                                 if isinstance(b, dict) and b.get("type") == "text"]
+                        if parts:
+                            text = "\n".join(parts)
+                    if text is not None:
+                        is_command = ("<command-name>" in text or
+                                      text.lstrip().startswith("<local-command"))
+                        cleaned = strip_injections(text)
+                        if is_command and not cleaned:
+                            self._command_invocations += 1
+                        elif cleaned:
+                            self._prompts_count += 1
+                            self._source_prompts[cur_src] += 1
+                            if mkey:
+                                self._month_prompts[mkey] += 1
+                            self._prompt_lengths.append(len(cleaned))
+                            if _POLITE_RE.search(cleaned):
+                                self._polite_prompts += 1
+                            _wc = len(cleaned.split())
+                            if _safe_quote(cleaned) and 1 <= _wc <= 6:
+                                _norm = re.sub(r"\s+", " ", cleaned.strip().lower()).strip("?.!,. ")
+                                if len(_norm) >= 2:
+                                    self._phrase_counts[_norm] += 1
+                                    self._phrase_repr.setdefault(_norm, cleaned.strip())
+                                    self._phrase_sess[_norm].add(sid)
+                            if _safe_quote(cleaned):
+                                if 3 <= _wc <= 14:
+                                    _words = re.findall(r"[a-z']+", cleaned.lower())
+                                    if _words and not all(w in _FILLER for w in _words):
+                                        _csc = _cryptic_score(cleaned)
+                                        if _csc >= 1.8:
+                                            self._cryptic_cands.append((round(_csc, 2), cleaned.strip()))
+                                if sum(c.isalpha() for c in cleaned) >= 6 and _wc <= 16:
+                                    _bangs = cleaned.count("!") + cleaned.count("?")
+                                    if _RAGE_RE.search(cleaned) or _bangs >= 2:
+                                        _xsc = _crashout_score(cleaned, hour=dt.hour if dt else None)
+                                        if _xsc >= 2.0:
+                                            self._crashout_cands.append((round(_xsc, 2), cleaned.strip()))
+                            if is_command:
+                                self._command_invocations += 1
+                            proj = os.path.basename(cwd) if cwd else "?"
+                            if sid and sid not in self._seen_session_open:
+                                self._seen_session_open.add(sid)
+                                self._opening_prompts.append((dt, proj, cleaned[:600]))
+                            self._longest_prompts.append((len(cleaned), proj, cleaned[:600]))
+                            if len(self._longest_prompts) > 400:
+                                self._longest_prompts.sort(key=lambda x: -x[0])
+                                del self._longest_prompts[120:]
+
+                # ---- tool results inside user turns ---------------------
+                content = msg.get("content")
+                if isinstance(content, list):
+                    for b in content:
+                        if isinstance(b, dict) and b.get("type") == "tool_result":
+                            if b.get("is_error"):
+                                self._tool_errors += 1
+                                if sid:
+                                    pending_error[sid] = True
+
+            # ---- assistant turns ---------------------------------------
+            elif etype == "assistant" and msg is not None:
+                self._assistant_turns += 1
+                mdl = msg.get("model")
+                if mdl:
+                    self._model_counter[mdl] += 1
+                    if mkey:
+                        self._month_models[mkey][mdl] += 1
+                    # ---- token usage extraction (fully defensive) -------
+                    _u = msg.get("usage") or {}
+                    _ti  = _usage_int(_u, "input_tokens")
+                    _to  = _usage_int(_u, "output_tokens")
+                    _tcr = _usage_int(_u, "cache_read_input_tokens")
+                    _tcc = _usage_int(_u, "cache_creation_input_tokens")
+                    self._model_tokens[mdl]["input"]          += _ti
+                    self._model_tokens[mdl]["output"]         += _to
+                    self._model_tokens[mdl]["cache_read"]     += _tcr
+                    self._model_tokens[mdl]["cache_creation"] += _tcc
+                    if mkey:
+                        self._month_tokens[mkey]["input"]          += _ti
+                        self._month_tokens[mkey]["output"]         += _to
+                        self._month_tokens[mkey]["cache_read"]     += _tcr
+                        self._month_tokens[mkey]["cache_creation"] += _tcc
+                if ev.get("attributionSkill"):
+                    self._skill_counter[ev["attributionSkill"]] += 1
+                content = msg.get("content")
+                if isinstance(content, list):
+                    for b in content:
+                        if not isinstance(b, dict):
+                            continue
+                        bt = b.get("type")
+                        if bt == "text":
+                            self._text_blocks += 1
+                        elif bt == "thinking":
+                            self._thinking_blocks += 1
+                            self._thinking_chars += len(b.get("thinking", "") or "")
+                        elif bt == "tool_use":
+                            name = b.get("name", "?")
+                            inp = b.get("input", {}) if isinstance(b.get("input"), dict) else {}
+                            self._tool_use_total += 1
+                            self._tool_counter[name] += 1
+                            if mkey:
+                                self._month_tools[mkey] += 1
+                            self._cat_counter[classify_tool(name)] += 1
+                            if name.startswith("mcp__"):
+                                self._mcp_calls += 1
+                                parts = name.split("__")
+                                if len(parts) > 1 and parts[1]:
+                                    self._mcp_server_counter[parts[1]] += 1
+                            else:
+                                self._native_calls += 1
+
+                            # a tool use after a pending error = recovery
+                            if sid and pending_error.get(sid):
+                                self._recovered_errors += 1
+                                pending_error[sid] = False
+
+                            if name == "Skill":
+                                s = inp.get("skill")
+                                if s:
+                                    self._skill_counter[s] += 1
+                            if name == "Agent":
+                                st = inp.get("subagent_type", "general-purpose")
+                                self._subagent_counter[st] += 1
+                                if sid:
+                                    self._agents_per_session[sid] += 1
+                            if name in ASK_TOOLS:
+                                self._questions_asked += 1
+                            if inp.get("run_in_background"):
+                                self._background_tasks += 1
+                            if name in SCHEDULE_TOOLS:
+                                self._scheduled_actions += 1
+
+                            # ---- code churn + iteration depth ----------
+                            if name == "Edit":
+                                a = line_count(inp.get("new_string", ""))
+                                r = line_count(inp.get("old_string", ""))
+                                self._lines_added += a
+                                self._lines_removed += r
+                                if mkey:
+                                    self._month_churn[mkey] += a + r
+                                fpth = inp.get("file_path")
+                                if sid and fpth:
+                                    file_edit_run[sid][fpth] += 1
+                                if _is_compounding_path(fpth):
+                                    self._compounding_counter += 1
+                            elif name == "Write":
+                                a = line_count(inp.get("content", ""))
+                                self._lines_added += a
+                                if mkey:
+                                    self._month_churn[mkey] += a
+                                fpth = inp.get("file_path")
+                                if sid and fpth:
+                                    file_edit_run[sid][fpth] += 1
+                                if _is_compounding_path(fpth):
+                                    self._compounding_counter += 1
+                            elif name == "MultiEdit":
+                                for e in inp.get("edits", []) or []:
+                                    if isinstance(e, dict):
+                                        _ea = line_count(e.get("new_string", ""))
+                                        _er = line_count(e.get("old_string", ""))
+                                        self._lines_added += _ea
+                                        self._lines_removed += _er
+                                        if mkey:
+                                            self._month_churn[mkey] += _ea + _er
+                                fpth = inp.get("file_path")
+                                if sid and fpth:
+                                    file_edit_run[sid][fpth] += 1
+                                if _is_compounding_path(fpth):
+                                    self._compounding_counter += 1
+                            elif name == "NotebookEdit":
+                                self._lines_added += line_count(inp.get("new_source", ""))
+                                fpth = inp.get("notebook_path")
+                                if sid and fpth:
+                                    file_edit_run[sid][fpth] += 1
+                                if _is_compounding_path(fpth):
+                                    self._compounding_counter += 1
+                            elif name == "Bash":
+                                cmd = inp.get("command", "") or ""
+                                if isinstance(cmd, list):
+                                    cmd = " && ".join(str(c) for c in cmd)
+                                for _cli in _extract_clis(cmd):
+                                    self._cli_counter[_cli] += 1
+                                if cur_src != "claude":
+                                    for _sm in _SKILL_MD_RX.finditer(cmd):
+                                        self._skill_counter[_sm.group(1)] += 1
+                                if bash_writes_file(cmd):
+                                    self._bash_write_calls += 1
+                                    self._bash_authored_lines += cmd.count("\n")
+                                if bash_runs_tests(cmd):
+                                    self._shell_test_runs += 1
+                                if "git commit" in cmd:
+                                    self._git_commits += 1
+                                    # flush iteration-depth run for this session
+                                    if sid in file_edit_run:
+                                        for cnt in file_edit_run[sid].values():
+                                            if cnt > 0:
+                                                self._edits_per_file_events.append(cnt)
+                                        file_edit_run[sid].clear()
+
+        # end of file: flush any remaining edit runs as iteration-depth samples
+        for sdict in file_edit_run.values():
+            for cnt in sdict.values():
+                if cnt > 0:
+                    self._edits_per_file_events.append(cnt)
+
+    def cwds(self):
+        """Project cwds seen — the input to git_churn."""
+        return list(self._project_activity.keys())
+
+    def window(self):
+        """(since_iso, until_iso) for git_churn, derived per main()'s logic: when a
+        date window is active, churn covers the REQUESTED window; otherwise it spans
+        the min/max of observed event timestamps."""
+        since_dt, until_dt = self._since, self._until
+        if since_dt is not None or until_dt is not None:
+            gc_since = since_dt.strftime("%Y-%m-%d") if since_dt is not None else (
+                self._all_min_dt.isoformat() if self._all_min_dt else "1970-01-01")
+            gc_until = (until_dt.strftime("%Y-%m-%d")
+                        if until_dt is not None else (self._all_max_dt.isoformat() if self._all_max_dt else "2100-01-01"))
+        else:
+            gc_since = self._all_min_dt.isoformat() if self._all_min_dt else "1970-01-01"
+            gc_until = self._all_max_dt.isoformat() if self._all_max_dt else "2100-01-01"
+        return (gc_since, gc_until)
+
+    def voice_samples(self):
+        """Verbatim go-to / cryptic / crash-out quotes + opening/longest prompts.
+        LOCAL ONLY — these are never written to stats.json."""
+        phrase_counts = self._phrase_counts
+        phrase_repr = self._phrase_repr
+        phrase_sess = self._phrase_sess
+        goto = None
+        for ph, cnt in phrase_counts.most_common(25):
+            if cnt >= 3 and len(phrase_sess.get(ph, ())) >= 2:
+                goto = (phrase_repr[ph], cnt, len(phrase_sess[ph]))
+                break
+
+        def _dedup_rank(cands):
+            best = {}
+            for sc, tx in cands:
+                k = tx.lower()
+                if k not in best or sc > best[k][0]:
+                    best[k] = (sc, tx)
+            return sorted(best.values(), key=lambda x: (-x[0], x[1]))
+        cryptic_cands = _dedup_rank(self._cryptic_cands)
+        crashout_cands = _dedup_rank(self._crashout_cands)
+
+        def _quote_pool(cands, n=6, floor=0.5):
+            if not cands:
+                return []
+            top = cands[0][0]
+            return [tx for sc, tx in cands if sc >= top * floor][:n]
+        rage_pool = _quote_pool([(sc, tx) for sc, tx in crashout_cands if len(tx.split()) <= 9])
+        cuff_pool = _quote_pool(cryptic_cands)
+        voice = {"goto": goto, "crashouts": rage_pool, "cryptics": cuff_pool}
+        return {
+            "voice": voice,
+            "opening_prompts": self._opening_prompts,
+            "longest_prompts": self._longest_prompts,
+        }
+
+    def finalize(self, churn):
+        """Derive final metrics and assemble a Stats OBJECT (not asdict'd). `churn` is
+        the git_churn() result dict; churn=None => all git-derived values are 0."""
+        gc = churn if churn is not None else _ZERO_CHURN
+
+        # ---- derive ----------------------------------------------------------
+        total_sessions = len(self._session_ts) or len(self._session_files)
+        durations_min = []
+        longest_burst_s = 0.0
+        GAP_CAP_S = self.GAP_CAP_S
+        BURST_GAP_S = self.BURST_GAP_S
+        for ts_list in self._session_ts.values():
+            ts_list.sort()
+            active_s = 0.0
+            for a, bnext in zip(ts_list, ts_list[1:]):
+                active_s += min(bnext - a, GAP_CAP_S)
+            durations_min.append(active_s / 60.0)
+            bstart = bprev = None
+            for t in ts_list:
+                if bprev is None:
+                    bstart = bprev = t
+                elif t - bprev > BURST_GAP_S:
+                    longest_burst_s = max(longest_burst_s, bprev - bstart)
+                    bstart = bprev = t
+                else:
+                    bprev = t
+            if bstart is not None:
+                longest_burst_s = max(longest_burst_s, bprev - bstart)
+        active_hours = sum(durations_min) / 60.0
+        avg_session_min = statistics.mean(durations_min) if durations_min else 0
+        median_session_min = statistics.median(durations_min) if durations_min else 0
+        longest_run_min = longest_burst_s / 60.0
+
+        avg_prompt_len = statistics.mean(self._prompt_lengths) if self._prompt_lengths else 0
+        median_prompt_len = statistics.median(self._prompt_lengths) if self._prompt_lengths else 0
+
+        total_churn = self._lines_added + self._lines_removed
+        code_velocity = (total_churn / active_hours) if active_hours > 0 else 0
+
+        git_velocity = (gc["churn"] / active_hours) if active_hours > 0 else 0
+
+        explore = self._cat_counter.get("explore", 0) + self._thinking_blocks
+        produce = self._cat_counter.get("produce", 0)
+        execute = self._cat_counter.get("execute", 0)
+        delegate = self._cat_counter.get("delegate", 0)
+        doing = produce + execute + delegate
+        planning_ratio = (explore / doing) if doing else 0
+
+        tool_diversity = len(self._tool_counter)
+        tot = sum(self._tool_counter.values()) or 1
+        entropy = -sum((c / tot) * math.log2(c / tot) for c in self._tool_counter.values())
+        norm_entropy = entropy / math.log2(tool_diversity) if tool_diversity > 1 else 0
+
+        error_recovery_ratio = (self._recovered_errors / self._tool_errors) if self._tool_errors else 0
+        error_rate_per_100_tools = (self._tool_errors / self._tool_use_total * 100) if self._tool_use_total else 0
+        _fanouts = [n for n in self._agents_per_session.values() if n > 0]
+        fanout_median = statistics.median(_fanouts) if _fanouts else 0
+        _depths = sorted(self._edits_per_file_events)
+        iteration_mean = statistics.mean(_depths) if _depths else 0
+        iteration_median = statistics.median(_depths) if _depths else 0
+        iteration_p90 = pctile(_depths, 90)
+        iteration_max = max(_depths) if _depths else 0
+        heavy_files = sum(1 for d in _depths if d > 15)
+
+        actions_per_prompt = (self._tool_use_total / self._prompts_count) if self._prompts_count else 0
+        auto_actions = min(actions_per_prompt / 25.0, 1.0) * 45
+        auto_deleg = min(delegate / max(total_sessions, 1) / 1.5, 1.0) * 20
+        auto_sched = min((self._scheduled_actions + self._background_tasks) / max(total_sessions, 1), 1.0) * 15
+        auto_lowq = (1 - min(self._questions_asked / max(self._prompts_count, 1) * 6, 1.0)) * 20
+        autonomy_score = round(auto_actions + auto_deleg + auto_sched + auto_lowq, 1)
+
+        span_days = (self._all_max_dt - self._all_min_dt).days + 1 if (self._all_min_dt and self._all_max_dt) else 0
+        active_days = len(self._date_set)
+
+        DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        tzname = datetime.now().astimezone().tzname()
+        tzoffset = datetime.now().astimezone().strftime("%z")
+
+        peak_hours = [h for h, _ in self._hour_hist.most_common(3)]
+        preferred_days = [DOW[d] for d, _ in self._weekday_hist.most_common(3)]
+
+        since_dt, until_dt = self._since, self._until
+
+        progression = []
+        for mk in sorted(set(self._month_dates) | set(self._month_prompts) | set(self._month_tools) | set(self._month_tokens)):
+            mm = self._month_models.get(mk, Counter())
+            _mt = self._month_tokens.get(mk) or {}
+            _ti  = _mt.get("input", 0)
+            _to  = _mt.get("output", 0)
+            _tcr = _mt.get("cache_read", 0)
+            _tcc = _mt.get("cache_creation", 0)
+            progression.append({
+                "month": mk,
+                "prompts": self._month_prompts.get(mk, 0),
+                "tool_calls": self._month_tools.get(mk, 0),
+                "sessions": len(self._month_sessions.get(mk, ())),
+                "active_days": len(self._month_dates.get(mk, ())),
+                "tool_churn_lines": self._month_churn.get(mk, 0),
+                "models": mm.most_common(3),
+                "top_model": mm.most_common(1)[0][0] if mm else None,
+                "tokens_input": _ti,
+                "tokens_output": _to,
+                "tokens_cache_read": _tcr,
+                "tokens_cache_creation": _tcc,
+                "tokens_total": _ti + _to + _tcr + _tcc,
+            })
+
+        # ---- aggregate token_usage block ----------------------------------------
+        _all_tok_input  = sum(v["input"]          for v in self._model_tokens.values())
+        _all_tok_output = sum(v["output"]         for v in self._model_tokens.values())
+        _all_tok_cr     = sum(v["cache_read"]     for v in self._model_tokens.values())
+        _all_tok_cc     = sum(v["cache_creation"] for v in self._model_tokens.values())
+        _by_model_tok = sorted(
+            self._model_tokens.items(),
+            key=lambda kv: kv[1]["input"] + kv[1]["output"] + kv[1]["cache_read"] + kv[1]["cache_creation"],
+            reverse=True,
+        )
+
+        stats_obj = Stats(
+            scope="Sources: " + (", ".join(sorted(self._source_files)) or "none"),
+            generated_local_only=True,
+            corpus=CorpusBlock(
+                sources={s: {"files": self._source_files[s], "sessions": len(self._source_sessions[s]),
+                             "prompts": self._source_prompts[s]} for s in sorted(self._source_files)},
+                files_parsed=self._files_parsed,
+                lines_total=self._lines_total,
+                lines_unparseable=self._lines_bad,
+                date_range=(
+                    [since_dt.isoformat() if since_dt is not None else (self._all_min_dt.isoformat() if self._all_min_dt else None),
+                     (until_dt - timedelta(days=1)).isoformat() if until_dt is not None else (self._all_max_dt.isoformat() if self._all_max_dt else None)]
+                    if (since_dt is not None or until_dt is not None) else
+                    [self._all_min_dt.isoformat() if self._all_min_dt else None,
+                     self._all_max_dt.isoformat() if self._all_max_dt else None]
+                ),
+                window=({"since": since_dt.isoformat() if since_dt else None,
+                         "until": until_dt.isoformat() if until_dt else None}
+                        if (since_dt or until_dt) else None),
+                span_days=span_days,
+                active_days=active_days,
+                timezone=f"{tzname} (UTC{tzoffset[:3]}:{tzoffset[3:]})",
+                antigravity_experimental={},
+            ),
+            volume=VolumeBlock(
+                total_sessions=total_sessions,
+                total_prompts=self._prompts_count,
+                command_invocations=self._command_invocations,
+                avg_prompt_length_chars=round(avg_prompt_len, 1),
+                median_prompt_length_chars=round(median_prompt_len, 1),
+                assistant_turns=self._assistant_turns,
+                tool_calls_total=self._tool_use_total,
+                thinking_blocks=self._thinking_blocks,
+            ),
+            tools=ToolsBlock(
+                tool_diversity=tool_diversity,
+                tool_entropy_normalized=round(norm_entropy, 3),
+                mcp_calls=self._mcp_calls,
+                native_calls=self._native_calls,
+                mcp_share=round(self._mcp_calls / (self._mcp_calls + self._native_calls), 3) if (self._mcp_calls + self._native_calls) else 0,
+                top_tools=self._tool_counter.most_common(15),
+                category_breakdown=dict(self._cat_counter),
+                mcp_servers=self._mcp_server_counter.most_common(),
+                mcp_servers_distinct=len(self._mcp_server_counter),
+                clis=self._cli_counter.most_common(),
+                clis_distinct=len(self._cli_counter),
+                cli_calls=sum(self._cli_counter.values()),
+                toolsearch_calls=self._tool_counter.get("ToolSearch", 0),
+                task_tool_calls=self._tool_counter.get("TaskCreate", 0) + self._tool_counter.get("TaskUpdate", 0),
+                agent_calls=self._tool_counter.get("Agent", 0),
+            ),
+            velocity=VelocityBlock(
+                git_churn_total=gc["churn"],
+                git_insertions=gc["insertions"],
+                git_deletions=gc["deletions"],
+                git_commits_real=gc["commits"],
+                git_velocity_lines_per_hour=round(git_velocity, 1),
+                git_repos_with_commits=gc["repos_with_commits"],
+                git_repos_seen=gc["repos_seen"],
+                git_per_repo=gc["per_repo"],
+                tool_churn_edit_write=total_churn,
+                tool_lines_added=self._lines_added,
+                tool_lines_removed=self._lines_removed,
+                tool_velocity_lines_per_hour=round(code_velocity, 1),
+                shell_write_calls=self._bash_write_calls,
+                shell_authored_lines_est=self._bash_authored_lines,
+                active_hours=round(active_hours, 1),
+                git_commits_grep=self._git_commits,
+            ),
+            behavior=BehaviorBlock(
+                planning_ratio_explore_to_doing=round(planning_ratio, 2),
+                explore_actions=explore,
+                produce_actions=produce,
+                execute_actions=execute,
+                delegate_actions=delegate,
+                avg_session_minutes=round(avg_session_min, 1),
+                median_session_minutes=round(median_session_min, 1),
+                longest_run_minutes=round(longest_run_min, 1),
+                polite_prompts=self._polite_prompts,
+                error_recovery_ratio=round(error_recovery_ratio, 3),
+                error_rate_per_100_tools=round(error_rate_per_100_tools, 1),
+                tool_errors=self._tool_errors,
+                recovered_errors=self._recovered_errors,
+                api_errors_retries=self._api_errors,
+                fanout_median=fanout_median,
+                iteration_depth_mean=round(iteration_mean, 2),
+                iteration_depth_median=round(iteration_median, 2),
+                iteration_depth_p90=iteration_p90,
+                iteration_depth_max=iteration_max,
+                files_hammered_over_15x=heavy_files,
+                actions_per_prompt=round(actions_per_prompt, 1),
+                questions_asked=self._questions_asked,
+                background_tasks=self._background_tasks,
+                scheduled_actions=self._scheduled_actions,
+                shell_test_runs=self._shell_test_runs,
+            ),
+            rhythm=RhythmBlock(
+                hour_histogram_local={str(h): self._hour_hist.get(h, 0) for h in range(24)},
+                weekday_histogram={DOW[d]: self._weekday_hist.get(d, 0) for d in range(7)},
+                peak_hours_local=peak_hours,
+                preferred_days=preferred_days,
+            ),
+            progression=ProgressionBlock(monthly=progression),
+            stack=StackBlock(
+                models=self._model_counter.most_common(),
+                top_skills=self._skill_counter.most_common(15),
+                skills_distinct=len(self._skill_counter),
+                skills_total=sum(self._skill_counter.values()),
+                subagent_types_distinct=len(self._subagent_counter),
+                skills_all=self._skill_counter.most_common(),
+                compounding_writes=self._compounding_counter,
+                subagent_types=self._subagent_counter.most_common(10),
+                top_projects=[(os.path.basename(p), c, len(self._project_sessions[p]))
+                              for p, c in self._project_activity.most_common(12)],
+            ),
+            autonomy=AutonomyBlock(
+                autonomy_score_0_100=autonomy_score,
+                components=AutonomyComponents(
+                    actions_per_prompt=round(auto_actions, 1),
+                    delegation=round(auto_deleg, 1),
+                    scheduling_background=round(auto_sched, 1),
+                    low_question_rate=round(auto_lowq, 1),
+                ),
+            ),
+            token_usage=TokenUsageBlock(
+                total_input=_all_tok_input,
+                total_output=_all_tok_output,
+                total_cache_read=_all_tok_cr,
+                total_cache_creation=_all_tok_cc,
+                by_model=[
+                    {
+                        "model_id": m,
+                        "model": _pretty_model(m),
+                        "input": tok["input"],
+                        "output": tok["output"],
+                        "cache_read": tok["cache_read"],
+                        "cache_creation": tok["cache_creation"],
+                    }
+                    for m, tok in _by_model_tok
+                ],
+            ),
+        )
+        return stats_obj
+
 # Sandbox / self-hosted friendly: honor the same env vars the CLIs themselves use
 # (CLAUDE_CONFIG_DIR, CODEX_HOME), and accept --<source>-dir=PATH overrides (see main())
 # for histories copied off a sandbox, devcontainer, or remote box.
