@@ -282,6 +282,119 @@ def pctile(sorted_vals, p):
     return sorted_vals[k]
 
 
+# ---------------------------------------------------------------------------
+# Shared derived-metric helpers (anti-drift): the window path and the per-month
+# path (monthly_noticed_stats) MUST compute these the SAME way. Each helper is
+# the single source of truth for one formula — never fork it inline.
+# ---------------------------------------------------------------------------
+
+def _error_rate_per_100(tool_errors, tool_use_total, no_tool_activity):
+    """tool_errors / tool_use_total * 100, with the null-honesty guard."""
+    if no_tool_activity:
+        return None
+    return (tool_errors / tool_use_total * 100) if tool_use_total else 0
+
+
+def _error_recovery_ratio(recovered_errors, tool_errors, no_tool_activity):
+    """recovered_errors / tool_errors, with the null-honesty guard."""
+    if no_tool_activity:
+        return None
+    return (recovered_errors / tool_errors) if tool_errors else 0
+
+
+def _iteration_depth_stats(depths, no_tool_activity):
+    """mean / median / p90 / max / files_over_15x over per-file edit-run counts.
+    `depths` need not be pre-sorted. Returns a dict with None values when the
+    corpus had no tool activity at all (null honesty)."""
+    if no_tool_activity:
+        return {"mean": None, "median": None, "p90": None, "max": None, "heavy_files": None}
+    d = sorted(depths)
+    return {
+        "mean": statistics.mean(d) if d else 0,
+        "median": statistics.median(d) if d else 0,
+        "p90": pctile(d, 90),
+        "max": max(d) if d else 0,
+        "heavy_files": sum(1 for x in d if x > 15),
+    }
+
+
+def _fanout_median(fanout_counts, no_tool_activity, all_sources_no_agent):
+    """Median team-size among agent-dispatching sessions, with null-honesty guards.
+    `fanout_counts` is the per-session agent-dispatch count for sessions that
+    dispatched at least one agent (already filtered to n > 0)."""
+    if no_tool_activity or (all_sources_no_agent and not fanout_counts):
+        return None
+    return statistics.median(fanout_counts) if fanout_counts else 0
+
+
+def _peak_hours(hour_hist):
+    """Top-3 local hours by event count (Counter.most_common(3) order)."""
+    return [h for h, _ in hour_hist.most_common(3)]
+
+
+def _preferred_days(weekday_hist, dow):
+    """Top-3 weekday names by event count (Counter.most_common(3) order)."""
+    return [dow[d] for d, _ in weekday_hist.most_common(3)]
+
+
+def _active_hours_and_longest_run(session_ts, gap_cap_s, burst_gap_s):
+    """Active hours (sum of inter-event gaps, each capped) and longest contiguous
+    burst (minutes) over a {sessionId: [epoch_seconds]} mapping. Mirrors the
+    window derivation exactly so per-month subsets reuse identical rules."""
+    durations_min = []
+    longest_burst_s = 0.0
+    for ts_list in session_ts.values():
+        ts_list = sorted(ts_list)
+        active_s = 0.0
+        for a, bnext in zip(ts_list, ts_list[1:]):
+            active_s += min(bnext - a, gap_cap_s)
+        durations_min.append(active_s / 60.0)
+        bstart = bprev = None
+        for t in ts_list:
+            if bprev is None:
+                bstart = bprev = t
+            elif t - bprev > burst_gap_s:
+                longest_burst_s = max(longest_burst_s, bprev - bstart)
+                bstart = bprev = t
+            else:
+                bprev = t
+        if bstart is not None:
+            longest_burst_s = max(longest_burst_s, bprev - bstart)
+    return sum(durations_min) / 60.0, longest_burst_s / 60.0
+
+
+def _token_usage_block(tokens_by_model, zero_tok=None):
+    """Shape a {raw_model_id: {input,output,cache_read,cache_creation}} mapping
+    into the stats['token_usage'] payload (totals + by_model, sorted desc).
+    Single shaper so window + per-month token blocks never drift."""
+    all_input = sum(v["input"] for v in tokens_by_model.values())
+    all_output = sum(v["output"] for v in tokens_by_model.values())
+    all_cr = sum(v["cache_read"] for v in tokens_by_model.values())
+    all_cc = sum(v["cache_creation"] for v in tokens_by_model.values())
+    by_model = sorted(
+        tokens_by_model.items(),
+        key=lambda kv: kv[1]["input"] + kv[1]["output"] + kv[1]["cache_read"] + kv[1]["cache_creation"],
+        reverse=True,
+    )
+    return {
+        "total_input": all_input,
+        "total_output": all_output,
+        "total_cache_read": all_cr,
+        "total_cache_creation": all_cc,
+        "by_model": [
+            {
+                "model_id": m,
+                "model": _pretty_model(m),
+                "input": tok["input"],
+                "output": tok["output"],
+                "cache_read": tok["cache_read"],
+                "cache_creation": tok["cache_creation"],
+            }
+            for m, tok in by_model
+        ],
+    }
+
+
 def _usage_int(usage, k):
     """Return usage[k] as int; handles str/float coercion; missing/None/bad → 0."""
     v = usage.get(k)
@@ -1866,10 +1979,34 @@ def main():
     month_sessions = defaultdict(set)    # month -> sessionIds seen
     month_models = defaultdict(Counter)  # month -> model -> assistant turns
 
+    # GA1: month-keyed counterparts for everything monthly_noticed_stats needs,
+    # mirroring each window accumulator at its increment site.
+    month_assistant_turns = Counter()        # month -> assistant turns
+    month_thinking_blocks = Counter()        # month -> thinking blocks
+    month_prompt_lengths = defaultdict(list) # month -> [prompt char lengths]
+    month_bash_write_calls = Counter()       # month -> Bash file-write calls
+    month_bash_authored_lines = Counter()    # month -> shell-authored line est
+    month_tool_errors = Counter()            # month -> tool_result is_error count
+    month_recovered_errors = Counter()       # month -> error-recovery tool uses
+    month_edits_per_file = defaultdict(list) # month -> iteration-depth samples
+    month_polite = Counter()                 # month -> polite prompts
+    month_questions = Counter()              # month -> ASK_TOOLS calls
+    month_delegate = Counter()               # month -> delegate-classified tool calls
+    month_background = Counter()             # month -> run_in_background tool calls
+    month_scheduled = Counter()              # month -> SCHEDULE_TOOLS calls
+    month_fanouts = defaultdict(lambda: defaultdict(int))  # month -> session -> agent dispatches
+    month_hour_hist = defaultdict(Counter)   # month -> local hour -> events
+    month_weekday_hist = defaultdict(Counter)  # month -> weekday(0-6) -> events
+    month_tool_counter = defaultdict(Counter)  # month -> tool name -> calls
+    month_session_ts = defaultdict(lambda: defaultdict(list))  # month -> session -> [epoch s]
+
     # token usage accumulators (keyed by raw model id)
     _zero_tok = lambda: {"input": 0, "output": 0, "cache_read": 0, "cache_creation": 0}
     model_tokens = defaultdict(_zero_tok)        # raw model id -> {input, output, cache_read, cache_creation}
     month_tokens = defaultdict(_zero_tok)        # month key -> {input, output, cache_read, cache_creation}
+    # GA1: month -> raw model id -> tokens, so per-month token_usage carries a real
+    # by_model split (same shape as the window stats['token_usage']).
+    month_model_tokens = defaultdict(lambda: defaultdict(_zero_tok))
 
     # narrative samples
     opening_prompts = []           # (dt, project, text) first genuine prompt per session
@@ -1897,6 +2034,9 @@ def main():
         # per-session, per-file ordered state for error-recovery + iteration depth
         pending_error = defaultdict(bool)        # sessionId -> unrecovered error flag
         file_edit_run = defaultdict(lambda: defaultdict(int))  # session -> file -> edits since commit
+        # GA1: month of the most recent edit per (session, file), so a flushed
+        # iteration-depth run is attributed to the month it happened in.
+        file_edit_month = defaultdict(dict)      # session -> file -> month key
 
         # iter_events() yields Claude-shaped event dicts for every source format,
         # so the per-event logic below is identical across all supported sources.
@@ -1945,11 +2085,14 @@ def main():
                     if not _synth_ts:
                         hour_hist[dt.hour] += 1
                         weekday_hist[dt.weekday()] += 1
+                        month_hour_hist[mkey][dt.hour] += 1
+                        month_weekday_hist[mkey][dt.weekday()] += 1
                     date_set.add(dt.date().isoformat())
                     month_dates[mkey].add(dt.date().isoformat())
                     if sid:
                         if not _synth_ts:
                             session_ts[sid].append(dt.timestamp())
+                            month_session_ts[mkey][sid].append(dt.timestamp())
                         month_sessions[mkey].add(sid)
                 if sid:
                     session_files[sid].add(fp)
@@ -1993,9 +2136,12 @@ def main():
                                 source_prompts[cur_src] += 1
                                 if mkey:
                                     month_prompts[mkey] += 1
+                                    month_prompt_lengths[mkey].append(len(cleaned))
                                 prompt_lengths.append(len(cleaned))
                                 if _POLITE_RE.search(cleaned):
                                     polite_prompts += 1
+                                    if mkey:
+                                        month_polite[mkey] += 1
                                 # collect verbatim-quote candidates (short prompts only, and
                                 # only if safe to surface — no secrets / no harness markers)
                                 _wc = len(cleaned.split())
@@ -2040,12 +2186,16 @@ def main():
                             if isinstance(b, dict) and b.get("type") == "tool_result":
                                 if b.get("is_error"):
                                     tool_errors += 1
+                                    if mkey:
+                                        month_tool_errors[mkey] += 1
                                     if sid:
                                         pending_error[sid] = True
 
                 # ---- assistant turns ---------------------------------------
                 elif etype == "assistant" and msg is not None:
                     assistant_turns += 1
+                    if mkey:
+                        month_assistant_turns[mkey] += 1
                     mdl = msg.get("model")
                     if mdl:
                         model_counter[mdl] += 1
@@ -2066,6 +2216,10 @@ def main():
                             month_tokens[mkey]["output"]         += _to
                             month_tokens[mkey]["cache_read"]     += _tcr
                             month_tokens[mkey]["cache_creation"] += _tcc
+                            month_model_tokens[mkey][mdl]["input"]          += _ti
+                            month_model_tokens[mkey][mdl]["output"]         += _to
+                            month_model_tokens[mkey][mdl]["cache_read"]     += _tcr
+                            month_model_tokens[mkey][mdl]["cache_creation"] += _tcc
                     if ev.get("attributionSkill"):
                         skill_counter[ev["attributionSkill"]] += 1
                     content = msg.get("content")
@@ -2078,15 +2232,21 @@ def main():
                                 text_blocks += 1
                             elif bt == "thinking":
                                 thinking_blocks += 1
+                                if mkey:
+                                    month_thinking_blocks[mkey] += 1
                                 thinking_chars += len(b.get("thinking", "") or "")
                             elif bt == "tool_use":
                                 name = b.get("name", "?")
                                 inp = b.get("input", {}) if isinstance(b.get("input"), dict) else {}
                                 tool_use_total += 1
                                 tool_counter[name] += 1
+                                _cat = classify_tool(name)
                                 if mkey:
                                     month_tools[mkey] += 1
-                                cat_counter[classify_tool(name)] += 1
+                                    month_tool_counter[mkey][name] += 1
+                                    if _cat == "delegate":
+                                        month_delegate[mkey] += 1
+                                cat_counter[_cat] += 1
                                 if name.startswith("mcp__"):
                                     mcp_calls += 1
                                     parts = name.split("__")
@@ -2098,6 +2258,8 @@ def main():
                                 # a tool use after a pending error = recovery
                                 if sid and pending_error.get(sid):
                                     recovered_errors += 1
+                                    if mkey:
+                                        month_recovered_errors[mkey] += 1
                                     pending_error[sid] = False
 
                                 if name == "Skill":
@@ -2109,12 +2271,20 @@ def main():
                                     subagent_counter[st] += 1
                                     if sid:
                                         agents_per_session[sid] += 1
+                                        if mkey:
+                                            month_fanouts[mkey][sid] += 1
                                 if name in ASK_TOOLS:
                                     questions_asked += 1
+                                    if mkey:
+                                        month_questions[mkey] += 1
                                 if inp.get("run_in_background"):
                                     background_tasks += 1
+                                    if mkey:
+                                        month_background[mkey] += 1
                                 if name in SCHEDULE_TOOLS:
                                     scheduled_actions += 1
+                                    if mkey:
+                                        month_scheduled[mkey] += 1
 
                                 # ---- code churn + iteration depth ----------
                                 if name == "Edit":
@@ -2127,6 +2297,8 @@ def main():
                                     fpth = inp.get("file_path")
                                     if sid and fpth:
                                         file_edit_run[sid][fpth] += 1
+                                        if mkey:
+                                            file_edit_month[sid][fpth] = mkey
                                     if _is_compounding_path(fpth):
                                         compounding_counter += 1
                                 elif name == "Write":
@@ -2137,6 +2309,8 @@ def main():
                                     fpth = inp.get("file_path")
                                     if sid and fpth:
                                         file_edit_run[sid][fpth] += 1
+                                        if mkey:
+                                            file_edit_month[sid][fpth] = mkey
                                     if _is_compounding_path(fpth):
                                         compounding_counter += 1
                                 elif name == "MultiEdit":
@@ -2151,6 +2325,8 @@ def main():
                                     fpth = inp.get("file_path")
                                     if sid and fpth:
                                         file_edit_run[sid][fpth] += 1
+                                        if mkey:
+                                            file_edit_month[sid][fpth] = mkey
                                     if _is_compounding_path(fpth):
                                         compounding_counter += 1
                                 elif name == "NotebookEdit":
@@ -2158,6 +2334,8 @@ def main():
                                     fpth = inp.get("notebook_path")
                                     if sid and fpth:
                                         file_edit_run[sid][fpth] += 1
+                                        if mkey:
+                                            file_edit_month[sid][fpth] = mkey
                                     if _is_compounding_path(fpth):
                                         compounding_counter += 1
                                 elif name == "Bash":
@@ -2174,54 +2352,52 @@ def main():
                                     if bash_writes_file(cmd):
                                         bash_write_calls += 1
                                         bash_authored_lines += cmd.count("\n")
+                                        if mkey:
+                                            month_bash_write_calls[mkey] += 1
+                                            month_bash_authored_lines[mkey] += cmd.count("\n")
                                     if bash_runs_tests(cmd):
                                         shell_test_runs += 1
                                     if "git commit" in cmd:
                                         git_commits += 1
                                         # flush iteration-depth run for this session
                                         if sid in file_edit_run:
-                                            for cnt in file_edit_run[sid].values():
+                                            for _f, cnt in file_edit_run[sid].items():
                                                 if cnt > 0:
                                                     edits_per_file_events.append(cnt)
+                                                    _fm = file_edit_month.get(sid, {}).get(_f)
+                                                    if _fm:
+                                                        month_edits_per_file[_fm].append(cnt)
                                             file_edit_run[sid].clear()
+                                            file_edit_month.get(sid, {}).clear()
 
         # end of file: flush any remaining edit runs as iteration-depth samples
-        for sdict in file_edit_run.values():
-            for cnt in sdict.values():
+        for _s, sdict in file_edit_run.items():
+            for _f, cnt in sdict.items():
                 if cnt > 0:
                     edits_per_file_events.append(cnt)
+                    _fm = file_edit_month.get(_s, {}).get(_f)
+                    if _fm:
+                        month_edits_per_file[_fm].append(cnt)
 
     # ---- derive ----------------------------------------------------------------
     total_sessions = len(session_ts) or len(session_files)
     # Active time = sum of consecutive inter-event gaps, each capped at GAP_CAP_S,
     # so resumed-session reuse and overnight idle don't inflate engaged time.
-    durations_min = []
-    longest_burst_s = 0.0
+    # Longest *contiguous* burst (no gap > 30 min). sessionId is reused across
+    # resumed sessions, so a single id can span weeks — max(session duration) is
+    # meaningless; the longest unbroken burst is the honest "longest run."
     BURST_GAP_S = 1800               # a gap > 30 min ends a contiguous work "run"
+    durations_min = []
     for ts_list in session_ts.values():
         ts_list.sort()
         active_s = 0.0
         for a, bnext in zip(ts_list, ts_list[1:]):
             active_s += min(bnext - a, GAP_CAP_S)
         durations_min.append(active_s / 60.0)
-        # Longest *contiguous* burst (no gap > 30 min). sessionId is reused across
-        # resumed sessions, so a single id can span weeks — max(session duration) is
-        # meaningless; the longest unbroken burst is the honest "longest run."
-        bstart = bprev = None
-        for t in ts_list:
-            if bprev is None:
-                bstart = bprev = t
-            elif t - bprev > BURST_GAP_S:
-                longest_burst_s = max(longest_burst_s, bprev - bstart)
-                bstart = bprev = t
-            else:
-                bprev = t
-        if bstart is not None:
-            longest_burst_s = max(longest_burst_s, bprev - bstart)
-    active_hours = sum(durations_min) / 60.0
+    active_hours, longest_run_min = _active_hours_and_longest_run(
+        session_ts, GAP_CAP_S, BURST_GAP_S)
     avg_session_min = statistics.mean(durations_min) if durations_min else 0
     median_session_min = statistics.median(durations_min) if durations_min else 0
-    longest_run_min = longest_burst_s / 60.0
 
     avg_prompt_len = statistics.mean(prompt_lengths) if prompt_lengths else 0
     median_prompt_len = statistics.median(prompt_lengths) if prompt_lengths else 0
@@ -2266,14 +2442,8 @@ def main():
     # call" case becomes None.  Downstream scoring treats None as missing (same as 0).
     _no_tool_activity = (tool_use_total == 0 and bool(source_sessions))
 
-    error_recovery_ratio = (
-        None if _no_tool_activity else
-        (recovered_errors / tool_errors) if tool_errors else 0
-    )
-    error_rate_per_100_tools = (
-        None if _no_tool_activity else
-        (tool_errors / tool_use_total * 100) if tool_use_total else 0
-    )
+    error_recovery_ratio = _error_recovery_ratio(recovered_errors, tool_errors, _no_tool_activity)
+    error_rate_per_100_tools = _error_rate_per_100(tool_errors, tool_use_total, _no_tool_activity)
     # Fan-out / coordination: among sessions that DISPATCH agents, how many do you
     # coordinate at once? Median (robust to one big fan-out outlier). A serial grinder
     # firing N agents one-per-session reads 1; a real orchestrator reads its team size.
@@ -2281,16 +2451,13 @@ def main():
     _all_sources_no_agent = bool(source_sessions) and (
         set(source_sessions.keys()) <= _AGENT_UNSUPPORTED_SOURCES
     )
-    fanout_median = (
-        None if (_no_tool_activity or (_all_sources_no_agent and not _fanouts)) else
-        (statistics.median(_fanouts) if _fanouts else 0)
-    )
-    _depths = sorted(edits_per_file_events)
-    iteration_mean = None if _no_tool_activity else (statistics.mean(_depths) if _depths else 0)
-    iteration_median = None if _no_tool_activity else (statistics.median(_depths) if _depths else 0)
-    iteration_p90 = None if _no_tool_activity else pctile(_depths, 90)
-    iteration_max = None if _no_tool_activity else (max(_depths) if _depths else 0)
-    heavy_files = None if _no_tool_activity else sum(1 for d in _depths if d > 15)
+    fanout_median = _fanout_median(_fanouts, _no_tool_activity, _all_sources_no_agent)
+    _ids = _iteration_depth_stats(edits_per_file_events, _no_tool_activity)
+    iteration_mean = _ids["mean"]
+    iteration_median = _ids["median"]
+    iteration_p90 = _ids["p90"]
+    iteration_max = _ids["max"]
+    heavy_files = _ids["heavy_files"]
 
     actions_per_prompt = (tool_use_total / prompts_count) if prompts_count else 0
     # autonomy proxy 0-100: weighted blend, transparent + bounded
@@ -2307,8 +2474,8 @@ def main():
     tzname = datetime.now().astimezone().tzname()
     tzoffset = datetime.now().astimezone().strftime("%z")
 
-    peak_hours = [h for h, _ in hour_hist.most_common(3)]
-    preferred_days = [DOW[d] for d, _ in weekday_hist.most_common(3)]
+    peak_hours = _peak_hours(hour_hist)
+    preferred_days = _preferred_days(weekday_hist, DOW)
 
     progression = []
     for mk in sorted(set(month_dates) | set(month_prompts) | set(month_tools) | set(month_tokens)):
@@ -2462,34 +2629,50 @@ def main():
         },
     }
     # ---- aggregate token_usage block ----------------------------------------
-    _all_tok_input  = sum(v["input"]          for v in model_tokens.values())
-    _all_tok_output = sum(v["output"]         for v in model_tokens.values())
-    _all_tok_cr     = sum(v["cache_read"]     for v in model_tokens.values())
-    _all_tok_cc     = sum(v["cache_creation"] for v in model_tokens.values())
     # order by total tokens desc (consistent with model_usage ordering in _build_profile)
-    _by_model_tok = sorted(
-        model_tokens.items(),
-        key=lambda kv: kv[1]["input"] + kv[1]["output"] + kv[1]["cache_read"] + kv[1]["cache_creation"],
-        reverse=True,
-    )
-    stats["token_usage"] = {
-        "total_input": _all_tok_input,
-        "total_output": _all_tok_output,
-        "total_cache_read": _all_tok_cr,
-        "total_cache_creation": _all_tok_cc,
-        "by_model": [
-            {
-                "model_id": m,
-                "model": _pretty_model(m),
-                "input": tok["input"],
-                "output": tok["output"],
-                "cache_read": tok["cache_read"],
-                "cache_creation": tok["cache_creation"],
-            }
-            for m, tok in _by_model_tok
-        ],
-    }
+    stats["token_usage"] = _token_usage_block(model_tokens)
     stats["agentic"] = compute_aq(stats)
+
+    # ---- per-calendar-month noticed_stats (GA1) -----------------------------
+    # One entry per month present in the window, chronological. Each entry's
+    # `stats` is shaped by the SAME _build_noticed_stats used for the window
+    # block (no drift); per-month git_churn is called once per month with that
+    # month's [start, next_month_start) range (never the window total).
+    stats["monthly_noticed_stats"] = _build_monthly_noticed_stats(
+        months=sorted(set(month_dates) | set(month_prompts) | set(month_tools)
+                      | set(month_tokens) | set(month_sessions)),
+        month_prompts=month_prompts,
+        month_tools_count=month_tools,
+        month_churn=month_churn,
+        month_models=month_models,
+        month_model_tokens=month_model_tokens,
+        month_sessions=month_sessions,
+        month_dates=month_dates,
+        month_assistant_turns=month_assistant_turns,
+        month_thinking_blocks=month_thinking_blocks,
+        month_prompt_lengths=month_prompt_lengths,
+        month_bash_write_calls=month_bash_write_calls,
+        month_bash_authored_lines=month_bash_authored_lines,
+        month_tool_errors=month_tool_errors,
+        month_recovered_errors=month_recovered_errors,
+        month_edits_per_file=month_edits_per_file,
+        month_polite=month_polite,
+        month_questions=month_questions,
+        month_delegate=month_delegate,
+        month_background=month_background,
+        month_scheduled=month_scheduled,
+        month_fanouts=month_fanouts,
+        month_hour_hist=month_hour_hist,
+        month_weekday_hist=month_weekday_hist,
+        month_tool_counter=month_tool_counter,
+        month_session_ts=month_session_ts,
+        no_tool_activity=_no_tool_activity,
+        all_sources_no_agent=_all_sources_no_agent,
+        cwds=list(project_activity.keys()),
+        gap_cap_s=GAP_CAP_S,
+        burst_gap_s=BURST_GAP_S,
+        dow=DOW,
+    )
 
     with open(os.path.join(OUT_DIR, "stats.json"), "w") as f:
         json.dump(stats, f, indent=2, default=str)
@@ -2600,6 +2783,108 @@ def _client_version():
         return importlib.metadata.version("xl-ai-insights")
     except Exception:
         return "0.1.0"
+
+
+def _build_monthly_noticed_stats(
+    months, month_prompts, month_tools_count, month_churn, month_models,
+    month_model_tokens, month_sessions, month_dates, month_assistant_turns,
+    month_thinking_blocks, month_prompt_lengths, month_bash_write_calls,
+    month_bash_authored_lines, month_tool_errors, month_recovered_errors,
+    month_edits_per_file, month_polite, month_questions, month_delegate,
+    month_background, month_scheduled, month_fanouts, month_hour_hist,
+    month_weekday_hist, month_tool_counter, month_session_ts,
+    no_tool_activity, all_sources_no_agent, cwds, gap_cap_s, burst_gap_s, dow,
+):
+    """Build stats['monthly_noticed_stats'] — one entry per calendar month present
+    in the window, chronological. Each entry's `stats` is shaped by the SAME
+    `_build_noticed_stats` used for the window block (single shaper → no drift),
+    and every derived value reuses the shared anti-drift helpers.
+
+    git_churn is called ONCE per month with that month's [start, next_month_start)
+    range — never the window total.
+    """
+    out = []
+    for mk in months:
+        year, mon = int(mk[:4]), int(mk[5:7])
+        month_start = datetime(year, mon, 1).date()
+        next_month_start = (datetime(year + 1, 1, 1) if mon == 12
+                            else datetime(year, mon + 1, 1)).date()
+        # per-month git churn over the SAME repos as the window call, restricted
+        # to this month's range (one call per month).
+        gc_m = git_churn(cwds, month_start.isoformat(), next_month_start.isoformat())
+
+        lengths = month_prompt_lengths.get(mk, [])
+        avg_len = statistics.mean(lengths) if lengths else 0
+        med_len = statistics.median(lengths) if lengths else 0
+
+        active_hours_m, longest_run_m = _active_hours_and_longest_run(
+            month_session_ts.get(mk, {}), gap_cap_s, burst_gap_s)
+
+        ids = _iteration_depth_stats(month_edits_per_file.get(mk, []), no_tool_activity)
+        m_tool_total = month_tools_count.get(mk, 0)
+        err_rate = _error_rate_per_100(
+            month_tool_errors.get(mk, 0), m_tool_total, no_tool_activity)
+        recov = _error_recovery_ratio(
+            month_recovered_errors.get(mk, 0), month_tool_errors.get(mk, 0), no_tool_activity)
+        fanouts = [n for n in month_fanouts.get(mk, {}).values() if n > 0]
+        fan_med = _fanout_median(fanouts, no_tool_activity, all_sources_no_agent)
+
+        partial = {
+            "volume": {
+                "total_sessions": len(month_sessions.get(mk, ())),
+                "total_prompts": month_prompts.get(mk, 0),
+                "tool_calls_total": m_tool_total,
+                "assistant_turns": month_assistant_turns.get(mk, 0),
+                "thinking_blocks": month_thinking_blocks.get(mk, 0),
+                "avg_prompt_length_chars": round(avg_len, 1),
+                "median_prompt_length_chars": round(med_len, 1),
+            },
+            "velocity": {
+                "git_churn_total": gc_m["churn"],
+                "tool_churn_edit_write": month_churn.get(mk, 0),
+                "shell_authored_lines_est": month_bash_authored_lines.get(mk, 0),
+                "git_repos_seen": gc_m["repos_seen"],
+                "git_repos_with_commits": gc_m["repos_with_commits"],
+                "active_hours": round(active_hours_m, 1),
+            },
+            "behavior": {
+                "iteration_depth_mean": round(ids["mean"], 2) if ids["mean"] is not None else None,
+                "iteration_depth_median": round(ids["median"], 2) if ids["median"] is not None else None,
+                "iteration_depth_p90": ids["p90"],
+                "iteration_depth_max": ids["max"],
+                "files_hammered_over_15x": ids["heavy_files"],
+                "tool_errors": month_tool_errors.get(mk, 0),
+                "error_rate_per_100_tools": round(err_rate, 1) if err_rate is not None else None,
+                "error_recovery_ratio": round(recov, 3) if recov is not None else None,
+                "polite_prompts": month_polite.get(mk, 0),
+                "questions_asked": month_questions.get(mk, 0),
+                "delegate_actions": month_delegate.get(mk, 0),
+                "background_tasks": month_background.get(mk, 0),
+                "scheduled_actions": month_scheduled.get(mk, 0),
+                "fanout_median": fan_med,
+                "longest_run_minutes": round(longest_run_m, 1),
+            },
+            "stack": {
+                "models": month_models.get(mk, Counter()).most_common(),
+            },
+            "rhythm": {
+                "hour_histogram_local": {str(h): month_hour_hist.get(mk, {}).get(h, 0) for h in range(24)},
+                "weekday_histogram": {dow[d]: month_weekday_hist.get(mk, {}).get(d, 0) for d in range(7)},
+                "peak_hours_local": _peak_hours(month_hour_hist.get(mk, Counter())),
+                "preferred_days": _preferred_days(month_weekday_hist.get(mk, Counter()), dow),
+            },
+            "tools": {
+                "top_tools": month_tool_counter.get(mk, Counter()).most_common(15),
+            },
+        }
+        out.append({
+            "month": mk,
+            "range_start": month_start.isoformat(),
+            "range_end": (next_month_start - timedelta(days=1)).isoformat(),
+            "stats": _build_noticed_stats(partial),
+            "token_usage": _token_usage_block(dict(month_model_tokens.get(mk, {}))),
+        })
+    return out
 
 
 def _build_noticed_stats(stats):
