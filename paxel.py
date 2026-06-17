@@ -832,6 +832,11 @@ def _patch_files(text):
             continue
         # file directive → start a new file section
         if line.startswith("*** "):
+            # rename: re-attribute the current file section to its destination path so
+            # churn / iteration depth land on the new path, not the stale original.
+            if line.startswith("*** Move to: ") and cur is not None:
+                cur["path"] = line[len("*** Move to: "):]
+                continue
             for directive in ("Update File: ", "Add File: ", "Delete File: "):
                 if line.startswith("*** " + directive):
                     if cur is not None:
@@ -957,8 +962,14 @@ def _codex_events(fp):
     sid = os.path.basename(fp).split(".")[0]
     cwd = None
     parent_tid = None            # parent_thread_id when this session was spawned as a subagent
+    child_ts = None              # representative timestamp of THIS (child) session
     for ev in rows:                       # first pass: session id + working dir + subagent parent
         p = ev.get("payload") or {}
+        # Remember a usable child timestamp so the synthetic fan-out Agent event can be
+        # stamped (undated events are dropped by every windowed run). Prefer the earliest.
+        _ets = ev.get("timestamp")
+        if _ets and child_ts is None:
+            child_ts = _ets
         if ev.get("type") == "session_meta":
             sid = p.get("id") or sid
             cwd = p.get("cwd") or cwd
@@ -982,7 +993,7 @@ def _codex_events(fp):
     # If parent is outside analyzed window this can create a small fan-out-only
     # placeholder session, which is still better than undercounting delegation.
     if parent_tid:
-        yield {"sessionId": parent_tid, "cwd": None, "type": "assistant", "timestamp": None,
+        yield {"sessionId": parent_tid, "cwd": None, "type": "assistant", "timestamp": child_ts,
                "message": {"role": "assistant", "model": None,
                            "content": [{"type": "tool_use", "name": "Agent",
                                         "input": {"subagent_type": "codex-subagent"}}]}}
@@ -2217,14 +2228,21 @@ def main():
 
                 # ---- assistant turns ---------------------------------------
                 elif etype == "assistant" and msg is not None:
-                    assistant_turns += 1
-                    if mkey:
-                        month_assistant_turns[mkey] += 1
+                    # Codex emits synthetic token-usage events as type="assistant" purely
+                    # to carry per-(model,month) token totals. They are NOT real turns, so
+                    # they must not bump assistant-turn or model-mix counters — only feed
+                    # the token accumulators below.
+                    _is_codex_usage = bool(ev.get("__codex_usage__"))
+                    if not _is_codex_usage:
+                        assistant_turns += 1
+                        if mkey:
+                            month_assistant_turns[mkey] += 1
                     mdl = msg.get("model")
                     if mdl:
-                        model_counter[mdl] += 1
-                        if mkey:
-                            month_models[mkey][mdl] += 1
+                        if not _is_codex_usage:
+                            model_counter[mdl] += 1
+                            if mkey:
+                                month_models[mkey][mdl] += 1
                         # ---- token usage extraction (fully defensive) -------
                         _u = msg.get("usage") or {}
                         _ti  = _usage_int(_u, "input_tokens")
