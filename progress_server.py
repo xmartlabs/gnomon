@@ -141,7 +141,11 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
   text-decoration:line-through;font-size:9px}
 .pill.failed{background:rgba(248,113,113,.1);color:var(--danger);border:1px solid rgba(248,113,113,.28);font-weight:600}
 .pill .pi{display:block;font-size:12px;margin-bottom:2px}
-.pill.active .pi{animation:spin 1.2s linear infinite}
+.pill.active .pi{animation:uprise .85s ease-in-out infinite}
+@keyframes uprise{
+  0%,100%{transform:translateY(0)}
+  50%{transform:translateY(-2px)}
+}
 
 /* --- Done state --- */
 .redir{display:inline-flex;align-items:center;gap:6px;
@@ -300,7 +304,7 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     el.className = 'pill ' + state;
     var icon = '\\u00B7';
     if (state === 'done') icon = '\\u2713';
-    else if (state === 'active') icon = '\\u21BB';
+    else if (state === 'active') icon = '\\u2191';
     else if (state === 'skip') icon = '\\u2014';
     else if (state === 'failed') icon = '\\u2715';
     el.innerHTML = '<span class="pi">' + icon + '</span>' + shortMonth(month);
