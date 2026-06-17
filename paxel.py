@@ -51,7 +51,170 @@ import contextlib
 import subprocess
 import statistics
 from collections import Counter, defaultdict
+from dataclasses import dataclass, field, asdict
 from datetime import datetime, timedelta, timezone as _tz
+
+# ---- Stats dataclasses (ADR-0001: single-file) --------------------------------
+# These declare the cross-stage shape of stats.json so the contract is explicit.
+# main() builds a Stats instance then converts it to a plain dict via asdict()
+# before any downstream code touches it.  Readers always use dict-indexing.
+
+@dataclass
+class ScopeBlock:
+    scope: str = ""
+    generated_local_only: bool = True
+
+@dataclass
+class CorpusBlock:
+    sources: dict = field(default_factory=dict)
+    files_parsed: int = 0
+    lines_total: int = 0
+    lines_unparseable: int = 0
+    date_range: list = field(default_factory=list)
+    window: object = None
+    span_days: int = 0
+    active_days: int = 0
+    timezone: str = ""
+    antigravity_experimental: dict = field(default_factory=dict)
+
+@dataclass
+class VolumeBlock:
+    total_sessions: int = 0
+    total_prompts: int = 0
+    command_invocations: int = 0
+    avg_prompt_length_chars: float = 0.0
+    median_prompt_length_chars: float = 0.0
+    assistant_turns: int = 0
+    tool_calls_total: int = 0
+    thinking_blocks: int = 0
+
+@dataclass
+class ToolsBlock:
+    tool_diversity: int = 0
+    tool_entropy_normalized: float = 0.0
+    mcp_calls: int = 0
+    native_calls: int = 0
+    mcp_share: float = 0.0
+    top_tools: list = field(default_factory=list)
+    category_breakdown: dict = field(default_factory=dict)
+    mcp_servers: list = field(default_factory=list)
+    mcp_servers_distinct: int = 0
+    clis: list = field(default_factory=list)
+    clis_distinct: int = 0
+    cli_calls: int = 0
+    toolsearch_calls: int = 0
+    task_tool_calls: int = 0
+    agent_calls: int = 0
+
+@dataclass
+class VelocityBlock:
+    git_churn_total: int = 0
+    git_insertions: int = 0
+    git_deletions: int = 0
+    git_commits_real: int = 0
+    git_velocity_lines_per_hour: float = 0.0
+    git_repos_with_commits: int = 0
+    git_repos_seen: int = 0
+    git_per_repo: dict = field(default_factory=dict)
+    tool_churn_edit_write: int = 0
+    tool_lines_added: int = 0
+    tool_lines_removed: int = 0
+    tool_velocity_lines_per_hour: float = 0.0
+    shell_write_calls: int = 0
+    shell_authored_lines_est: int = 0
+    active_hours: float = 0.0
+    git_commits_grep: int = 0
+
+@dataclass
+class BehaviorBlock:
+    planning_ratio_explore_to_doing: float = 0.0
+    explore_actions: int = 0
+    produce_actions: int = 0
+    execute_actions: int = 0
+    delegate_actions: int = 0
+    avg_session_minutes: float = 0.0
+    median_session_minutes: float = 0.0
+    longest_run_minutes: float = 0.0
+    polite_prompts: int = 0
+    error_recovery_ratio: float = 0.0
+    error_rate_per_100_tools: float = 0.0
+    tool_errors: int = 0
+    recovered_errors: int = 0
+    api_errors_retries: int = 0
+    fanout_median: float = 0.0
+    iteration_depth_mean: float = 0.0
+    iteration_depth_median: float = 0.0
+    iteration_depth_p90: float = 0.0
+    iteration_depth_max: int = 0
+    files_hammered_over_15x: list = field(default_factory=list)
+    actions_per_prompt: float = 0.0
+    questions_asked: int = 0
+    background_tasks: int = 0
+    scheduled_actions: int = 0
+    shell_test_runs: int = 0
+
+@dataclass
+class RhythmBlock:
+    hour_histogram_local: dict = field(default_factory=dict)
+    weekday_histogram: dict = field(default_factory=dict)
+    peak_hours_local: list = field(default_factory=list)
+    preferred_days: list = field(default_factory=list)
+
+@dataclass
+class ProgressionBlock:
+    monthly: dict = field(default_factory=dict)
+
+@dataclass
+class StackBlock:
+    models: list = field(default_factory=list)
+    top_skills: list = field(default_factory=list)
+    skills_distinct: int = 0
+    skills_total: int = 0
+    subagent_types_distinct: int = 0
+    skills_all: list = field(default_factory=list)
+    compounding_writes: dict = field(default_factory=dict)
+    subagent_types: list = field(default_factory=list)
+    top_projects: list = field(default_factory=list)
+
+@dataclass
+class AutonomyComponents:
+    actions_per_prompt: float = 0.0
+    delegation: float = 0.0
+    scheduling_background: float = 0.0
+    low_question_rate: float = 0.0
+
+@dataclass
+class AutonomyBlock:
+    autonomy_score_0_100: float = 0.0
+    components: AutonomyComponents = field(default_factory=AutonomyComponents)
+
+@dataclass
+class TokenUsageBlock:
+    total_input: int = 0
+    total_output: int = 0
+    total_cache_read: int = 0
+    total_cache_creation: int = 0
+    by_model: list = field(default_factory=list)
+
+@dataclass
+class Stats:
+    """Top-level shape of stats.json.  All blocks must match the dict assembled
+    in main() exactly — the golden test enforces byte-equivalent output."""
+    scope: str = ""
+    generated_local_only: bool = True
+    corpus: CorpusBlock = field(default_factory=CorpusBlock)
+    volume: VolumeBlock = field(default_factory=VolumeBlock)
+    tools: ToolsBlock = field(default_factory=ToolsBlock)
+    velocity: VelocityBlock = field(default_factory=VelocityBlock)
+    behavior: BehaviorBlock = field(default_factory=BehaviorBlock)
+    rhythm: RhythmBlock = field(default_factory=RhythmBlock)
+    progression: ProgressionBlock = field(default_factory=ProgressionBlock)
+    stack: StackBlock = field(default_factory=StackBlock)
+    autonomy: AutonomyBlock = field(default_factory=AutonomyBlock)
+    token_usage: TokenUsageBlock = field(default_factory=TokenUsageBlock)
+    agentic: dict = field(default_factory=dict)
+
+# ---- end Stats dataclasses ---------------------------------------------------
 
 # Sandbox / self-hosted friendly: honor the same env vars the CLIs themselves use
 # (CLAUDE_CONFIG_DIR, CODEX_HOME), and accept --<source>-dir=PATH overrides (see main())
@@ -2016,133 +2179,134 @@ def main():
             "tokens_total": _ti + _to + _tcr + _tcc,
         })
 
-    stats = {
-        "scope": "Sources: " + (", ".join(sorted(source_files)) or "none"),
-        "generated_local_only": True,
-        "corpus": {
-            "sources": {s: {"files": source_files[s], "sessions": len(source_sessions[s]),
-                            "prompts": source_prompts[s]} for s in sorted(source_files)},
-            "files_parsed": files_parsed,
-            "lines_total": lines_total,
-            "lines_unparseable": lines_bad,
-            "date_range": (
+    stats_obj = Stats(
+        scope="Sources: " + (", ".join(sorted(source_files)) or "none"),
+        generated_local_only=True,
+        corpus=CorpusBlock(
+            sources={s: {"files": source_files[s], "sessions": len(source_sessions[s]),
+                         "prompts": source_prompts[s]} for s in sorted(source_files)},
+            files_parsed=files_parsed,
+            lines_total=lines_total,
+            lines_unparseable=lines_bad,
+            date_range=(
                 [since_dt.isoformat() if since_dt is not None else (all_min_dt.isoformat() if all_min_dt else None),
                  (until_dt - timedelta(days=1)).isoformat() if until_dt is not None else (all_max_dt.isoformat() if all_max_dt else None)]
                 if (since_dt is not None or until_dt is not None) else
                 [all_min_dt.isoformat() if all_min_dt else None,
                  all_max_dt.isoformat() if all_max_dt else None]
             ),
-            "window": ({"since": since_dt.isoformat() if since_dt else None,
-                        "until": until_dt.isoformat() if until_dt else None}
-                       if (since_dt or until_dt) else None),
-            "span_days": span_days,
-            "active_days": active_days,
-            "timezone": f"{tzname} (UTC{tzoffset[:3]}:{tzoffset[3:]})",
+            window=({"since": since_dt.isoformat() if since_dt else None,
+                     "until": until_dt.isoformat() if until_dt else None}
+                    if (since_dt or until_dt) else None),
+            span_days=span_days,
+            active_days=active_days,
+            timezone=f"{tzname} (UTC{tzoffset[:3]}:{tzoffset[3:]})",
             # metadata only — Antigravity transcripts are server-side, so this is
             # detected + counted but never folded into scores
-            "antigravity_experimental": antigravity,
-        },
-        "volume": {
-            "total_sessions": total_sessions,
-            "total_prompts": prompts_count,
-            "command_invocations": command_invocations,
-            "avg_prompt_length_chars": round(avg_prompt_len, 1),
-            "median_prompt_length_chars": round(median_prompt_len, 1),
-            "assistant_turns": assistant_turns,
-            "tool_calls_total": tool_use_total,
-            "thinking_blocks": thinking_blocks,
-        },
-        "tools": {
-            "tool_diversity": tool_diversity,
-            "tool_entropy_normalized": round(norm_entropy, 3),
-            "mcp_calls": mcp_calls,
-            "native_calls": native_calls,
-            "mcp_share": round(mcp_calls / (mcp_calls + native_calls), 3) if (mcp_calls + native_calls) else 0,
-            "top_tools": tool_counter.most_common(15),
-            "category_breakdown": dict(cat_counter),
-            "mcp_servers": mcp_server_counter.most_common(),
-            "mcp_servers_distinct": len(mcp_server_counter),
-            "clis": cli_counter.most_common(),
-            "clis_distinct": len(cli_counter),
-            "cli_calls": sum(cli_counter.values()),
-            "toolsearch_calls": tool_counter.get("ToolSearch", 0),
-            "task_tool_calls": tool_counter.get("TaskCreate", 0) + tool_counter.get("TaskUpdate", 0),
-            "agent_calls": tool_counter.get("Agent", 0),
-        },
-        "velocity": {
-            "git_churn_total": gc["churn"],
-            "git_insertions": gc["insertions"],
-            "git_deletions": gc["deletions"],
-            "git_commits_real": gc["commits"],
-            "git_velocity_lines_per_hour": round(git_velocity, 1),
-            "git_repos_with_commits": gc["repos_with_commits"],
-            "git_repos_seen": gc["repos_seen"],
-            "git_per_repo": gc["per_repo"],
-            "tool_churn_edit_write": total_churn,
-            "tool_lines_added": lines_added,
-            "tool_lines_removed": lines_removed,
-            "tool_velocity_lines_per_hour": round(code_velocity, 1),
-            "shell_write_calls": bash_write_calls,
-            "shell_authored_lines_est": bash_authored_lines,
-            "active_hours": round(active_hours, 1),
-            "git_commits_grep": git_commits,
-        },
-        "behavior": {
-            "planning_ratio_explore_to_doing": round(planning_ratio, 2),
-            "explore_actions": explore,
-            "produce_actions": produce,
-            "execute_actions": execute,
-            "delegate_actions": delegate,
-            "avg_session_minutes": round(avg_session_min, 1),
-            "median_session_minutes": round(median_session_min, 1),
-            "longest_run_minutes": round(longest_run_min, 1),
-            "polite_prompts": polite_prompts,
-            "error_recovery_ratio": round(error_recovery_ratio, 3),
-            "error_rate_per_100_tools": round(error_rate_per_100_tools, 1),
-            "tool_errors": tool_errors,
-            "recovered_errors": recovered_errors,
-            "api_errors_retries": api_errors,
-            "fanout_median": fanout_median,
-            "iteration_depth_mean": round(iteration_mean, 2),
-            "iteration_depth_median": round(iteration_median, 2),
-            "iteration_depth_p90": iteration_p90,
-            "iteration_depth_max": iteration_max,
-            "files_hammered_over_15x": heavy_files,
-            "actions_per_prompt": round(actions_per_prompt, 1),
-            "questions_asked": questions_asked,
-            "background_tasks": background_tasks,
-            "scheduled_actions": scheduled_actions,
-            "shell_test_runs": shell_test_runs,
-        },
-        "rhythm": {
-            "hour_histogram_local": {str(h): hour_hist.get(h, 0) for h in range(24)},
-            "weekday_histogram": {DOW[d]: weekday_hist.get(d, 0) for d in range(7)},
-            "peak_hours_local": peak_hours,
-            "preferred_days": preferred_days,
-        },
-        "progression": {"monthly": progression},
-        "stack": {
-            "models": model_counter.most_common(),
-            "top_skills": skill_counter.most_common(15),
-            "skills_distinct": len(skill_counter),
-            "skills_total": sum(skill_counter.values()),
-            "subagent_types_distinct": len(subagent_counter),
-            "skills_all": skill_counter.most_common(),
-            "compounding_writes": compounding_counter,
-            "subagent_types": subagent_counter.most_common(10),
-            "top_projects": [(os.path.basename(p), c, len(project_sessions[p]))
-                             for p, c in project_activity.most_common(12)],
-        },
-        "autonomy": {
-            "autonomy_score_0_100": autonomy_score,
-            "components": {
-                "actions_per_prompt": round(auto_actions, 1),
-                "delegation": round(auto_deleg, 1),
-                "scheduling_background": round(auto_sched, 1),
-                "low_question_rate": round(auto_lowq, 1),
-            },
-        },
-    }
+            antigravity_experimental=antigravity,
+        ),
+        volume=VolumeBlock(
+            total_sessions=total_sessions,
+            total_prompts=prompts_count,
+            command_invocations=command_invocations,
+            avg_prompt_length_chars=round(avg_prompt_len, 1),
+            median_prompt_length_chars=round(median_prompt_len, 1),
+            assistant_turns=assistant_turns,
+            tool_calls_total=tool_use_total,
+            thinking_blocks=thinking_blocks,
+        ),
+        tools=ToolsBlock(
+            tool_diversity=tool_diversity,
+            tool_entropy_normalized=round(norm_entropy, 3),
+            mcp_calls=mcp_calls,
+            native_calls=native_calls,
+            mcp_share=round(mcp_calls / (mcp_calls + native_calls), 3) if (mcp_calls + native_calls) else 0,
+            top_tools=tool_counter.most_common(15),
+            category_breakdown=dict(cat_counter),
+            mcp_servers=mcp_server_counter.most_common(),
+            mcp_servers_distinct=len(mcp_server_counter),
+            clis=cli_counter.most_common(),
+            clis_distinct=len(cli_counter),
+            cli_calls=sum(cli_counter.values()),
+            toolsearch_calls=tool_counter.get("ToolSearch", 0),
+            task_tool_calls=tool_counter.get("TaskCreate", 0) + tool_counter.get("TaskUpdate", 0),
+            agent_calls=tool_counter.get("Agent", 0),
+        ),
+        velocity=VelocityBlock(
+            git_churn_total=gc["churn"],
+            git_insertions=gc["insertions"],
+            git_deletions=gc["deletions"],
+            git_commits_real=gc["commits"],
+            git_velocity_lines_per_hour=round(git_velocity, 1),
+            git_repos_with_commits=gc["repos_with_commits"],
+            git_repos_seen=gc["repos_seen"],
+            git_per_repo=gc["per_repo"],
+            tool_churn_edit_write=total_churn,
+            tool_lines_added=lines_added,
+            tool_lines_removed=lines_removed,
+            tool_velocity_lines_per_hour=round(code_velocity, 1),
+            shell_write_calls=bash_write_calls,
+            shell_authored_lines_est=bash_authored_lines,
+            active_hours=round(active_hours, 1),
+            git_commits_grep=git_commits,
+        ),
+        behavior=BehaviorBlock(
+            planning_ratio_explore_to_doing=round(planning_ratio, 2),
+            explore_actions=explore,
+            produce_actions=produce,
+            execute_actions=execute,
+            delegate_actions=delegate,
+            avg_session_minutes=round(avg_session_min, 1),
+            median_session_minutes=round(median_session_min, 1),
+            longest_run_minutes=round(longest_run_min, 1),
+            polite_prompts=polite_prompts,
+            error_recovery_ratio=round(error_recovery_ratio, 3),
+            error_rate_per_100_tools=round(error_rate_per_100_tools, 1),
+            tool_errors=tool_errors,
+            recovered_errors=recovered_errors,
+            api_errors_retries=api_errors,
+            fanout_median=fanout_median,
+            iteration_depth_mean=round(iteration_mean, 2),
+            iteration_depth_median=round(iteration_median, 2),
+            iteration_depth_p90=iteration_p90,
+            iteration_depth_max=iteration_max,
+            files_hammered_over_15x=heavy_files,
+            actions_per_prompt=round(actions_per_prompt, 1),
+            questions_asked=questions_asked,
+            background_tasks=background_tasks,
+            scheduled_actions=scheduled_actions,
+            shell_test_runs=shell_test_runs,
+        ),
+        rhythm=RhythmBlock(
+            hour_histogram_local={str(h): hour_hist.get(h, 0) for h in range(24)},
+            weekday_histogram={DOW[d]: weekday_hist.get(d, 0) for d in range(7)},
+            peak_hours_local=peak_hours,
+            preferred_days=preferred_days,
+        ),
+        progression=ProgressionBlock(monthly=progression),
+        stack=StackBlock(
+            models=model_counter.most_common(),
+            top_skills=skill_counter.most_common(15),
+            skills_distinct=len(skill_counter),
+            skills_total=sum(skill_counter.values()),
+            subagent_types_distinct=len(subagent_counter),
+            skills_all=skill_counter.most_common(),
+            compounding_writes=compounding_counter,
+            subagent_types=subagent_counter.most_common(10),
+            top_projects=[(os.path.basename(p), c, len(project_sessions[p]))
+                          for p, c in project_activity.most_common(12)],
+        ),
+        autonomy=AutonomyBlock(
+            autonomy_score_0_100=autonomy_score,
+            components=AutonomyComponents(
+                actions_per_prompt=round(auto_actions, 1),
+                delegation=round(auto_deleg, 1),
+                scheduling_background=round(auto_sched, 1),
+                low_question_rate=round(auto_lowq, 1),
+            ),
+        ),
+    )
+    stats = asdict(stats_obj)
     # ---- aggregate token_usage block ----------------------------------------
     _all_tok_input  = sum(v["input"]          for v in model_tokens.values())
     _all_tok_output = sum(v["output"]         for v in model_tokens.values())
