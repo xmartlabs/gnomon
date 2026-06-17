@@ -1279,5 +1279,107 @@ class TestGA2BuildSummaryMonthly(unittest.TestCase):
                          "progression_monthly and noticed_stats_monthly month order must match")
 
 
+def _claude_prompt_only(sid, ts, cwd="/Users/demo/proj", model="claude-opus-4-8",
+                        prompt="just a question"):
+    """One user prompt + one assistant text-only reply — NO tool_use block.
+    Month-level tool count stays at zero for this turn."""
+    return [
+        {"type": "user", "sessionId": sid, "cwd": cwd, "timestamp": ts,
+         "message": {"role": "user", "content": prompt}},
+        {"type": "assistant", "sessionId": sid, "cwd": cwd, "timestamp": ts,
+         "message": {"role": "assistant", "model": model,
+                     "content": [{"type": "text", "text": "Sure, here you go."}]}},
+    ]
+
+
+class TestPerMonthNullHonesty(unittest.TestCase):
+    """Validate that per-month null-honesty uses per-month tool activity, not
+    the window-level flag.  A month with ZERO tools inside a window that DOES
+    have tools must report None (not 0) for iteration depth, error rate,
+    error recovery ratio, and fanout median."""
+
+    def _two_month_rows_tool_then_none(self):
+        """Month A (Jan): tool activity (Edit + Read + an error).
+        Month B (Feb): two prompts but ZERO tool calls."""
+        rows = []
+        # January — real tool activity: Edit file_a twice (depth 2), one error
+        rows += _claude_turn("jan-a", "2026-01-10T10:00:00.000Z", tool="Edit",
+                             file_path="/Users/demo/proj/file_a.py",
+                             new_string="line1\nline2", prompt="jan edit one",
+                             is_error=False)
+        rows += _claude_turn("jan-a", "2026-01-10T10:05:00.000Z", tool="Edit",
+                             file_path="/Users/demo/proj/file_a.py",
+                             new_string="line3\nline4", prompt="jan edit two",
+                             is_error=True)
+        rows += _claude_turn("jan-a", "2026-01-10T10:10:00.000Z", tool="Edit",
+                             file_path="/Users/demo/proj/file_a.py",
+                             new_string="line5", prompt="jan edit three (recovery)")
+        # February — prompts only, no tools at all
+        rows += _claude_prompt_only("feb-b", "2026-02-05T09:00:00.000Z",
+                                    prompt="feb question one")
+        rows += _claude_prompt_only("feb-b", "2026-02-05T09:05:00.000Z",
+                                    prompt="feb question two")
+        return rows
+
+    def test_toolless_month_iteration_depth_is_none(self):
+        """Month with zero tools: iteration depth stats must all be None."""
+        stats = _run_claude_transcript(self, self._two_month_rows_tool_then_none())
+        mns = {e["month"]: e for e in stats["monthly_noticed_stats"]}
+        feb = mns["2026-02"]["stats"]
+        self.assertIsNone(feb["iteration"]["depth_mean"],
+                          "depth_mean must be None for a tool-less month")
+        self.assertIsNone(feb["iteration"]["depth_median"],
+                          "depth_median must be None for a tool-less month")
+        self.assertIsNone(feb["iteration"]["depth_max"],
+                          "depth_max must be None for a tool-less month")
+
+    def test_toolless_month_error_rate_is_none(self):
+        """Month with zero tools: error_rate_per_100_tools must be None."""
+        stats = _run_claude_transcript(self, self._two_month_rows_tool_then_none())
+        mns = {e["month"]: e for e in stats["monthly_noticed_stats"]}
+        feb = mns["2026-02"]["stats"]
+        self.assertIsNone(feb["errors"]["error_rate_per_100_tools"],
+                          "error_rate_per_100_tools must be None for a tool-less month")
+
+    def test_toolless_month_error_recovery_ratio_is_none(self):
+        """Month with zero tools: error_recovery_ratio must be None."""
+        stats = _run_claude_transcript(self, self._two_month_rows_tool_then_none())
+        mns = {e["month"]: e for e in stats["monthly_noticed_stats"]}
+        feb = mns["2026-02"]["stats"]
+        self.assertIsNone(feb["errors"]["error_recovery_ratio"],
+                          "error_recovery_ratio must be None for a tool-less month")
+
+    def test_toolless_month_fanout_median_is_none(self):
+        """Month with zero tools: fanout_median must be None."""
+        stats = _run_claude_transcript(self, self._two_month_rows_tool_then_none())
+        mns = {e["month"]: e for e in stats["monthly_noticed_stats"]}
+        feb = mns["2026-02"]["stats"]
+        self.assertIsNone(feb["agents"]["fanout_median"],
+                          "fanout_median must be None for a tool-less month")
+
+    def test_tool_active_month_has_real_values(self):
+        """Month A (Jan) has tool activity: iteration and error stats must be real numbers."""
+        stats = _run_claude_transcript(self, self._two_month_rows_tool_then_none())
+        mns = {e["month"]: e for e in stats["monthly_noticed_stats"]}
+        jan = mns["2026-01"]["stats"]
+        self.assertIsNotNone(jan["iteration"]["depth_mean"],
+                             "depth_mean should be a real number for Jan (has tools)")
+        self.assertIsNotNone(jan["errors"]["error_rate_per_100_tools"],
+                             "error_rate_per_100_tools should be a real number for Jan")
+        self.assertIsNotNone(jan["errors"]["error_recovery_ratio"],
+                             "error_recovery_ratio should be a real number for Jan")
+
+    def test_window_level_flags_unchanged(self):
+        """Window behavior block must NOT be affected by the per-month fix."""
+        stats = _run_claude_transcript(self, self._two_month_rows_tool_then_none())
+        # Window has tool activity (Jan contributed 3 Edit calls), so these are real
+        self.assertIsNotNone(stats["behavior"]["iteration_depth_mean"],
+                             "Window iteration_depth_mean should not be None")
+        self.assertIsNotNone(stats["behavior"]["error_rate_per_100_tools"],
+                             "Window error_rate_per_100_tools should not be None")
+        self.assertIsNotNone(stats["behavior"]["error_recovery_ratio"],
+                             "Window error_recovery_ratio should not be None")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
