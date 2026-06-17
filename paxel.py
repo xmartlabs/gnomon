@@ -47,7 +47,6 @@ import math
 import re
 import sys
 import sqlite3
-import contextlib
 import subprocess
 import statistics
 from collections import Counter, defaultdict
@@ -70,6 +69,8 @@ class CorpusBlock:
     span_days: int = 0
     active_days: int = 0
     timezone: str = ""
+    # placeholder ({} from EventAccumulator.finalize); main() fills the real
+    # antigravity_summary() value post-asdict (like the `agentic` field)
     antigravity_experimental: dict = field(default_factory=dict)
 
 @dataclass
