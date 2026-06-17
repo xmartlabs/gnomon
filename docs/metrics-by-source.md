@@ -134,3 +134,29 @@ Antigravity transcripts are processed server-side by the Antigravity service;
 the local `paxel` process only receives metadata (session count, user info). No
 tool calls, no token usage, no CWDs, no edits are available locally. All
 tool-level metrics are irrecoverable for Antigravity sessions.
+
+---
+
+## Pendiente de calibración: TARGET del Execution score
+
+El score **Execution** se reconstruyó (commits B1/B2) a:
+
+```
+execution = 10 × (0.6 × out_pct + 0.4 × deleg_pct)
+out_rate  = tool_churn_edit_write / max(active_hours, 0.1)
+out_pct   = clamp(out_rate / TARGET)
+```
+
+`TARGET` está **provisional en 1000** lines/hr autoradas (constante en `paxel.py`,
+`compute_scores` y `_score_breakdown`, con comentario in-code).
+
+**Por qué 1000 y por qué recalibrar:** se eligió ≈ p75-p90 de la distribución real
+de `out_rate` en prod (2026-06, N=8: `min 405 · p50 619 · p75 985 · p90 1055`),
+para que el score discrimine en vez de saturar. Pero esa distribución se calculó
+**antes** de los fixes de parser de Codex (A7/A8) y Gemini (A1), que recuperan
+tool_churn antes perdido → la distribución se inclina hacia arriba. **Recalibrar
+`TARGET` a p75-p90 de la distribución post-fix** una vez que todos re-corran y
+re-suban (estimado ~1.200-1.500).
+
+Cómo recalibrar: re-correr `paxel.py` sobre la data real, juntar `out_rate` por
+usuario del último mes, tomar p75-p90, actualizar la constante en los tres lugares.
