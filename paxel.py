@@ -989,19 +989,33 @@ def _codex_events(fp):
 
     model = None
     # token_count carries cumulative total_token_usage. In mixed-model sessions we
-    # snapshot totals on each model switch and credit the delta to prior active model.
+    # snapshot totals on each model switch and credit the delta to the prior active
+    # model. We also bucket each delta by the calendar month of the token event that
+    # produced it, so a thread spanning a month boundary books its tokens in the
+    # right months instead of dumping them all in the session's last month.
     _TOK_FIELDS = ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens")
-    model_tok = {}                   # model -> {field: tokens}
-    base_total = {f: 0 for f in _TOK_FIELDS}   # cumulative at the last model switch
+    model_tok = {}                   # (model, monthKey) -> {field: tokens}
+    bucket_ts = {}                   # (model, monthKey) -> last token ts seen in that bucket
+    base_total = {f: 0 for f in _TOK_FIELDS}   # cumulative at the last flush
     cur_total = None                 # latest cumulative snapshot
-    last_token_ts = None
+    cur_month = None                 # monthKey of the latest cumulative snapshot
+    last_token_ts = None             # raw ts of the latest cumulative snapshot
+
+    def _month_of(ts):
+        dt = parse_ts(ts)
+        return dt.strftime("%Y-%m") if dt is not None else None
 
     def _flush_model(mdl):
+        # Credit the delta accumulated since the last flush to (model, month) of the
+        # most recent snapshot, then advance the baseline.
         if mdl is None or cur_total is None:
             return
-        acc = model_tok.setdefault(mdl, {f: 0 for f in _TOK_FIELDS})
+        key = (mdl, cur_month)
+        acc = model_tok.setdefault(key, {f: 0 for f in _TOK_FIELDS})
         for f in _TOK_FIELDS:
             acc[f] += max(cur_total[f] - base_total[f], 0)
+        if last_token_ts is not None:
+            bucket_ts[key] = last_token_ts
         for f in _TOK_FIELDS:
             base_total[f] = cur_total[f]
 
@@ -1022,7 +1036,13 @@ def _codex_events(fp):
                 info = p_em.get("info") or {}
                 ttu = info.get("total_token_usage")
                 if isinstance(ttu, dict) and ttu.get("total_tokens"):
+                    new_month = _month_of(ev.get("timestamp"))
+                    # When the running total crosses into a new calendar month, flush the
+                    # delta accrued so far to the prior month before adopting the new one.
+                    if cur_total is not None and new_month != cur_month:
+                        _flush_model(model)
                     cur_total = {f: int(ttu.get(f) or 0) for f in _TOK_FIELDS}
+                    cur_month = new_month
                     last_token_ts = ev.get("timestamp")
             continue
         if ev.get("type") != "response_item":
@@ -1068,13 +1088,16 @@ def _codex_events(fp):
                    "message": {"role": "user",
                                "content": [{"type": "tool_result", "is_error": bool(is_err)}]}}
 
-    # Close out final model delta, then emit one synthetic usage event per model so
-    # mixed-model sessions split correctly in model mix. Map Codex fields to Claude shape:
+    # Close out final model delta, then emit one synthetic usage event per
+    # (model, month) so mixed-model sessions split correctly in model mix AND
+    # month-spanning threads attribute tokens to the right calendar month. Each
+    # event is stamped with a timestamp inside its month (the last token ts seen
+    # there) so the main loop buckets it correctly. Map Codex fields to Claude shape:
     #   input  = input_tokens - cached_input_tokens  (non-cached portion)
     #   cache_read = cached_input_tokens
     #   output = output_tokens + reasoning_output_tokens
     _flush_model(model)
-    for mdl, acc in model_tok.items():
+    for (mdl, _mkey), acc in model_tok.items():
         if not mdl or not any(acc.values()):
             continue
         cached = acc["cached_input_tokens"]
@@ -1084,7 +1107,8 @@ def _codex_events(fp):
             "cache_read_input_tokens": cached,
             "cache_creation_input_tokens": 0,
         }
-        yield {**base, "type": "assistant", "timestamp": last_token_ts,
+        ts = bucket_ts.get((mdl, _mkey), last_token_ts)
+        yield {**base, "type": "assistant", "timestamp": ts,
                "__codex_usage__": True,
                "message": {"role": "assistant", "model": mdl, "usage": usage, "content": []}}
 
