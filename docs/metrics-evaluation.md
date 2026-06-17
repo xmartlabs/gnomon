@@ -16,8 +16,9 @@ Sí sirve como feedback a bajo costo, con tres condiciones:
    `stats.json["progression"]["monthly"]`).
 3. **El loop de feedback automatizado es opt-in vía `uvx xl-ai-insights`.** Corre
    el análisis local, sube `summary.json` a mirdash y abre el reporte
-   directamente. Ese resumen incluye las 8 métricas medidas, `progression_monthly`
-   y un bloque `profile` calculado; no incluye prompts ni quotes verbatim.
+   directamente. Ese resumen incluye las 8 métricas medidas, `progression_monthly`,
+   un bloque `profile` calculado y `noticed_stats` share-safe; no incluye prompts
+   ni quotes verbatim.
    `python3 paxel.py` sigue siendo 100% local, cero red. Para el camino sin red:
    `python3 paxel.py --summary` y compartir `summary.json` manualmente (ver
    "Propuesta de uso" abajo).
@@ -63,7 +64,7 @@ Sí sirve como feedback a bajo costo, con tres condiciones:
 1. Cada persona corre `python3 paxel.py --no-open --summary --last=30d` 1×/mes (5 min,
    local) — la ventana hace cada summary comparable período a período, no acumulativo.
 2. Comparte `summary.json`: exactamente las 8 métricas de la tabla de arriba +
-   `progression.monthly`, sin prompts ni quotes ni rúbrica — safe-to-share por
+   `progression.monthly` + `noticed_stats`, sin prompts ni quotes ni rúbrica — safe-to-share por
    construcción (no hace falta el `jq`).
 3. En la 1:1 / retro se mira **el slope propio**, no la comparación entre personas:
    ¿sube planning_ratio? ¿baja error_rate? ¿aparecen compounding_writes?
@@ -85,7 +86,7 @@ Sí sirve como feedback a bajo costo, con tres condiciones:
 
 1. Corre `python3 paxel.py --summary` (todo on-device, cero red).
 2. Comparte `summary.json` manualmente: incluye exactamente las 8 métricas de la
-   tabla de arriba, `progression_monthly` y el bloque `profile`, sin prompts ni
+   tabla de arriba, `progression_monthly`, `profile` y `noticed_stats`, sin prompts ni
    quotes verbatim (no hace falta el `jq`).
 3. Mismo análisis en la 1:1 / retro: slope propio, no ranking entre personas.
 

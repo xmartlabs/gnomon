@@ -117,8 +117,8 @@ class TestPipeline(unittest.TestCase):
 
     def test_summary_flag(self):
         # --summary writes the shareable subset of docs/metrics-evaluation.md: the 8
-        # measured metrics + monthly progression, and NOTHING from the rubric or any
-        # verbatim text (prompts / quotes / skill names) — safe-to-share by construction.
+        # measured metrics + monthly progression + profile + noticed_stats, and NOTHING
+        # verbatim (prompts / quotes / skill names) — safe-to-share by construction.
         _, out = _run(self, ["--summary"])
         path = os.path.join(out, "summary.json")
         self.assertTrue(os.path.exists(path), "summary.json was not written")
@@ -127,7 +127,7 @@ class TestPipeline(unittest.TestCase):
         self.assertEqual(set(summary), {
             "context", "planning_ratio_explore_to_doing", "errors", "iteration_depth",
             "churn", "orchestration", "compounding_writes", "ecosystem",
-            "progression_monthly", "profile", "token_usage"})
+            "progression_monthly", "profile", "noticed_stats", "token_usage"})
         # profile must have the expected sub-keys
         prof = summary["profile"]
         self.assertEqual(set(prof), {"aq", "archetype", "scores", "steering",

@@ -767,6 +767,67 @@ class TestBuildSummaryPayloadFields(unittest.TestCase):
         self.assertEqual(self.summary["churn"]["actions_per_prompt"],
                          self.stats["behavior"]["actions_per_prompt"])
 
+    def test_noticed_stats_share_safe_slice(self):
+        ns = self.summary["noticed_stats"]
+        self.assertEqual(set(ns.keys()), {
+            "volume", "shipping", "iteration", "errors", "models",
+            "rhythm", "prompts", "agents", "sessions", "tools",
+        })
+        self.assertEqual(ns["volume"], {
+            "total_sessions": self.stats["volume"]["total_sessions"],
+            "total_prompts": self.stats["volume"]["total_prompts"],
+            "tool_calls_total": self.stats["volume"]["tool_calls_total"],
+            "assistant_turns": self.stats["volume"]["assistant_turns"],
+            "thinking_blocks": self.stats["volume"]["thinking_blocks"],
+        })
+        self.assertEqual(ns["shipping"], {
+            "git_churn_total": self.stats["velocity"]["git_churn_total"],
+            "tool_churn_edit_write": self.stats["velocity"]["tool_churn_edit_write"],
+            "shell_authored_lines_est": self.stats["velocity"]["shell_authored_lines_est"],
+            "git_repos_seen": self.stats["velocity"]["git_repos_seen"],
+            "git_repos_with_commits": self.stats["velocity"]["git_repos_with_commits"],
+            "active_hours": self.stats["velocity"]["active_hours"],
+        })
+        self.assertEqual(ns["iteration"], {
+            "depth_mean": self.stats["behavior"]["iteration_depth_mean"],
+            "depth_median": self.stats["behavior"]["iteration_depth_median"],
+            "depth_p90": self.stats["behavior"]["iteration_depth_p90"],
+            "depth_max": self.stats["behavior"]["iteration_depth_max"],
+            "files_over_15x": self.stats["behavior"]["files_hammered_over_15x"],
+        })
+        self.assertEqual(ns["errors"], {
+            "tool_errors": self.stats["behavior"]["tool_errors"],
+            "error_rate_per_100_tools": self.stats["behavior"]["error_rate_per_100_tools"],
+            "error_recovery_ratio": self.stats["behavior"]["error_recovery_ratio"],
+        })
+        self.assertEqual(ns["models"]["top_models"][0], {
+            "model_id": "claude-opus-4-7",
+            "label": "Opus 4.7",
+            "turns": 5000,
+            "pct": 0.833,
+        })
+        self.assertEqual(set(ns["rhythm"]["weekday_histogram"].keys()),
+                         {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"})
+        self.assertEqual(ns["prompts"], {
+            "avg_length_chars": self.stats["volume"]["avg_prompt_length_chars"],
+            "median_length_chars": self.stats["volume"]["median_prompt_length_chars"],
+            "polite_prompts": self.stats["behavior"]["polite_prompts"],
+            "questions_asked": self.stats["behavior"]["questions_asked"],
+        })
+        self.assertEqual(ns["agents"], {
+            "delegate_actions": self.stats["behavior"]["delegate_actions"],
+            "background_tasks": self.stats["behavior"]["background_tasks"],
+            "scheduled_actions": self.stats["behavior"]["scheduled_actions"],
+            "fanout_median": self.stats["behavior"]["fanout_median"],
+        })
+        self.assertEqual(ns["sessions"], {
+            "longest_run_minutes": self.stats["behavior"]["longest_run_minutes"],
+        })
+        self.assertEqual(ns["tools"]["top_tools"], [
+            {"name": "Bash", "calls": 500},
+            {"name": "Read", "calls": 300},
+        ])
+
 
 if __name__ == "__main__":
     unittest.main()

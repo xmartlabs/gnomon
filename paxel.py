@@ -2602,6 +2602,98 @@ def _client_version():
         return "0.1.0"
 
 
+def _build_noticed_stats(stats):
+    """Share-safe evidence slice for the local "What we noticed" cards.
+
+    Count-only / derived values, no prompts, quotes, paths, project names, or raw
+    transcript text. Mirdash can store this inside summaryRaw and decide later
+    whether to render cards or inspect the evidence.
+    """
+    v = stats.get("volume") or {}
+    b = stats.get("behavior") or {}
+    vel = stats.get("velocity") or {}
+    st = stats.get("stack") or {}
+    t = stats.get("tools") or {}
+    r = stats.get("rhythm") or {}
+
+    models = st.get("models") or []
+    model_total = sum(n for _, n in models) or 0
+    top_models = [
+        {
+            "model_id": model_id,
+            "label": _pretty_model(model_id),
+            "turns": int(turns),
+            "pct": round(turns / model_total, 3) if model_total else 0,
+        }
+        for model_id, turns in models
+    ]
+
+    weekday_raw = r.get("weekday_histogram") or {}
+    weekday_histogram = {
+        day: int(weekday_raw.get(day, 0))
+        for day in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    }
+
+    return {
+        "volume": {
+            "total_sessions": v.get("total_sessions", 0),
+            "total_prompts": v.get("total_prompts", 0),
+            "tool_calls_total": v.get("tool_calls_total", 0),
+            "assistant_turns": v.get("assistant_turns", 0),
+            "thinking_blocks": v.get("thinking_blocks", 0),
+        },
+        "shipping": {
+            "git_churn_total": vel.get("git_churn_total", 0),
+            "tool_churn_edit_write": vel.get("tool_churn_edit_write", 0),
+            "shell_authored_lines_est": vel.get("shell_authored_lines_est", 0),
+            "git_repos_seen": vel.get("git_repos_seen", 0),
+            "git_repos_with_commits": vel.get("git_repos_with_commits", 0),
+            "active_hours": vel.get("active_hours", 0),
+        },
+        "iteration": {
+            "depth_mean": b.get("iteration_depth_mean"),
+            "depth_median": b.get("iteration_depth_median"),
+            "depth_p90": b.get("iteration_depth_p90"),
+            "depth_max": b.get("iteration_depth_max"),
+            "files_over_15x": b.get("files_hammered_over_15x", 0),
+        },
+        "errors": {
+            "tool_errors": b.get("tool_errors", 0),
+            "error_rate_per_100_tools": b.get("error_rate_per_100_tools"),
+            "error_recovery_ratio": b.get("error_recovery_ratio"),
+        },
+        "models": {
+            "top_models": top_models,
+        },
+        "rhythm": {
+            "peak_hours_local": list(r.get("peak_hours_local") or []),
+            "weekday_histogram": weekday_histogram,
+            "preferred_days": list(r.get("preferred_days") or []),
+        },
+        "prompts": {
+            "avg_length_chars": v.get("avg_prompt_length_chars", 0),
+            "median_length_chars": v.get("median_prompt_length_chars", 0),
+            "polite_prompts": b.get("polite_prompts", 0),
+            "questions_asked": b.get("questions_asked", 0),
+        },
+        "agents": {
+            "delegate_actions": b.get("delegate_actions", 0),
+            "background_tasks": b.get("background_tasks", 0),
+            "scheduled_actions": b.get("scheduled_actions", 0),
+            "fanout_median": b.get("fanout_median"),
+        },
+        "sessions": {
+            "longest_run_minutes": b.get("longest_run_minutes", 0),
+        },
+        "tools": {
+            "top_tools": [
+                {"name": str(name), "calls": int(calls)}
+                for name, calls in (t.get("top_tools") or [])
+            ],
+        },
+    }
+
+
 def build_summary(stats):
     """The shareable subset for the low-cost feedback loop (docs/metrics-evaluation.md):
     the 8 high-signal MEASURED metrics + monthly progression + rubric profile block.
@@ -2646,6 +2738,7 @@ def build_summary(stats):
         },
         "progression_monthly": (stats.get("progression") or {}).get("monthly", []),
         "profile": _build_profile(stats),
+        "noticed_stats": _build_noticed_stats(stats),
         "token_usage": stats.get("token_usage") or {
             "total_input": 0, "total_output": 0,
             "total_cache_read": 0, "total_cache_creation": 0,
