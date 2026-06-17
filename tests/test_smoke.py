@@ -127,7 +127,8 @@ class TestPipeline(unittest.TestCase):
         self.assertEqual(set(summary), {
             "context", "planning_ratio_explore_to_doing", "errors", "iteration_depth",
             "churn", "orchestration", "compounding_writes", "ecosystem",
-            "progression_monthly", "profile", "noticed_stats", "token_usage"})
+            "progression_monthly", "noticed_stats_monthly", "profile",
+            "noticed_stats", "token_usage"})
         # profile must have the expected sub-keys
         prof = summary["profile"]
         self.assertEqual(set(prof), {"aq", "archetype", "scores", "steering",
@@ -1142,6 +1143,140 @@ class TestMonthlyNoticedStats(unittest.TestCase):
                          stats["rhythm"]["peak_hours_local"])
         self.assertEqual(m["rhythm"]["preferred_days"],
                          stats["rhythm"]["preferred_days"])
+
+
+class TestGA2BuildSummaryMonthly(unittest.TestCase):
+    """GA2: build_summary() exposes noticed_stats_monthly + reconciles with progression_monthly."""
+
+    def _two_month_rows(self):
+        """Two months of Claude turns with distinct token counts for isolation checks."""
+        rows = []
+        rows += _claude_turn("ga2-jan", "2026-01-10T10:00:00.000Z", tool="Edit",
+                             file_path="/Users/demo/proj/a.py",
+                             new_string="line1\nline2\nline3",
+                             prompt="please do jan one",
+                             usage={"input_tokens": 200, "output_tokens": 20,
+                                    "cache_read_input_tokens": 10,
+                                    "cache_creation_input_tokens": 2})
+        rows += _claude_turn("ga2-jan", "2026-01-10T10:05:00.000Z", tool="Read",
+                             file_path="/Users/demo/proj/a.py",
+                             prompt="jan two")
+        rows += _claude_turn("ga2-feb", "2026-02-15T09:00:00.000Z", tool="Write",
+                             file_path="/Users/demo/proj/b.py",
+                             new_string="alpha\nbeta",
+                             prompt="feb one",
+                             usage={"input_tokens": 400, "output_tokens": 40,
+                                    "cache_read_input_tokens": 0,
+                                    "cache_creation_input_tokens": 0})
+        rows += _claude_turn("ga2-feb", "2026-02-15T09:05:00.000Z", tool="Read",
+                             prompt="feb two")
+        rows += _claude_turn("ga2-feb", "2026-02-15T09:10:00.000Z", tool="Grep",
+                             prompt="feb three")
+        return rows
+
+    def _run(self, rows):
+        return _run_claude_transcript(self, rows)
+
+    # ------------------------------------------------------------------
+    # noticed_stats_monthly present in build_summary() output
+    # ------------------------------------------------------------------
+
+    def test_noticed_stats_monthly_in_build_summary(self):
+        """build_summary() must include noticed_stats_monthly."""
+        stats = self._run(self._two_month_rows())
+        summary = paxel.build_summary(stats)
+        self.assertIn("noticed_stats_monthly", summary)
+
+    def test_noticed_stats_monthly_non_empty_for_multi_month(self):
+        """noticed_stats_monthly is a non-empty list when window spans >=1 month."""
+        stats = self._run(self._two_month_rows())
+        summary = paxel.build_summary(stats)
+        nsm = summary["noticed_stats_monthly"]
+        self.assertIsInstance(nsm, list)
+        self.assertGreater(len(nsm), 0)
+
+    def test_noticed_stats_monthly_entry_shape(self):
+        """Each entry must carry month, range_start, range_end, stats, token_usage."""
+        stats = self._run(self._two_month_rows())
+        summary = paxel.build_summary(stats)
+        for entry in summary["noticed_stats_monthly"]:
+            self.assertIn("month", entry)
+            self.assertIn("range_start", entry)
+            self.assertIn("range_end", entry)
+            self.assertIn("stats", entry)
+            self.assertIn("token_usage", entry)
+
+    def test_noticed_stats_monthly_stats_shape_matches_window(self):
+        """Each entry's stats must have the same top-level keys as window noticed_stats."""
+        stats = self._run(self._two_month_rows())
+        summary = paxel.build_summary(stats)
+        window_keys = set(summary["noticed_stats"])
+        for entry in summary["noticed_stats_monthly"]:
+            self.assertEqual(set(entry["stats"]), window_keys,
+                             "noticed_stats_monthly entry shape diverged from window noticed_stats")
+
+    def test_noticed_stats_monthly_matches_stats_field(self):
+        """summary['noticed_stats_monthly'] must equal stats['monthly_noticed_stats']."""
+        stats = self._run(self._two_month_rows())
+        summary = paxel.build_summary(stats)
+        self.assertEqual(summary["noticed_stats_monthly"], stats["monthly_noticed_stats"])
+
+    # ------------------------------------------------------------------
+    # progression_monthly reconciliation with noticed_stats_monthly
+    # ------------------------------------------------------------------
+
+    def test_progression_monthly_prompts_match_noticed(self):
+        """progression_monthly[i].prompts == noticed_stats_monthly[i].stats.volume.total_prompts."""
+        stats = self._run(self._two_month_rows())
+        summary = paxel.build_summary(stats)
+        pm = {e["month"]: e for e in summary["progression_monthly"]}
+        nm = {e["month"]: e for e in summary["noticed_stats_monthly"]}
+        self.assertEqual(set(pm), set(nm),
+                         "progression_monthly and noticed_stats_monthly must cover the same months")
+        for month, p in pm.items():
+            n = nm[month]
+            self.assertEqual(p["prompts"], n["stats"]["volume"]["total_prompts"],
+                             f"prompts mismatch for {month}: "
+                             f"progression={p['prompts']} noticed={n['stats']['volume']['total_prompts']}")
+
+    def test_progression_monthly_tool_calls_match_noticed(self):
+        """progression_monthly[i].tool_calls == noticed_stats_monthly[i].stats.volume.tool_calls_total."""
+        stats = self._run(self._two_month_rows())
+        summary = paxel.build_summary(stats)
+        pm = {e["month"]: e for e in summary["progression_monthly"]}
+        nm = {e["month"]: e for e in summary["noticed_stats_monthly"]}
+        for month, p in pm.items():
+            n = nm[month]
+            self.assertEqual(p["tool_calls"], n["stats"]["volume"]["tool_calls_total"],
+                             f"tool_calls mismatch for {month}: "
+                             f"progression={p['tool_calls']} noticed={n['stats']['volume']['tool_calls_total']}")
+
+    def test_progression_monthly_tokens_total_match_noticed(self):
+        """progression_monthly[i].tokens_total == sum of noticed_stats_monthly[i].token_usage totals."""
+        stats = self._run(self._two_month_rows())
+        summary = paxel.build_summary(stats)
+        pm = {e["month"]: e for e in summary["progression_monthly"]}
+        nm = {e["month"]: e for e in summary["noticed_stats_monthly"]}
+        for month, p in pm.items():
+            n = nm[month]
+            tu = n["token_usage"]
+            expected_total = (tu["total_input"] + tu["total_output"]
+                              + tu["total_cache_read"] + tu["total_cache_creation"])
+            self.assertEqual(p["tokens_total"], expected_total,
+                             f"tokens_total mismatch for {month}: "
+                             f"progression={p['tokens_total']} noticed_sum={expected_total}")
+
+    def test_progression_monthly_order_matches_noticed(self):
+        """Both lists must be in the same chronological order."""
+        stats = self._run(self._two_month_rows())
+        summary = paxel.build_summary(stats)
+        pm_months = [e["month"] for e in summary["progression_monthly"]]
+        nm_months = [e["month"] for e in summary["noticed_stats_monthly"]]
+        self.assertEqual(pm_months, sorted(pm_months), "progression_monthly not chronological")
+        self.assertEqual(nm_months, sorted(nm_months), "noticed_stats_monthly not chronological")
+        # same set of months in same order
+        self.assertEqual(pm_months, nm_months,
+                         "progression_monthly and noticed_stats_monthly month order must match")
 
 
 if __name__ == "__main__":
