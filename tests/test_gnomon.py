@@ -828,7 +828,7 @@ class TestBuildSummaryPayloadFields(unittest.TestCase):
             {"name": "Read", "calls": 300},
         ])
 
-    def test_top_tools_keeps_30_global_and_monthly_entries(self):
+    def test_top_tools_keeps_40_global_and_monthly_entries(self):
         import contextlib, io, json, shutil, tempfile
         from unittest import mock
 
@@ -838,8 +838,8 @@ class TestBuildSummaryPayloadFields(unittest.TestCase):
         os.makedirs(sess_dir, exist_ok=True)
 
         content = [{"type": "thinking", "thinking": "rank tools"}]
-        for idx in range(31):
-            calls = 31 - idx
+        for idx in range(41):
+            calls = 41 - idx
             name = f"mcp__server_{idx:02d}__action"
             content.extend(
                 {"type": "tool_use", "name": name, "input": {}}
@@ -873,9 +873,9 @@ class TestBuildSummaryPayloadFields(unittest.TestCase):
         with open(os.path.join(out, "stats.json"), encoding="utf-8") as fh:
             stats = json.load(fh)
 
-        self.assertEqual(len(stats["tools"]["top_tools"]), 30)
+        self.assertEqual(len(stats["tools"]["top_tools"]), 40)
         monthly = stats["monthly_noticed_stats"][0]["stats"]["tools"]["top_tools"]
-        self.assertEqual(len(monthly), 30)
+        self.assertEqual(len(monthly), 40)
 
 
 if __name__ == "__main__":
