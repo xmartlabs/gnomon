@@ -110,7 +110,7 @@ class VelocityBlock:
     git_velocity_lines_per_hour: float = 0.0
     git_repos_with_commits: int = 0
     git_repos_seen: int = 0
-    git_per_repo: dict = field(default_factory=dict)
+    git_per_repo: list = field(default_factory=list)
     tool_churn_edit_write: int = 0
     tool_lines_added: int = 0
     tool_lines_removed: int = 0
@@ -213,17 +213,19 @@ class Stats:
 # ---- end Stats dataclasses ---------------------------------------------------
 
 
-# A churn result with all git-derived values zeroed — used when finalize() is given
-# churn=None (e.g. unit tests with no git repo). Mirrors git_churn()'s return shape.
-_ZERO_CHURN = {
-    "repos_seen": 0,
-    "repos_with_commits": 0,
-    "insertions": 0,
-    "deletions": 0,
-    "churn": 0,
-    "commits": 0,
-    "per_repo": [],
-}
+def _zero_churn():
+    """A fresh churn result with all git-derived values zeroed — used when finalize()
+    is given churn=None (e.g. unit tests with no git repo). Built fresh per call so the
+    mutable `per_repo` list is never aliased into output. Mirrors git_churn()'s shape."""
+    return {
+        "repos_seen": 0,
+        "repos_with_commits": 0,
+        "insertions": 0,
+        "deletions": 0,
+        "churn": 0,
+        "commits": 0,
+        "per_repo": [],
+    }
 
 
 class EventAccumulator:
@@ -683,7 +685,7 @@ class EventAccumulator:
     def finalize(self, churn):
         """Derive final metrics and assemble a Stats OBJECT (not asdict'd). `churn` is
         the git_churn() result dict; churn=None => all git-derived values are 0."""
-        gc = churn if churn is not None else _ZERO_CHURN
+        gc = churn if churn is not None else _zero_churn()
 
         # ---- derive ----------------------------------------------------------
         total_sessions = len(self._session_ts) or len(self._session_files)
@@ -857,7 +859,7 @@ class EventAccumulator:
                 git_velocity_lines_per_hour=round(git_velocity, 1),
                 git_repos_with_commits=gc["repos_with_commits"],
                 git_repos_seen=gc["repos_seen"],
-                git_per_repo=gc["per_repo"],
+                git_per_repo=list(gc["per_repo"]),
                 tool_churn_edit_write=total_churn,
                 tool_lines_added=self._lines_added,
                 tool_lines_removed=self._lines_removed,
