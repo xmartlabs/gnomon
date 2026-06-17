@@ -30,7 +30,7 @@ Update it when a workstream task changes parser behaviour (see plan workstreams 
 | planning_ratio | ✅ | ✅ | ✅ | ✅ (A1: canon tools + thinking) | ⛔ |
 | model tokens | ✅ | ✅ (A8: token_count event) | ✅ (A4: bubble.tokenCount) | ✅ (A2: tokens field) | ⛔ |
 | skills (slash-command detection) | ✅ | ✅ bash-read pattern | ✅ | ✅ bash-read pattern | ⛔ |
-| mcp_calls | ✅ | ❌ no `mcp__` prefix in Codex tool names | ✅ | ❌ no `mcp__` prefix | ⛔ |
+| mcp_calls | ✅ | ✅ (prefixed name + `mcp__` namespace) | ✅ | ❌ no `mcp__` prefix | ⛔ |
 | compounding_writes | ✅ | ✅ | ✅ | ✅ | ⛔ |
 | active_hours | ✅ | ✅ | ✅ | ✅ | ⛔ |
 | actions_per_prompt | ✅ | ✅ | ✅ | ✅ (A1 required for tool_calls) | ⛔ |
@@ -144,12 +144,34 @@ session); accepted tradeoff for correct orchestrator attribution.
 Gemini CLI does not support multi-agent / subagent patterns. The metric will
 always be 0 / null for pure-Gemini corpora; this is accurate, not a parser bug.
 
-### mcp_calls — Codex / Gemini (❌, no fix planned yet)
+### mcp_calls — Codex (✅)
 
-The MCP-call detector looks for tool names prefixed with `mcp__`. Codex and
-Gemini do not use that naming convention for their tool outputs, so MCP usage
-goes undetected even when those tools use MCP internally. No fix is in scope for
-this plan — flagged for a future parser pass.
+Codex emits MCP calls in two shapes:
+- **Already-prefixed:** `name = "mcp__supabase-bot__execute_sql"` — counted by the
+  existing `mcp__` detector.
+- **Namespaced short:** `name = "list_tables"` + `namespace = "mcp__supabase_bot__"`
+  — previously ignored (the parser only read `name`), so these were miscounted as
+  native. `_codex_tool` now reclassifies them: if `name` starts with `mcp__` keep
+  it; else if `namespace` starts with `mcp__`, build `mcp__<server>__<tool>` via
+  `_codex_mcp_name`. The check runs before the builtin-name branches so an MCP tool
+  named like a builtin (e.g. `create_file`) isn't mis-mapped to `Edit`.
+
+**Server-name caveat:** the namespace form may spell a server with underscores
+(`mcp__supabase_bot__`) where the prefixed form uses hyphens
+(`mcp__supabase-bot__`). The server segment is taken verbatim — no
+underscore↔hyphen reconciliation, since it is not safely reversible (`codex_apps`,
+`computer_use`, `node_repl` use underscores legitimately) and hard-coding specific
+server names doesn't belong in a shared tool. Consequence: `mcp_calls` is exact,
+but `mcp_servers_distinct` may occasionally split one server across the two
+spellings. A general (non-hardcoded) fix would be to dedup the server counter with
+a separator-insensitive key (e.g. compare `server.replace('-', '_')`); deferred as
+it changes server-name display for all sources.
+
+### mcp_calls — Gemini (❌, no fix planned yet)
+
+Gemini does not use the `mcp__` convention in `name` or `namespace`, so MCP usage
+goes undetected even when those tools use MCP internally. Flagged for a future
+parser pass.
 
 ### Antigravity — all metrics (⛔)
 

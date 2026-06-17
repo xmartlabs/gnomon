@@ -645,6 +645,83 @@ class TestCodexToolCustomApplyPatch(unittest.TestCase):
         self.assertEqual(paxel.line_count(inp["old_string"]), 0)
 
 
+class TestCodexMcp(unittest.TestCase):
+    """_codex_tool must count both prefixed and namespaced Codex MCP calls."""
+
+    def test_prefixed_name_kept_as_mcp(self):
+        p = {"type": "function_call", "name": "mcp__supabase-bot__execute_sql",
+             "arguments": "{}"}
+        name, _ = paxel._codex_tool(p)
+        self.assertEqual(name, "mcp__supabase-bot__execute_sql")
+
+    def test_namespaced_short_name_becomes_mcp(self):
+        p = {"type": "function_call", "name": "list_tables",
+             "namespace": "mcp__supabase_bot__", "arguments": "{}"}
+        name, _ = paxel._codex_tool(p)
+        # server taken verbatim from the namespace (no underscore→hyphen aliasing)
+        self.assertEqual(name, "mcp__supabase_bot__list_tables")
+        self.assertEqual(name.split("__")[1], "supabase_bot")
+
+    def test_namespaced_subapp_server_parses_first_segment(self):
+        p = {"type": "function_call", "name": "_search_email_ids",
+             "namespace": "mcp__codex_apps__gmail", "arguments": "{}"}
+        name, _ = paxel._codex_tool(p)
+        self.assertEqual(name, "mcp__codex_apps__gmail__search_email_ids")
+        self.assertEqual(name.split("__")[1], "codex_apps")
+
+    def test_mcp_tool_named_like_builtin_not_mapped_to_edit(self):
+        """An MCP tool named 'create_file' under an mcp__ namespace must stay MCP,
+        not be mis-mapped to Edit by the builtin-name branch."""
+        p = {"type": "function_call", "name": "create_file",
+             "namespace": "mcp__some_server__", "arguments": "{}"}
+        name, _ = paxel._codex_tool(p)
+        self.assertTrue(name.startswith("mcp__"))
+        self.assertNotEqual(name, "Edit")
+
+    def test_native_exec_command_still_bash(self):
+        p = {"type": "function_call", "name": "exec_command",
+             "arguments": "{\"command\": \"ls\"}"}
+        name, _ = paxel._codex_tool(p)
+        self.assertEqual(name, "Bash")
+
+    def test_non_mcp_namespace_stays_native(self):
+        """namespace='codex_app' (no mcp__ prefix) must NOT be reclassified as MCP."""
+        p = {"type": "function_call", "name": "do_thing",
+             "namespace": "codex_app", "arguments": "{}"}
+        name, _ = paxel._codex_tool(p)
+        self.assertFalse(name.startswith("mcp__"))
+
+    def test_codex_events_emits_mcp_for_namespaced_call(self):
+        """End-to-end through _codex_events: a namespaced MCP function_call must
+        surface as an mcp__ tool_use (so the mcp_calls counter picks it up), while a
+        native call stays native."""
+        import tempfile, json as _json
+        rows = [
+            {"type": "session_meta", "payload": {"id": "s1", "cwd": "/w"}},
+            {"type": "turn_context", "payload": {"model": "gpt-5.4"}},
+            {"type": "response_item", "timestamp": "t1",
+             "payload": {"type": "function_call", "name": "list_tables",
+                         "namespace": "mcp__supabase_bot__", "arguments": "{}"}},
+            {"type": "response_item", "timestamp": "t2",
+             "payload": {"type": "function_call", "name": "exec_command",
+                         "arguments": "{\"command\": \"ls\"}"}},
+        ]
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as fh:
+            for r in rows:
+                fh.write(_json.dumps(r) + "\n")
+            fp = fh.name
+        try:
+            events = list(paxel._codex_events(fp))
+        finally:
+            os.unlink(fp)
+        names = [b.get("name")
+                 for e in events if e.get("type") == "assistant"
+                 for b in (e.get("message", {}).get("content") or [])
+                 if isinstance(b, dict) and b.get("type") == "tool_use"]
+        self.assertIn("mcp__supabase_bot__list_tables", names)
+        self.assertIn("Bash", names)
+
+
 class TestCodexEventsFixture(unittest.TestCase):
     """_codex_events over the real-format fixture (A7 + A8)."""
 

@@ -755,6 +755,24 @@ def _patch_churn(text):
     return files[0] if files else ("", "", "")
 
 
+def _codex_mcp_name(namespace, tool):
+    """Build a canonical `mcp__<server>__<tool>` name from a Codex namespaced MCP
+    call (short `name` + `namespace` like "mcp__supabase_bot__" or
+    "mcp__codex_apps__gmail").
+
+    The server segment is taken verbatim from the namespace. NOTE: the namespace
+    form may spell a server with underscores where the already-prefixed `name`
+    form uses hyphens (e.g. "supabase_bot" vs "supabase-bot"); that difference is
+    not reconciled here (underscore↔hyphen is not safely reversible — many servers
+    use underscores legitimately). mcp_calls counting is exact regardless; only
+    mcp_servers_distinct may occasionally split one server across the two
+    spellings."""
+    body = namespace[len("mcp__"):].rstrip("_")
+    server_path = "__".join(s for s in body.split("__") if s)
+    tool = (str(tool or "")).lstrip("_") or "tool"
+    return f"mcp__{server_path}__{tool}" if server_path else f"mcp__{tool}"
+
+
 def _codex_tool(p):
     """Map a Codex tool/function call to a Claude-shaped (name, input) tool_use."""
     pt = p.get("type")
@@ -772,6 +790,15 @@ def _codex_tool(p):
         args = {}
     if not isinstance(args, dict):
         args = {}
+    # MCP calls: either the name is already prefixed (mcp__server__tool — kept as-is)
+    # or it's a short name under an mcp__ namespace (reclassified here so it counts as
+    # MCP, not native). Checked before the builtin-name branches so an MCP tool named
+    # like a builtin (e.g. "create_file") isn't mis-mapped to Edit.
+    if isinstance(name, str) and name.startswith("mcp__"):
+        return name, args
+    ns = p.get("namespace")
+    if isinstance(ns, str) and ns.startswith("mcp__"):
+        return _codex_mcp_name(ns, name), args
     if pt == "local_shell_call" or name in ("exec_command", "shell", "local_shell", "bash"):
         return "Bash", {"command": args.get("cmd") or args.get("command") or str(p.get("action") or "")}
     if name in ("apply_patch", "patch", "edit_file", "write_file", "create_file"):
@@ -816,13 +843,13 @@ def _codex_events(fp):
         return
     sid = os.path.basename(fp).split(".")[0]
     cwd = None
-    parent_tid = None            # A6: parent_thread_id when this session was spawned as a subagent
+    parent_tid = None            # parent_thread_id when this session was spawned as a subagent
     for ev in rows:                       # first pass: session id + working dir + subagent parent
         p = ev.get("payload") or {}
         if ev.get("type") == "session_meta":
             sid = p.get("id") or sid
             cwd = p.get("cwd") or cwd
-            # A6: detect thread_spawn → this session was launched as a delegate.
+            # thread_spawn means this session was launched as a delegate.
             src = p.get("source")
             if isinstance(src, dict):
                 sub = src.get("subagent") or {}
@@ -837,12 +864,10 @@ def _codex_events(fp):
                 pass
     base = {"sessionId": sid, "cwd": cwd}
 
-    # A6: fan-out / delegation belongs to the ORCHESTRATOR, not the worker. The spawn
-    # is only recorded on the child (its session_meta carries parent_thread_id), so we
-    # credit the PARENT by keying the synthetic Agent event to the parent's session id
-    # (aggregation groups fan-out by sessionId). N children of one parent → that parent
-    # session accrues fan-out N. If the parent is outside the analyzed window this
-    # creates a small fan-out-only ghost session — an accepted, documented tradeoff.
+    # Fan-out belongs to orchestrating session, not worker. Spawn metadata only exists
+    # on child session, so emit a synthetic Agent event keyed to parent session id.
+    # If parent is outside analyzed window this can create a small fan-out-only
+    # placeholder session, which is still better than undercounting delegation.
     if parent_tid:
         yield {"sessionId": parent_tid, "cwd": None, "type": "assistant", "timestamp": None,
                "message": {"role": "assistant", "model": None,
@@ -850,11 +875,8 @@ def _codex_events(fp):
                                         "input": {"subagent_type": "codex-subagent"}}]}}
 
     model = None
-    # A8: token_count carries a CUMULATIVE total_token_usage. To attribute usage to the
-    # right model in mixed-model sessions, we snapshot the cumulative total whenever the
-    # model switches and credit the delta-since-last-switch to the model that was active.
-    # total_token_usage is cumulative+monotonic, so per-model deltas sum back to the
-    # session total without depending on last_token_usage semantics.
+    # token_count carries cumulative total_token_usage. In mixed-model sessions we
+    # snapshot totals on each model switch and credit the delta to prior active model.
     _TOK_FIELDS = ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens")
     model_tok = {}                   # model -> {field: tokens}
     base_total = {f: 0 for f in _TOK_FIELDS}   # cumulative at the last model switch
@@ -880,7 +902,7 @@ def _codex_events(fp):
                 _flush_model(model)   # close out the previous model's delta
                 model = new_model
             continue
-        # A8: token_count arrives as event_msg, not response_item
+        # token_count arrives as event_msg, not response_item.
         if ev.get("type") == "event_msg":
             p_em = ev.get("payload") or {}
             if p_em.get("type") == "token_count":
@@ -912,9 +934,8 @@ def _codex_events(fp):
                                "content": [{"type": "thinking",
                                             "thinking": _texts(p.get("content")) or p.get("summary") or ""}]}}
         elif pt in ("function_call", "local_shell_call", "custom_tool_call", "web_search_call"):
-            # A7: a single apply_patch can touch several files — emit one Edit per file
-            # so per-file churn, iteration depth, and compounding writes are not all
-            # flattened onto the first file.
+            # One apply_patch can touch several files. Emit one Edit per file so
+            # churn and iteration depth are attributed correctly.
             if pt == "custom_tool_call" and p.get("name") == "apply_patch":
                 for new_s, old_s, fpath in _patch_files(p.get("input") or ""):
                     yield {**base, "type": "assistant", "timestamp": ts,
@@ -934,9 +955,8 @@ def _codex_events(fp):
                    "message": {"role": "user",
                                "content": [{"type": "tool_result", "is_error": bool(is_err)}]}}
 
-    # A8: close out the final (current) model's delta, then emit one synthetic usage
-    # event per model so mixed-model sessions split correctly in the model mix.
-    # Map Codex fields → Claude shape per model:
+    # Close out final model delta, then emit one synthetic usage event per model so
+    # mixed-model sessions split correctly in model mix. Map Codex fields to Claude shape:
     #   input  = input_tokens - cached_input_tokens  (non-cached portion)
     #   cache_read = cached_input_tokens
     #   output = output_tokens + reasoning_output_tokens
@@ -1563,9 +1583,8 @@ def _cursor_sqlite_events(db_path, twins=None):
                     yield {**base, "type": "user", "timestamp": ts,
                            "message": {"role": "user", "content": text}}
             elif btype == 2:
-                # A4: Extract tokenCount from bubble and attach model:"cursor" + usage to
-                # the assistant event (single event, not separate phantom turn).
-                # Guard: only if tokens are non-zero (avoids spurious rows).
+                # Attach Cursor tokenCount to same assistant event instead of creating
+                # a separate usage-only turn. Ignore empty token payloads.
                 tok_count = bubble.get("tokenCount")
                 msg = {"role": "assistant"}
                 usage = None
@@ -3025,17 +3044,14 @@ def compute_scores(stats):
                             # can't read as flawless (no-op at ev=1.0 for any real user).
 
     # EXECUTION — shipped output at AI leverage. Two signals, no overlap with other axes:
-    #   (a) TOOL OUTPUT RATE: tool_churn_edit_write (lines autorated by the agent) per active
-    #       hour — honest and source-agnostic.  TARGET=1000 lines/hr is provisional (p75-p90
-    #       of prod distribution as of 2026-06, N=8 users, Claude-only data).  MUST be
-    #       recalibrated to p75-p90 after Workstream A fixes Gemini/Codex parsers — those
-    #       fixes will inflate tool_churn and shift the distribution upward (~1200-1500 est).
+    #   (a) TOOL OUTPUT RATE: tool_churn_edit_write (tool-authored lines) per active
+    #       hour — source-agnostic and harder to game than git churn.
     #   (b) DELEGATION/parallelism.
     #   Removed: committed-code rate (git_churn/hours/400) — saturated at pct=1.0 due to
     #   inflated git_churn (generated/lockfile/merge commits); and ship fidelity
     #   (git_churn/tool_churn) — numerator inflated + denominator under-counted →
     #   metric was not truthful.
-    _EXECUTION_OUTPUT_TARGET = 1000  # lines/hr; provisional — recalibrate post-parser fixes
+    _EXECUTION_OUTPUT_TARGET = 1000  # tool-authored lines per active hour
     out_rate   = vel["tool_churn_edit_write"] / hours
     out_pct    = _clamp(out_rate / _EXECUTION_OUTPUT_TARGET)
     execution = 10 * (
@@ -3112,7 +3128,7 @@ def score_breakdown(stats):
                     "axis_narrative": "No activity recorded."}
         return {
             "execution": _zero_axis("How much you ship, at AI leverage", [
-                ("Tool output rate",          1000, "lines/hr autoradas", 0.60, "higher"),
+                ("Tool output rate",          1000, "tool-authored lines/hr", 0.60, "higher"),
                 ("Delegation & parallelism",  0.30, "agent-runs/prompt",  0.40, "higher"),
             ]),
             "planning": _zero_axis("Think before you build", [
@@ -3135,10 +3151,7 @@ def score_breakdown(stats):
     ev = _evidence(stats)
 
     # --- EXECUTION ---
-    # TARGET provisional: p75-p90 of prod distribution (2026-06, N=8, Claude-only).
-    # Must be recalibrated after Workstream A parser fixes — Gemini/Codex will inflate
-    # tool_churn, shifting the distribution upward (estimated real target: ~1200-1500).
-    _EXECUTION_OUTPUT_TARGET = 1000  # lines/hr; see note above
+    _EXECUTION_OUTPUT_TARGET = 1000  # tool-authored lines per active hour
     out_rate       = vel.get("tool_churn_edit_write", 0) / hours
     out_pct        = _clamp(out_rate / _EXECUTION_OUTPUT_TARGET)
     deleg_raw      = (b.get("delegate_actions", 0) + b.get("background_tasks", 0)) / max(prompts * 0.3, 1)
@@ -3146,7 +3159,7 @@ def score_breakdown(stats):
     execution_val  = round(10 * (0.60 * out_pct + 0.40 * deleg_pct), 1)
     exec_subs = [
         {"label": "Tool output rate", "your_value": out_rate,
-         "target": _EXECUTION_OUTPUT_TARGET, "unit": "lines/hr autoradas", "weight": 0.60,
+         "target": _EXECUTION_OUTPUT_TARGET, "unit": "tool-authored lines/hr", "weight": 0.60,
          "pct": out_pct, "direction": "higher", "is_drag": False},
         # your_value is the raw measured agent-runs/prompt (denominator: actual prompts).
         # pct matches compute_scores' clamp (denominator: prompts*0.3) and equals
