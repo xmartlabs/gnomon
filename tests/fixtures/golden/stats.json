@@ -1,0 +1,518 @@
+{
+  "agentic": {
+    "aq_0_100": 33,
+    "mcp_vs_cli": {
+      "cli_calls": 7,
+      "cli_distinct": 3,
+      "mcp_calls": 1,
+      "mcp_distinct": 1,
+      "ratio": 7.0
+    },
+    "pillars": [
+      {
+        "axes": [
+          {
+            "name": "Orchestration",
+            "score": 4.0,
+            "signals": {
+              "agent_runs": 0,
+              "fanout_median": 0,
+              "subagent_types": 0
+            },
+            "weight": 33
+          },
+          {
+            "name": "Skill fluency",
+            "score": 4.0,
+            "signals": {
+              "skills_distinct": 0,
+              "skills_total": 0
+            },
+            "weight": 22
+          },
+          {
+            "name": "Tool command (MCP + CLI)",
+            "score": 1.6,
+            "signals": {
+              "clis": 3,
+              "mcp_servers": 1,
+              "toolsearch": 0
+            },
+            "weight": 28
+          },
+          {
+            "name": "Discipline",
+            "score": 4.1,
+            "signals": {
+              "task_tool_calls": 0
+            },
+            "weight": 17
+          }
+        ],
+        "name": "Breadth",
+        "score": 13.7,
+        "weight": 30
+      },
+      {
+        "axes": [
+          {
+            "name": "Verification",
+            "score": 0.9,
+            "signals": {
+              "review_skills": 0,
+              "test_runs": 7
+            },
+            "weight": 40
+          },
+          {
+            "name": "Grounding",
+            "score": 20.1,
+            "signals": {
+              "planning_ratio": 0.67
+            },
+            "weight": 30
+          },
+          {
+            "name": "Compounding",
+            "score": 7.2,
+            "signals": {
+              "compounding_writes": 0
+            },
+            "weight": 30
+          }
+        ],
+        "name": "Craft",
+        "score": 28.2,
+        "weight": 35
+      },
+      {
+        "axes": [
+          {
+            "name": "Steering leverage",
+            "score": 22.0,
+            "signals": {
+              "actions_per_prompt": 2.2
+            },
+            "weight": 50
+          },
+          {
+            "name": "Recovery",
+            "score": 18.0,
+            "signals": {
+              "api_retries": 1,
+              "recovery_ratio": 0.25
+            },
+            "weight": 50
+          }
+        ],
+        "name": "Efficiency",
+        "score": 40.0,
+        "weight": 20
+      },
+      {
+        "axes": [
+          {
+            "name": "Model mix",
+            "score": 50.0,
+            "signals": {
+              "distinct_models": 3,
+              "offload_share": 0.5
+            },
+            "weight": 50
+          },
+          {
+            "name": "Token economy",
+            "score": 25.0,
+            "signals": {
+              "cli_share": 0.88,
+              "toolsearch": 0
+            },
+            "weight": 50
+          }
+        ],
+        "name": "Savvy",
+        "score": 75.0,
+        "weight": 15
+      }
+    ],
+    "tier": "Apprentice",
+    "tool_diversity": {
+      "distinct": 7,
+      "entropy": 0.855
+    }
+  },
+  "autonomy": {
+    "autonomy_score_0_100": 13.0,
+    "components": {
+      "actions_per_prompt": 3.9,
+      "delegation": 0.0,
+      "low_question_rate": 9.1,
+      "scheduling_background": 0.0
+    }
+  },
+  "behavior": {
+    "actions_per_prompt": 2.2,
+    "api_errors_retries": 1,
+    "avg_session_minutes": 2.3,
+    "background_tasks": 0,
+    "delegate_actions": 0,
+    "error_rate_per_100_tools": 16.7,
+    "error_recovery_ratio": 0.25,
+    "execute_actions": 8,
+    "explore_actions": 10,
+    "fanout_median": 0,
+    "files_hammered_over_15x": 0,
+    "iteration_depth_max": 2,
+    "iteration_depth_mean": 1.17,
+    "iteration_depth_median": 1.0,
+    "iteration_depth_p90": 1,
+    "longest_run_minutes": 3.0,
+    "median_session_minutes": 1.0,
+    "planning_ratio_explore_to_doing": 0.67,
+    "polite_prompts": 4,
+    "produce_actions": 7,
+    "questions_asked": 1,
+    "recovered_errors": 1,
+    "scheduled_actions": 0,
+    "shell_test_runs": 7,
+    "tool_errors": 4
+  },
+  "corpus": {
+    "active_days": 7,
+    "antigravity_experimental": {
+      "conversations": 37,
+      "first": "2025-11-20T10:55:07-03:00",
+      "last": "2025-12-03T11:54:57-03:00"
+    },
+    "date_range": [
+      "2025-06-09T11:00:00-03:00",
+      "2026-06-10T11:23:05.107958-03:00"
+    ],
+    "files_parsed": 8,
+    "lines_total": 42,
+    "lines_unparseable": 0,
+    "sources": {
+      "claude": {
+        "files": 1,
+        "prompts": 2,
+        "sessions": 1
+      },
+      "codex": {
+        "files": 1,
+        "prompts": 1,
+        "sessions": 1
+      },
+      "cursor": {
+        "files": 3,
+        "prompts": 3,
+        "sessions": 3
+      },
+      "gemini": {
+        "files": 1,
+        "prompts": 2,
+        "sessions": 1
+      },
+      "opencode": {
+        "files": 1,
+        "prompts": 1,
+        "sessions": 1
+      },
+      "pi": {
+        "files": 1,
+        "prompts": 2,
+        "sessions": 1
+      }
+    },
+    "span_days": 367,
+    "timezone": "-03 (UTC-03:00)",
+    "window": null
+  },
+  "generated_local_only": true,
+  "progression": {
+    "monthly": [
+      {
+        "active_days": 1,
+        "models": [
+          [
+            "oc-model-x",
+            1
+          ]
+        ],
+        "month": "2025-06",
+        "prompts": 3,
+        "sessions": 2,
+        "tokens_cache_creation": 0,
+        "tokens_cache_read": 0,
+        "tokens_input": 0,
+        "tokens_output": 0,
+        "tokens_total": 0,
+        "tool_calls": 3,
+        "tool_churn_lines": 3,
+        "top_model": "oc-model-x"
+      },
+      {
+        "active_days": 2,
+        "models": [],
+        "month": "2026-01",
+        "prompts": 2,
+        "sessions": 2,
+        "tokens_cache_creation": 0,
+        "tokens_cache_read": 0,
+        "tokens_input": 0,
+        "tokens_output": 0,
+        "tokens_total": 0,
+        "tool_calls": 4,
+        "tool_churn_lines": 3,
+        "top_model": null
+      },
+      {
+        "active_days": 4,
+        "models": [
+          [
+            "claude-opus-4-8",
+            3
+          ]
+        ],
+        "month": "2026-06",
+        "prompts": 6,
+        "sessions": 5,
+        "tokens_cache_creation": 0,
+        "tokens_cache_read": 0,
+        "tokens_input": 0,
+        "tokens_output": 0,
+        "tokens_total": 0,
+        "tool_calls": 13,
+        "tool_churn_lines": 10,
+        "top_model": "claude-opus-4-8"
+      }
+    ]
+  },
+  "rhythm": {
+    "hour_histogram_local": {
+      "0": 0,
+      "1": 0,
+      "10": 0,
+      "11": 15,
+      "12": 0,
+      "13": 0,
+      "14": 0,
+      "15": 0,
+      "16": 0,
+      "17": 0,
+      "18": 0,
+      "19": 0,
+      "2": 0,
+      "20": 0,
+      "21": 0,
+      "22": 0,
+      "23": 0,
+      "3": 0,
+      "4": 0,
+      "5": 0,
+      "6": 4,
+      "7": 13,
+      "8": 0,
+      "9": 3
+    },
+    "peak_hours_local": [
+      11,
+      7,
+      6
+    ],
+    "preferred_days": [
+      "Mon",
+      "Tue",
+      "Wed"
+    ],
+    "weekday_histogram": {
+      "Fri": 3,
+      "Mon": 13,
+      "Sat": 0,
+      "Sun": 0,
+      "Thu": 6,
+      "Tue": 7,
+      "Wed": 6
+    }
+  },
+  "scope": "Sources: claude, codex, cursor, gemini, opencode, pi",
+  "stack": {
+    "compounding_writes": 0,
+    "models": [
+      [
+        "claude-opus-4-8",
+        3
+      ],
+      [
+        "pi-model-1",
+        2
+      ],
+      [
+        "oc-model-x",
+        1
+      ]
+    ],
+    "skills_all": [],
+    "skills_distinct": 0,
+    "skills_total": 0,
+    "subagent_types": [],
+    "subagent_types_distinct": 0,
+    "top_projects": [
+      [
+        "cursorproj",
+        11,
+        2
+      ],
+      [
+        "proj",
+        8,
+        1
+      ],
+      [
+        "cdx",
+        7,
+        1
+      ],
+      [
+        "piproj",
+        6,
+        1
+      ],
+      [
+        "ocproj",
+        3,
+        1
+      ]
+    ],
+    "top_skills": []
+  },
+  "token_usage": {
+    "by_model": [
+      {
+        "cache_creation": 0,
+        "cache_read": 0,
+        "input": 0,
+        "model": "Opus 4.8",
+        "model_id": "claude-opus-4-8",
+        "output": 0
+      },
+      {
+        "cache_creation": 0,
+        "cache_read": 0,
+        "input": 0,
+        "model": "PI 1 Model",
+        "model_id": "pi-model-1",
+        "output": 0
+      },
+      {
+        "cache_creation": 0,
+        "cache_read": 0,
+        "input": 0,
+        "model": "OC Model X",
+        "model_id": "oc-model-x",
+        "output": 0
+      }
+    ],
+    "total_cache_creation": 0,
+    "total_cache_read": 0,
+    "total_input": 0,
+    "total_output": 0
+  },
+  "tools": {
+    "agent_calls": 0,
+    "category_breakdown": {
+      "ask": 1,
+      "execute": 8,
+      "explore": 6,
+      "other": 2,
+      "produce": 7
+    },
+    "cli_calls": 7,
+    "clis": [
+      [
+        "pytest",
+        4
+      ],
+      [
+        "npm",
+        2
+      ],
+      [
+        "go",
+        1
+      ]
+    ],
+    "clis_distinct": 3,
+    "mcp_calls": 1,
+    "mcp_servers": [
+      [
+        "linear",
+        1
+      ]
+    ],
+    "mcp_servers_distinct": 1,
+    "mcp_share": 0.042,
+    "native_calls": 23,
+    "task_tool_calls": 0,
+    "tool_diversity": 7,
+    "tool_entropy_normalized": 0.855,
+    "toolsearch_calls": 0,
+    "top_tools": [
+      [
+        "Bash",
+        8
+      ],
+      [
+        "Edit",
+        7
+      ],
+      [
+        "Read",
+        3
+      ],
+      [
+        "run_shell_command",
+        2
+      ],
+      [
+        "Grep",
+        2
+      ],
+      [
+        "mcp__linear__search_issues",
+        1
+      ],
+      [
+        "AskUserQuestion",
+        1
+      ]
+    ]
+  },
+  "velocity": {
+    "active_hours": 0.3,
+    "git_churn_total": 0,
+    "git_commits_grep": 0,
+    "git_commits_real": 0,
+    "git_deletions": 0,
+    "git_insertions": 0,
+    "git_per_repo": [],
+    "git_repos_seen": 0,
+    "git_repos_with_commits": 0,
+    "git_velocity_lines_per_hour": 0.0,
+    "shell_authored_lines_est": 0,
+    "shell_write_calls": 0,
+    "tool_churn_edit_write": 19,
+    "tool_lines_added": 15,
+    "tool_lines_removed": 4,
+    "tool_velocity_lines_per_hour": 62.2
+  },
+  "volume": {
+    "assistant_turns": 18,
+    "avg_prompt_length_chars": 31.8,
+    "command_invocations": 0,
+    "median_prompt_length_chars": 33,
+    "thinking_blocks": 4,
+    "tool_calls_total": 24,
+    "total_prompts": 11,
+    "total_sessions": 8
+  }
+}
