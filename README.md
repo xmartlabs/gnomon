@@ -58,8 +58,10 @@ It accepts the same source arguments as `paxel.py`:
 ```bash
 uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights claude
 uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --no-open
-uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --keep-artifacts
+uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --output-dir=.
+uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --output-dir=./debug-artifacts
 uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --window=3
+uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --help
 ```
 
 Each scored point is computed over a **trailing window of `--window=N` calendar
@@ -75,11 +77,14 @@ What happens when you run it:
 4. Opens your report page in the browser.
 
 By default, `xl-ai-insights` writes paxel outputs to a temporary directory and
-removes them when the run finishes. This applies to normal monthly runs,
-`--backfill`, and `--init` on macOS, Linux, and Windows. For debugging, pass
-`--keep-artifacts` to preserve that temporary output directory and print its
-absolute path. The preserved directory may include `narrative_input.md`, which
-contains local transcript excerpts; don't upload or share it.
+keeps that directory after the run finishes. This applies to normal monthly
+runs, `--backfill`, and `--init` on macOS, Linux, and Windows. The command
+prints the temp path unless you pass `--quiet`. If you want the final files in a
+specific location, pass `--output-dir=PATH` (for example `--output-dir=.` to
+write into the current directory). Existing files with the same names are
+overwritten in that destination. The artifacts may include
+`narrative_input.md`, which contains local transcript excerpts; don't upload or
+share it.
 
 If the browser can't open (headless/CI) or the auth times out (120 s), the command prints a warning and exits cleanly — nothing is uploaded. If you don't want to share at all, just don't run it.
 
