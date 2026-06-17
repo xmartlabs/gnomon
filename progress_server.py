@@ -304,7 +304,7 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     el.className = 'pill ' + state;
     var icon = '\\u00B7';
     if (state === 'done') icon = '\\u2713';
-    else if (state === 'active') icon = '\\u2191';
+    else if (state === 'active') icon = '\\u21BB';
     else if (state === 'skip') icon = '\\u2014';
     else if (state === 'failed') icon = '\\u2715';
     el.innerHTML = '<span class="pi">' + icon + '</span>' + shortMonth(month);

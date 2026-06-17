@@ -82,8 +82,8 @@ class TestFailedState(unittest.TestCase):
         page = progress_server._PROGRESS_PAGE
         self.assertIn("@keyframes uprise", page)
         self.assertIn(".pill.active .pi{animation:uprise", page)
-        # active pill icon is now an up-arrow (↑), not the static ↻.
-        self.assertIn("if (state === 'active') icon = '\\u2191';", page)
+        # active pill icon keeps animated refresh glyph, not upload arrow.
+        self.assertIn("if (state === 'active') icon = '\\u21BB';", page)
 
 
 class TestAuthUrlInjection(unittest.TestCase):

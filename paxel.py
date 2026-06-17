@@ -2585,7 +2585,7 @@ def main():
             "mcp_calls": mcp_calls,
             "native_calls": native_calls,
             "mcp_share": round(mcp_calls / (mcp_calls + native_calls), 3) if (mcp_calls + native_calls) else 0,
-            "top_tools": tool_counter.most_common(15),
+            "top_tools": tool_counter.most_common(30),
             "category_breakdown": dict(cat_counter),
             "mcp_servers": mcp_server_counter.most_common(),
             "mcp_servers_distinct": len(mcp_server_counter),
@@ -2923,7 +2923,7 @@ def _build_monthly_noticed_stats(
                 "preferred_days": _preferred_days(month_weekday_hist.get(mk, Counter()), dow),
             },
             "tools": {
-                "top_tools": month_tool_counter.get(mk, Counter()).most_common(15),
+                "top_tools": month_tool_counter.get(mk, Counter()).most_common(30),
             },
         }
         out.append({

@@ -828,6 +828,55 @@ class TestBuildSummaryPayloadFields(unittest.TestCase):
             {"name": "Read", "calls": 300},
         ])
 
+    def test_top_tools_keeps_30_global_and_monthly_entries(self):
+        import contextlib, io, json, shutil, tempfile
+        from unittest import mock
+
+        proj = tempfile.mkdtemp(prefix="paxel-top-tools-")
+        self.addCleanup(shutil.rmtree, proj, ignore_errors=True)
+        sess_dir = os.path.join(proj, "proj-x")
+        os.makedirs(sess_dir, exist_ok=True)
+
+        content = [{"type": "thinking", "thinking": "rank tools"}]
+        for idx in range(31):
+            calls = 31 - idx
+            name = f"mcp__server_{idx:02d}__action"
+            content.extend(
+                {"type": "tool_use", "name": name, "input": {}}
+                for _ in range(calls)
+            )
+        rows = [
+            {"type": "user", "sessionId": "top-tools", "cwd": "/tmp/proj",
+             "timestamp": "2026-06-01T10:00:00.000Z",
+             "message": {"role": "user", "content": "rank tools"}},
+            {"type": "assistant", "sessionId": "top-tools", "cwd": "/tmp/proj",
+             "timestamp": "2026-06-01T10:00:01.000Z",
+             "message": {"role": "assistant", "model": "claude-opus-4-8", "content": content}},
+        ]
+        with open(os.path.join(sess_dir, "session.jsonl"), "w", encoding="utf-8") as fh:
+            for row in rows:
+                fh.write(json.dumps(row) + "\n")
+
+        empty = tempfile.mkdtemp(prefix="paxel-top-tools-empty-")
+        out = tempfile.mkdtemp(prefix="paxel-top-tools-out-")
+        self.addCleanup(shutil.rmtree, empty, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, out, ignore_errors=True)
+        overrides = dict(
+            OUT_DIR=out, BASE=proj, CODEX_DIR=empty, GEMINI_DIR=empty, PI_DIR=empty,
+            OPENCODE_DIR=empty, CURSOR_DIR=empty, CURSOR_DB=os.path.join(empty, "nope.vscdb"),
+        )
+        with mock.patch.multiple(paxel, **overrides), \
+                mock.patch.object(sys, "argv", ["paxel.py", "claude", "--no-open"]), \
+                contextlib.redirect_stdout(io.StringIO()):
+            paxel.main()
+
+        with open(os.path.join(out, "stats.json"), encoding="utf-8") as fh:
+            stats = json.load(fh)
+
+        self.assertEqual(len(stats["tools"]["top_tools"]), 30)
+        monthly = stats["monthly_noticed_stats"][0]["stats"]["tools"]["top_tools"]
+        self.assertEqual(len(monthly), 30)
+
 
 if __name__ == "__main__":
     unittest.main()
