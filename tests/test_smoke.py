@@ -948,5 +948,201 @@ class TestNullHonestyMetrics(unittest.TestCase):
         self.assertEqual(set(scores), {"Execution", "Planning", "Engineering"})
 
 
+# ---------------------------------------------------------------------------
+# GA1: per-month noticed_stats engine (stats["monthly_noticed_stats"])
+# ---------------------------------------------------------------------------
+
+def _run_claude_transcript(testcase, rows, extra_argv=None, spy_git_churn=None):
+    """Write `rows` (list of event dicts) as a single claude .jsonl transcript,
+    run paxel over a claude-only corpus, and return the parsed stats dict.
+
+    `spy_git_churn`, if given, is installed in place of paxel.git_churn so a test
+    can assert how it was called (per call: cwds, since, until)."""
+    proj = tempfile.mkdtemp(prefix="paxel-ga1-claude-")
+    testcase.addCleanup(shutil.rmtree, proj, ignore_errors=True)
+    sess_dir = os.path.join(proj, "proj-x")
+    os.makedirs(sess_dir, exist_ok=True)
+    with open(os.path.join(sess_dir, "session.jsonl"), "w", encoding="utf-8") as fh:
+        for r in rows:
+            fh.write(json.dumps(r) + "\n")
+    _empty = tempfile.mkdtemp(prefix="paxel-ga1-empty-")
+    testcase.addCleanup(shutil.rmtree, _empty, ignore_errors=True)
+    dirs = dict(
+        BASE=proj, CODEX_DIR=_empty, GEMINI_DIR=_empty, PI_DIR=_empty,
+        OPENCODE_DIR=_empty, CURSOR_DIR=_empty,
+        CURSOR_DB=os.path.join(_empty, "nonexistent.vscdb"),
+    )
+    out = tempfile.mkdtemp(prefix="paxel-ga1-out-")
+    testcase.addCleanup(shutil.rmtree, out, ignore_errors=True)
+    argv = ["paxel.py", "claude", "--no-open"] + (extra_argv or [])
+    buf = io.StringIO()
+    patches = [
+        mock.patch.multiple(paxel, OUT_DIR=out, **dirs),
+        mock.patch.object(sys, "argv", argv),
+        contextlib.redirect_stdout(buf),
+    ]
+    if spy_git_churn is not None:
+        patches.append(mock.patch.object(paxel, "git_churn", spy_git_churn))
+    with contextlib.ExitStack() as stack:
+        for p in patches:
+            stack.enter_context(p)
+        paxel.main()
+    with open(os.path.join(out, "stats.json"), encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def _claude_turn(sid, ts, cwd="/Users/demo/proj", model="claude-opus-4-8",
+                 prompt="please add a feature", tool="Read", file_path=None,
+                 new_string="", is_error=False, usage=None):
+    """One user prompt + one assistant turn (thinking + tool_use) + a tool_result."""
+    rows = [
+        {"type": "user", "sessionId": sid, "cwd": cwd, "timestamp": ts,
+         "message": {"role": "user", "content": prompt}},
+    ]
+    tu = {"type": "tool_use", "name": tool, "input": {}}
+    if file_path is not None:
+        tu["input"]["file_path"] = file_path
+    if tool in ("Edit", "Write"):
+        tu["input"]["new_string" if tool == "Edit" else "content"] = new_string
+        if tool == "Edit":
+            tu["input"]["old_string"] = ""
+    amsg = {"role": "assistant", "model": model,
+            "content": [{"type": "thinking", "thinking": "think"}, tu]}
+    if usage:
+        amsg["usage"] = usage
+    rows.append({"type": "assistant", "sessionId": sid, "cwd": cwd, "timestamp": ts,
+                 "message": amsg})
+    rows.append({"type": "user", "sessionId": sid, "cwd": cwd, "timestamp": ts,
+                 "message": {"role": "user", "content": [
+                     {"type": "tool_result", "content": "ok", "is_error": is_error}]}})
+    return rows
+
+
+class TestMonthlyNoticedStats(unittest.TestCase):
+    """GA1: stats['monthly_noticed_stats'] — per-calendar-month noticed_stats."""
+
+    def _two_month_rows(self):
+        rows = []
+        # ---- January: 2 prompts, Edit (5 lines), tokens A ----
+        rows += _claude_turn("jan-1", "2026-01-05T10:00:00.000Z", tool="Edit",
+                             file_path="/Users/demo/proj/a.py",
+                             new_string="l1\nl2\nl3\nl4\nl5", prompt="please do jan one",
+                             usage={"input_tokens": 100, "output_tokens": 10,
+                                    "cache_read_input_tokens": 5, "cache_creation_input_tokens": 1})
+        rows += _claude_turn("jan-1", "2026-01-05T10:05:00.000Z", tool="Read",
+                             file_path="/Users/demo/proj/a.py", prompt="jan two")
+        # ---- February: 3 prompts, Write (2 lines), tokens B (different) ----
+        rows += _claude_turn("feb-1", "2026-02-10T09:00:00.000Z", tool="Write",
+                             file_path="/Users/demo/proj/b.py", new_string="x\ny",
+                             prompt="feb one", usage={"input_tokens": 500, "output_tokens": 50,
+                             "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0})
+        rows += _claude_turn("feb-1", "2026-02-10T09:05:00.000Z", tool="Read",
+                             prompt="feb two")
+        rows += _claude_turn("feb-1", "2026-02-10T09:10:00.000Z", tool="Grep",
+                             prompt="feb three")
+        return rows
+
+    def test_two_entries_chronological(self):
+        stats = _run_claude_transcript(self, self._two_month_rows())
+        mns = stats["monthly_noticed_stats"]
+        self.assertEqual([e["month"] for e in mns], ["2026-01", "2026-02"])
+        for e in mns:
+            self.assertIn("range_start", e)
+            self.assertIn("range_end", e)
+            self.assertIn("stats", e)
+            self.assertIn("token_usage", e)
+
+    def test_month_isolation_prompts_tools_tokens(self):
+        stats = _run_claude_transcript(self, self._two_month_rows())
+        mns = {e["month"]: e for e in stats["monthly_noticed_stats"]}
+        jan, feb = mns["2026-01"], mns["2026-02"]
+        # prompts per month differ and differ from the window total (5)
+        self.assertEqual(jan["stats"]["volume"]["total_prompts"], 2)
+        self.assertEqual(feb["stats"]["volume"]["total_prompts"], 3)
+        self.assertEqual(stats["volume"]["total_prompts"], 5)
+        # tokens isolated per month and != window total
+        self.assertEqual(jan["token_usage"]["total_input"], 100)
+        self.assertEqual(feb["token_usage"]["total_input"], 500)
+        self.assertEqual(stats["token_usage"]["total_input"], 600)
+        # tool calls isolated (jan 2, feb 3) and != window (5)
+        self.assertEqual(jan["stats"]["volume"]["tool_calls_total"], 2)
+        self.assertEqual(feb["stats"]["volume"]["tool_calls_total"], 3)
+        self.assertEqual(stats["volume"]["tool_calls_total"], 5)
+
+    def test_per_month_token_usage_shape_matches_window(self):
+        stats = _run_claude_transcript(self, self._two_month_rows())
+        win_keys = set(stats["token_usage"])
+        for e in stats["monthly_noticed_stats"]:
+            self.assertEqual(set(e["token_usage"]), win_keys)
+            # by_model is a list of dicts shaped like the window block
+            for bm in e["token_usage"]["by_model"]:
+                self.assertEqual(
+                    set(bm),
+                    {"model_id", "model", "input", "output", "cache_read", "cache_creation"})
+
+    def test_entry_stats_shape_matches_window_noticed_stats(self):
+        stats = _run_claude_transcript(self, self._two_month_rows())
+        window_noticed = paxel._build_noticed_stats(stats)
+        for e in stats["monthly_noticed_stats"]:
+            self.assertEqual(set(e["stats"]), set(window_noticed),
+                             "per-month stats must have the same top-level keys as window noticed_stats")
+            # nested keys identical too (single shaper guarantees this)
+            for k in window_noticed:
+                self.assertEqual(set(e["stats"][k]), set(window_noticed[k]),
+                                 f"sub-shape drift in {k}")
+
+    def test_git_churn_called_once_per_month_with_month_range(self):
+        calls = []
+
+        def spy(cwds, since, until):
+            calls.append((tuple(sorted(cwds)), since, until))
+            return {"repos_seen": 1, "repos_with_commits": 1, "insertions": 0,
+                    "deletions": 0, "churn": 0, "commits": 0, "per_repo": []}
+
+        stats = _run_claude_transcript(self, self._two_month_rows(), spy_git_churn=spy)
+        # one window call + one per month (2) = 3 total
+        self.assertEqual(len(calls), 3, f"expected window + 2 month calls, got {calls}")
+        # month calls carry month-bounded since/until (not the full window)
+        month_calls = [c for c in calls if c[1].startswith(("2026-01", "2026-02"))
+                       and c[2].startswith(("2026-01", "2026-02", "2026-03"))]
+        self.assertTrue(any(c[1].startswith("2026-01") and c[2].startswith("2026-02")
+                            for c in month_calls),
+                        f"January churn call must span Jan→Feb, got {month_calls}")
+        self.assertTrue(any(c[1].startswith("2026-02") and c[2].startswith("2026-03")
+                            for c in month_calls),
+                        f"February churn call must span Feb→Mar, got {month_calls}")
+
+    def test_degenerate_single_month_equals_window(self):
+        # A single-month corpus → that month's derived stats must equal the window's.
+        rows = []
+        rows += _claude_turn("s1", "2026-03-01T10:00:00.000Z", tool="Edit",
+                             file_path="/Users/demo/proj/a.py", new_string="1\n2\n3",
+                             prompt="please p1", is_error=True)
+        rows += _claude_turn("s1", "2026-03-01T10:05:00.000Z", tool="Edit",
+                             file_path="/Users/demo/proj/a.py", new_string="4\n5",
+                             prompt="p2")
+        rows += _claude_turn("s1", "2026-03-01T10:10:00.000Z", tool="Read", prompt="p3?")
+        stats = _run_claude_transcript(self, rows)
+        mns = stats["monthly_noticed_stats"]
+        self.assertEqual(len(mns), 1)
+        b = stats["behavior"]
+        m = mns[0]["stats"]
+        # error rate / recovery — degenerate equality with window formula
+        self.assertEqual(m["errors"]["error_rate_per_100_tools"],
+                         b["error_rate_per_100_tools"])
+        self.assertEqual(m["errors"]["error_recovery_ratio"], b["error_recovery_ratio"])
+        # iteration depth stats
+        self.assertEqual(m["iteration"]["depth_mean"], b["iteration_depth_mean"])
+        self.assertEqual(m["iteration"]["depth_median"], b["iteration_depth_median"])
+        self.assertEqual(m["iteration"]["depth_max"], b["iteration_depth_max"])
+        # fanout median
+        self.assertEqual(m["agents"]["fanout_median"], b["fanout_median"])
+        # peak hours / preferred days
+        self.assertEqual(m["rhythm"]["peak_hours_local"],
+                         stats["rhythm"]["peak_hours_local"])
+        self.assertEqual(m["rhythm"]["preferred_days"],
+                         stats["rhythm"]["preferred_days"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
