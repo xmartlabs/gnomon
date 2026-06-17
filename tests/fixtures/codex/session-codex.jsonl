@@ -1,8 +1,10 @@
-{"type":"session_meta","payload":{"id":"codex-demo-1","cwd":"/Users/demo/cdx"}}
-{"type":"response_item","timestamp":"2026-06-02T10:00:00Z","payload":{"type":"message","role":"user","content":"refactor the config loader to be lazy"}}
-{"type":"response_item","timestamp":"2026-06-02T10:00:02Z","payload":{"type":"reasoning","summary":"plan the lazy-load refactor before editing"}}
-{"type":"response_item","timestamp":"2026-06-02T10:00:03Z","payload":{"type":"message","role":"assistant","content":"Planning the change, then applying it."}}
-{"type":"response_item","timestamp":"2026-06-02T10:00:04Z","payload":{"type":"function_call","name":"shell","arguments":"{\"command\":\"go test ./...\"}"}}
-{"type":"response_item","timestamp":"2026-06-02T10:00:05Z","payload":{"type":"function_call_output","output":{"success":true}}}
-{"type":"response_item","timestamp":"2026-06-02T10:00:06Z","payload":{"type":"function_call","name":"apply_patch","arguments":"{\"path\":\"config.go\",\"patch\":\"+ lazy init\\n+ return cached\"}"}}
-{"type":"response_item","timestamp":"2026-06-02T10:00:07Z","payload":{"type":"function_call_output","output":{"success":true}}}
+{"type":"session_meta","timestamp":"2026-06-02T10:00:00Z","payload":{"id":"codex-demo-1","cwd":"/Users/demo/cdx","originator":"codex_cli_rs","cli_version":"0.66.0","source":"cli","model_provider":"openai"}}
+{"type":"turn_context","timestamp":"2026-06-02T10:00:01Z","payload":{"model":"gpt-5.4"}}
+{"type":"response_item","timestamp":"2026-06-02T10:00:02Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"refactor the config loader to be lazy"}]}}
+{"type":"response_item","timestamp":"2026-06-02T10:00:03Z","payload":{"type":"reasoning","summary":"plan the lazy-load refactor before editing"}}
+{"type":"response_item","timestamp":"2026-06-02T10:00:04Z","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Planning the change, then applying it."}]}}
+{"type":"response_item","timestamp":"2026-06-02T10:00:05Z","payload":{"type":"local_shell_call","status":"completed","call_id":"call_abc1","action":{"type":"exec","command":"go test ./..."}}}
+{"type":"response_item","timestamp":"2026-06-02T10:00:06Z","payload":{"type":"function_call_output","output":{"success":true}}}
+{"type":"response_item","timestamp":"2026-06-02T10:00:07Z","payload":{"type":"custom_tool_call","status":"completed","call_id":"call_abc2","name":"apply_patch","input":"*** Begin Patch\n*** Update File: config.go\n@@\n-func init() {\n-\tcfg = load()\n-}\n+var once sync.Once\n+\n+func lazyInit() {\n+\tonce.Do(func() { cfg = load() })\n+}\n*** End Patch"}}
+{"type":"response_item","timestamp":"2026-06-02T10:00:08Z","payload":{"type":"function_call_output","output":{"success":true}}}
+{"type":"event_msg","timestamp":"2026-06-02T10:00:09Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":5000,"cached_input_tokens":3000,"output_tokens":120,"reasoning_output_tokens":80,"total_tokens":5200},"last_token_usage":{"input_tokens":5000,"cached_input_tokens":3000,"output_tokens":120,"reasoning_output_tokens":80,"total_tokens":5200},"model_context_window":128000}}}

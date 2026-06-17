@@ -186,12 +186,15 @@ class TestWindowedGitChurnBounds(unittest.TestCase):
     """
 
     def _capture_churn_args(self, args):
-        """Run paxel.main() with git_churn mocked; return (since_iso, until_iso)."""
+        """Run paxel.main() with git_churn mocked; return (since_iso, until_iso)
+        of the WINDOW churn call (the first git_churn call). Per-month churn calls
+        (monthly_noticed_stats) follow it with month-bounded ranges and are ignored
+        here — this fixture asserts the window-level bounds only."""
         captured = {}
 
         def fake_git_churn(cwds, since_iso, until_iso):
-            captured["since"] = since_iso
-            captured["until"] = until_iso
+            captured.setdefault("since", since_iso)
+            captured.setdefault("until", until_iso)
             return {"repos_seen": 0, "repos_with_commits": 0, "insertions": 0,
                     "deletions": 0, "churn": 0, "commits": 0, "per_repo": []}
 

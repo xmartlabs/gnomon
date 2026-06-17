@@ -164,22 +164,13 @@ class TestPaxelArtifacts(unittest.TestCase):
             )
         return path
 
-    def test_default_removes_artifact_directory(self):
-        with tempfile.TemporaryDirectory() as src_dir:
-            paxel_src = self._write_fake_paxel(src_dir)
-            summary = xl_ai_insights._run_paxel(
-                paxel_src, ["--summary", "--no-open"], verbose=False, keep_artifacts=False
-            )
-        self.assertIsNotNone(summary)
-        self.assertFalse(os.path.exists(summary["artifact_dir"]))
-
-    def test_keep_artifacts_preserves_artifact_directory_and_prints_path(self):
+    def test_default_preserves_artifact_directory_and_prints_path(self):
         with tempfile.TemporaryDirectory() as src_dir:
             paxel_src = self._write_fake_paxel(src_dir)
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
                 summary = xl_ai_insights._run_paxel(
-                    paxel_src, ["--summary", "--no-open"], verbose=False, keep_artifacts=True
+                    paxel_src, ["--summary", "--no-open"], verbose=False
                 )
 
         artifact_dir = summary["artifact_dir"]
@@ -190,28 +181,82 @@ class TestPaxelArtifacts(unittest.TestCase):
         printed_path = buf.getvalue().split("Artifacts kept at:", 1)[1].strip()
         self.assertEqual(os.path.realpath(printed_path), os.path.realpath(artifact_dir))
 
+    def test_quiet_suppresses_default_artifact_path(self):
+        with tempfile.TemporaryDirectory() as src_dir:
+            paxel_src = self._write_fake_paxel(src_dir)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                summary = xl_ai_insights._run_paxel(
+                    paxel_src, ["--summary", "--no-open"], verbose=False, quiet=True
+                )
 
-class TestKeepArtifactsArgParsing(unittest.TestCase):
-    def test_keep_artifacts_is_consumed_by_wrapper_not_forwarded_to_paxel(self):
+        artifact_dir = summary["artifact_dir"]
+        self.addCleanup(lambda: os.path.isdir(artifact_dir) and shutil.rmtree(artifact_dir))
+        self.assertEqual(buf.getvalue(), "")
+
+    def test_output_dir_copies_files_and_prints_destination(self):
+        with tempfile.TemporaryDirectory() as src_dir:
+            cwd = tempfile.mkdtemp()
+            self.addCleanup(lambda: os.path.isdir(cwd) and shutil.rmtree(cwd))
+            paxel_src = self._write_fake_paxel(src_dir)
+            prev_cwd = os.getcwd()
+            os.chdir(cwd)
+            try:
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    summary = xl_ai_insights._run_paxel(
+                        paxel_src, ["--summary", "--no-open"], verbose=False, output_dir="./exports"
+                    )
+            finally:
+                os.chdir(prev_cwd)
+
+        artifact_dir = summary["artifact_dir"]
+        export_dir = os.path.join(cwd, "exports")
+        self.addCleanup(lambda: os.path.isdir(artifact_dir) and shutil.rmtree(artifact_dir))
+        self.assertTrue(os.path.isdir(export_dir))
+        self.assertTrue(os.path.isfile(os.path.join(export_dir, "summary.json")))
+        self.assertTrue(os.path.isfile(os.path.join(export_dir, "narrative_input.md")))
+        self.assertIn(f"Artifacts copied to: {os.path.realpath(export_dir)}", buf.getvalue())
+
+    def test_output_dir_overwrites_existing_files(self):
+        with tempfile.TemporaryDirectory() as src_dir:
+            dest = tempfile.mkdtemp()
+            self.addCleanup(lambda: os.path.isdir(dest) and shutil.rmtree(dest))
+            paxel_src = self._write_fake_paxel(src_dir)
+            summary_path = os.path.join(dest, "summary.json")
+            with open(summary_path, "w", encoding="utf-8") as fh:
+                fh.write("old")
+            summary = xl_ai_insights._run_paxel(
+                paxel_src, ["--summary", "--no-open"], verbose=False, output_dir=dest, quiet=True
+            )
+
+        artifact_dir = summary["artifact_dir"]
+        self.addCleanup(lambda: os.path.isdir(artifact_dir) and shutil.rmtree(artifact_dir))
+        with open(summary_path, encoding="utf-8") as fh:
+            self.assertIn("artifact_dir", fh.read())
+
+
+class TestOutputDirArgParsing(unittest.TestCase):
+    def test_output_dir_is_consumed_by_wrapper_not_forwarded_to_paxel(self):
         with (
             patch.object(xl_ai_insights, "_main_web") as mock_main_web,
             patch.object(
                 xl_ai_insights.sys,
                 "argv",
-                ["xl-ai-insights", "--keep-artifacts", "claude", "--no-open"],
+                ["xl-ai-insights", "--output-dir=.", "claude", "--no-open"],
             ),
         ):
             xl_ai_insights.main()
 
         args = mock_main_web.call_args[0]
         paxel_forward = args[4]
-        keep_artifacts = args[8]
-        self.assertNotIn("--keep-artifacts", paxel_forward)
+        output_dir = args[8]
+        self.assertNotIn("--output-dir=.", paxel_forward)
         self.assertIn("claude", paxel_forward)
-        self.assertTrue(keep_artifacts)
+        self.assertEqual(output_dir, ".")
 
 
-class TestKeepArtifactsPropagation(unittest.TestCase):
+class TestOutputDirPropagation(unittest.TestCase):
     def _summary(self, sessions=1, progression_monthly=None):
         summary = {
             "context": {
@@ -235,15 +280,15 @@ class TestKeepArtifactsPropagation(unittest.TestCase):
             mock_wb.open.return_value = True
             xl_ai_insights._main_console(
                 [], "https://mirdash.example", mode, token_count, [], True, True, False,
-                keep_artifacts=True,
+                output_dir="./exports",
             )
         return mock_run
 
-    def test_console_current_passes_keep_artifacts_to_run_paxel(self):
+    def test_console_current_passes_output_dir_to_run_paxel(self):
         mock_run = self._run_console(run_paxel_side_effect=[self._summary()])
-        self.assertTrue(mock_run.call_args.kwargs["keep_artifacts"])
+        self.assertEqual(mock_run.call_args.kwargs["output_dir"], "./exports")
 
-    def test_console_fallback_passes_keep_artifacts_to_all_run_paxel_calls(self):
+    def test_console_fallback_passes_output_dir_to_all_run_paxel_calls(self):
         mock_run = self._run_console(
             run_paxel_side_effect=[
                 self._summary(sessions=0),
@@ -252,20 +297,20 @@ class TestKeepArtifactsPropagation(unittest.TestCase):
             ]
         )
         self.assertEqual(mock_run.call_count, 3)
-        self.assertTrue(all(c.kwargs["keep_artifacts"] for c in mock_run.call_args_list))
+        self.assertTrue(all(c.kwargs["output_dir"] == "./exports" for c in mock_run.call_args_list))
 
-    def test_batch_upload_window_passes_keep_artifacts_to_run_paxel(self):
+    def test_batch_upload_window_passes_output_dir_to_run_paxel(self):
         with (
             patch.object(xl_ai_insights, "_run_paxel", return_value=self._summary()) as mock_run,
             patch.object(xl_ai_insights, "_upload_summary", return_value="/r/1"),
         ):
             xl_ai_insights._upload_window(
                 "https://mirdash.example", "tok", __file__, [], "2026-01-01", "2026-02-01",
-                "2026-01", False, True, keep_artifacts=True,
+                "2026-01", False, True, output_dir="./exports",
             )
-        self.assertTrue(mock_run.call_args.kwargs["keep_artifacts"])
+        self.assertEqual(mock_run.call_args.kwargs["output_dir"], "./exports")
 
-    def test_web_upload_window_passes_keep_artifacts_to_run_paxel(self):
+    def test_web_upload_window_passes_output_dir_to_run_paxel(self):
         server = MagicMock()
         with (
             patch.object(xl_ai_insights, "_run_paxel", return_value=self._summary()) as mock_run,
@@ -273,9 +318,45 @@ class TestKeepArtifactsPropagation(unittest.TestCase):
         ):
             xl_ai_insights._upload_window_web(
                 "https://mirdash.example", "tok", __file__, [], "2026-01-01", "2026-02-01",
-                "2026-01", False, server, 0, 1, keep_artifacts=True,
+                "2026-01", False, server, 0, 1, output_dir="./exports",
             )
-        self.assertTrue(mock_run.call_args.kwargs["keep_artifacts"])
+        self.assertEqual(mock_run.call_args.kwargs["output_dir"], "./exports")
+
+
+class TestHelpOutput(unittest.TestCase):
+    def test_help_prints_usage_and_exits_before_running(self):
+        stdout = io.StringIO()
+        with (
+            patch.object(xl_ai_insights, "_main_web") as mock_main_web,
+            patch.object(xl_ai_insights, "_main_console") as mock_main_console,
+            patch.object(xl_ai_insights.sys, "argv", ["xl-ai-insights", "--help"]),
+            contextlib.redirect_stdout(stdout),
+            self.assertRaises(SystemExit) as exc,
+        ):
+            xl_ai_insights.main()
+
+        self.assertEqual(exc.exception.code, 0)
+        self.assertIn("Usage:", stdout.getvalue())
+        self.assertIn("--output-dir=PATH", stdout.getvalue())
+        self.assertNotIn("--keep-artifacts", stdout.getvalue())
+        mock_main_web.assert_not_called()
+        mock_main_console.assert_not_called()
+
+    def test_short_help_alias_prints_usage_and_exits(self):
+        stdout = io.StringIO()
+        with (
+            patch.object(xl_ai_insights, "_main_web") as mock_main_web,
+            patch.object(xl_ai_insights, "_main_console") as mock_main_console,
+            patch.object(xl_ai_insights.sys, "argv", ["xl-ai-insights", "-h"]),
+            contextlib.redirect_stdout(stdout),
+            self.assertRaises(SystemExit) as exc,
+        ):
+            xl_ai_insights.main()
+
+        self.assertEqual(exc.exception.code, 0)
+        self.assertIn("--output-dir=PATH", stdout.getvalue())
+        mock_main_web.assert_not_called()
+        mock_main_console.assert_not_called()
 
 
 class TestMonthWindows(unittest.TestCase):

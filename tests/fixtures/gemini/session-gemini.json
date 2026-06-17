@@ -1,15 +1,104 @@
 {
-  "sessionId": "gemini-demo-1",
+  "sessionId": "gemini-test-session-1",
+  "projectHash": "abc123def456",
   "messages": [
-    {"type": "user", "timestamp": "2026-06-03T09:00:00Z", "content": "explain this function then add a benchmark"},
-    {"role": "model", "timestamp": "2026-06-03T09:00:03Z", "content": [
-      {"text": "It hashes the key, then runs the benchmark."},
-      {"functionCall": {"name": "run_shell_command", "args": {"command": "npm test"}}}
-    ]},
-    {"type": "user", "timestamp": "2026-06-03T09:01:00Z", "content": "great, now commit it"},
-    {"role": "model", "timestamp": "2026-06-03T09:01:04Z", "content": [
-      {"text": "Committing the benchmark."},
-      {"functionCall": {"name": "run_shell_command", "args": {"command": "git commit -am bench"}}}
-    ]}
+    {
+      "id": "msg-user-1",
+      "timestamp": "2026-06-03T09:00:00Z",
+      "type": "user",
+      "content": "please refactor the auth module and run the tests"
+    },
+    {
+      "id": "msg-gemini-1",
+      "timestamp": "2026-06-03T09:00:05Z",
+      "type": "gemini",
+      "content": "I'll refactor the auth module and run the tests for you.",
+      "thoughts": [
+        {
+          "subject": "Analyzing the request",
+          "description": "The user wants me to refactor the auth module. I should first read the existing code, then rewrite it, then run the tests to verify.",
+          "timestamp": "2026-06-03T09:00:04Z"
+        },
+        {
+          "subject": "Planning steps",
+          "description": "Step 1: Read auth.py. Step 2: Write refactored version. Step 3: Run pytest. Step 4: Check output.",
+          "timestamp": "2026-06-03T09:00:04.500Z"
+        }
+      ],
+      "toolCalls": [
+        {
+          "id": "write_file-001",
+          "name": "write_file",
+          "args": {
+            "file_path": "/Users/mirland/projects/myapp/auth.py",
+            "content": "\"\"\"Auth module.\"\"\"\n\ndef authenticate(user, password):\n    \"\"\"Authenticate a user.\"\"\"\n    return user == 'admin' and password == 'secret'\n"
+          },
+          "result": [
+            {
+              "functionResponse": {
+                "id": "write_file-001",
+                "name": "write_file",
+                "response": {
+                  "output": "Successfully wrote to file: /Users/mirland/projects/myapp/auth.py."
+                }
+              }
+            }
+          ],
+          "status": "success",
+          "timestamp": "2026-06-03T09:00:05Z"
+        },
+        {
+          "id": "run_shell_command-001",
+          "name": "run_shell_command",
+          "args": {
+            "command": "git commit -am 'refactor: clean up auth module'",
+            "dir_path": "/Users/mirland/projects/myapp"
+          },
+          "result": [
+            {
+              "functionResponse": {
+                "id": "run_shell_command-001",
+                "name": "run_shell_command",
+                "response": {
+                  "output": "Command: git commit -am 'refactor: clean up auth module'\nDirectory: /Users/mirland/projects/myapp\nOutput: [main abc1234] refactor: clean up auth module\n 1 file changed, 5 insertions(+)\nError: (none)\nExit Code: 0"
+                }
+              }
+            }
+          ],
+          "status": "success",
+          "timestamp": "2026-06-03T09:00:06Z"
+        },
+        {
+          "id": "run_shell_command-002",
+          "name": "run_shell_command",
+          "args": {
+            "command": "pytest tests/",
+            "dir_path": "/Users/mirland/projects/myapp"
+          },
+          "result": [
+            {
+              "functionResponse": {
+                "id": "run_shell_command-002",
+                "name": "run_shell_command",
+                "response": {
+                  "error": "ModuleNotFoundError: No module named 'pytest'"
+                }
+              }
+            }
+          ],
+          "status": "error",
+          "timestamp": "2026-06-03T09:00:07Z"
+        }
+      ],
+      "model": "gemini-2.5-pro",
+      "tokens": {
+        "input": 1500,
+        "output": 42,
+        "cached": 800,
+        "thoughts": 120,
+        "tool": 0,
+        "total": 2462
+      }
+    }
   ]
 }

@@ -282,6 +282,119 @@ def pctile(sorted_vals, p):
     return sorted_vals[k]
 
 
+# ---------------------------------------------------------------------------
+# Shared derived-metric helpers (anti-drift): the window path and the per-month
+# path (monthly_noticed_stats) MUST compute these the SAME way. Each helper is
+# the single source of truth for one formula — never fork it inline.
+# ---------------------------------------------------------------------------
+
+def _error_rate_per_100(tool_errors, tool_use_total, no_tool_activity):
+    """tool_errors / tool_use_total * 100, with the null-honesty guard."""
+    if no_tool_activity:
+        return None
+    return (tool_errors / tool_use_total * 100) if tool_use_total else 0
+
+
+def _error_recovery_ratio(recovered_errors, tool_errors, no_tool_activity):
+    """recovered_errors / tool_errors, with the null-honesty guard."""
+    if no_tool_activity:
+        return None
+    return (recovered_errors / tool_errors) if tool_errors else 0
+
+
+def _iteration_depth_stats(depths, no_tool_activity):
+    """mean / median / p90 / max / files_over_15x over per-file edit-run counts.
+    `depths` need not be pre-sorted. Returns a dict with None values when the
+    corpus had no tool activity at all (null honesty)."""
+    if no_tool_activity:
+        return {"mean": None, "median": None, "p90": None, "max": None, "heavy_files": None}
+    d = sorted(depths)
+    return {
+        "mean": statistics.mean(d) if d else 0,
+        "median": statistics.median(d) if d else 0,
+        "p90": pctile(d, 90),
+        "max": max(d) if d else 0,
+        "heavy_files": sum(1 for x in d if x > 15),
+    }
+
+
+def _fanout_median(fanout_counts, no_tool_activity, all_sources_no_agent):
+    """Median team-size among agent-dispatching sessions, with null-honesty guards.
+    `fanout_counts` is the per-session agent-dispatch count for sessions that
+    dispatched at least one agent (already filtered to n > 0)."""
+    if no_tool_activity or (all_sources_no_agent and not fanout_counts):
+        return None
+    return statistics.median(fanout_counts) if fanout_counts else 0
+
+
+def _peak_hours(hour_hist):
+    """Top-3 local hours by event count (Counter.most_common(3) order)."""
+    return [h for h, _ in hour_hist.most_common(3)]
+
+
+def _preferred_days(weekday_hist, dow):
+    """Top-3 weekday names by event count (Counter.most_common(3) order)."""
+    return [dow[d] for d, _ in weekday_hist.most_common(3)]
+
+
+def _active_hours_and_longest_run(session_ts, gap_cap_s, burst_gap_s):
+    """Active hours (sum of inter-event gaps, each capped) and longest contiguous
+    burst (minutes) over a {sessionId: [epoch_seconds]} mapping. Mirrors the
+    window derivation exactly so per-month subsets reuse identical rules."""
+    durations_min = []
+    longest_burst_s = 0.0
+    for ts_list in session_ts.values():
+        ts_list = sorted(ts_list)
+        active_s = 0.0
+        for a, bnext in zip(ts_list, ts_list[1:]):
+            active_s += min(bnext - a, gap_cap_s)
+        durations_min.append(active_s / 60.0)
+        bstart = bprev = None
+        for t in ts_list:
+            if bprev is None:
+                bstart = bprev = t
+            elif t - bprev > burst_gap_s:
+                longest_burst_s = max(longest_burst_s, bprev - bstart)
+                bstart = bprev = t
+            else:
+                bprev = t
+        if bstart is not None:
+            longest_burst_s = max(longest_burst_s, bprev - bstart)
+    return sum(durations_min) / 60.0, longest_burst_s / 60.0
+
+
+def _token_usage_block(tokens_by_model, zero_tok=None):
+    """Shape a {raw_model_id: {input,output,cache_read,cache_creation}} mapping
+    into the stats['token_usage'] payload (totals + by_model, sorted desc).
+    Single shaper so window + per-month token blocks never drift."""
+    all_input = sum(v["input"] for v in tokens_by_model.values())
+    all_output = sum(v["output"] for v in tokens_by_model.values())
+    all_cr = sum(v["cache_read"] for v in tokens_by_model.values())
+    all_cc = sum(v["cache_creation"] for v in tokens_by_model.values())
+    by_model = sorted(
+        tokens_by_model.items(),
+        key=lambda kv: kv[1]["input"] + kv[1]["output"] + kv[1]["cache_read"] + kv[1]["cache_creation"],
+        reverse=True,
+    )
+    return {
+        "total_input": all_input,
+        "total_output": all_output,
+        "total_cache_read": all_cr,
+        "total_cache_creation": all_cc,
+        "by_model": [
+            {
+                "model_id": m,
+                "model": _pretty_model(m),
+                "input": tok["input"],
+                "output": tok["output"],
+                "cache_read": tok["cache_read"],
+                "cache_creation": tok["cache_creation"],
+            }
+            for m, tok in by_model
+        ],
+    }
+
+
 def _usage_int(usage, k):
     """Return usage[k] as int; handles str/float coercion; missing/None/bad → 0."""
     v = usage.get(k)
@@ -349,6 +462,11 @@ def _cursor_db_path():
 
 CURSOR_DB = _cursor_db_path()
 ALL_SOURCES = ("claude", "codex", "gemini", "pi", "opencode", "cursor")
+
+# Sources that permanently cannot dispatch subagents (no Agent tool facility).
+# A corpus whose active sources are ALL in this set will show fanout_median=None
+# rather than a misleading 0.
+_AGENT_UNSUPPORTED_SOURCES = frozenset({"gemini"})
 
 # --<source>-dir=PATH → which module-level dir each flag overrides. For claude/codex the
 # flag may point at either the config root (~/.claude) or the inner transcripts dir;
@@ -618,13 +736,18 @@ def _iso_ms(ms):
 
 
 def _canon_tool(name):
-    """Normalize Pi/opencode lower-case tool names to the Claude-style taxonomy."""
+    """Normalize Pi/opencode/Gemini lower-case tool names to the Claude-style taxonomy."""
     n = str(name or "tool")
     key = n.lower().replace("-", "_")
     mapping = {
         "bash": "Bash", "shell": "Bash", "exec": "Bash", "run": "Bash",
-        "read": "Read", "grep": "Grep", "glob": "Glob", "list": "Glob", "ls": "Glob",
-        "edit": "Edit", "patch": "Edit", "write": "Write", "multi_edit": "MultiEdit",
+        "run_shell_command": "Bash",
+        "read": "Read", "read_file": "Read",
+        "grep": "Grep", "search_file_content": "Grep", "find_line_numbers": "Grep",
+        "glob": "Glob", "list": "Glob", "ls": "Glob",
+        "edit": "Edit", "patch": "Edit",
+        "write": "Write", "write_file": "Write",
+        "multi_edit": "MultiEdit",
         "todowrite": "TodoWrite", "todo_write": "TodoWrite", "todoread": "TodoRead",
         "task": "Agent", "agent": "Agent", "webfetch": "WebFetch", "web_fetch": "WebFetch",
         "websearch": "WebSearch", "web_search": "WebSearch",
@@ -685,18 +808,115 @@ def iter_events(fp, fmt, cursor_twins=None):
         yield from _cursor_sqlite_events(fp, cursor_twins)
 
 
+def _patch_files(text):
+    """Parse a *** Begin/End Patch block into PER-FILE churn.
+
+    Returns a list of (new_string, old_string, file_path) — one entry per
+    *** Update/Add/Delete File directive — so a single apply_patch touching
+    several files is attributed to each file separately (not flattened onto the
+    first).  Counts '+' lines as additions and '-' lines as deletions, skipping
+    header markers (+++, ---, *** , @@) and context lines.  Delete File carries
+    no content (churn captured via git_churn instead).
+    """
+    files = []
+    cur = None  # {"path": str, "add": [..], "del": [..]}
+    in_patch = False
+    for raw in (text or "").splitlines():
+        line = raw.rstrip("\r")
+        if line == "*** Begin Patch":
+            in_patch = True
+            continue
+        if line == "*** End Patch":
+            break
+        if not in_patch:
+            continue
+        # file directive → start a new file section
+        if line.startswith("*** "):
+            # rename: re-attribute the current file section to its destination path so
+            # churn / iteration depth land on the new path, not the stale original.
+            if line.startswith("*** Move to: ") and cur is not None:
+                cur["path"] = line[len("*** Move to: "):]
+                continue
+            for directive in ("Update File: ", "Add File: ", "Delete File: "):
+                if line.startswith("*** " + directive):
+                    if cur is not None:
+                        files.append(cur)
+                    cur = {"path": line[len("*** " + directive):], "add": [], "del": []}
+                    break
+            continue
+        if cur is None:
+            continue
+        if line.startswith("@@"):
+            continue
+        if line.startswith("+++") or line.startswith("---"):
+            continue  # unified-diff file headers, not content
+        if line.startswith("+"):
+            cur["add"].append(line[1:])
+        elif line.startswith("-"):
+            cur["del"].append(line[1:])
+        # context lines (no prefix) are ignored for churn
+    if cur is not None:
+        files.append(cur)
+    out = []
+    for f in files:
+        new_s = "\n".join(f["add"]) + ("\n" if f["add"] else "")
+        old_s = "\n".join(f["del"]) + ("\n" if f["del"] else "")
+        out.append((new_s, old_s, f["path"]))
+    return out
+
+
+def _patch_churn(text):
+    """Single-file convenience wrapper over _patch_files: returns the FIRST file's
+    (new_string, old_string, file_path), or empties when the patch has no files.
+    Multi-file patches should use _patch_files directly (see _codex_events)."""
+    files = _patch_files(text)
+    return files[0] if files else ("", "", "")
+
+
+def _codex_mcp_name(namespace, tool):
+    """Build a canonical `mcp__<server>__<tool>` name from a Codex namespaced MCP
+    call (short `name` + `namespace` like "mcp__supabase_bot__" or
+    "mcp__codex_apps__gmail").
+
+    The server segment is taken verbatim from the namespace. NOTE: the namespace
+    form may spell a server with underscores where the already-prefixed `name`
+    form uses hyphens (e.g. "supabase_bot" vs "supabase-bot"); that difference is
+    not reconciled here (underscore↔hyphen is not safely reversible — many servers
+    use underscores legitimately). mcp_calls counting is exact regardless; only
+    mcp_servers_distinct may occasionally split one server across the two
+    spellings."""
+    body = namespace[len("mcp__"):].rstrip("_")
+    server_path = "__".join(s for s in body.split("__") if s)
+    tool = (str(tool or "")).lstrip("_") or "tool"
+    return f"mcp__{server_path}__{tool}" if server_path else f"mcp__{tool}"
+
+
 def _codex_tool(p):
     """Map a Codex tool/function call to a Claude-shaped (name, input) tool_use."""
     pt = p.get("type")
     if pt == "web_search_call":
         return "WebSearch", {}
     name = p.get("name") or pt or "tool"
+    # custom_tool_call (real apply_patch) carries the patch in payload.input, not arguments
+    if pt == "custom_tool_call" and name == "apply_patch":
+        raw_patch = p.get("input") or ""
+        new_s, old_s, fpath = _patch_churn(raw_patch)
+        return "Edit", {"new_string": new_s, "old_string": old_s, "file_path": fpath}
     try:
         args = json.loads(p.get("arguments") or "{}")
     except Exception:
         args = {}
     if not isinstance(args, dict):
         args = {}
+    # MCP calls: either the name is already prefixed (mcp__server__tool — kept as-is)
+    # or it's a short name under an mcp__ namespace (reclassified here so it counts as
+    # MCP, not native). Checked before the builtin-name branches so an MCP tool named
+    # like a builtin (e.g. "create_file") isn't mis-mapped to Edit.
+    if isinstance(name, str) and name.startswith("mcp__"):
+        return name, args
+    ns = p.get("namespace")
+    if isinstance(ns, str) and ns.startswith("mcp__"):
+        return _codex_mcp_name(ns, name), args
     if pt == "local_shell_call" or name in ("exec_command", "shell", "local_shell", "bash"):
         return "Bash", {"command": args.get("cmd") or args.get("command") or str(p.get("action") or "")}
     if name in ("apply_patch", "patch", "edit_file", "write_file", "create_file"):
@@ -741,11 +961,25 @@ def _codex_events(fp):
         return
     sid = os.path.basename(fp).split(".")[0]
     cwd = None
-    for ev in rows:                       # first pass: session id + working dir
+    parent_tid = None            # parent_thread_id when this session was spawned as a subagent
+    child_ts = None              # representative timestamp of THIS (child) session
+    for ev in rows:                       # first pass: session id + working dir + subagent parent
         p = ev.get("payload") or {}
+        # Remember a usable child timestamp so the synthetic fan-out Agent event can be
+        # stamped (undated events are dropped by every windowed run). Prefer the earliest.
+        _ets = ev.get("timestamp")
+        if _ets and child_ts is None:
+            child_ts = _ets
         if ev.get("type") == "session_meta":
             sid = p.get("id") or sid
             cwd = p.get("cwd") or cwd
+            # thread_spawn means this session was launched as a delegate.
+            src = p.get("source")
+            if isinstance(src, dict):
+                sub = src.get("subagent") or {}
+                spawn = sub.get("thread_spawn") if isinstance(sub, dict) else None
+                if isinstance(spawn, dict) and spawn:
+                    parent_tid = spawn.get("parent_thread_id") or parent_tid
         elif ev.get("type") == "response_item" and p.get("type") == "function_call":
             try:
                 a = json.loads(p.get("arguments") or "{}")
@@ -753,13 +987,74 @@ def _codex_events(fp):
             except Exception:
                 pass
     base = {"sessionId": sid, "cwd": cwd}
+
+    # Fan-out belongs to orchestrating session, not worker. Spawn metadata only exists
+    # on child session, so emit a synthetic Agent event keyed to parent session id.
+    # If parent is outside analyzed window this can create a small fan-out-only
+    # placeholder session, which is still better than undercounting delegation.
+    if parent_tid:
+        yield {"sessionId": parent_tid, "cwd": None, "type": "assistant", "timestamp": child_ts,
+               "message": {"role": "assistant", "model": None,
+                           "content": [{"type": "tool_use", "name": "Agent",
+                                        "input": {"subagent_type": "codex-subagent"}}]}}
+
     model = None
+    # token_count carries cumulative total_token_usage. In mixed-model sessions we
+    # snapshot totals on each model switch and credit the delta to the prior active
+    # model. We also bucket each delta by the calendar month of the token event that
+    # produced it, so a thread spanning a month boundary books its tokens in the
+    # right months instead of dumping them all in the session's last month.
+    _TOK_FIELDS = ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens")
+    model_tok = {}                   # (model, monthKey) -> {field: tokens}
+    bucket_ts = {}                   # (model, monthKey) -> last token ts seen in that bucket
+    base_total = {f: 0 for f in _TOK_FIELDS}   # cumulative at the last flush
+    cur_total = None                 # latest cumulative snapshot
+    cur_month = None                 # monthKey of the latest cumulative snapshot
+    last_token_ts = None             # raw ts of the latest cumulative snapshot
+
+    def _month_of(ts):
+        dt = parse_ts(ts)
+        return dt.strftime("%Y-%m") if dt is not None else None
+
+    def _flush_model(mdl):
+        # Credit the delta accumulated since the last flush to (model, month) of the
+        # most recent snapshot, then advance the baseline.
+        if mdl is None or cur_total is None:
+            return
+        key = (mdl, cur_month)
+        acc = model_tok.setdefault(key, {f: 0 for f in _TOK_FIELDS})
+        for f in _TOK_FIELDS:
+            acc[f] += max(cur_total[f] - base_total[f], 0)
+        if last_token_ts is not None:
+            bucket_ts[key] = last_token_ts
+        for f in _TOK_FIELDS:
+            base_total[f] = cur_total[f]
+
     for ev in rows:
         # the active model lives in turn_context (e.g. "gpt-5.4"), not on the
         # response items — track it as we stream so assistant turns carry it and
         # Codex usage shows up in the Model mix instead of reading as model-less
         if ev.get("type") == "turn_context":
-            model = (ev.get("payload") or {}).get("model") or model
+            new_model = (ev.get("payload") or {}).get("model") or model
+            if new_model != model:
+                _flush_model(model)   # close out the previous model's delta
+                model = new_model
+            continue
+        # token_count arrives as event_msg, not response_item.
+        if ev.get("type") == "event_msg":
+            p_em = ev.get("payload") or {}
+            if p_em.get("type") == "token_count":
+                info = p_em.get("info") or {}
+                ttu = info.get("total_token_usage")
+                if isinstance(ttu, dict) and ttu.get("total_tokens"):
+                    new_month = _month_of(ev.get("timestamp"))
+                    # When the running total crosses into a new calendar month, flush the
+                    # delta accrued so far to the prior month before adopting the new one.
+                    if cur_total is not None and new_month != cur_month:
+                        _flush_model(model)
+                    cur_total = {f: int(ttu.get(f) or 0) for f in _TOK_FIELDS}
+                    cur_month = new_month
+                    last_token_ts = ev.get("timestamp")
             continue
         if ev.get("type") != "response_item":
             continue
@@ -783,16 +1078,50 @@ def _codex_events(fp):
                                "content": [{"type": "thinking",
                                             "thinking": _texts(p.get("content")) or p.get("summary") or ""}]}}
         elif pt in ("function_call", "local_shell_call", "custom_tool_call", "web_search_call"):
-            name, inp = _codex_tool(p)
-            yield {**base, "type": "assistant", "timestamp": ts,
-                   "message": {"role": "assistant", "model": model,
-                               "content": [{"type": "tool_use", "name": name, "input": inp}]}}
+            # One apply_patch can touch several files. Emit one Edit per file so
+            # churn and iteration depth are attributed correctly.
+            if pt == "custom_tool_call" and p.get("name") == "apply_patch":
+                for new_s, old_s, fpath in _patch_files(p.get("input") or ""):
+                    yield {**base, "type": "assistant", "timestamp": ts,
+                           "message": {"role": "assistant", "model": model,
+                                       "content": [{"type": "tool_use", "name": "Edit",
+                                                    "input": {"new_string": new_s, "old_string": old_s,
+                                                              "file_path": fpath}}]}}
+            else:
+                name, inp = _codex_tool(p)
+                yield {**base, "type": "assistant", "timestamp": ts,
+                       "message": {"role": "assistant", "model": model,
+                                   "content": [{"type": "tool_use", "name": name, "input": inp}]}}
         elif pt == "function_call_output":
             out = p.get("output")
             is_err = isinstance(out, dict) and out.get("success") is False
             yield {**base, "type": "user", "timestamp": ts,
                    "message": {"role": "user",
                                "content": [{"type": "tool_result", "is_error": bool(is_err)}]}}
+
+    # Close out final model delta, then emit one synthetic usage event per
+    # (model, month) so mixed-model sessions split correctly in model mix AND
+    # month-spanning threads attribute tokens to the right calendar month. Each
+    # event is stamped with a timestamp inside its month (the last token ts seen
+    # there) so the main loop buckets it correctly. Map Codex fields to Claude shape:
+    #   input  = input_tokens - cached_input_tokens  (non-cached portion)
+    #   cache_read = cached_input_tokens
+    #   output = output_tokens + reasoning_output_tokens
+    _flush_model(model)
+    for (mdl, _mkey), acc in model_tok.items():
+        if not mdl or not any(acc.values()):
+            continue
+        cached = acc["cached_input_tokens"]
+        usage = {
+            "input_tokens": max(acc["input_tokens"] - cached, 0),
+            "output_tokens": acc["output_tokens"] + acc["reasoning_output_tokens"],
+            "cache_read_input_tokens": cached,
+            "cache_creation_input_tokens": 0,
+        }
+        ts = bucket_ts.get((mdl, _mkey), last_token_ts)
+        yield {**base, "type": "assistant", "timestamp": ts,
+               "__codex_usage__": True,
+               "message": {"role": "assistant", "model": mdl, "usage": usage, "content": []}}
 
 
 def _gemini_events(fp):
@@ -802,7 +1131,48 @@ def _gemini_events(fp):
         return
     if not isinstance(d, dict):
         return
-    base = {"sessionId": d.get("sessionId") or os.path.basename(fp), "cwd": None}
+    sid = d.get("sessionId") or os.path.basename(fp)
+
+    # Scan once for cwd: prefer dir_path args, then file_path dirname, then
+    # a "Directory: /abs" line in run_shell_command output.
+    cwd = None
+    try:
+        for m in d.get("messages") or []:
+            if not isinstance(m, dict):
+                continue
+            for tc in m.get("toolCalls") or []:
+                if not isinstance(tc, dict):
+                    continue
+                args = tc.get("args") if isinstance(tc.get("args"), dict) else {}
+                dp = args.get("dir_path") or ""
+                if isinstance(dp, str) and dp.startswith("/"):
+                    cwd = dp
+                    break
+                fp_arg = args.get("file_path") or ""
+                if isinstance(fp_arg, str) and fp_arg.startswith("/"):
+                    cwd = os.path.dirname(fp_arg)
+                    break
+                # try to parse "Directory: /abs" from run_shell_command output
+                try:
+                    resp = (tc.get("result") or [{}])[0]
+                    out = (resp.get("functionResponse") or {}).get("response", {}).get("output", "") or ""
+                    for line in str(out).splitlines():
+                        if line.startswith("Directory:"):
+                            candidate = line.split(":", 1)[1].strip()
+                            if candidate.startswith("/") and candidate != "(root)":
+                                cwd = candidate
+                                break
+                except Exception:
+                    pass
+                if cwd:
+                    break
+            if cwd:
+                break
+    except Exception:
+        cwd = None
+
+    base = {"sessionId": sid, "cwd": cwd}
+
     for m in d.get("messages") or []:
         if not isinstance(m, dict):
             continue
@@ -810,19 +1180,73 @@ def _gemini_events(fp):
         role = m.get("type") or m.get("role")
         content = m.get("content")
         text = _texts(content)
+
         if role == "user" and text:
             yield {**base, "type": "user", "timestamp": ts,
                    "message": {"role": "user", "content": text}}
+
         elif role in ("gemini", "model", "assistant"):
-            blocks = [{"type": "text", "text": text}] if text else []
-            if isinstance(content, list):
-                for part in content:
-                    if isinstance(part, dict) and isinstance(part.get("functionCall"), dict):
-                        fc = part["functionCall"]
-                        blocks.append({"type": "tool_use", "name": fc.get("name", "tool"),
-                                       "input": fc.get("args") if isinstance(fc.get("args"), dict) else {}})
+            blocks = []
+
+            # thinking blocks
+            for th in m.get("thoughts") or []:
+                if not isinstance(th, dict):
+                    continue
+                subj = th.get("subject") or ""
+                desc = th.get("description") or ""
+                thinking_text = (subj + ": " + desc).strip(": ") if subj else desc
+                if thinking_text:
+                    blocks.append({"type": "thinking", "thinking": thinking_text})
+
+            # text block
+            if text:
+                blocks.append({"type": "text", "text": text})
+
+            # tool_use blocks from toolCalls
+            tool_calls = m.get("toolCalls") or []
+            for tc in tool_calls:
+                if not isinstance(tc, dict):
+                    continue
+                raw_name = tc.get("name") or "tool"
+                canon = _canon_tool(raw_name)
+                args = tc.get("args") if isinstance(tc.get("args"), dict) else {}
+                blocks.append({"type": "tool_use", "name": canon,
+                                "input": _canon_input(raw_name, args)})
+
+            # token usage translation
+            tok = m.get("tokens") if isinstance(m.get("tokens"), dict) else {}
+            usage = {
+                "input_tokens": int(tok.get("input") or 0),
+                "output_tokens": int((tok.get("output") or 0) + (tok.get("thoughts") or 0)),
+                "cache_read_input_tokens": int(tok.get("cached") or 0),
+                "cache_creation_input_tokens": 0,
+            }
+
             yield {**base, "type": "assistant", "timestamp": ts,
-                   "message": {"role": "assistant", "content": blocks}}
+                   "message": {"role": "assistant", "model": m.get("model"),
+                                "usage": usage, "content": blocks}}
+
+            # tool_result user event for each toolCall
+            if tool_calls:
+                result_blocks = []
+                for tc in tool_calls:
+                    if not isinstance(tc, dict):
+                        continue
+                    is_err = str(tc.get("status") or "").lower() == "error"
+                    if not is_err:
+                        try:
+                            resp = (tc.get("result") or [{}])[0]
+                            err_val = (resp.get("functionResponse") or {}).get(
+                                "response", {}).get("error")
+                            if err_val:
+                                is_err = True
+                        except Exception:
+                            pass
+                    result_blocks.append({"type": "tool_result", "is_error": bool(is_err)})
+                yield {**base, "type": "user", "timestamp": ts,
+                       "message": {"role": "user", "content": result_blocks}}
+
+        # m.type == "info" and anything else → skip
 
 
 def _pi_blocks(content):
@@ -1307,9 +1731,32 @@ def _cursor_sqlite_events(db_path, twins=None):
                     yield {**base, "type": "user", "timestamp": ts,
                            "message": {"role": "user", "content": text}}
             elif btype == 2:
+                # Attach Cursor tokenCount to same assistant event instead of creating
+                # a separate usage-only turn. Ignore empty token payloads.
+                tok_count = bubble.get("tokenCount")
+                msg = {"role": "assistant"}
+                usage = None
+                if isinstance(tok_count, dict):
+                    input_tok = int(tok_count.get("inputTokens") or 0)
+                    output_tok = int(tok_count.get("outputTokens") or 0)
+                    if input_tok > 0 or output_tok > 0:
+                        msg["model"] = "cursor"
+                        usage = {
+                            "input_tokens": input_tok,
+                            "output_tokens": output_tok,
+                            "cache_read_input_tokens": 0,
+                            "cache_creation_input_tokens": 0,
+                        }
+                        msg["usage"] = usage
                 if blocks:
+                    msg["content"] = blocks
                     yield {**base, "type": "assistant", "timestamp": ts,
-                           "message": {"role": "assistant", "content": blocks}}
+                           "message": msg}
+                elif usage:
+                    # Blocks-empty but has tokens: emit usage-only event (with empty content)
+                    msg["content"] = []
+                    yield {**base, "type": "assistant", "timestamp": ts,
+                           "message": msg}
                 if tool_err is not None:
                     yield {**base, "type": "user", "timestamp": ts,
                            "message": {"role": "user",
@@ -1567,10 +2014,34 @@ def main():
     month_sessions = defaultdict(set)    # month -> sessionIds seen
     month_models = defaultdict(Counter)  # month -> model -> assistant turns
 
+    # GA1: month-keyed counterparts for everything monthly_noticed_stats needs,
+    # mirroring each window accumulator at its increment site.
+    month_assistant_turns = Counter()        # month -> assistant turns
+    month_thinking_blocks = Counter()        # month -> thinking blocks
+    month_prompt_lengths = defaultdict(list) # month -> [prompt char lengths]
+    month_bash_write_calls = Counter()       # month -> Bash file-write calls
+    month_bash_authored_lines = Counter()    # month -> shell-authored line est
+    month_tool_errors = Counter()            # month -> tool_result is_error count
+    month_recovered_errors = Counter()       # month -> error-recovery tool uses
+    month_edits_per_file = defaultdict(list) # month -> iteration-depth samples
+    month_polite = Counter()                 # month -> polite prompts
+    month_questions = Counter()              # month -> ASK_TOOLS calls
+    month_delegate = Counter()               # month -> delegate-classified tool calls
+    month_background = Counter()             # month -> run_in_background tool calls
+    month_scheduled = Counter()              # month -> SCHEDULE_TOOLS calls
+    month_fanouts = defaultdict(lambda: defaultdict(int))  # month -> session -> agent dispatches
+    month_hour_hist = defaultdict(Counter)   # month -> local hour -> events
+    month_weekday_hist = defaultdict(Counter)  # month -> weekday(0-6) -> events
+    month_tool_counter = defaultdict(Counter)  # month -> tool name -> calls
+    month_session_ts = defaultdict(lambda: defaultdict(list))  # month -> session -> [epoch s]
+
     # token usage accumulators (keyed by raw model id)
     _zero_tok = lambda: {"input": 0, "output": 0, "cache_read": 0, "cache_creation": 0}
     model_tokens = defaultdict(_zero_tok)        # raw model id -> {input, output, cache_read, cache_creation}
     month_tokens = defaultdict(_zero_tok)        # month key -> {input, output, cache_read, cache_creation}
+    # GA1: month -> raw model id -> tokens, so per-month token_usage carries a real
+    # by_model split (same shape as the window stats['token_usage']).
+    month_model_tokens = defaultdict(lambda: defaultdict(_zero_tok))
 
     # narrative samples
     opening_prompts = []           # (dt, project, text) first genuine prompt per session
@@ -1598,6 +2069,9 @@ def main():
         # per-session, per-file ordered state for error-recovery + iteration depth
         pending_error = defaultdict(bool)        # sessionId -> unrecovered error flag
         file_edit_run = defaultdict(lambda: defaultdict(int))  # session -> file -> edits since commit
+        # GA1: month of the most recent edit per (session, file), so a flushed
+        # iteration-depth run is attributed to the month it happened in.
+        file_edit_month = defaultdict(dict)      # session -> file -> month key
 
         # iter_events() yields Claude-shaped event dicts for every source format,
         # so the per-event logic below is identical across all supported sources.
@@ -1646,11 +2120,14 @@ def main():
                     if not _synth_ts:
                         hour_hist[dt.hour] += 1
                         weekday_hist[dt.weekday()] += 1
+                        month_hour_hist[mkey][dt.hour] += 1
+                        month_weekday_hist[mkey][dt.weekday()] += 1
                     date_set.add(dt.date().isoformat())
                     month_dates[mkey].add(dt.date().isoformat())
                     if sid:
                         if not _synth_ts:
                             session_ts[sid].append(dt.timestamp())
+                            month_session_ts[mkey][sid].append(dt.timestamp())
                         month_sessions[mkey].add(sid)
                 if sid:
                     session_files[sid].add(fp)
@@ -1694,9 +2171,12 @@ def main():
                                 source_prompts[cur_src] += 1
                                 if mkey:
                                     month_prompts[mkey] += 1
+                                    month_prompt_lengths[mkey].append(len(cleaned))
                                 prompt_lengths.append(len(cleaned))
                                 if _POLITE_RE.search(cleaned):
                                     polite_prompts += 1
+                                    if mkey:
+                                        month_polite[mkey] += 1
                                 # collect verbatim-quote candidates (short prompts only, and
                                 # only if safe to surface — no secrets / no harness markers)
                                 _wc = len(cleaned.split())
@@ -1741,17 +2221,28 @@ def main():
                             if isinstance(b, dict) and b.get("type") == "tool_result":
                                 if b.get("is_error"):
                                     tool_errors += 1
+                                    if mkey:
+                                        month_tool_errors[mkey] += 1
                                     if sid:
                                         pending_error[sid] = True
 
                 # ---- assistant turns ---------------------------------------
                 elif etype == "assistant" and msg is not None:
-                    assistant_turns += 1
+                    # Codex emits synthetic token-usage events as type="assistant" purely
+                    # to carry per-(model,month) token totals. They are NOT real turns, so
+                    # they must not bump assistant-turn or model-mix counters — only feed
+                    # the token accumulators below.
+                    _is_codex_usage = bool(ev.get("__codex_usage__"))
+                    if not _is_codex_usage:
+                        assistant_turns += 1
+                        if mkey:
+                            month_assistant_turns[mkey] += 1
                     mdl = msg.get("model")
                     if mdl:
-                        model_counter[mdl] += 1
-                        if mkey:
-                            month_models[mkey][mdl] += 1
+                        if not _is_codex_usage:
+                            model_counter[mdl] += 1
+                            if mkey:
+                                month_models[mkey][mdl] += 1
                         # ---- token usage extraction (fully defensive) -------
                         _u = msg.get("usage") or {}
                         _ti  = _usage_int(_u, "input_tokens")
@@ -1767,6 +2258,10 @@ def main():
                             month_tokens[mkey]["output"]         += _to
                             month_tokens[mkey]["cache_read"]     += _tcr
                             month_tokens[mkey]["cache_creation"] += _tcc
+                            month_model_tokens[mkey][mdl]["input"]          += _ti
+                            month_model_tokens[mkey][mdl]["output"]         += _to
+                            month_model_tokens[mkey][mdl]["cache_read"]     += _tcr
+                            month_model_tokens[mkey][mdl]["cache_creation"] += _tcc
                     if ev.get("attributionSkill"):
                         skill_counter[ev["attributionSkill"]] += 1
                     content = msg.get("content")
@@ -1779,15 +2274,21 @@ def main():
                                 text_blocks += 1
                             elif bt == "thinking":
                                 thinking_blocks += 1
+                                if mkey:
+                                    month_thinking_blocks[mkey] += 1
                                 thinking_chars += len(b.get("thinking", "") or "")
                             elif bt == "tool_use":
                                 name = b.get("name", "?")
                                 inp = b.get("input", {}) if isinstance(b.get("input"), dict) else {}
                                 tool_use_total += 1
                                 tool_counter[name] += 1
+                                _cat = classify_tool(name)
                                 if mkey:
                                     month_tools[mkey] += 1
-                                cat_counter[classify_tool(name)] += 1
+                                    month_tool_counter[mkey][name] += 1
+                                    if _cat == "delegate":
+                                        month_delegate[mkey] += 1
+                                cat_counter[_cat] += 1
                                 if name.startswith("mcp__"):
                                     mcp_calls += 1
                                     parts = name.split("__")
@@ -1799,6 +2300,8 @@ def main():
                                 # a tool use after a pending error = recovery
                                 if sid and pending_error.get(sid):
                                     recovered_errors += 1
+                                    if mkey:
+                                        month_recovered_errors[mkey] += 1
                                     pending_error[sid] = False
 
                                 if name == "Skill":
@@ -1810,12 +2313,20 @@ def main():
                                     subagent_counter[st] += 1
                                     if sid:
                                         agents_per_session[sid] += 1
+                                        if mkey:
+                                            month_fanouts[mkey][sid] += 1
                                 if name in ASK_TOOLS:
                                     questions_asked += 1
+                                    if mkey:
+                                        month_questions[mkey] += 1
                                 if inp.get("run_in_background"):
                                     background_tasks += 1
+                                    if mkey:
+                                        month_background[mkey] += 1
                                 if name in SCHEDULE_TOOLS:
                                     scheduled_actions += 1
+                                    if mkey:
+                                        month_scheduled[mkey] += 1
 
                                 # ---- code churn + iteration depth ----------
                                 if name == "Edit":
@@ -1828,6 +2339,8 @@ def main():
                                     fpth = inp.get("file_path")
                                     if sid and fpth:
                                         file_edit_run[sid][fpth] += 1
+                                        if mkey:
+                                            file_edit_month[sid][fpth] = mkey
                                     if _is_compounding_path(fpth):
                                         compounding_counter += 1
                                 elif name == "Write":
@@ -1838,6 +2351,8 @@ def main():
                                     fpth = inp.get("file_path")
                                     if sid and fpth:
                                         file_edit_run[sid][fpth] += 1
+                                        if mkey:
+                                            file_edit_month[sid][fpth] = mkey
                                     if _is_compounding_path(fpth):
                                         compounding_counter += 1
                                 elif name == "MultiEdit":
@@ -1852,6 +2367,8 @@ def main():
                                     fpth = inp.get("file_path")
                                     if sid and fpth:
                                         file_edit_run[sid][fpth] += 1
+                                        if mkey:
+                                            file_edit_month[sid][fpth] = mkey
                                     if _is_compounding_path(fpth):
                                         compounding_counter += 1
                                 elif name == "NotebookEdit":
@@ -1859,6 +2376,8 @@ def main():
                                     fpth = inp.get("notebook_path")
                                     if sid and fpth:
                                         file_edit_run[sid][fpth] += 1
+                                        if mkey:
+                                            file_edit_month[sid][fpth] = mkey
                                     if _is_compounding_path(fpth):
                                         compounding_counter += 1
                                 elif name == "Bash":
@@ -1875,54 +2394,52 @@ def main():
                                     if bash_writes_file(cmd):
                                         bash_write_calls += 1
                                         bash_authored_lines += cmd.count("\n")
+                                        if mkey:
+                                            month_bash_write_calls[mkey] += 1
+                                            month_bash_authored_lines[mkey] += cmd.count("\n")
                                     if bash_runs_tests(cmd):
                                         shell_test_runs += 1
                                     if "git commit" in cmd:
                                         git_commits += 1
                                         # flush iteration-depth run for this session
                                         if sid in file_edit_run:
-                                            for cnt in file_edit_run[sid].values():
+                                            for _f, cnt in file_edit_run[sid].items():
                                                 if cnt > 0:
                                                     edits_per_file_events.append(cnt)
+                                                    _fm = file_edit_month.get(sid, {}).get(_f)
+                                                    if _fm:
+                                                        month_edits_per_file[_fm].append(cnt)
                                             file_edit_run[sid].clear()
+                                            file_edit_month.get(sid, {}).clear()
 
         # end of file: flush any remaining edit runs as iteration-depth samples
-        for sdict in file_edit_run.values():
-            for cnt in sdict.values():
+        for _s, sdict in file_edit_run.items():
+            for _f, cnt in sdict.items():
                 if cnt > 0:
                     edits_per_file_events.append(cnt)
+                    _fm = file_edit_month.get(_s, {}).get(_f)
+                    if _fm:
+                        month_edits_per_file[_fm].append(cnt)
 
     # ---- derive ----------------------------------------------------------------
     total_sessions = len(session_ts) or len(session_files)
     # Active time = sum of consecutive inter-event gaps, each capped at GAP_CAP_S,
     # so resumed-session reuse and overnight idle don't inflate engaged time.
-    durations_min = []
-    longest_burst_s = 0.0
+    # Longest *contiguous* burst (no gap > 30 min). sessionId is reused across
+    # resumed sessions, so a single id can span weeks — max(session duration) is
+    # meaningless; the longest unbroken burst is the honest "longest run."
     BURST_GAP_S = 1800               # a gap > 30 min ends a contiguous work "run"
+    durations_min = []
     for ts_list in session_ts.values():
         ts_list.sort()
         active_s = 0.0
         for a, bnext in zip(ts_list, ts_list[1:]):
             active_s += min(bnext - a, GAP_CAP_S)
         durations_min.append(active_s / 60.0)
-        # Longest *contiguous* burst (no gap > 30 min). sessionId is reused across
-        # resumed sessions, so a single id can span weeks — max(session duration) is
-        # meaningless; the longest unbroken burst is the honest "longest run."
-        bstart = bprev = None
-        for t in ts_list:
-            if bprev is None:
-                bstart = bprev = t
-            elif t - bprev > BURST_GAP_S:
-                longest_burst_s = max(longest_burst_s, bprev - bstart)
-                bstart = bprev = t
-            else:
-                bprev = t
-        if bstart is not None:
-            longest_burst_s = max(longest_burst_s, bprev - bstart)
-    active_hours = sum(durations_min) / 60.0
+    active_hours, longest_run_min = _active_hours_and_longest_run(
+        session_ts, GAP_CAP_S, BURST_GAP_S)
     avg_session_min = statistics.mean(durations_min) if durations_min else 0
     median_session_min = statistics.median(durations_min) if durations_min else 0
-    longest_run_min = longest_burst_s / 60.0
 
     avg_prompt_len = statistics.mean(prompt_lengths) if prompt_lengths else 0
     median_prompt_len = statistics.median(prompt_lengths) if prompt_lengths else 0
@@ -1960,19 +2477,29 @@ def main():
     entropy = -sum((c / tot) * math.log2(c / tot) for c in tool_counter.values())
     norm_entropy = entropy / math.log2(tool_diversity) if tool_diversity > 1 else 0
 
-    error_recovery_ratio = (recovered_errors / tool_errors) if tool_errors else 0
-    error_rate_per_100_tools = (tool_errors / tool_use_total * 100) if tool_use_total else 0
+    # Null-honesty: metrics that depend on tool-level events cannot be measured when
+    # the only active sources never produced any tool calls at all (e.g. a transcript
+    # format whose parser currently emits no tool_use).  Real 0 (a Claude session with
+    # zero errors) is kept as-is; only the "counter is 0 because we never saw a tool
+    # call" case becomes None.  Downstream scoring treats None as missing (same as 0).
+    _no_tool_activity = (tool_use_total == 0 and bool(source_sessions))
+
+    error_recovery_ratio = _error_recovery_ratio(recovered_errors, tool_errors, _no_tool_activity)
+    error_rate_per_100_tools = _error_rate_per_100(tool_errors, tool_use_total, _no_tool_activity)
     # Fan-out / coordination: among sessions that DISPATCH agents, how many do you
     # coordinate at once? Median (robust to one big fan-out outlier). A serial grinder
     # firing N agents one-per-session reads 1; a real orchestrator reads its team size.
     _fanouts = [n for n in agents_per_session.values() if n > 0]
-    fanout_median = statistics.median(_fanouts) if _fanouts else 0
-    _depths = sorted(edits_per_file_events)
-    iteration_mean = statistics.mean(_depths) if _depths else 0
-    iteration_median = statistics.median(_depths) if _depths else 0
-    iteration_p90 = pctile(_depths, 90)
-    iteration_max = max(_depths) if _depths else 0
-    heavy_files = sum(1 for d in _depths if d > 15)   # files hammered >15x in one session
+    _all_sources_no_agent = bool(source_sessions) and (
+        set(source_sessions.keys()) <= _AGENT_UNSUPPORTED_SOURCES
+    )
+    fanout_median = _fanout_median(_fanouts, _no_tool_activity, _all_sources_no_agent)
+    _ids = _iteration_depth_stats(edits_per_file_events, _no_tool_activity)
+    iteration_mean = _ids["mean"]
+    iteration_median = _ids["median"]
+    iteration_p90 = _ids["p90"]
+    iteration_max = _ids["max"]
+    heavy_files = _ids["heavy_files"]
 
     actions_per_prompt = (tool_use_total / prompts_count) if prompts_count else 0
     # autonomy proxy 0-100: weighted blend, transparent + bounded
@@ -1989,8 +2516,8 @@ def main():
     tzname = datetime.now().astimezone().tzname()
     tzoffset = datetime.now().astimezone().strftime("%z")
 
-    peak_hours = [h for h, _ in hour_hist.most_common(3)]
-    preferred_days = [DOW[d] for d, _ in weekday_hist.most_common(3)]
+    peak_hours = _peak_hours(hour_hist)
+    preferred_days = _preferred_days(weekday_hist, DOW)
 
     progression = []
     for mk in sorted(set(month_dates) | set(month_prompts) | set(month_tools) | set(month_tokens)):
@@ -2058,7 +2585,7 @@ def main():
             "mcp_calls": mcp_calls,
             "native_calls": native_calls,
             "mcp_share": round(mcp_calls / (mcp_calls + native_calls), 3) if (mcp_calls + native_calls) else 0,
-            "top_tools": tool_counter.most_common(15),
+            "top_tools": tool_counter.most_common(40),
             "category_breakdown": dict(cat_counter),
             "mcp_servers": mcp_server_counter.most_common(),
             "mcp_servers_distinct": len(mcp_server_counter),
@@ -2097,14 +2624,14 @@ def main():
             "median_session_minutes": round(median_session_min, 1),
             "longest_run_minutes": round(longest_run_min, 1),
             "polite_prompts": polite_prompts,
-            "error_recovery_ratio": round(error_recovery_ratio, 3),
-            "error_rate_per_100_tools": round(error_rate_per_100_tools, 1),
+            "error_recovery_ratio": round(error_recovery_ratio, 3) if error_recovery_ratio is not None else None,
+            "error_rate_per_100_tools": round(error_rate_per_100_tools, 1) if error_rate_per_100_tools is not None else None,
             "tool_errors": tool_errors,
             "recovered_errors": recovered_errors,
             "api_errors_retries": api_errors,
             "fanout_median": fanout_median,
-            "iteration_depth_mean": round(iteration_mean, 2),
-            "iteration_depth_median": round(iteration_median, 2),
+            "iteration_depth_mean": round(iteration_mean, 2) if iteration_mean is not None else None,
+            "iteration_depth_median": round(iteration_median, 2) if iteration_median is not None else None,
             "iteration_depth_p90": iteration_p90,
             "iteration_depth_max": iteration_max,
             "files_hammered_over_15x": heavy_files,
@@ -2144,34 +2671,50 @@ def main():
         },
     }
     # ---- aggregate token_usage block ----------------------------------------
-    _all_tok_input  = sum(v["input"]          for v in model_tokens.values())
-    _all_tok_output = sum(v["output"]         for v in model_tokens.values())
-    _all_tok_cr     = sum(v["cache_read"]     for v in model_tokens.values())
-    _all_tok_cc     = sum(v["cache_creation"] for v in model_tokens.values())
     # order by total tokens desc (consistent with model_usage ordering in _build_profile)
-    _by_model_tok = sorted(
-        model_tokens.items(),
-        key=lambda kv: kv[1]["input"] + kv[1]["output"] + kv[1]["cache_read"] + kv[1]["cache_creation"],
-        reverse=True,
-    )
-    stats["token_usage"] = {
-        "total_input": _all_tok_input,
-        "total_output": _all_tok_output,
-        "total_cache_read": _all_tok_cr,
-        "total_cache_creation": _all_tok_cc,
-        "by_model": [
-            {
-                "model_id": m,
-                "model": _pretty_model(m),
-                "input": tok["input"],
-                "output": tok["output"],
-                "cache_read": tok["cache_read"],
-                "cache_creation": tok["cache_creation"],
-            }
-            for m, tok in _by_model_tok
-        ],
-    }
+    stats["token_usage"] = _token_usage_block(model_tokens)
     stats["agentic"] = compute_aq(stats)
+
+    # ---- per-calendar-month noticed_stats (GA1) -----------------------------
+    # One entry per month present in the window, chronological. Each entry's
+    # `stats` is shaped by the SAME _build_noticed_stats used for the window
+    # block (no drift); per-month git_churn is called once per month with that
+    # month's [start, next_month_start) range (never the window total).
+    stats["monthly_noticed_stats"] = _build_monthly_noticed_stats(
+        months=sorted(set(month_dates) | set(month_prompts) | set(month_tools)
+                      | set(month_tokens) | set(month_sessions)),
+        month_prompts=month_prompts,
+        month_tools_count=month_tools,
+        month_churn=month_churn,
+        month_models=month_models,
+        month_model_tokens=month_model_tokens,
+        month_sessions=month_sessions,
+        month_dates=month_dates,
+        month_assistant_turns=month_assistant_turns,
+        month_thinking_blocks=month_thinking_blocks,
+        month_prompt_lengths=month_prompt_lengths,
+        month_bash_write_calls=month_bash_write_calls,
+        month_bash_authored_lines=month_bash_authored_lines,
+        month_tool_errors=month_tool_errors,
+        month_recovered_errors=month_recovered_errors,
+        month_edits_per_file=month_edits_per_file,
+        month_polite=month_polite,
+        month_questions=month_questions,
+        month_delegate=month_delegate,
+        month_background=month_background,
+        month_scheduled=month_scheduled,
+        month_fanouts=month_fanouts,
+        month_hour_hist=month_hour_hist,
+        month_weekday_hist=month_weekday_hist,
+        month_tool_counter=month_tool_counter,
+        month_session_ts=month_session_ts,
+        no_tool_activity=_no_tool_activity,
+        all_sources_no_agent=_all_sources_no_agent,
+        cwds=list(project_activity.keys()),
+        gap_cap_s=GAP_CAP_S,
+        burst_gap_s=BURST_GAP_S,
+        dow=DOW,
+    )
 
     with open(os.path.join(OUT_DIR, "stats.json"), "w") as f:
         json.dump(stats, f, indent=2, default=str)
@@ -2221,8 +2764,10 @@ def main():
     print(f"  sessions={total_sessions}  prompts={prompts_count}  tool_calls={tool_use_total}")
     print(f"  git churn={gc['churn']:,} lines (gold std, {gc['repos_with_commits']}/{gc['repos_seen']} repos)  "
           f"vs tool-only={total_churn:,}  git velocity={git_velocity:.0f} ln/hr")
-    print(f"  iteration depth: mean {iteration_mean:.1f} / max {iteration_max} ({heavy_files} files >15x)  "
-          f"errors={tool_errors} ({error_rate_per_100_tools:.1f}/100 tools)")
+    _idm_str = f"{iteration_mean:.1f}" if iteration_mean is not None else "—"
+    _erp_str = f"{error_rate_per_100_tools:.1f}" if error_rate_per_100_tools is not None else "—"
+    print(f"  iteration depth: mean {_idm_str} / max {iteration_max} ({heavy_files} files >15x)  "
+          f"errors={tool_errors} ({_erp_str}/100 tools)")
     print(f"  autonomy={autonomy_score}/100  planning_ratio={planning_ratio:.2f}")
 
 
@@ -2273,6 +2818,216 @@ def _build_profile(stats):
     }
 
 
+def _client_version():
+    """Return the installed xl-ai-insights package version, or a fallback constant."""
+    try:
+        import importlib.metadata
+        return importlib.metadata.version("xl-ai-insights")
+    except Exception:
+        return "0.1.0"
+
+
+def _build_monthly_noticed_stats(
+    months, month_prompts, month_tools_count, month_churn, month_models,
+    month_model_tokens, month_sessions, month_dates, month_assistant_turns,
+    month_thinking_blocks, month_prompt_lengths, month_bash_write_calls,
+    month_bash_authored_lines, month_tool_errors, month_recovered_errors,
+    month_edits_per_file, month_polite, month_questions, month_delegate,
+    month_background, month_scheduled, month_fanouts, month_hour_hist,
+    month_weekday_hist, month_tool_counter, month_session_ts,
+    no_tool_activity, all_sources_no_agent, cwds, gap_cap_s, burst_gap_s, dow,
+):
+    """Build stats['monthly_noticed_stats'] — one entry per calendar month present
+    in the window, chronological. Each entry's `stats` is shaped by the SAME
+    `_build_noticed_stats` used for the window block (single shaper → no drift),
+    and every derived value reuses the shared anti-drift helpers.
+
+    git_churn is called ONCE per month with that month's [start, next_month_start)
+    range — never the window total.
+    """
+    out = []
+    for mk in months:
+        year, mon = int(mk[:4]), int(mk[5:7])
+        month_start = datetime(year, mon, 1).date()
+        next_month_start = (datetime(year + 1, 1, 1) if mon == 12
+                            else datetime(year, mon + 1, 1)).date()
+        # per-month git churn over the SAME repos as the window call, restricted
+        # to this month's range (one call per month).
+        gc_m = git_churn(cwds, month_start.isoformat(), next_month_start.isoformat())
+
+        lengths = month_prompt_lengths.get(mk, [])
+        avg_len = statistics.mean(lengths) if lengths else 0
+        med_len = statistics.median(lengths) if lengths else 0
+
+        active_hours_m, longest_run_m = _active_hours_and_longest_run(
+            month_session_ts.get(mk, {}), gap_cap_s, burst_gap_s)
+
+        m_tool_total = month_tools_count.get(mk, 0)
+        # Per-month null-honesty: a month with zero tool calls is not measurable
+        # even if the surrounding window has tool activity.
+        m_no_tool = (m_tool_total == 0)
+        ids = _iteration_depth_stats(month_edits_per_file.get(mk, []), m_no_tool)
+        err_rate = _error_rate_per_100(
+            month_tool_errors.get(mk, 0), m_tool_total, m_no_tool)
+        recov = _error_recovery_ratio(
+            month_recovered_errors.get(mk, 0), month_tool_errors.get(mk, 0), m_no_tool)
+        fanouts = [n for n in month_fanouts.get(mk, {}).values() if n > 0]
+        # NOTE: all_sources_no_agent is still window-level (per-month source tracking
+        # not available); m_no_tool already forces None for tool-less months, covering
+        # the primary case.  Residual: an all-agent-incapable month inside an
+        # agent-capable window still returns 0 (not None) for fanout_median.
+        fan_med = _fanout_median(fanouts, m_no_tool, all_sources_no_agent)
+
+        partial = {
+            "volume": {
+                "total_sessions": len(month_sessions.get(mk, ())),
+                "total_prompts": month_prompts.get(mk, 0),
+                "tool_calls_total": m_tool_total,
+                "assistant_turns": month_assistant_turns.get(mk, 0),
+                "thinking_blocks": month_thinking_blocks.get(mk, 0),
+                "avg_prompt_length_chars": round(avg_len, 1),
+                "median_prompt_length_chars": round(med_len, 1),
+            },
+            "velocity": {
+                "git_churn_total": gc_m["churn"],
+                "tool_churn_edit_write": month_churn.get(mk, 0),
+                "shell_authored_lines_est": month_bash_authored_lines.get(mk, 0),
+                "git_repos_seen": gc_m["repos_seen"],
+                "git_repos_with_commits": gc_m["repos_with_commits"],
+                "active_hours": round(active_hours_m, 1),
+            },
+            "behavior": {
+                "iteration_depth_mean": round(ids["mean"], 2) if ids["mean"] is not None else None,
+                "iteration_depth_median": round(ids["median"], 2) if ids["median"] is not None else None,
+                "iteration_depth_p90": ids["p90"],
+                "iteration_depth_max": ids["max"],
+                "files_hammered_over_15x": ids["heavy_files"],
+                "tool_errors": month_tool_errors.get(mk, 0),
+                "error_rate_per_100_tools": round(err_rate, 1) if err_rate is not None else None,
+                "error_recovery_ratio": round(recov, 3) if recov is not None else None,
+                "polite_prompts": month_polite.get(mk, 0),
+                "questions_asked": month_questions.get(mk, 0),
+                "delegate_actions": month_delegate.get(mk, 0),
+                "background_tasks": month_background.get(mk, 0),
+                "scheduled_actions": month_scheduled.get(mk, 0),
+                "fanout_median": fan_med,
+                "longest_run_minutes": round(longest_run_m, 1),
+            },
+            "stack": {
+                "models": month_models.get(mk, Counter()).most_common(),
+            },
+            "rhythm": {
+                "hour_histogram_local": {str(h): month_hour_hist.get(mk, {}).get(h, 0) for h in range(24)},
+                "weekday_histogram": {dow[d]: month_weekday_hist.get(mk, {}).get(d, 0) for d in range(7)},
+                "peak_hours_local": _peak_hours(month_hour_hist.get(mk, Counter())),
+                "preferred_days": _preferred_days(month_weekday_hist.get(mk, Counter()), dow),
+            },
+            "tools": {
+                "top_tools": month_tool_counter.get(mk, Counter()).most_common(40),
+            },
+        }
+        out.append({
+            "month": mk,
+            "range_start": month_start.isoformat(),
+            "range_end": (next_month_start - timedelta(days=1)).isoformat(),
+            "stats": _build_noticed_stats(partial),
+            "token_usage": _token_usage_block(dict(month_model_tokens.get(mk, {}))),
+        })
+    return out
+
+
+def _build_noticed_stats(stats):
+    """Share-safe evidence slice for the local "What we noticed" cards.
+
+    Count-only / derived values, no prompts, quotes, paths, project names, or raw
+    transcript text. Mirdash can store this inside summaryRaw and decide later
+    whether to render cards or inspect the evidence.
+    """
+    v = stats.get("volume") or {}
+    b = stats.get("behavior") or {}
+    vel = stats.get("velocity") or {}
+    st = stats.get("stack") or {}
+    t = stats.get("tools") or {}
+    r = stats.get("rhythm") or {}
+
+    models = st.get("models") or []
+    model_total = sum(n for _, n in models) or 0
+    top_models = [
+        {
+            "model_id": model_id,
+            "label": _pretty_model(model_id),
+            "turns": int(turns),
+            "pct": round(turns / model_total, 3) if model_total else 0,
+        }
+        for model_id, turns in models
+    ]
+
+    weekday_raw = r.get("weekday_histogram") or {}
+    weekday_histogram = {
+        day: int(weekday_raw.get(day, 0))
+        for day in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    }
+
+    return {
+        "volume": {
+            "total_sessions": v.get("total_sessions", 0),
+            "total_prompts": v.get("total_prompts", 0),
+            "tool_calls_total": v.get("tool_calls_total", 0),
+            "assistant_turns": v.get("assistant_turns", 0),
+            "thinking_blocks": v.get("thinking_blocks", 0),
+        },
+        "shipping": {
+            "git_churn_total": vel.get("git_churn_total", 0),
+            "tool_churn_edit_write": vel.get("tool_churn_edit_write", 0),
+            "shell_authored_lines_est": vel.get("shell_authored_lines_est", 0),
+            "git_repos_seen": vel.get("git_repos_seen", 0),
+            "git_repos_with_commits": vel.get("git_repos_with_commits", 0),
+            "active_hours": vel.get("active_hours", 0),
+        },
+        "iteration": {
+            "depth_mean": b.get("iteration_depth_mean"),
+            "depth_median": b.get("iteration_depth_median"),
+            "depth_p90": b.get("iteration_depth_p90"),
+            "depth_max": b.get("iteration_depth_max"),
+            "files_over_15x": b.get("files_hammered_over_15x", 0),
+        },
+        "errors": {
+            "tool_errors": b.get("tool_errors", 0),
+            "error_rate_per_100_tools": b.get("error_rate_per_100_tools"),
+            "error_recovery_ratio": b.get("error_recovery_ratio"),
+        },
+        "models": {
+            "top_models": top_models,
+        },
+        "rhythm": {
+            "peak_hours_local": list(r.get("peak_hours_local") or []),
+            "weekday_histogram": weekday_histogram,
+            "preferred_days": list(r.get("preferred_days") or []),
+        },
+        "prompts": {
+            "avg_length_chars": v.get("avg_prompt_length_chars", 0),
+            "median_length_chars": v.get("median_prompt_length_chars", 0),
+            "polite_prompts": b.get("polite_prompts", 0),
+            "questions_asked": b.get("questions_asked", 0),
+        },
+        "agents": {
+            "delegate_actions": b.get("delegate_actions", 0),
+            "background_tasks": b.get("background_tasks", 0),
+            "scheduled_actions": b.get("scheduled_actions", 0),
+            "fanout_median": b.get("fanout_median"),
+        },
+        "sessions": {
+            "longest_run_minutes": b.get("longest_run_minutes", 0),
+        },
+        "tools": {
+            "top_tools": [
+                {"name": str(name), "calls": int(calls)}
+                for name, calls in (t.get("top_tools") or [])
+            ],
+        },
+    }
+
+
 def build_summary(stats):
     """The shareable subset for the low-cost feedback loop (docs/metrics-evaluation.md):
     the 8 high-signal MEASURED metrics + monthly progression + rubric profile block.
@@ -2287,6 +3042,8 @@ def build_summary(stats):
             "window": c.get("window"),
             "sources": sorted((c.get("sources") or {}).keys()),
             "total_sessions": v["total_sessions"],
+            "total_prompts": v["total_prompts"],
+            "client_version": _client_version(),
         },
         "planning_ratio_explore_to_doing": b["planning_ratio_explore_to_doing"],
         "errors": {
@@ -2301,6 +3058,8 @@ def build_summary(stats):
         "churn": {
             "git_churn_total": vel["git_churn_total"],
             "tool_churn_edit_write": vel["tool_churn_edit_write"],
+            "active_hours": vel["active_hours"],
+            "actions_per_prompt": b["actions_per_prompt"],
         },
         "orchestration": {
             "fanout_median": b["fanout_median"],
@@ -2312,7 +3071,9 @@ def build_summary(stats):
             "mcp_servers_distinct": t["mcp_servers_distinct"],
         },
         "progression_monthly": (stats.get("progression") or {}).get("monthly", []),
+        "noticed_stats_monthly": stats.get("monthly_noticed_stats", []),
         "profile": _build_profile(stats),
+        "noticed_stats": _build_noticed_stats(stats),
         "token_usage": stats.get("token_usage") or {
             "total_input": 0, "total_output": 0,
             "total_cache_read": 0, "total_cache_creation": 0,
@@ -2373,9 +3134,7 @@ def write_report(s):
     if _missing > 0:
         _cov = (f" — note this is **partial**: only {vel['git_repos_with_commits']} of "
                 f"{vel['git_repos_seen']} repos were counted (the rest are missing from disk, have no "
-                f"commits under your git email, or were too large to scan in time). "
-                f"The Execution score nudges its throughput term up modestly (≤1.4×) to avoid "
-                f"penalizing you for repos paxel couldn't read")
+                f"commits under your git email, or were too large to scan in time)")
     else:
         _cov = ""
     A(f"- Tool-only churn (Edit/Write — what most profilers see): {vel['tool_churn_edit_write']:,} lines. "
@@ -2386,11 +3145,21 @@ def write_report(s):
     A(f"- Planning ratio (explore : doing): **{b['planning_ratio_explore_to_doing']}** "
       f"(explore {b['explore_actions']:,} vs doing {b['produce_actions']+b['execute_actions']+b['delegate_actions']:,})")
     A(f"- Avg session: **{b['avg_session_minutes']:.0f} min** (median {b['median_session_minutes']:.0f})")
-    A(f"- Errors: **{b['tool_errors']:,} tool errors** ({b['error_rate_per_100_tools']} per 100 tool calls); "
-      f"{b['recovered_errors']:,} recovered ({b['error_recovery_ratio']*100:.0f}%); {b['api_errors_retries']} API retries")
-    A(f"- Iteration depth (edits/file before commit): mean **{b['iteration_depth_mean']:.1f}**, "
-      f"median {b['iteration_depth_median']:.0f}, p90 {b['iteration_depth_p90']}, "
-      f"**max {b['iteration_depth_max']}** — {b['files_hammered_over_15x']} files hammered >15× in one session")
+    _err_rate = b['error_rate_per_100_tools']
+    _err_recov = b['error_recovery_ratio']
+    _err_recov_pct = f"{_err_recov*100:.0f}%" if _err_recov is not None else "—"
+    _err_rate_str = f"{_err_rate}" if _err_rate is not None else "—"
+    A(f"- Errors: **{b['tool_errors']:,} tool errors** ({_err_rate_str} per 100 tool calls); "
+      f"{b['recovered_errors']:,} recovered ({_err_recov_pct}); {b['api_errors_retries']} API retries")
+    _idm = b['iteration_depth_mean']; _idmed = b['iteration_depth_median']
+    _idp90 = b['iteration_depth_p90']; _idmax = b['iteration_depth_max']
+    _heavy = b['files_hammered_over_15x']
+    if _idm is None:
+        A("- Iteration depth (edits/file before commit): — (not measured for this source)")
+    else:
+        A(f"- Iteration depth (edits/file before commit): mean **{_idm:.1f}**, "
+          f"median {_idmed:.0f}, p90 {_idp90}, "
+          f"**max {_idmax}** — {_heavy} files hammered >15× in one session")
     A(f"- Actions per prompt: **{b['actions_per_prompt']:.1f}** · "
       f"questions asked: {b['questions_asked']} · background: {b['background_tasks']} · scheduled: {b['scheduled_actions']}\n")
     A("## Rhythm")
@@ -2508,8 +3277,8 @@ REPO_URL = "https://github.com/Photobombastic/paxel-local"
 # Plain-language explanation shown under each score bar — what the axis measures, in
 # human terms, no jargon. (The gstack grounding lives in the disclaimer + README, not here.)
 SCORE_NOTES = {
-    "Execution": "How much you ship, and how fast — your committed-code rate, how much of what "
-                 "you generate actually lands in git, and how hard you delegate to agents.",
+    "Execution": "How much you produce, and how efficiently — your tool output rate (Edit/Write "
+                 "lines per active hour) and how hard you delegate to agents.",
     "Planning": "How much you think before you build — exploring before writing, reasoning "
                 "depth, and laying out a plan first. (Prompt length was dropped — terse expert "
                 "prompts shouldn't score below verbose ones.)",
@@ -2702,22 +3471,20 @@ def compute_scores(stats):
     ev = _evidence(stats)   # 0..1 confidence; gates the inverse terms so a thin corpus
                             # can't read as flawless (no-op at ev=1.0 for any real user).
 
-    # EXECUTION — shipped output at AI leverage. Three signals, no overlap with other axes:
-    #   (a) RATE: gold-standard git churn per active hour (coverage-corrected — git often
-    #       sees only some repos; we nudge ≤1.4× by coverage rather than penalize, and the
-    #       report discloses it). (b) FIDELITY: how much of what you GENERATED actually got
-    #       committed — git churn vs tool churn — the audit's headline "are you shipping or
-    #       just exploring" signal (also coverage-corrected). (c) DELEGATION/parallelism.
-    #   Dropped vs the old version: actions_per_prompt (now in steering_reading, described
-    #   not scored) and raw session length (the audit called it noise — a long distracted
-    #   session isn't execution).
-    git_cov = max(vel["git_repos_with_commits"] / max(vel["git_repos_seen"], 1), 0.7)
-    eff_git_churn = vel["git_churn_total"] / git_cov
-    fidelity = eff_git_churn / max(vel["tool_churn_edit_write"], 1)
+    # EXECUTION — shipped output at AI leverage. Two signals, no overlap with other axes:
+    #   (a) TOOL OUTPUT RATE: tool_churn_edit_write (tool-authored lines) per active
+    #       hour — source-agnostic and harder to game than git churn.
+    #   (b) DELEGATION/parallelism.
+    #   Removed: committed-code rate (git_churn/hours/400) — saturated at pct=1.0 due to
+    #   inflated git_churn (generated/lockfile/merge commits); and ship fidelity
+    #   (git_churn/tool_churn) — numerator inflated + denominator under-counted →
+    #   metric was not truthful.
+    _EXECUTION_OUTPUT_TARGET = 1000  # tool-authored lines per active hour
+    out_rate   = vel["tool_churn_edit_write"] / hours
+    out_pct    = _clamp(out_rate / _EXECUTION_OUTPUT_TARGET)
     execution = 10 * (
-        0.40 * _clamp((eff_git_churn / hours) / 400)                      # committed-code rate, coverage-corrected
-        + 0.25 * _clamp(fidelity / 0.5)                                   # ship-vs-generate fidelity (committed / generated)
-        + 0.35 * _clamp((b["delegate_actions"] + b["background_tasks"]) / max(prompts * 0.3, 1)))  # delegation/parallelism
+        0.60 * out_pct                                                     # tool output rate
+        + 0.40 * _clamp((b["delegate_actions"] + b["background_tasks"]) / max(prompts * 0.3, 1)))  # delegation/parallelism
 
     # PLANNING — think before you build. Behavior-led.
     # DROPPED the avg_prompt_length term (was 0.25): it is experience-INVERTING — expertise
@@ -2752,11 +3519,11 @@ def compute_scores(stats):
                                          "retro", "learn", "cso", "karpathy", "debug")) \
         + b.get("shell_test_runs", 0)   # CLI tests (pytest/go test/…) count as quality work too
     engineering = 10 * (
-        0.30 * _ev(1 - _clamp((b["iteration_depth_mean"] - 2) / 8), ev)  # low rework: got files right early
-        + 0.25 * _ev(1 - _clamp((b["iteration_depth_p90"] - 3) / 9), ev)  # clean iteration: low typical depth
-        + 0.20 * _ev(1 - _clamp((b["files_hammered_over_15x"] / sess) / 0.25), ev)  # focused: few hammered files
+        0.30 * _ev(1 - _clamp(((b.get("iteration_depth_mean") or 0) - 2) / 8), ev)  # low rework: got files right early
+        + 0.25 * _ev(1 - _clamp(((b.get("iteration_depth_p90") or 0) - 3) / 9), ev)  # clean iteration: low typical depth
+        + 0.20 * _ev(1 - _clamp(((b.get("files_hammered_over_15x") or 0) / sess) / 0.25), ev)  # focused: few hammered files
         + 0.15 * _clamp((eng_skills / sess) / 3.0)                       # quality ceremonies: review/qa/investigate
-        + 0.10 * _ev(1 - _clamp(b["error_rate_per_100_tools"] / 10), ev))  # low error rate: root-cause discipline
+        + 0.10 * _ev(1 - _clamp((b.get("error_rate_per_100_tools") or 0) / 10), ev))  # low error rate: root-cause discipline
 
     return {"Execution": round(execution, 1), "Planning": round(planning, 1),
             "Engineering": round(engineering, 1)}
@@ -2789,9 +3556,8 @@ def score_breakdown(stats):
                     "axis_narrative": "No activity recorded."}
         return {
             "execution": _zero_axis("How much you ship, at AI leverage", [
-                ("Committed-code rate", 400, "lines/hr", 0.40, "higher"),
-                ("Ship fidelity",       0.5, "committed/generated", 0.25, "higher"),
-                ("Delegation & parallelism", 0.30, "agent-runs/prompt", 0.35, "higher"),
+                ("Tool output rate",          1000, "tool-authored lines/hr", 0.60, "higher"),
+                ("Delegation & parallelism",  0.30, "agent-runs/prompt",  0.40, "higher"),
             ]),
             "planning": _zero_axis("Think before you build", [
                 ("Explore-before-build", 0.65, "explore/doing ratio", 0.45, "higher"),
@@ -2813,21 +3579,16 @@ def score_breakdown(stats):
     ev = _evidence(stats)
 
     # --- EXECUTION ---
-    git_cov = max(vel.get("git_repos_with_commits", 0) / max(vel.get("git_repos_seen", 1), 1), 0.7)
-    eff_git_churn = vel.get("git_churn_total", 0) / git_cov
-    fidelity = eff_git_churn / max(vel.get("tool_churn_edit_write", 1), 1)
-    rate_pct       = _clamp((eff_git_churn / hours) / 400)
-    fidelity_pct   = _clamp(fidelity / 0.5)
+    _EXECUTION_OUTPUT_TARGET = 1000  # tool-authored lines per active hour
+    out_rate       = vel.get("tool_churn_edit_write", 0) / hours
+    out_pct        = _clamp(out_rate / _EXECUTION_OUTPUT_TARGET)
     deleg_raw      = (b.get("delegate_actions", 0) + b.get("background_tasks", 0)) / max(prompts * 0.3, 1)
     deleg_pct      = _clamp(deleg_raw)
-    execution_val  = round(10 * (0.40 * rate_pct + 0.25 * fidelity_pct + 0.35 * deleg_pct), 1)
+    execution_val  = round(10 * (0.60 * out_pct + 0.40 * deleg_pct), 1)
     exec_subs = [
-        {"label": "Committed-code rate", "your_value": eff_git_churn / hours,
-         "target": 400, "unit": "lines/hr", "weight": 0.40, "pct": rate_pct,
-         "direction": "higher", "is_drag": False},
-        {"label": "Ship fidelity", "your_value": fidelity,
-         "target": 0.5, "unit": "committed/generated", "weight": 0.25, "pct": fidelity_pct,
-         "direction": "higher", "is_drag": False},
+        {"label": "Tool output rate", "your_value": out_rate,
+         "target": _EXECUTION_OUTPUT_TARGET, "unit": "tool-authored lines/hr", "weight": 0.60,
+         "pct": out_pct, "direction": "higher", "is_drag": False},
         # your_value is the raw measured agent-runs/prompt (denominator: actual prompts).
         # pct matches compute_scores' clamp (denominator: prompts*0.3) and equals
         # your_value/target in the normal regime (prompts ≥ 4).  For tiny corpora
@@ -2837,7 +3598,7 @@ def score_breakdown(stats):
         # The UI must fill bars from pct, not recompute from your_value/target.
         {"label": "Delegation & parallelism",
          "your_value": (b.get("delegate_actions", 0) + b.get("background_tasks", 0)) / max(prompts, 1),
-         "target": 0.30, "unit": "agent-runs/prompt", "weight": 0.35, "pct": deleg_pct,
+         "target": 0.30, "unit": "agent-runs/prompt", "weight": 0.40, "pct": deleg_pct,
          "direction": "higher", "is_drag": False},
     ]
     exec_subs = [_enrich_sub(s) for s in exec_subs]
@@ -2870,28 +3631,28 @@ def score_breakdown(stats):
     eng_skills = _skill_uses_any(stats, ("code-review", "test", "tdd", "qa", "investigate",
                                          "retro", "learn", "cso", "karpathy", "debug")) \
         + b.get("shell_test_runs", 0)
-    rework_pct   = _ev(1 - _clamp((b.get("iteration_depth_mean", 0) - 2) / 8), ev)
-    iter_pct     = _ev(1 - _clamp((b.get("iteration_depth_p90", 0) - 3) / 9), ev)
-    focus_pct    = _ev(1 - _clamp((b.get("files_hammered_over_15x", 0) / sess) / 0.25), ev)
+    rework_pct   = _ev(1 - _clamp(((b.get("iteration_depth_mean") or 0) - 2) / 8), ev)
+    iter_pct     = _ev(1 - _clamp(((b.get("iteration_depth_p90") or 0) - 3) / 9), ev)
+    focus_pct    = _ev(1 - _clamp(((b.get("files_hammered_over_15x") or 0) / sess) / 0.25), ev)
     qual_raw     = eng_skills / sess
     qual_pct     = _clamp(qual_raw / 3.0)
-    err_pct      = _ev(1 - _clamp(b.get("error_rate_per_100_tools", 0) / 10), ev)
+    err_pct      = _ev(1 - _clamp((b.get("error_rate_per_100_tools") or 0) / 10), ev)
     engineering_val = round(10 * (0.30 * rework_pct + 0.25 * iter_pct + 0.20 * focus_pct
                                   + 0.15 * qual_pct + 0.10 * err_pct), 1)
     eng_subs = [
-        {"label": "Low rework", "your_value": b.get("iteration_depth_mean", 0),
+        {"label": "Low rework", "your_value": b.get("iteration_depth_mean") or 0,
          "target": 2.0, "unit": "mean file-edit depth", "weight": 0.30, "pct": rework_pct,
          "direction": "lower", "is_drag": False},
-        {"label": "Clean iteration", "your_value": b.get("iteration_depth_p90", 0),
+        {"label": "Clean iteration", "your_value": b.get("iteration_depth_p90") or 0,
          "target": 3.0, "unit": "p90 file-edit depth", "weight": 0.25, "pct": iter_pct,
          "direction": "lower", "is_drag": False},
-        {"label": "Focus", "your_value": b.get("files_hammered_over_15x", 0) / sess,
+        {"label": "Focus", "your_value": (b.get("files_hammered_over_15x") or 0) / sess,
          "target": 0.25, "unit": "hammered-files/session", "weight": 0.20, "pct": focus_pct,
          "direction": "lower", "is_drag": False},
         {"label": "Quality ceremony", "your_value": qual_raw,
          "target": 3.0, "unit": "quality-skills/session", "weight": 0.15, "pct": qual_pct,
          "direction": "higher", "is_drag": False},
-        {"label": "Low errors", "your_value": b.get("error_rate_per_100_tools", 0),
+        {"label": "Low errors", "your_value": b.get("error_rate_per_100_tools") or 0,
          "target": 10.0, "unit": "errors/100 tools", "weight": 0.10, "pct": err_pct,
          "direction": "lower", "is_drag": False},
     ]
@@ -2979,7 +3740,7 @@ def compute_aq(stats):
 
     # ---- Pillar 1: Breadth (unchanged axes) ----
     agent_runs = t.get("agent_calls", 0)
-    fanout = b.get("fanout_median", 0)
+    fanout = b.get("fanout_median") or 0  # None (unmeasured) treated as 0 for AQ
     o_harn = 1.0 if (any(re.search(r"harness|trisel", str(k), re.I)
                          for k, _ in st.get("subagent_types", [])) or has_skill(["trisel"])) else 0.6
     # Coordination over volume: fan-out (agents coordinated per orchestrating session)
@@ -3028,10 +3789,10 @@ def compute_aq(stats):
         lever = 1.0
     else:
         lever = max(0.0, 1 - (app - 20) / 40)
-    recovery = .85 * sat(b.get("error_recovery_ratio", 0), 1.0) + .15 * (1 - sat(b.get("api_errors_retries", 0), 50))
+    recovery = .85 * sat(b.get("error_recovery_ratio") or 0, 1.0) + .15 * (1 - sat(b.get("api_errors_retries", 0), 50))
     eff_axes = [
         ("Steering leverage", 50, lever, {"actions_per_prompt": app}),
-        ("Recovery", 50, recovery, {"recovery_ratio": b.get("error_recovery_ratio", 0),
+        ("Recovery", 50, recovery, {"recovery_ratio": b.get("error_recovery_ratio") or 0,
          "api_retries": b.get("api_errors_retries", 0)}),
     ]
 
@@ -3128,8 +3889,8 @@ def _signature_moves_pool(stats):
             f'<b>{rev:,}</b> code-review passes — one of your most-used skills. '
             f'You don\'t trust a diff until a second set of eyes has seen it.'))
 
-    if b["planning_ratio_explore_to_doing"] >= 0.55 and b["iteration_depth_max"] >= 40:
-        raw.append((_clamp(b["iteration_depth_max"] / 100.0), "Think → Build",
+    if b["planning_ratio_explore_to_doing"] >= 0.55 and (b.get("iteration_depth_max") or 0) >= 40:
+        raw.append((_clamp((b["iteration_depth_max"] or 0) / 100.0), "Think → Build",
             "Plan wide, then grind narrow",
             f'A <b>{b["planning_ratio_explore_to_doing"]:.2f}</b> explore-to-build ratio — you read and '
             f'search far more than you type — yet you\'ll hammer one file <b>{b["iteration_depth_max"]}×</b> '
@@ -3207,7 +3968,7 @@ def _growth_edges_pool(stats, scores):
 
     rev = _review_skill_uses(st.get("top_skills", []))
     tdd = sk("test", "tdd", "qa") + b.get("shell_test_runs", 0)   # named test skills + CLI test runs
-    err = b["error_rate_per_100_tools"]
+    err = b.get("error_rate_per_100_tools") or 0  # None (unmeasured) treated as 0 for edge thresholds
     raw = []   # (priority, eyebrow, title, advice_html, axis)
 
     # NO steering edge: hands-on cadence has no good/bad end (it's described, not scored — see
@@ -3229,10 +3990,10 @@ def _growth_edges_pool(stats, scores):
     # High iteration is only "whack-a-mole" if it's THRASH — so we require an elevated error rate
     # alongside it. A clean deep-iterator (low errors) is doing deliberate work, not flailing, and
     # is left alone (this also spares agent-driven iteration, which tends to keep errors low).
-    if (b["iteration_depth_max"] >= 40 or b["files_hammered_over_15x"] >= 10) and err >= 5:
+    if ((b.get("iteration_depth_max") or 0) >= 40 or (b.get("files_hammered_over_15x") or 0) >= 10) and err >= 5:
         raw.append((2.0, "Stop the grind",
             "When a file fights back, root-cause it",
-            f'<b>{b["iteration_depth_max"]}×</b> on one file and <b>{b["files_hammered_over_15x"]}</b> files '
+            f'<b>{b.get("iteration_depth_max") or 0}×</b> on one file and <b>{b.get("files_hammered_over_15x") or 0}</b> files '
             f'past 15 edits, next to ~<b>{err}</b> errors per 100 tool calls — that pairing reads as '
             f'retry-thrash more than deliberate iteration. When a file resists past ~15 tries, find the root '
             f'cause before the next edit. (gstack names this <code>/investigate</code>.)',
@@ -3266,7 +4027,7 @@ def _growth_edges_pool(stats, scores):
         if axis == "Orchestration":
             return ("Multiply yourself", "Run agents in parallel, not in series",
                 lead + f'<b>{sig.get("subagent_types", 0)}</b> distinct subagent types with a median '
-                f'fan-out of <b>{sig.get("fanout_median", 0)}</b>. When a task splits into independent '
+                f'fan-out of <b>{sig.get("fanout_median") or 0}</b>. When a task splits into independent '
                 f'pieces, hand them to parallel subagents in one orchestrating session instead of '
                 f'grinding through them serially.')
         if axis.startswith("Tool command"):
@@ -3614,11 +4375,18 @@ def write_profile_html(stats, archetype, quote, scores, voice=None):
               f'Edit/Write touched <b>{vel["tool_churn_edit_write"]:,}</b> lines and the shell ~{vel["shell_authored_lines_est"]:,} '
               f'more — but only <b>{vel["git_churn_total"]:,}</b> actually landed in committed git history. '
               f'That committed number is the honest one.'),
-        _card("How hard do you grind?", f'{b["iteration_depth_max"]}× on one file',
-              f'Your deepest single-file grind in one session — and {b["files_hammered_over_15x"]} files went past 15 edits. '
-              f'Your typical file, though? About {b["iteration_depth_mean"]:.1f}.'),
-        _card("How often do things break?", f'{b["tool_errors"]:,} errors, {round(b["error_recovery_ratio"]*100)}% recovered',
-              f'Roughly {b["error_rate_per_100_tools"]} per 100 tool calls — and you kept going after almost all of them.'),
+        _card("How hard do you grind?",
+              f'{b["iteration_depth_max"]}× on one file' if b["iteration_depth_max"] is not None else "—",
+              (f'Your deepest single-file grind in one session — and {b["files_hammered_over_15x"]} files went past 15 edits. '
+               f'Your typical file, though? About {b["iteration_depth_mean"]:.1f}.'
+               if b["iteration_depth_mean"] is not None else
+               'Iteration depth not measured for this source.')),
+        _card("How often do things break?",
+              (f'{b["tool_errors"]:,} errors, {round(b["error_recovery_ratio"]*100)}% recovered'
+               if b["error_recovery_ratio"] is not None else f'{b["tool_errors"]:,} errors'),
+              (f'Roughly {b["error_rate_per_100_tools"]} per 100 tool calls — and you kept going after almost all of them.'
+               if b["error_rate_per_100_tools"] is not None else
+               'Error rate not measured for this source.')),
         _card("Which model do you reach for?", model_a, model_d),
         _card("When do you do your best work?", tod, f'You do your heaviest work around {h12}.'),
         _card("Do you take weekends off?", weekend_a, weekend_d),
@@ -3741,7 +4509,7 @@ def write_profile_html(stats, archetype, quote, scores, voice=None):
       f'<div><span class="n mono">{vel["git_churn_total"]:,}</span><span class="l">lines committed to git</span></div>'
       f'<div><span class="n mono">{vel["tool_churn_edit_write"]:,}</span><span class="l">lines via Edit/Write</span></div>'
       f'<div><span class="n mono">~{vel["shell_authored_lines_est"]:,}</span><span class="l">lines in the shell</span></div>'
-      f'<div><span class="n mono">{b["iteration_depth_max"]}</span><span class="l">max edits, one file</span></div>'
+      f'<div><span class="n mono">{b["iteration_depth_max"] if b["iteration_depth_max"] is not None else "—"}</span><span class="l">max edits, one file</span></div>'
       f'<div><span class="n mono">{b["delegate_actions"]:,}</span><span class="l">agents you ran</span></div></div>')
     P('<div class="share"><span class="lbl">Share:</span>'
       '<a id="share-x" class="btn x" href="#" target="_blank" rel="noopener">'

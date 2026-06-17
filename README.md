@@ -58,8 +58,10 @@ It accepts the same source arguments as `paxel.py`:
 ```bash
 uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights claude
 uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --no-open
-uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --keep-artifacts
+uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --output-dir=.
+uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --output-dir=./debug-artifacts
 uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --window=3
+uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --help
 ```
 
 Each scored point is computed over a **trailing window of `--window=N` calendar
@@ -75,11 +77,14 @@ What happens when you run it:
 4. Opens your report page in the browser.
 
 By default, `xl-ai-insights` writes paxel outputs to a temporary directory and
-removes them when the run finishes. This applies to normal monthly runs,
-`--backfill`, and `--init` on macOS, Linux, and Windows. For debugging, pass
-`--keep-artifacts` to preserve that temporary output directory and print its
-absolute path. The preserved directory may include `narrative_input.md`, which
-contains local transcript excerpts; don't upload or share it.
+keeps that directory after the run finishes. This applies to normal monthly
+runs, `--backfill`, and `--init` on macOS, Linux, and Windows. The command
+prints the temp path unless you pass `--quiet`. If you want the final files in a
+specific location, pass `--output-dir=PATH` (for example `--output-dir=.` to
+write into the current directory). Existing files with the same names are
+overwritten in that destination. The artifacts may include
+`narrative_input.md`, which contains local transcript excerpts; don't upload or
+share it.
 
 If the browser can't open (headless/CI) or the auth times out (120 s), the command prints a warning and exits cleanly — nothing is uploaded. If you don't want to share at all, just don't run it.
 
@@ -95,8 +100,9 @@ If the browser can't open (headless/CI) or the auth times out (120 s), the comma
 - `ecosystem` — distinct skills, total skill uses, distinct MCP servers
 - `progression_monthly` — per-month counts (prompts, tools, sessions, active days, tool churn lines) plus the **names of AI models used that month** (top model + per-model turn counts, up to 3 models per month)
 - `profile` — computed AQ/archetype/scorecard block used by the report UI
+- `noticed_stats` — share-safe evidence used by the local "What we noticed" cards: counts and derived metrics for shipping, iteration, errors, models, rhythm, prompt lengths, agents, sessions, and top tools
 
-**What is NOT uploaded:** prompts, verbatim quotes, project names, file paths, `narrative_input.md` contents, and `stats.json`. The mirdash server associates the upload with your account via your login token; `xl-ai-insights` itself sends no email or PII. Note: model names (e.g. `claude-opus-4`, `gpt-5.4`) are included in `progression_monthly`, and the computed `profile` block is uploaded too.
+**What is NOT uploaded:** prompts, verbatim quotes, project names, file paths, `narrative_input.md` contents, and `stats.json`. The mirdash server associates the upload with your account via your login token; `xl-ai-insights` itself sends no email or PII. Note: model names (e.g. `claude-opus-4`, `gpt-5.4`) are included in `progression_monthly`, `profile`, and `noticed_stats`.
 
 ### Overriding the mirdash URL
 
@@ -149,7 +155,7 @@ python3 paxel.py --codex-dir=~/backups/codex                # root or .../sessio
 | `profile.html` | Branded, shareable profile — scorecard + AQ + signature moves |
 | `report.md` | Human-readable stats |
 | `stats.json` | Machine-readable metrics (incl. the full `agentic` block) |
-| `summary.json` (`--summary`) | Shareable subset: the 8 measured high-signal metrics + `progression_monthly` + computed `profile` block — no prompts or verbatim quotes. Built for the [low-cost feedback loop](docs/metrics-evaluation.md) |
+| `summary.json` (`--summary`) | Shareable subset: the 8 measured high-signal metrics + `progression_monthly` + computed `profile` + `noticed_stats` blocks — no prompts or verbatim quotes. Built for the [low-cost feedback loop](docs/metrics-evaluation.md) |
 | `narrative_input.md` | Curated excerpts for an optional LLM narrative pass |
 
 > These outputs contain **your** transcript-derived data. They're in `.gitignore` — don't commit them.

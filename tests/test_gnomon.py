@@ -486,8 +486,16 @@ class TestScoreBreakdown(unittest.TestCase):
     def test_three_axes_present(self):
         self.assertEqual(set(self.bd), {"execution", "planning", "engineering"})
 
-    def test_execution_has_three_subs(self):
-        self.assertEqual(len(self.bd["execution"]["subs"]), 3)
+    def test_execution_has_two_subs(self):
+        self.assertEqual(len(self.bd["execution"]["subs"]), 2)
+
+    def test_execution_sub_labels(self):
+        """Execution must have exactly 'Tool output rate' and 'Delegation & parallelism';
+        the removed subs ('Committed-code rate', 'Ship fidelity') must be absent."""
+        labels = {s["label"] for s in self.bd["execution"]["subs"]}
+        self.assertEqual(labels, {"Tool output rate", "Delegation & parallelism"})
+        self.assertNotIn("Committed-code rate", labels)
+        self.assertNotIn("Ship fidelity", labels)
 
     def test_planning_has_three_subs(self):
         self.assertEqual(len(self.bd["planning"]["subs"]), 3)
@@ -545,12 +553,12 @@ class TestScoreBreakdown(unittest.TestCase):
         """For 'higher'-direction subs with no floor involved, pct must equal
         clamp(your_value/target) within floating-point tolerance.  Guards the bar-fill
         display invariant for the non-trivial full-stats fixture (plenty of prompts, so
-        delegation floor doesn't fire).  Checked only for the four straightforward rate subs:
-        Committed-code rate, Ship fidelity (execution), Explore-before-build, Plan ceremony
-        (planning).  Does NOT assert on 'lower'-direction engineering subs or delegation."""
+        delegation floor doesn't fire).  Checked only for the three straightforward rate subs:
+        Tool output rate (execution), Explore-before-build, Plan ceremony (planning).
+        Does NOT assert on 'lower'-direction engineering subs or delegation."""
         tol = 1e-6
         checked = {
-            "execution": {"Committed-code rate", "Ship fidelity"},
+            "execution": {"Tool output rate"},
             "planning": {"Explore-before-build", "Plan ceremony"},
         }
         for axis, labels in checked.items():
@@ -715,6 +723,159 @@ class TestBuildSummaryProfile(unittest.TestCase):
         # archetype present
         self.assertIn("title", prof["archetype"])
         self.assertIn("quote", prof["archetype"])
+
+
+class TestBuildSummaryPayloadFields(unittest.TestCase):
+    """D1 + D4: build_summary must expose client_version, active_hours,
+    total_prompts, and actions_per_prompt."""
+
+    def setUp(self):
+        self.stats = _full_stats()
+        self.summary = paxel.build_summary(self.stats)
+
+    # D1 — client_version in context
+    def test_client_version_key_in_context(self):
+        self.assertIn("client_version", self.summary["context"])
+
+    def test_client_version_is_string(self):
+        self.assertIsInstance(self.summary["context"]["client_version"], str)
+
+    def test_client_version_nonempty(self):
+        self.assertGreater(len(self.summary["context"]["client_version"]), 0)
+
+    # D4 — active_hours in churn (or velocity sub-block)
+    def test_active_hours_in_churn(self):
+        self.assertIn("active_hours", self.summary["churn"])
+
+    def test_active_hours_value(self):
+        self.assertEqual(self.summary["churn"]["active_hours"],
+                         self.stats["velocity"]["active_hours"])
+
+    # D4 — total_prompts in context
+    def test_total_prompts_in_context(self):
+        self.assertIn("total_prompts", self.summary["context"])
+
+    def test_total_prompts_value(self):
+        self.assertEqual(self.summary["context"]["total_prompts"],
+                         self.stats["volume"]["total_prompts"])
+
+    # D4 — actions_per_prompt in churn (companion to active_hours)
+    def test_actions_per_prompt_in_churn(self):
+        self.assertIn("actions_per_prompt", self.summary["churn"])
+
+    def test_actions_per_prompt_value(self):
+        self.assertEqual(self.summary["churn"]["actions_per_prompt"],
+                         self.stats["behavior"]["actions_per_prompt"])
+
+    def test_noticed_stats_share_safe_slice(self):
+        ns = self.summary["noticed_stats"]
+        self.assertEqual(set(ns.keys()), {
+            "volume", "shipping", "iteration", "errors", "models",
+            "rhythm", "prompts", "agents", "sessions", "tools",
+        })
+        self.assertEqual(ns["volume"], {
+            "total_sessions": self.stats["volume"]["total_sessions"],
+            "total_prompts": self.stats["volume"]["total_prompts"],
+            "tool_calls_total": self.stats["volume"]["tool_calls_total"],
+            "assistant_turns": self.stats["volume"]["assistant_turns"],
+            "thinking_blocks": self.stats["volume"]["thinking_blocks"],
+        })
+        self.assertEqual(ns["shipping"], {
+            "git_churn_total": self.stats["velocity"]["git_churn_total"],
+            "tool_churn_edit_write": self.stats["velocity"]["tool_churn_edit_write"],
+            "shell_authored_lines_est": self.stats["velocity"]["shell_authored_lines_est"],
+            "git_repos_seen": self.stats["velocity"]["git_repos_seen"],
+            "git_repos_with_commits": self.stats["velocity"]["git_repos_with_commits"],
+            "active_hours": self.stats["velocity"]["active_hours"],
+        })
+        self.assertEqual(ns["iteration"], {
+            "depth_mean": self.stats["behavior"]["iteration_depth_mean"],
+            "depth_median": self.stats["behavior"]["iteration_depth_median"],
+            "depth_p90": self.stats["behavior"]["iteration_depth_p90"],
+            "depth_max": self.stats["behavior"]["iteration_depth_max"],
+            "files_over_15x": self.stats["behavior"]["files_hammered_over_15x"],
+        })
+        self.assertEqual(ns["errors"], {
+            "tool_errors": self.stats["behavior"]["tool_errors"],
+            "error_rate_per_100_tools": self.stats["behavior"]["error_rate_per_100_tools"],
+            "error_recovery_ratio": self.stats["behavior"]["error_recovery_ratio"],
+        })
+        self.assertEqual(ns["models"]["top_models"][0], {
+            "model_id": "claude-opus-4-7",
+            "label": "Opus 4.7",
+            "turns": 5000,
+            "pct": 0.833,
+        })
+        self.assertEqual(set(ns["rhythm"]["weekday_histogram"].keys()),
+                         {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"})
+        self.assertEqual(ns["prompts"], {
+            "avg_length_chars": self.stats["volume"]["avg_prompt_length_chars"],
+            "median_length_chars": self.stats["volume"]["median_prompt_length_chars"],
+            "polite_prompts": self.stats["behavior"]["polite_prompts"],
+            "questions_asked": self.stats["behavior"]["questions_asked"],
+        })
+        self.assertEqual(ns["agents"], {
+            "delegate_actions": self.stats["behavior"]["delegate_actions"],
+            "background_tasks": self.stats["behavior"]["background_tasks"],
+            "scheduled_actions": self.stats["behavior"]["scheduled_actions"],
+            "fanout_median": self.stats["behavior"]["fanout_median"],
+        })
+        self.assertEqual(ns["sessions"], {
+            "longest_run_minutes": self.stats["behavior"]["longest_run_minutes"],
+        })
+        self.assertEqual(ns["tools"]["top_tools"], [
+            {"name": "Bash", "calls": 500},
+            {"name": "Read", "calls": 300},
+        ])
+
+    def test_top_tools_keeps_40_global_and_monthly_entries(self):
+        import contextlib, io, json, shutil, tempfile
+        from unittest import mock
+
+        proj = tempfile.mkdtemp(prefix="paxel-top-tools-")
+        self.addCleanup(shutil.rmtree, proj, ignore_errors=True)
+        sess_dir = os.path.join(proj, "proj-x")
+        os.makedirs(sess_dir, exist_ok=True)
+
+        content = [{"type": "thinking", "thinking": "rank tools"}]
+        for idx in range(41):
+            calls = 41 - idx
+            name = f"mcp__server_{idx:02d}__action"
+            content.extend(
+                {"type": "tool_use", "name": name, "input": {}}
+                for _ in range(calls)
+            )
+        rows = [
+            {"type": "user", "sessionId": "top-tools", "cwd": "/tmp/proj",
+             "timestamp": "2026-06-01T10:00:00.000Z",
+             "message": {"role": "user", "content": "rank tools"}},
+            {"type": "assistant", "sessionId": "top-tools", "cwd": "/tmp/proj",
+             "timestamp": "2026-06-01T10:00:01.000Z",
+             "message": {"role": "assistant", "model": "claude-opus-4-8", "content": content}},
+        ]
+        with open(os.path.join(sess_dir, "session.jsonl"), "w", encoding="utf-8") as fh:
+            for row in rows:
+                fh.write(json.dumps(row) + "\n")
+
+        empty = tempfile.mkdtemp(prefix="paxel-top-tools-empty-")
+        out = tempfile.mkdtemp(prefix="paxel-top-tools-out-")
+        self.addCleanup(shutil.rmtree, empty, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, out, ignore_errors=True)
+        overrides = dict(
+            OUT_DIR=out, BASE=proj, CODEX_DIR=empty, GEMINI_DIR=empty, PI_DIR=empty,
+            OPENCODE_DIR=empty, CURSOR_DIR=empty, CURSOR_DB=os.path.join(empty, "nope.vscdb"),
+        )
+        with mock.patch.multiple(paxel, **overrides), \
+                mock.patch.object(sys, "argv", ["paxel.py", "claude", "--no-open"]), \
+                contextlib.redirect_stdout(io.StringIO()):
+            paxel.main()
+
+        with open(os.path.join(out, "stats.json"), encoding="utf-8") as fh:
+            stats = json.load(fh)
+
+        self.assertEqual(len(stats["tools"]["top_tools"]), 40)
+        monthly = stats["monthly_noticed_stats"][0]["stats"]["tools"]["top_tools"]
+        self.assertEqual(len(monthly), 40)
 
 
 if __name__ == "__main__":
