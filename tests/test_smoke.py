@@ -21,21 +21,14 @@ from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-FIX = os.path.join(HERE, "fixtures")
 sys.path.insert(0, ROOT)
+sys.path.insert(0, HERE)
 import paxel  # noqa: E402
 
 # Redirect every source-discovery global at the fixtures so the run is hermetic
 # (never touches the developer's real ~/.claude, ~/.codex, etc.).
-SRC_DIRS = dict(
-    BASE=os.path.join(FIX, "claude"),
-    CODEX_DIR=os.path.join(FIX, "codex"),
-    GEMINI_DIR=os.path.join(FIX, "gemini"),
-    PI_DIR=os.path.join(FIX, "pi"),
-    OPENCODE_DIR=os.path.join(FIX, "opencode"),
-    CURSOR_DIR=os.path.join(FIX, "cursor", "projects"),
-    CURSOR_DB=os.path.join(FIX, "cursor", "state.vscdb"),
-)
+# SRC_DIRS lives in tests/fixture_dirs.py so smoke + golden tests share one copy.
+from fixture_dirs import FIX, SRC_DIRS  # noqa: E402
 EXPECTED_SOURCES = {"claude", "codex", "gemini", "pi", "opencode", "cursor"}
 EXPECTED_FMTS = EXPECTED_SOURCES - {"cursor"} | {"cursor-jsonl", "cursor-sqlite"}
 SCORED_AXES = {"Execution", "Planning", "Engineering"}

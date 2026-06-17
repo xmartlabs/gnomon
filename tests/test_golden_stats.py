@@ -3,21 +3,13 @@ from unittest import mock
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
+sys.path.insert(0, HERE)
 import paxel
 
-FIX = os.path.join(HERE, "fixtures")
-GOLDEN = os.path.join(FIX, "golden", "stats.json")
+# SRC_DIRS lives in tests/fixture_dirs.py so smoke + golden tests share one copy.
+from fixture_dirs import FIX, SRC_DIRS
 
-# Copy verbatim from tests/test_smoke.py (keep in sync if fixtures move).
-SRC_DIRS = dict(
-    BASE=os.path.join(FIX, "claude"),
-    CODEX_DIR=os.path.join(FIX, "codex"),
-    GEMINI_DIR=os.path.join(FIX, "gemini"),
-    PI_DIR=os.path.join(FIX, "pi"),
-    OPENCODE_DIR=os.path.join(FIX, "opencode"),
-    CURSOR_DIR=os.path.join(FIX, "cursor", "projects"),
-    CURSOR_DB=os.path.join(FIX, "cursor", "state.vscdb"),
-)
+GOLDEN = os.path.join(FIX, "golden", "stats.json")
 
 
 def run_paxel_stats():
@@ -37,7 +29,7 @@ def run_paxel_stats():
 
 class TestGoldenStats(unittest.TestCase):
     def test_stats_match_golden(self):
-        with open(GOLDEN) as f:
+        with open(GOLDEN, encoding="utf-8") as f:
             golden = json.load(f)
         actual = run_paxel_stats()
         self.assertEqual(
