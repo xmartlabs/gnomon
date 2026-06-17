@@ -781,5 +781,133 @@ class TestCursorTokenExtraction(unittest.TestCase):
         self.assertEqual(entry["output"], 150, "Expected 150 output tokens")
 
 
+# ---------------------------------------------------------------------------
+# 10. Codex monthly token attribution — deltas split across calendar months
+# ---------------------------------------------------------------------------
+
+class TestCodexMonthlyTokenAttribution(unittest.TestCase):
+    """A Codex thread that spans a month boundary must book each token delta in the
+    calendar month it occurred — not all of it in the session's last month.
+
+    token_count carries CUMULATIVE total_token_usage, so the per-month split is the
+    delta between consecutive snapshots:
+
+      Jan snapshot (cumulative): input=2000 cached=1000 output=50 reasoning=10
+        Claude shape: input = 2000-1000 = 1000, cache_read = 1000, output = 50+10 = 60
+      Feb snapshot (cumulative): input=5000 cached=3000 output=120 reasoning=80
+        Feb delta:    input = 3000-2000 = 1000, cache_read = 2000, output = 70+70 = 140
+
+    Window total (sum of months) must equal the single-emission total derived from the
+    final cumulative snapshot: input=2000, output=200, cache_read=3000 — unchanged.
+    """
+
+    def _write_codex(self, codex_dir):
+        os.makedirs(codex_dir, exist_ok=True)
+        rows = [
+            {"type": "session_meta", "timestamp": "2026-01-15T10:00:00Z",
+             "payload": {"id": "codex-split-1", "cwd": "/repo"}},
+            {"type": "turn_context", "timestamp": "2026-01-15T10:00:01Z",
+             "payload": {"model": "gpt-5.4"}},
+            {"type": "response_item", "timestamp": "2026-01-15T10:00:02Z",
+             "payload": {"type": "message", "role": "user",
+                         "content": [{"type": "input_text", "text": "do jan work"}]}},
+            # January cumulative snapshot
+            {"type": "event_msg", "timestamp": "2026-01-15T10:00:09Z",
+             "payload": {"type": "token_count", "info": {"total_token_usage": {
+                 "input_tokens": 2000, "cached_input_tokens": 1000,
+                 "output_tokens": 50, "reasoning_output_tokens": 10,
+                 "total_tokens": 2060}}}},
+            # ...thread continues into February
+            {"type": "response_item", "timestamp": "2026-02-12T11:00:00Z",
+             "payload": {"type": "message", "role": "user",
+                         "content": [{"type": "input_text", "text": "do feb work"}]}},
+            # February cumulative snapshot (running total)
+            {"type": "event_msg", "timestamp": "2026-02-12T11:00:09Z",
+             "payload": {"type": "token_count", "info": {"total_token_usage": {
+                 "input_tokens": 5000, "cached_input_tokens": 3000,
+                 "output_tokens": 120, "reasoning_output_tokens": 80,
+                 "total_tokens": 5200}}}},
+        ]
+        with open(os.path.join(codex_dir, "session-split.jsonl"), "w") as fh:
+            for r in rows:
+                fh.write(json.dumps(r) + "\n")
+
+    def setUp(self):
+        out = tempfile.mkdtemp(prefix="paxel-codex-split-out-")
+        codex_dir = tempfile.mkdtemp(prefix="paxel-codex-split-")
+        self._write_codex(codex_dir)
+        self.addCleanup(shutil.rmtree, out, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, codex_dir, ignore_errors=True)
+        empty = tempfile.mkdtemp(prefix="paxel-codex-split-empty-")
+        self.addCleanup(shutil.rmtree, empty, ignore_errors=True)
+        overrides = dict(
+            BASE=empty,
+            CODEX_DIR=codex_dir,
+            GEMINI_DIR=empty,
+            PI_DIR=empty,
+            OPENCODE_DIR=empty,
+            CURSOR_DIR=empty,
+            CURSOR_DB=os.path.join(empty, "nope.vscdb"),
+        )
+        argv = ["paxel.py", "--no-open"]
+        buf = io.StringIO()
+        with mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
+                mock.patch.object(sys, "argv", argv), \
+                contextlib.redirect_stdout(buf):
+            paxel.main()
+        with open(os.path.join(out, "stats.json")) as fh:
+            self.stats = json.load(fh)
+
+    def _month_entry(self, ym):
+        for entry in self.stats["progression"]["monthly"]:
+            if entry["month"] == ym:
+                return entry
+        return None
+
+    def test_january_month_present(self):
+        self.assertIsNotNone(self._month_entry("2026-01"),
+                             "January must appear in progression.monthly")
+
+    def test_january_tokens_split_not_zero(self):
+        jan = self._month_entry("2026-01")
+        # Jan delta: input 1000, output 60, cache_read 1000 -> total 2060
+        self.assertEqual(jan["tokens_input"], 1000)
+        self.assertEqual(jan["tokens_output"], 60)
+        self.assertEqual(jan["tokens_cache_read"], 1000)
+
+    def test_february_tokens_split(self):
+        feb = self._month_entry("2026-02")
+        self.assertIsNotNone(feb)
+        # Feb delta: input 1000, output 140, cache_read 2000
+        self.assertEqual(feb["tokens_input"], 1000)
+        self.assertEqual(feb["tokens_output"], 140)
+        self.assertEqual(feb["tokens_cache_read"], 2000)
+
+    def test_tokens_not_all_in_last_month(self):
+        """Regression: before the fix ALL tokens landed in February (last month)."""
+        feb = self._month_entry("2026-02")
+        # The buggy single-emission would have put input=2000 in Feb.
+        self.assertNotEqual(feb["tokens_input"], 2000,
+                            "February must not hold the whole thread's tokens")
+
+    def test_window_total_unchanged(self):
+        """Sum across months equals the single-emission total from final cumulative."""
+        tu = self.stats["token_usage"]
+        self.assertEqual(tu["total_input"], 2000)
+        self.assertEqual(tu["total_output"], 200)
+        self.assertEqual(tu["total_cache_read"], 3000)
+        self.assertEqual(tu["total_cache_creation"], 0)
+
+    def test_monthly_sum_matches_window(self):
+        jan = self._month_entry("2026-01")
+        feb = self._month_entry("2026-02")
+        self.assertEqual(jan["tokens_input"] + feb["tokens_input"],
+                         self.stats["token_usage"]["total_input"])
+        self.assertEqual(jan["tokens_output"] + feb["tokens_output"],
+                         self.stats["token_usage"]["total_output"])
+        self.assertEqual(jan["tokens_cache_read"] + feb["tokens_cache_read"],
+                         self.stats["token_usage"]["total_cache_read"])
+
+
 if __name__ == "__main__":
     unittest.main()
