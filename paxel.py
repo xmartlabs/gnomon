@@ -66,7 +66,7 @@ class CorpusBlock:
     lines_total: int = 0
     lines_unparseable: int = 0
     date_range: list = field(default_factory=list)
-    window: object = None
+    window: dict = None
     span_days: int = 0
     active_days: int = 0
     timezone: str = ""
@@ -141,7 +141,7 @@ class BehaviorBlock:
     iteration_depth_median: float = 0.0
     iteration_depth_p90: float = 0.0
     iteration_depth_max: int = 0
-    files_hammered_over_15x: list = field(default_factory=list)
+    files_hammered_over_15x: int = 0
     actions_per_prompt: float = 0.0
     questions_asked: int = 0
     background_tasks: int = 0
@@ -207,6 +207,7 @@ class Stats:
     stack: StackBlock = field(default_factory=StackBlock)
     autonomy: AutonomyBlock = field(default_factory=AutonomyBlock)
     token_usage: TokenUsageBlock = field(default_factory=TokenUsageBlock)
+    # empty placeholder; filled post-asdict by compute_aq(stats), not via the dataclass
     agentic: dict = field(default_factory=dict)
 
 # ---- end Stats dataclasses ---------------------------------------------------
