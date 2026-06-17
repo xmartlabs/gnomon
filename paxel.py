@@ -60,11 +60,6 @@ from datetime import datetime, timedelta, timezone as _tz
 # before any downstream code touches it.  Readers always use dict-indexing.
 
 @dataclass
-class ScopeBlock:
-    scope: str = ""
-    generated_local_only: bool = True
-
-@dataclass
 class CorpusBlock:
     sources: dict = field(default_factory=dict)
     files_parsed: int = 0
@@ -2179,6 +2174,18 @@ def main():
             "tokens_total": _ti + _to + _tcr + _tcc,
         })
 
+    # ---- aggregate token_usage block ----------------------------------------
+    _all_tok_input  = sum(v["input"]          for v in model_tokens.values())
+    _all_tok_output = sum(v["output"]         for v in model_tokens.values())
+    _all_tok_cr     = sum(v["cache_read"]     for v in model_tokens.values())
+    _all_tok_cc     = sum(v["cache_creation"] for v in model_tokens.values())
+    # order by total tokens desc (consistent with model_usage ordering in _build_profile)
+    _by_model_tok = sorted(
+        model_tokens.items(),
+        key=lambda kv: kv[1]["input"] + kv[1]["output"] + kv[1]["cache_read"] + kv[1]["cache_creation"],
+        reverse=True,
+    )
+
     stats_obj = Stats(
         scope="Sources: " + (", ".join(sorted(source_files)) or "none"),
         generated_local_only=True,
@@ -2305,36 +2312,25 @@ def main():
                 low_question_rate=round(auto_lowq, 1),
             ),
         ),
+        token_usage=TokenUsageBlock(
+            total_input=_all_tok_input,
+            total_output=_all_tok_output,
+            total_cache_read=_all_tok_cr,
+            total_cache_creation=_all_tok_cc,
+            by_model=[
+                {
+                    "model_id": m,
+                    "model": _pretty_model(m),
+                    "input": tok["input"],
+                    "output": tok["output"],
+                    "cache_read": tok["cache_read"],
+                    "cache_creation": tok["cache_creation"],
+                }
+                for m, tok in _by_model_tok
+            ],
+        ),
     )
     stats = asdict(stats_obj)
-    # ---- aggregate token_usage block ----------------------------------------
-    _all_tok_input  = sum(v["input"]          for v in model_tokens.values())
-    _all_tok_output = sum(v["output"]         for v in model_tokens.values())
-    _all_tok_cr     = sum(v["cache_read"]     for v in model_tokens.values())
-    _all_tok_cc     = sum(v["cache_creation"] for v in model_tokens.values())
-    # order by total tokens desc (consistent with model_usage ordering in _build_profile)
-    _by_model_tok = sorted(
-        model_tokens.items(),
-        key=lambda kv: kv[1]["input"] + kv[1]["output"] + kv[1]["cache_read"] + kv[1]["cache_creation"],
-        reverse=True,
-    )
-    stats["token_usage"] = {
-        "total_input": _all_tok_input,
-        "total_output": _all_tok_output,
-        "total_cache_read": _all_tok_cr,
-        "total_cache_creation": _all_tok_cc,
-        "by_model": [
-            {
-                "model_id": m,
-                "model": _pretty_model(m),
-                "input": tok["input"],
-                "output": tok["output"],
-                "cache_read": tok["cache_read"],
-                "cache_creation": tok["cache_creation"],
-            }
-            for m, tok in _by_model_tok
-        ],
-    }
     stats["agentic"] = compute_aq(stats)
 
     with open(os.path.join(OUT_DIR, "stats.json"), "w") as f:
