@@ -517,6 +517,93 @@ class TestPatchChurn(unittest.TestCase):
         self.assertEqual(paxel.line_count(new_s), 3)
         self.assertEqual(paxel.line_count(old_s), 1)
 
+    def test_multi_file_patch_splits_per_file(self):
+        """A single apply_patch touching two files must yield per-file churn, not
+        flatten both onto the first file."""
+        patch = (
+            "*** Begin Patch\n"
+            "*** Update File: a.py\n"
+            "@@\n"
+            "+a add1\n"
+            "-a del1\n"
+            "*** Update File: b.py\n"
+            "@@\n"
+            "+b add1\n"
+            "+b add2\n"
+            "+b add3\n"
+            "*** End Patch\n"
+        )
+        files = paxel._patch_files(patch)
+        self.assertEqual([f[2] for f in files], ["a.py", "b.py"])
+        # a.py: 1 add / 1 del
+        self.assertEqual(paxel.line_count(files[0][0]), 1)
+        self.assertEqual(paxel.line_count(files[0][1]), 1)
+        # b.py: 3 add / 0 del — NOT merged onto a.py
+        self.assertEqual(paxel.line_count(files[1][0]), 3)
+        self.assertEqual(paxel.line_count(files[1][1]), 0)
+
+    def test_codex_events_multi_file_apply_patch_emits_two_edits(self):
+        """_codex_events must emit one Edit tool_use per file in a multi-file patch."""
+        import tempfile, json as _json
+        patch = ("*** Begin Patch\n*** Update File: a.py\n+x\n"
+                 "*** Update File: b.py\n+y\n+z\n*** End Patch\n")
+        rows = [
+            {"type": "session_meta", "timestamp": "2026-01-01T10:00:00Z",
+             "payload": {"id": "s1", "cwd": "/w"}},
+            {"type": "turn_context", "timestamp": "2026-01-01T10:00:01Z",
+             "payload": {"model": "gpt-5.4"}},
+            {"type": "response_item", "timestamp": "2026-01-01T10:00:02Z",
+             "payload": {"type": "custom_tool_call", "name": "apply_patch", "input": patch}},
+        ]
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as fh:
+            for r in rows:
+                fh.write(_json.dumps(r) + "\n")
+            fp = fh.name
+        try:
+            events = list(paxel._codex_events(fp))
+        finally:
+            os.unlink(fp)
+        edits = [
+            b for e in events if e.get("type") == "assistant"
+            for b in (e.get("message", {}).get("content") or [])
+            if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("name") == "Edit"
+        ]
+        self.assertEqual([b["input"]["file_path"] for b in edits], ["a.py", "b.py"])
+
+    def test_codex_events_multi_model_tokens_split(self):
+        """Mixed-model Codex session must split token usage per model, not dump it
+        all on the last model seen."""
+        import tempfile, json as _json
+        rows = [
+            {"type": "session_meta", "timestamp": "2026-01-01T10:00:00Z",
+             "payload": {"id": "s1", "cwd": "/w"}},
+            {"type": "turn_context", "payload": {"model": "gpt-A"}},
+            {"type": "event_msg", "timestamp": "t1", "payload": {"type": "token_count",
+             "info": {"total_token_usage": {"input_tokens": 1000, "cached_input_tokens": 0,
+                                            "output_tokens": 100, "reasoning_output_tokens": 0,
+                                            "total_tokens": 1100}}}},
+            {"type": "turn_context", "payload": {"model": "gpt-B"}},
+            {"type": "event_msg", "timestamp": "t2", "payload": {"type": "token_count",
+             "info": {"total_token_usage": {"input_tokens": 1500, "cached_input_tokens": 0,
+                                            "output_tokens": 180, "reasoning_output_tokens": 0,
+                                            "total_tokens": 1680}}}},
+        ]
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as fh:
+            for r in rows:
+                fh.write(_json.dumps(r) + "\n")
+            fp = fh.name
+        try:
+            events = list(paxel._codex_events(fp))
+        finally:
+            os.unlink(fp)
+        usage = {e["message"]["model"]: e["message"]["usage"]
+                 for e in events if e.get("__codex_usage__")}
+        # gpt-A got the first delta (1000/100); gpt-B the incremental delta (500/80)
+        self.assertEqual(usage["gpt-A"]["input_tokens"], 1000)
+        self.assertEqual(usage["gpt-A"]["output_tokens"], 100)
+        self.assertEqual(usage["gpt-B"]["input_tokens"], 500)
+        self.assertEqual(usage["gpt-B"]["output_tokens"], 80)
+
 
 class TestCodexToolCustomApplyPatch(unittest.TestCase):
     """_codex_tool must parse custom_tool_call apply_patch from payload.input."""
@@ -647,19 +734,24 @@ class TestCodexEventsSubagent(unittest.TestCase):
                 fh.write(_json.dumps(row) + "\n")
             return fh.name
 
-    def test_subagent_session_emits_agent_tool_use(self):
+    def test_subagent_session_credits_parent_not_child(self):
+        """The Agent (delegate) event must be keyed to the PARENT's session id, so
+        fan-out lands on the orchestrator — not on the spawned worker session."""
         import tempfile
         fp = self._make_events(is_subagent=True)
         try:
             events = list(paxel._codex_events(fp))
         finally:
             os.unlink(fp)
-        agent_uses = [
-            b for e in events if e.get("type") == "assistant"
+        agent_events = [
+            e for e in events if e.get("type") == "assistant"
             for b in (e.get("message", {}).get("content") or [])
             if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("name") == "Agent"
         ]
-        self.assertTrue(agent_uses, "no Agent tool_use emitted for subagent session")
+        self.assertTrue(agent_events, "no Agent tool_use emitted for subagent session")
+        # attributed to the parent thread, NOT the child session "sub-sess-1"
+        self.assertEqual(agent_events[0].get("sessionId"), "parent-123")
+        self.assertNotEqual(agent_events[0].get("sessionId"), "sub-sess-1")
 
     def test_non_subagent_session_no_agent_tool_use(self):
         import tempfile
