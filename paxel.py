@@ -2521,6 +2521,15 @@ def _build_profile(stats):
     }
 
 
+def _client_version():
+    """Return the installed xl-ai-insights package version, or a fallback constant."""
+    try:
+        import importlib.metadata
+        return importlib.metadata.version("xl-ai-insights")
+    except Exception:
+        return "0.1.0"
+
+
 def build_summary(stats):
     """The shareable subset for the low-cost feedback loop (docs/metrics-evaluation.md):
     the 8 high-signal MEASURED metrics + monthly progression + rubric profile block.
@@ -2535,6 +2544,8 @@ def build_summary(stats):
             "window": c.get("window"),
             "sources": sorted((c.get("sources") or {}).keys()),
             "total_sessions": v["total_sessions"],
+            "total_prompts": v["total_prompts"],
+            "client_version": _client_version(),
         },
         "planning_ratio_explore_to_doing": b["planning_ratio_explore_to_doing"],
         "errors": {
@@ -2549,6 +2560,8 @@ def build_summary(stats):
         "churn": {
             "git_churn_total": vel["git_churn_total"],
             "tool_churn_edit_write": vel["tool_churn_edit_write"],
+            "active_hours": vel["active_hours"],
+            "actions_per_prompt": b["actions_per_prompt"],
         },
         "orchestration": {
             "fanout_median": b["fanout_median"],

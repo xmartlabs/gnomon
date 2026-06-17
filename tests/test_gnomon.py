@@ -725,5 +725,48 @@ class TestBuildSummaryProfile(unittest.TestCase):
         self.assertIn("quote", prof["archetype"])
 
 
+class TestBuildSummaryPayloadFields(unittest.TestCase):
+    """D1 + D4: build_summary must expose client_version, active_hours,
+    total_prompts, and actions_per_prompt."""
+
+    def setUp(self):
+        self.stats = _full_stats()
+        self.summary = paxel.build_summary(self.stats)
+
+    # D1 — client_version in context
+    def test_client_version_key_in_context(self):
+        self.assertIn("client_version", self.summary["context"])
+
+    def test_client_version_is_string(self):
+        self.assertIsInstance(self.summary["context"]["client_version"], str)
+
+    def test_client_version_nonempty(self):
+        self.assertGreater(len(self.summary["context"]["client_version"]), 0)
+
+    # D4 — active_hours in churn (or velocity sub-block)
+    def test_active_hours_in_churn(self):
+        self.assertIn("active_hours", self.summary["churn"])
+
+    def test_active_hours_value(self):
+        self.assertEqual(self.summary["churn"]["active_hours"],
+                         self.stats["velocity"]["active_hours"])
+
+    # D4 — total_prompts in context
+    def test_total_prompts_in_context(self):
+        self.assertIn("total_prompts", self.summary["context"])
+
+    def test_total_prompts_value(self):
+        self.assertEqual(self.summary["context"]["total_prompts"],
+                         self.stats["volume"]["total_prompts"])
+
+    # D4 — actions_per_prompt in churn (companion to active_hours)
+    def test_actions_per_prompt_in_churn(self):
+        self.assertIn("actions_per_prompt", self.summary["churn"])
+
+    def test_actions_per_prompt_value(self):
+        self.assertEqual(self.summary["churn"]["actions_per_prompt"],
+                         self.stats["behavior"]["actions_per_prompt"])
+
+
 if __name__ == "__main__":
     unittest.main()
