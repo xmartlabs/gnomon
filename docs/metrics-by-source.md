@@ -50,8 +50,17 @@ Quick session reference. Keep only current coverage, current caveats, upload con
 - `churn.active_hours`
 - `churn.actions_per_prompt`
 - `noticed_stats`
+- `noticed_stats_monthly`
 
 Mirdash reads `actions_per_prompt` from `churn`, with legacy fallback to `context.actions_per_prompt`.
+
+### Three time scales in the payload
+
+- `noticed_stats` — **window** (up to 6-month) aggregate evidence.
+- `noticed_stats_monthly` — **per calendar month**, same shape as `noticed_stats`, one entry per month with its own `git_churn`, tokens, errors, etc.
+- scores / profile / AQ — **window** only.
+
+Per-month session counts can sum above the window's unique session count when a session crosses a month boundary (accepted).
 
 ## Execution target
 

@@ -3022,6 +3022,7 @@ def build_summary(stats):
             "mcp_servers_distinct": t["mcp_servers_distinct"],
         },
         "progression_monthly": (stats.get("progression") or {}).get("monthly", []),
+        "noticed_stats_monthly": stats.get("monthly_noticed_stats", []),
         "profile": _build_profile(stats),
         "noticed_stats": _build_noticed_stats(stats),
         "token_usage": stats.get("token_usage") or {
