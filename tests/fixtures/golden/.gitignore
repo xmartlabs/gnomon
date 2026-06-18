@@ -1,2 +1,3 @@
 # Allow golden test fixtures that happen to share names with generated outputs.
 !stats.json
+!profile.html

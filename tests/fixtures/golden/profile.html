@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<!-- Generated locally by paxel.py. Zero data left this machine. Counts measured; archetype/scores are a rubric. -->
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Builder Profile — Roadmap</title>
+<style>
+  :root{--slate:#313941;--beak:#ED7379;--beak-deep:#D14E57;--bg:#eef1f3;--panel:#fff;
+    --line:#d9dee2;--text:#16191d;--muted:#5e6a73;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --display:"Josefin Sans","Futura","Century Gothic","Trebuchet MS",sans-serif;
+    --serif:"Merriweather",Georgia,"Times New Roman",serif;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.5;-webkit-font-smoothing:antialiased}
+  #report{background:var(--bg)} .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  a{color:var(--slate);text-decoration:none} a:hover{text-decoration:underline}
+  .wrap{max-width:900px;margin:0 auto;padding:0 22px 70px}
+  .topbar{background:var(--panel);border-bottom:1px solid var(--line);padding:13px 0}
+  .topbar .wrap{display:flex;align-items:center;gap:12px;padding:0}
+  .brandlink{display:flex;align-items:center;gap:12px;color:var(--text)} .brandlink:hover{text-decoration:none;color:var(--beak-deep)}
+  .chip{width:40px;height:40px;flex:0 0 auto;background:#fff;border:1px solid var(--line);border-radius:9px;display:flex;align-items:center;justify-content:center}
+  .chip img{width:32px;height:32px;object-fit:contain}
+  .brand{font-family:var(--display);font-weight:700;font-size:20px;letter-spacing:.05em} .brand .dim{opacity:.6;font-weight:600;font-size:15px}
+  .badge{margin-left:auto;font-size:12px;font-weight:600;color:var(--slate);background:#e8edf0;padding:5px 11px;border-radius:999px;border:1px solid var(--line)}
+  .hero{padding:54px 0 30px} .eyebrow{color:var(--muted);font-size:14px;margin:0 0 16px}
+  .hero h1{font-family:var(--serif);font-size:50px;line-height:1.06;margin:0 0 8px;font-weight:700;letter-spacing:-.01em} .hero h1 .accent{color:var(--beak)}
+  .hero .quote{font-family:var(--serif);font-size:19px;font-style:italic;color:#3b444b;margin:18px 0 0;max-width:660px;line-height:1.55}
+  .hero .sub{color:var(--muted);margin-top:18px;font-size:15px;max-width:680px} .hero .sub b{color:var(--text)}
+  .stat-strip{display:flex;flex-wrap:wrap;gap:24px;margin-top:28px;padding-top:24px;border-top:1px solid var(--line)}
+  .stat-strip div{display:flex;flex-direction:column} .stat-strip .n{font-family:var(--serif);font-size:25px;font-weight:700} .stat-strip .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  .share{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:34px} .share .lbl{font-size:13px;color:var(--muted)}
+  .btn{display:inline-flex;align-items:center;gap:8px;padding:9px 15px;border-radius:999px;cursor:pointer;font-weight:600;font-size:14px;color:#fff;border:1px solid transparent;font-family:var(--sans)}
+  .btn:hover{text-decoration:none;opacity:.9} .btn.x{background:#000} .btn.ghost{background:#fff;color:var(--slate);border-color:var(--line)}
+  .btn svg{width:15px;height:15px} .btn.x svg{fill:#fff}
+  h2.section{font-family:var(--display);font-size:15px;text-transform:uppercase;letter-spacing:.18em;color:var(--slate);margin:60px 0 14px;font-weight:700}
+  p.lead{color:var(--muted);font-size:14.5px;margin:-4px 0 20px;max-width:700px;line-height:1.55}
+  .card code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;background:#eef1f3;color:var(--beak-deep);padding:1px 5px;border-radius:4px}
+  .disclaimer{background:#fff;border:1px solid var(--line);border-left:4px solid var(--beak);border-radius:6px;padding:14px 16px;margin:-6px 0 24px;font-size:13.5px;color:#48535b;line-height:1.55} .disclaimer b{color:var(--text)}
+  .score{display:grid;grid-template-columns:160px 1fr 46px;align-items:center;gap:14px;margin:0 0 14px} .score .name{font-weight:600;font-size:15px}
+  .score .track,.aq-axis .track,.prog-row .track{display:block;height:12px;background:#dde2e6;border-radius:999px;overflow:hidden} .score .fill,.aq-axis .fill,.prog-row .fill{display:block;height:100%;min-width:8px;background:linear-gradient(90deg,var(--beak-deep),var(--beak));border-radius:999px}
+  .score .val{font-weight:800;text-align:right} .score .note{grid-column:1/-1;color:var(--muted);font-size:13px;margin:-6px 0 4px;padding-left:174px}
+  @media(max-width:560px){.score .note{padding-left:0}}
+  .steerread{display:grid;grid-template-columns:160px 1fr;align-items:baseline;gap:14px;margin:4px 0 6px;padding-top:14px;border-top:1px solid var(--line)} .steerread .sr-k{font-weight:600;font-size:15px}
+  .steerread .sr-v{font-size:15px;color:#48535b} .steerread .sr-v b{color:var(--beak-deep);font-weight:700} .steerread .sr-d{grid-column:2;color:var(--muted);font-size:13px;margin-top:2px}
+  @media(max-width:560px){.steerread{grid-template-columns:1fr}.steerread .sr-d{grid-column:1}}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px 18px 16px;box-shadow:0 1px 2px rgba(20,30,40,.04)} .card.flag{border-left:4px solid var(--beak)}
+  .card .q{color:var(--beak-deep);font-size:12.5px;font-weight:700;margin:0 0 8px;text-transform:uppercase;letter-spacing:.03em}
+  .card .reroll{font-family:var(--sans);text-transform:none;letter-spacing:0;font-size:11px;font-weight:600;color:var(--beak-deep);background:none;border:1px solid var(--line);border-radius:999px;padding:1px 8px;margin-left:8px;cursor:pointer;vertical-align:middle}
+  .card .reroll:hover{background:#fff;border-color:var(--beak)}
+  .card .a{font-family:var(--serif);font-size:19px;font-weight:700;margin:0 0 6px} .card .d{color:var(--muted);font-size:13.5px;margin:0}
+  footer{margin-top:54px;padding-top:22px;border-top:1px solid var(--line);color:var(--muted);font-size:13px;line-height:1.7} footer .lock{color:var(--beak-deep);font-weight:700} footer .by{color:var(--text)}
+  .aq-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin:0 0 6px}
+  .aq-big{font-family:var(--serif);font-size:46px;font-weight:800;color:var(--beak-deep);line-height:1}
+  .aq-tier{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--beak-deep);border:1px solid var(--beak);border-radius:999px;padding:4px 11px}
+  .aq-axis{display:grid;grid-template-columns:200px 1fr 56px;align-items:center;gap:14px;margin:0 0 12px}
+  .aq-axis .nm{font-weight:600;font-size:14px} .aq-axis .vl{font-weight:800;text-align:right}
+  .prog-row{display:grid;grid-template-columns:74px 1fr 260px;align-items:center;gap:14px;margin:0 0 10px}
+  .prog-row .nm{font-weight:700;font-size:13px} .prog-row .vl{font-size:12.5px;color:var(--muted);text-align:right;white-space:nowrap}
+  @media(max-width:640px){.prog-row{grid-template-columns:64px 1fr;}.prog-row .vl{display:none}}
+  .aq-split{margin-top:18px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:15px 16px}
+  .aq-split .bar{display:flex;height:28px;border-radius:6px;overflow:hidden;font-size:11.5px;font-weight:700;margin:8px 0}
+  .aq-split .cli{background:var(--beak-deep);color:#fff;display:flex;align-items:center;padding:0 12px}
+  .aq-split .mcp{background:var(--beak);color:#fff;display:flex;align-items:center;justify-content:flex-end;padding:0 12px}
+  .aq-split .meta{font-size:12.5px;color:var(--muted);margin:6px 0 0;line-height:1.5} .aq-split .meta b{color:var(--text)}
+  .aq-pillar{margin:18px 0 4px;display:flex;align-items:baseline;gap:10px}
+  .aq-pillar .pn{font-family:var(--display);font-size:13px;text-transform:uppercase;letter-spacing:.12em;color:var(--slate);font-weight:700}
+  .aq-pillar .pv{font-weight:800;color:var(--beak-deep)}
+  .aq-pillar .pw{font-size:12px;color:var(--muted)}
+  .aq-axis .nm[title],.aq-pillar .pn[title]{cursor:help;text-decoration:underline dotted;text-underline-offset:3px;text-decoration-color:var(--muted)}
+</style>
+</head><body><div id="report">
+<div class="topbar"><div class="wrap"><a class="brandlink" href="https://www.roadmap.chat/community" target="_blank" rel="noopener" title="Roadmap — find your flock"><span class="brand">Roadmap <span class="dim">· Builder Profile</span></span></a><span class="badge">🔒 Generated locally · nothing uploaded</span></div></div>
+<div class="wrap"><section class="hero">
+<p class="eyebrow">8 sessions · 11 prompts · 24 tool calls · 2025-06-09 → 2026-06-10</p>
+<h1>You're<br><span class="accent">Apprentice.</span></h1>
+<p class="quote">“Still developing — the habits aren&#x27;t compounding yet. Your thinnest axis is breadth — that&#x27;s where the next gain is.”</p>
+<p class="sub"><b>4 reasoning blocks</b> before the diffs, <b>0 subagents</b> dispatched, and <b>4 errors</b> recovered from along the way.</p>
+<div class="stat-strip"><div><span class="n mono">0</span><span class="l">lines committed to git</span></div><div><span class="n mono">19</span><span class="l">lines via Edit/Write</span></div><div><span class="n mono">~0</span><span class="l">lines in the shell</span></div><div><span class="n mono">2</span><span class="l">max edits, one file</span></div><div><span class="n mono">0</span><span class="l">agents you ran</span></div></div>
+<div class="share"><span class="lbl">Share:</span><a id="share-x" class="btn x" href="#" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z"/></svg>Post on X</a><button id="share-copy" class="btn ghost" type="button">📋 Copy caption</button><button id="share-img" class="btn ghost" type="button">🖼 Download image</button></div>
+</section><h2 class="section">Your scorecard</h2>
+<div class="disclaimer"><b>Counts are measured; the three scores are a read on your style</b>, grounded in <a href="https://github.com/garrytan/gstack" target="_blank" rel="noopener">gstack</a> — how you work, not a ranking of how good you are. <b>Steering isn't scored</b>: how hands-on you run agents has no better or worse end, so it's described, not graded. This scorecard grades how you <b>build</b> (gstack); the Agentic Quotient further down grades how you <b>operate agents</b>.</div>
+<div class="disclaimer" style="border-left-color:var(--muted)">⚠ <b>Limited data.</b> Just 8 sessions and 24 tool calls here — not enough to read your habits with confidence, so these scores lean toward the middle. Run more and check back.</div>
+<div class="score"><span class="name">Execution</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="val mono">0.0</span><span class="note">How much you ship, and how fast — your committed-code rate, how much of what you generate actually lands in git, and how hard you delegate to agents.</span></div><div class="score"><span class="name">Planning</span><span class="track"><span class="fill" style="width:46%"></span></span><span class="val mono">4.6</span><span class="note">How much you think before you build — exploring before writing, reasoning depth, and laying out a plan first. (Prompt length was dropped — terse expert prompts shouldn&#x27;t score below verbose ones.)</span></div><div class="score"><span class="name">Engineering</span><span class="track"><span class="fill" style="width:47%"></span></span><span class="val mono">4.7</span><span class="note">How clean your work is — getting files right early, not re-editing the same one over and over, low error rate, and checking your work.</span></div>
+<div class="steerread"><span class="sr-k">Steering</span><span class="sr-v"><b>Short leash</b> — you stay close and course-correct often</span><span class="sr-d">~2 actions per turn before you weigh in · the agent checked in on 9% of your prompts</span></div>
+<h2 class="section">Agentic Quotient — how you operate agents</h2>
+<div class="disclaimer"><b>The scorecard above grades how you BUILD</b> (gstack). <b>The Agentic Quotient grades how you OPERATE AGENTS</b> — orchestration, craft, efficiency, and savvy. A custom metric (not part of paxel). MCP-vs-CLI and tool diversity are <b>described, not graded</b>, like Steering.</div>
+<div class="aq-head"><span class="aq-big">33</span><span class="aq-tier">Apprentice</span></div>
+<div class="aq-pillar"><span class="pn" title="How much machinery you operate — agents coordinated, skills in rotation, tools wired in, structured tracking.">Breadth</span><span class="pv">14</span><span class="pw">/ 30 weight</span></div>
+<div class="aq-axis"><span class="nm" title="Coordination over volume: distinct subagent types, median fan-out per orchestrating session, and harness use — raw agent runs only count as a small floor.">Orchestration</span><span class="track"><span class="fill" style="width:12%"></span></span><span class="vl mono">4/33</span></div>
+<div class="aq-axis"><span class="nm" title="Range and volume of skills you invoke, plus whether process skills (planning, debugging, brainstorming) are in the rotation.">Skill fluency</span><span class="track"><span class="fill" style="width:18%"></span></span><span class="vl mono">4/22</span></div>
+<div class="aq-axis"><span class="nm" title="External reach: distinct MCP servers, distinct CLIs, and loading tool schemas on demand (ToolSearch).">Tool command (MCP + CLI)</span><span class="track"><span class="fill" style="width:6%"></span></span><span class="vl mono">2/28</span></div>
+<div class="aq-axis"><span class="nm" title="Structured work: task-tool usage plus planning skills in evidence.">Discipline</span><span class="track"><span class="fill" style="width:24%"></span></span><span class="vl mono">4/17</span></div>
+<div class="aq-pillar"><span class="pn" title="How well you operate it — verified work, grounded edits, and learnings that persist.">Craft</span><span class="pv">28</span><span class="pw">/ 35 weight</span></div>
+<div class="aq-axis"><span class="nm" title="Whether work gets checked: shell test runs and review-type skill invocations.">Verification</span><span class="track"><span class="fill" style="width:2%"></span></span><span class="vl mono">1/40</span></div>
+<div class="aq-axis"><span class="nm" title="Reading before writing — how much the agent explores relative to how much it edits.">Grounding</span><span class="track"><span class="fill" style="width:67%"></span></span><span class="vl mono">20/30</span></div>
+<div class="aq-axis"><span class="nm" title="Whether learnings persist: writes to memory/docs/skills, plus retro and planning habits.">Compounding</span><span class="track"><span class="fill" style="width:24%"></span></span><span class="vl mono">7/30</span></div>
+<div class="aq-pillar"><span class="pn" title="Leverage per intervention — how far each prompt goes, and how well errors get absorbed.">Efficiency</span><span class="pv">40</span><span class="pw">/ 20 weight</span></div>
+<div class="aq-axis"><span class="nm" title="Agent actions per prompt, scored as a sweet spot (5–20): enough leash to run, not so loose it drifts.">Steering leverage</span><span class="track"><span class="fill" style="width:44%"></span></span><span class="vl mono">22/50</span></div>
+<div class="aq-axis"><span class="nm" title="Share of tool errors recovered from, minus API-retry noise.">Recovery</span><span class="track"><span class="fill" style="width:36%"></span></span><span class="vl mono">18/50</span></div>
+<div class="aq-pillar"><span class="pn" title="Smart choices — routing models to tasks and spending tokens lean.">Savvy</span><span class="pv">75</span><span class="pw">/ 15 weight</span></div>
+<div class="aq-axis"><span class="nm" title="Using more than one model, with real work routed off your default — match the model to the task.">Model mix</span><span class="track"><span class="fill" style="width:100%"></span></span><span class="vl mono">50/50</span></div>
+<div class="aq-axis"><span class="nm" title="Token-lean habits: on-demand schema loading (ToolSearch) and a CLI-first share of tool traffic.">Token economy</span><span class="track"><span class="fill" style="width:50%"></span></span><span class="vl mono">25/50</span></div>
+<div class="aq-split"><b>MCP vs CLI</b> — described, not graded<div class="bar"><span class="cli" style="flex:88">CLI · 7 · 3 tools</span><span class="mcp" style="flex:12">MCP · 1 · 1</span></div><p class="meta">Ratio <b>7.0:1</b> CLI-first. CLI is token-cheap and scriptable — you reach for it on repeatable work and reserve MCP for what CLI can't do (browser, design canvas, device control). Right instinct, not a gap.</p><p class="meta"><b>Tool diversity</b> · 7 distinct tools, entropy 0.855 — high range available, concentrated use. Not penalized.</p></div>
+<h2 class="section">Your trajectory</h2>
+<p class="lead">Month by month. When plan limits cap any single month, the <b>slope</b> is the honest signal — not the lifetime totals.</p>
+<div class="prog-row"><span class="nm mono">2025-06</span><span class="track"><span class="fill" style="width:23%"></span></span><span class="vl">3 calls · 3 prompts · 1d · OC Model X</span></div>
+<div class="prog-row"><span class="nm mono">2026-01</span><span class="track"><span class="fill" style="width:31%"></span></span><span class="vl">4 calls · 2 prompts · 2d</span></div>
+<div class="prog-row"><span class="nm mono">2026-06</span><span class="track"><span class="fill" style="width:100%"></span></span><span class="vl">13 calls · 6 prompts · 4d · Opus 4.8</span></div>
+<h2 class="section">Your growth edge</h2>
+<p class="lead">A few habits to try — each pulled from your own data, not a generic checklist. The <code>/commands</code> in parentheses are optional tools from <a href="https://github.com/garrytan/gstack" target="_blank" rel="noopener">gstack</a> if you'd rather automate one of them.</p>
+<div class="grid"><div class="card flag"><p class="q">Widen the toolbelt</p><p class="a">Wire your daily services into the agent</p><p class="d"><b>Breadth · Tool command (MCP + CLI)</b> is your thinnest AQ signal. <b>1</b> MCP servers and <b>3</b> CLIs in evidence. Connect the things you touch every day — issue tracker, browser, cloud — as MCP servers or CLIs, so the agent reaches them directly instead of through you.</p></div><div class="card flag"><p class="q">Multiply yourself</p><p class="a">Run agents in parallel, not in series</p><p class="d"><b>Breadth · Orchestration</b> is your thinnest AQ signal. <b>0</b> distinct subagent types with a median fan-out of <b>0</b>. When a task splits into independent pieces, hand them to parallel subagents in one orchestrating session instead of grinding through them serially.</p></div><div class="card flag"><p class="q">Plan first</p><p class="a">Spend more time in Think + Plan</p><p class="d">Planning is <b>4.6</b>. Sketch the plan and reframe the ask <i>before</i> writing code — it's the cheapest place to catch a wrong turn. (gstack front-loads this with <code>/office-hours</code> + <code>/autoplan</code>.)</p></div></div>
+<h2 class="section">What we noticed</h2><div class="grid">
+<div class="card"><p class="q">How much did you ship?</p><p class="a">Depends how you count</p><p class="d">Edit/Write touched <b>19</b> lines and the shell ~0 more — but only <b>0</b> actually landed in committed git history. That committed number is the honest one.</p></div><div class="card"><p class="q">How hard do you grind?</p><p class="a">2× on one file</p><p class="d">Your deepest single-file grind in one session — and 0 files went past 15 edits. Your typical file, though? About 1.2.</p></div><div class="card"><p class="q">How often do things break?</p><p class="a">4 errors, 25% recovered</p><p class="d">Roughly 16.7 per 100 tool calls — and you kept going after almost all of them.</p></div><div class="card"><p class="q">Which model do you reach for?</p><p class="a">Opus 4.8 → PI 1 Model</p><p class="d">Opus 4.8 50%, PI 1 Model 33% of turns.</p></div><div class="card"><p class="q">When do you do your best work?</p><p class="a">Morning person</p><p class="d">You do your heaviest work around 11am.</p></div><div class="card"><p class="q">Do you take weekends off?</p><p class="a">Weekday warrior</p><p class="d">Your busiest day is Monday; weekends stay quiet.</p></div><div class="card"><p class="q">How long are your prompts?</p><p class="a">Consistent length</p><p class="d">Median 33 characters, average 32 — pretty steady.</p></div><div class="card"><p class="q">How many agents do you run?</p><p class="a">0 subagents</p><p class="d">About 0.0 per session, plus 0 background tasks and 0 scheduled runs.</p></div><div class="card"><p class="q">How do you see your agent?</p><p class="a">Like a teammate</p><p class="d">You bounce ideas off it and ask for pushback — more collaborator than command line.</p></div><div class="card"><p class="q">How polite are you to it?</p><p class="a">You say thanks a lot</p><p class="d">You said please or thank-you in <b>4</b> of your 11 prompts (36%). When the robots take over, they'll remember.</p></div><div class="card"><p class="q">What's your longest run?</p><p class="a">3m</p><p class="d">Your longest unbroken stretch of active work in a single session.</p></div><div class="card"><p class="q">What's your go-to tool?</p><p class="a">Bash</p><p class="d">8 calls — more than any other tool.</p></div>
+</div>
+<h2 class="section">In your own words</h2>
+<p class="lead">Pulled <b>verbatim</b> from your real prompts (filtered for secrets &amp; PII) — hit <b>&#8635; another</b> to reroll. Your go-to and off-the-cuff lines also land on the shareable image; the off-the-cuff one uses <b>whichever you&rsquo;ve rerolled to</b>, so land on one you like before you download. Everything else stays on this local page, on your machine.</p>
+<div class="grid"><div class="card"><p class="q">Your biggest crash-out? <button type="button" class="reroll" data-target="crashout">&#8635; another</button></p><p class="a" id="q-crashout">&ldquo;why is the import still failing?? ugh&rdquo;</p><p class="d">One of your most heated prompts. We&rsquo;ve all been there.</p></div><div class="card"><p class="q">Off the cuff? <button type="button" class="reroll" data-target="cuff">&#8635; another</button></p><p class="a" id="q-cuff">&ldquo;great, now commit it&rdquo;</p><p class="d">One of your more unfiltered asks — straight from the keyboard, unedited.</p></div></div>
+<footer><span class="lock">🔒 Generated entirely on-device</span> by <span class="mono">paxel.py</span> — the same analysis Paxel runs, with zero data sent anywhere. Counts measured from your transcripts; archetype &amp; scores are a rubric. Raw metrics in <span class="mono">stats.json</span>.<br>Built by <a class="by" href="https://github.com/Photobombastic" target="_blank" rel="noopener">Max Schilling</a>, <a href="https://www.roadmap.chat/community" target="_blank" rel="noopener">Roadmap</a></footer>
+</div></div>
+<script>(function(){
+var QUOTES={"crashout": ["why is the import still failing?? ugh", "why is this still failing", "duplicate prompt should not count"], "cuff": ["great, now commit it", "why is this still failing"]};var QIDX={};
+document.querySelectorAll(".reroll").forEach(function(b){b.addEventListener("click",function(){var t=b.getAttribute("data-target"),arr=QUOTES[t];if(!arr||arr.length<2)return;QIDX[t]=((QIDX[t]||0)+1)%arr.length;var el=document.getElementById("q-"+t);if(el)el.textContent="\u201c"+arr[QIDX[t]]+"\u201d";});});
+var caption="My \u201chow I build with AI\u201d profile, computed 100% locally \u2014 nothing uploaded. Made with paxel-local, an MIT rebuild of YC's Paxel that keeps your sessions on your machine. Run your own: https://github.com/Photobombastic/paxel-local";
+var x=document.getElementById("share-x");if(x)x.href="https://x.com/intent/tweet?text="+encodeURIComponent(caption);
+var cb=document.getElementById("share-copy");if(cb)cb.addEventListener("click",function(){var d=function(){var o=cb.textContent;cb.textContent="✓ Copied";setTimeout(function(){cb.textContent=o;},1500);};if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(caption).then(d).catch(fb);}else{fb();}function fb(){var ta=document.createElement("textarea");ta.value=caption;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}document.body.removeChild(ta);d();}});
+var CARD={"arch": "Apprentice", "tagline": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is breadth \u2014 that's where the next gain is.", "context": "Jun 2025 \u2192 Jun 2026  \u00b7  8 sessions", "scores": [["Execution", 0.0, "Shipped output, at AI leverage"], ["Planning", 4.6, "Think before you build"], ["Engineering", 4.7, "Craft, with little rework"]], "steering": {"label": "Short leash", "gloss": "you stay close and course-correct often"}, "stats": [["19", "lines edited"], ["11", "prompts"], ["24", "tool calls"], ["0", "git lines"]], "cards": [{"mode": "insight", "eyebrow": "Best work?", "headline": "Morning person", "sub": "Heaviest work around 11am."}, {"mode": "insight", "eyebrow": "Weekends?", "headline": "Weekday warrior", "sub": "Your busiest day is Monday; weekends stay quiet."}, {"mode": "insight", "eyebrow": "Your agent is\u2026", "headline": "Like a teammate", "sub": "You bounce ideas off it and ask for pushback \u2014 more collaborator than command line."}, {"mode": "insight", "eyebrow": "Polite to it?", "headline": "You say thanks a lot", "sub": "You said please or thank-you in 4 of your 11 prompts (36%). When the robots take over, they'll remember."}, {"mode": "quote", "eyebrow": "Off the cuff", "live": "cuff", "headline": "great, now commit it", "sub": "Straight from the keyboard."}], "logo": ""};
+var ib=document.getElementById("share-img");
+if(ib)ib.addEventListener("click",function(){
+  try{
+    if(typeof HTMLCanvasElement==="undefined"||!HTMLCanvasElement.prototype.toBlob){alert("Image export isn't supported in this browser — try a screenshot.");return;}
+    var W=1200,M=48,s=3,IW=W-2*M;   // 3x supersample so the logo art stays crisp when zoomed/retina
+    var beak="#ED7379",beakD="#D14E57",slate="#313941",mut="#5e6a73",line="#dfe3e7",track="#dde2e6";
+    function L(c,t,mw){var ws=String(t).split(" "),ln="",o=[];for(var i=0;i<ws.length;i++){var tn=ln?ln+" "+ws[i]:ws[i];if(c.measureText(tn).width>mw&&ln){o.push(ln);ln=ws[i];}else ln=tn;}o.push(ln);return o;}
+    function rr(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
+    function box(c,x,y,w,h){c.save();c.shadowColor="rgba(40,50,60,.10)";c.shadowBlur=20;c.shadowOffsetY=7;c.fillStyle="#fff";rr(c,x,y,w,h,16);c.fill();c.restore();c.strokeStyle="#e8ebee";c.lineWidth=1;rr(c,x,y,w,h,16);c.stroke();}
+    function mini(c,x,y,w,h,card){
+      var pad=20,iw=w-2*pad,cx=x+w/2;box(c,x,y,w,h);c.textAlign="center";
+      c.fillStyle=beakD;c.font="700 10.5px -apple-system,sans-serif";if(c.letterSpacing!==undefined)c.letterSpacing="1px";
+      var el=L(c,String(card.eyebrow).toUpperCase(),iw);if(el.length>2)el=el.slice(0,2);
+      for(var k=0;k<el.length;k++)c.fillText(el[k],cx,y+pad+11+k*14);if(c.letterSpacing!==undefined)c.letterSpacing="0px";
+      // TOP-ANCHOR the content (not vertically centered) so every headline in a row shares
+      // a baseline; leftover whitespace collects at the bottom of shorter cards.
+      var ebBot=y+pad+11+(el.length-1)*14+6,gTop=ebBot+14,q=card.mode==="quote";
+      var hfs=q?29:23;function hf(z){return (q?"italic 800 ":"800 ")+z+"px Georgia,serif";}
+      var head=q?("“"+card.headline+"”"):card.headline;c.font=hf(hfs);var hl=L(c,head,iw);
+      while(hl.length>2&&hfs>16){hfs-=1;c.font=hf(hfs);hl=L(c,head,iw);}
+      if(hl.length>2){hl=hl.slice(0,2);hl[1]=hl[1].replace(/[\s—-]+$/,"")+"…";}
+      var hLH=hfs+4;c.fillStyle="#181c1f";c.font=hf(hfs);for(var k=0;k<hl.length;k++)c.fillText(hl[k],cx,gTop+hfs-2+k*hLH);
+      c.font="400 13px -apple-system,sans-serif";var sl=L(c,card.sub,iw),smax=q?2:3;
+      if(sl.length>smax){sl=sl.slice(0,smax);sl[smax-1]=sl[smax-1].replace(/[\s—-]+$/,"")+"…";}
+      var sTop=gTop+hl.length*hLH+12;c.fillStyle=mut;c.font="400 13px -apple-system,sans-serif";
+      for(var k=0;k<sl.length;k++)c.fillText(sl[k],cx,sTop+11+k*18);
+      c.textAlign="left";
+    }
+    // WYSIWYG: pull whatever quote is showing on the page now into any "live" card (off-cuff reroll)
+    var cards=CARD.cards.map(function(cd){
+      if(cd.live){var el=document.getElementById("q-"+cd.live);
+        if(el){var t=el.textContent.replace(/^[\s“"]+/,"").replace(/[\s”"]+$/,"");if(t)cd=Object.assign({},cd,{headline:t});}}
+      return cd;});
+    // layout — tightened top gap; height grows with the card count
+    var mc=document.createElement("canvas").getContext("2d");
+    var afs=88;mc.font="800 "+afs+"px Georgia,serif";while(mc.measureText(CARD.arch+".").width>IW&&afs>48){afs-=2;mc.font="800 "+afs+"px Georgia,serif";}
+    mc.font="italic 27px Georgia,serif";var tll=L(mc,CARD.tagline,IW);if(tll.length>2){tll=tll.slice(0,2);tll[1]=tll[1].replace(/[\s—-]+$/,"")+"…";}   // tagline can wrap to 2 lines
+    var heroY=96,archB=heroY+12+Math.round(afs*0.74),tagY=archB+40,tagLH=33,ctxY=tagY+(tll.length-1)*tagLH+30,scY=ctxY+42,scH=348,scEnd=scY+scH;
+    var gridY=scEnd+30,gc=4,rows=Math.ceil(cards.length/gc),cardH=184,gapY=22;
+    var gridEnd=rows>0?gridY+rows*cardH+(rows-1)*gapY:scEnd,footerY=gridEnd+44,H=footerY+34;
+    while(s>1&&(W*s*H*s>16700000||H*s>4096))s--;   // iOS canvas-area/max-dim guard: degrade to a lower-res image rather than a silently-blank one
+    var cv=document.createElement("canvas");cv.width=W*s;cv.height=H*s;
+    var c=cv.getContext("2d");c.scale(s,s);c.textBaseline="alphabetic";c.textAlign="left";
+    c.imageSmoothingEnabled=true;c.imageSmoothingQuality="high";   // proper resample of the logo, not a cheap box filter
+    function finish(){cv.toBlob(function(bl){if(!bl){alert("Image export failed — try a screenshot.");return;}var u=URL.createObjectURL(bl);var a=document.createElement("a");a.href=u;a.download="builder-profile.png";a.click();setTimeout(function(){URL.revokeObjectURL(u);},4000);});}
+    c.fillStyle="#edeff2";c.fillRect(0,0,W,H);c.fillStyle=beak;c.fillRect(0,0,W,8);
+    var bx0=CARD.logo?M+76:M;
+    c.fillStyle=slate;c.font="700 26px -apple-system,sans-serif";c.fillText("Roadmap",bx0,64);
+    c.font="600 13px -apple-system,sans-serif";var bt="Generated locally · nothing uploaded",btw=c.measureText(bt).width,btx=W-M-btw;
+    c.save();c.strokeStyle=mut;c.fillStyle=mut;c.lineWidth=1.5;c.beginPath();c.arc(btx-12,55,3,Math.PI,2*Math.PI);c.stroke();rr(c,btx-17,55,10,8,2);c.fill();c.restore();
+    c.fillStyle=mut;c.fillText(bt,btx,61);
+    c.fillStyle=beakD;c.font="700 13px -apple-system,sans-serif";if(c.letterSpacing!==undefined)c.letterSpacing="2px";c.fillText("YOUR BUILDER PROFILE",M,heroY);if(c.letterSpacing!==undefined)c.letterSpacing="0px";
+    c.font="800 "+afs+"px Georgia,serif";c.fillStyle=beak;c.fillText(CARD.arch+".",M,archB);
+    c.fillStyle="#3b444b";c.font="italic 27px Georgia,serif";for(var ti=0;ti<tll.length;ti++)c.fillText(tll[ti],M,tagY+ti*tagLH);
+    if(CARD.context){c.fillStyle=mut;c.font="500 15px -apple-system,sans-serif";c.fillText(CARD.context,M,ctxY);}
+    box(c,M,scY,IW,scH);
+    var pad=40,ix=M+pad,half=IW/2;
+    c.fillStyle=mut;c.font="700 13px -apple-system,sans-serif";if(c.letterSpacing!==undefined)c.letterSpacing="1px";c.fillText("GSTACK SCORECARD",ix,scY+50);
+    var stx=M+half+38;c.fillText("BY THE NUMBERS",stx,scY+50);if(c.letterSpacing!==undefined)c.letterSpacing="0px";
+    var sc=CARD.scores,base=scY+96,rh=64,barL=ix+150,barR=M+half-86,valX=barR+46;
+    for(var i=0;i<sc.length;i++){var ry=base+i*rh,nm=sc[i][0],vl=sc[i][1],note=sc[i][2]||"";
+      c.fillStyle=slate;c.font="700 16px -apple-system,sans-serif";c.fillText(nm,ix,ry);
+      var bw2=barR-barL,bh=13,by=ry-13;c.fillStyle=track;rr(c,barL,by,bw2,bh,6);c.fill();
+      var g=c.createLinearGradient(barL,0,barL+bw2,0);g.addColorStop(0,beakD);g.addColorStop(1,beak);c.fillStyle=g;rr(c,barL,by,Math.max(bh,bw2*(vl/10)),bh,6);c.fill();
+      c.fillStyle="#16191d";c.font="800 17px ui-monospace,Menlo,monospace";c.textAlign="right";c.fillText(Number(vl).toFixed(1),valX,ry);c.textAlign="left";
+      c.fillStyle=mut;c.font="400 13px -apple-system,sans-serif";c.fillText(note,ix,ry+22);}
+    if(CARD.steering){var sry=base+sc.length*rh;                       // Steering: described, not graded — no bar, no number
+      c.fillStyle=slate;c.font="700 16px -apple-system,sans-serif";c.fillText("Steering",ix,sry);
+      c.fillStyle=beakD;c.font="700 15px -apple-system,sans-serif";c.fillText(CARD.steering.label,barL,sry);
+      c.fillStyle=mut;c.font="400 13px -apple-system,sans-serif";c.fillText(CARD.steering.gloss,ix,sry+22);}
+    var dvx=M+half+4;c.strokeStyle=line;c.lineWidth=1;c.beginPath();c.moveTo(dvx,scY+38);c.lineTo(dvx,scY+scH-34);c.stroke();
+    var stt=CARD.stats||[];for(var j=0;j<stt.length&&j<sc.length+1;j++){var syy=base+j*rh;
+      c.fillStyle=slate;c.font="800 30px ui-monospace,Menlo,monospace";c.fillText(stt[j][0],stx,syy);var w2=c.measureText(stt[j][0]).width;
+      c.fillStyle=mut;c.font="500 14px -apple-system,sans-serif";c.fillText(stt[j][1],stx+w2+12,syy);}
+    var gapX=16,colW=(IW-(gc-1)*gapX)/gc;
+    for(var i=0;i<cards.length;i++){var row=Math.floor(i/gc),col=i%gc;
+      var inRow=Math.min(gc,cards.length-row*gc);            // cards in THIS row (last row may be partial)
+      var x0=M+(IW-(inRow*colW+(inRow-1)*gapX))/2;           // center the row → partial rows don't jam left
+      mini(c,x0+col*(colW+gapX),gridY+row*(cardH+gapY),colW,cardH,cards[i]);}
+    c.fillStyle=mut;c.font="500 14px -apple-system,sans-serif";c.textAlign="center";c.fillText("Generated 100% on-device — nothing uploaded · github.com/Photobombastic/paxel-local",W/2,footerY);c.textAlign="left";
+    if(CARD.logo){var im=new Image();im.onload=function(){
+      var k=Math.min(54/im.width,54/im.height),lw=im.width*k,lh=im.height*k;   // contain-fit: never squish the logo's aspect
+      c.drawImage(im,M+(54-lw)/2,32+(54-lh)/2,lw,lh);finish();};im.onerror=finish;im.src=CARD.logo;}else{finish();}
+  }catch(e){alert("Image export failed — try a screenshot.");}
+});
+})();</script></body></html>
