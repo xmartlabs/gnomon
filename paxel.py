@@ -3072,10 +3072,9 @@ def compute_scores(stats):
 def score_breakdown(stats):
     """Per-axis sub-component breakdown for the dashboard UI. Returns the same three
     axes as compute_scores with per-sub pct/value/target fields so the UI can show WHY
-    a score is high or low.  The formula constants are intentionally kept in sync with
-    compute_scores via the equality assertion in tests; any drift will fail the test.
-    NOTE: keep constants aligned with compute_scores (above) — any formula change must
-    be made in BOTH places; the test_value_equals_compute_scores test enforces this."""
+    a score is high or low.  Axis constants/formulas live once in _SCORE_AXES; both this
+    function and compute_scores derive from it, so a formula change is a single edit.
+    test_value_equals_compute_scores enforces the value invariant (subs values == axis values)."""
     v, b, vel = stats.get("volume", {}), stats.get("behavior", {}), stats.get("velocity", {})
     # Guard: no real activity → well-formed zeros (mirrors compute_scores early-return)
     if v.get("total_sessions", 0) == 0 or v.get("tool_calls_total", 0) == 0:
