@@ -2912,6 +2912,105 @@ def _enrich_sub(sub):
     return sub
 
 
+class _Sub:
+    """One sub-metric spec, single-sourced for both compute_scores and score_breakdown.
+    `pct(ctx)` returns the clamped 0..1 contribution EXACTLY as compute_scores computes it
+    (including any `_ev(..., ctx.ev)` wrapping). `value(ctx)` returns the raw `your_value`
+    score_breakdown reports — kept SEPARATE because for some subs (e.g. Delegation) value is
+    NOT derivable from pct (different denominator); see the per-sub notes."""
+    __slots__ = ("label", "target", "unit", "weight", "direction", "pct", "value")
+
+    def __init__(self, label, target, unit, weight, direction, pct, value):
+        self.label = label
+        self.target = target
+        self.unit = unit
+        self.weight = weight
+        self.direction = direction
+        self.pct = pct
+        self.value = value
+
+
+class _Axis:
+    __slots__ = ("gloss", "subs")
+
+    def __init__(self, gloss, subs):
+        self.gloss = gloss
+        self.subs = subs
+
+
+# THE single source of truth for axis scoring. Every weight, target, unit, direction, and
+# pct/value formula across the 3 axes / 11 sub-metrics lives here EXACTLY ONCE. Both
+# compute_scores (axis values) and score_breakdown (rich UI subs + zero-activity path) derive
+# from this table. Any future change is one edit. pct callables mirror compute_scores
+# line-for-line; the equality test (test_value_equals_compute_scores) enforces no drift.
+_SCORE_AXES = {
+    "execution": _Axis("How much you ship, at AI leverage", [
+        _Sub("Committed-code rate", 400, "lines/hr", 0.40, "higher",
+             pct=lambda c: _clamp((c["eff_git_churn"] / c["hours"]) / 400),
+             value=lambda c: c["eff_git_churn"] / c["hours"]),
+        _Sub("Ship fidelity", 0.5, "committed/generated", 0.25, "higher",
+             pct=lambda c: _clamp(c["fidelity"] / 0.5),
+             value=lambda c: c["fidelity"]),
+        # value uses /prompts; pct uses /(prompts*0.3) — they diverge for tiny corpora
+        # (prompts < 4) because of the max(prompts*0.3, 1) floor. DO NOT derive one from
+        # the other; that would break the value==compute_scores invariant for small corpora.
+        _Sub("Delegation & parallelism", 0.30, "agent-runs/prompt", 0.35, "higher",
+             pct=lambda c: _clamp((c["b"].get("delegate_actions", 0) + c["b"].get("background_tasks", 0)) / max(c["prompts"] * 0.3, 1)),
+             value=lambda c: (c["b"].get("delegate_actions", 0) + c["b"].get("background_tasks", 0)) / max(c["prompts"], 1)),
+    ]),
+    "planning": _Axis("Think before you build", [
+        _Sub("Explore-before-build", 0.65, "explore/doing ratio", 0.45, "higher",
+             pct=lambda c: _clamp(c["b"].get("planning_ratio_explore_to_doing", 0) / 0.65),
+             value=lambda c: c["b"].get("planning_ratio_explore_to_doing", 0)),
+        _Sub("Reasoning depth", 12.0, "thinking blocks/session", 0.30, "higher",
+             pct=lambda c: _clamp((c["v"].get("thinking_blocks", 0) / c["sess"]) / 12.0),
+             value=lambda c: c["v"].get("thinking_blocks", 0) / c["sess"]),
+        _Sub("Plan ceremony", 0.8, "plan-skills/session", 0.25, "higher",
+             pct=lambda c: _clamp((c["plan_skills"] / c["sess"]) / 0.8),
+             value=lambda c: c["plan_skills"] / c["sess"]),
+    ]),
+    "engineering": _Axis("Craft and low rework", [
+        _Sub("Low rework", 2.0, "mean file-edit depth", 0.30, "lower",
+             pct=lambda c: _ev(1 - _clamp((c["b"].get("iteration_depth_mean", 0) - 2) / 8), c["ev"]),
+             value=lambda c: c["b"].get("iteration_depth_mean", 0)),
+        _Sub("Clean iteration", 3.0, "p90 file-edit depth", 0.25, "lower",
+             pct=lambda c: _ev(1 - _clamp((c["b"].get("iteration_depth_p90", 0) - 3) / 9), c["ev"]),
+             value=lambda c: c["b"].get("iteration_depth_p90", 0)),
+        _Sub("Focus", 0.25, "hammered-files/session", 0.20, "lower",
+             pct=lambda c: _ev(1 - _clamp((c["b"].get("files_hammered_over_15x", 0) / c["sess"]) / 0.25), c["ev"]),
+             value=lambda c: c["b"].get("files_hammered_over_15x", 0) / c["sess"]),
+        _Sub("Quality ceremony", 3.0, "quality-skills/session", 0.15, "higher",
+             pct=lambda c: _clamp((c["eng_skills"] / c["sess"]) / 3.0),
+             value=lambda c: c["eng_skills"] / c["sess"]),
+        _Sub("Low errors", 10.0, "errors/100 tools", 0.10, "lower",
+             pct=lambda c: _ev(1 - _clamp(c["b"].get("error_rate_per_100_tools", 0) / 10), c["ev"]),
+             value=lambda c: c["b"].get("error_rate_per_100_tools", 0)),
+    ]),
+}
+
+
+def _score_ctx(stats):
+    """Build ONCE the precomputed locals both scoring functions consume, using the SAME
+    formulas/.get defaults score_breakdown uses today."""
+    v, b, vel = stats.get("volume", {}), stats.get("behavior", {}), stats.get("velocity", {})
+    sess = max(v.get("total_sessions", 0), 1)
+    prompts = max(v.get("total_prompts", 0), 1)
+    hours = max(vel.get("active_hours", 0.1), 0.1)
+    ev = _evidence(stats)
+    git_cov = max(vel.get("git_repos_with_commits", 0) / max(vel.get("git_repos_seen", 1), 1), 0.7)
+    eff_git_churn = vel.get("git_churn_total", 0) / git_cov
+    fidelity = eff_git_churn / max(vel.get("tool_churn_edit_write", 1), 1)
+    plan_skills = _skill_uses_any(stats, ("brainstorm", "writing-plan", "plan", "spec",
+                                          "office-hours", "autoplan", "grill", "ceo-review",
+                                          "eng-review", "design-review"))
+    eng_skills = _skill_uses_any(stats, ("code-review", "test", "tdd", "qa", "investigate",
+                                         "retro", "learn", "cso", "karpathy", "debug")) \
+        + b.get("shell_test_runs", 0)
+    return {"v": v, "b": b, "vel": vel, "sess": sess, "prompts": prompts, "hours": hours,
+            "ev": ev, "git_cov": git_cov, "eff_git_churn": eff_git_churn,
+            "fidelity": fidelity, "plan_skills": plan_skills, "eng_skills": eng_skills}
+
+
 def compute_scores(stats):
     # THREE graded axes (Execution/Planning/Engineering), grounded in gstack (module note
     # above) and then hardened by a gstack self-audit. Steering is NOT scored here — it's
@@ -2925,15 +3024,10 @@ def compute_scores(stats):
     #      and reviews on GitHub shouldn't score 0) — behavior carries the axes.
     # Weights sum to 1.0 per axis; every term is clamped 0..1 against a justified target;
     # `_ev` pulls the INVERSE terms toward neutral on a thin corpus.
-    v, b, vel = stats["volume"], stats["behavior"], stats["velocity"]
+    v = stats["volume"]
     if v["total_sessions"] == 0 or v["tool_calls_total"] == 0:
         # No real activity → don't manufacture a flattering "Quality Guardian 9.0"
         return {"Execution": 0.0, "Planning": 0.0, "Engineering": 0.0}
-    sess = max(v["total_sessions"], 1)
-    prompts = max(v["total_prompts"], 1)
-    hours = max(vel["active_hours"], 0.1)
-    ev = _evidence(stats)   # 0..1 confidence; gates the inverse terms so a thin corpus
-                            # can't read as flawless (no-op at ev=1.0 for any real user).
 
     # EXECUTION — shipped output at AI leverage. Three signals, no overlap with other axes:
     #   (a) RATE: gold-standard git churn per active hour (coverage-corrected — git often
@@ -2944,27 +3038,11 @@ def compute_scores(stats):
     #   Dropped vs the old version: actions_per_prompt (now in steering_reading, described
     #   not scored) and raw session length (the audit called it noise — a long distracted
     #   session isn't execution).
-    git_cov = max(vel["git_repos_with_commits"] / max(vel["git_repos_seen"], 1), 0.7)
-    eff_git_churn = vel["git_churn_total"] / git_cov
-    fidelity = eff_git_churn / max(vel["tool_churn_edit_write"], 1)
-    execution = 10 * (
-        0.40 * _clamp((eff_git_churn / hours) / 400)                      # committed-code rate, coverage-corrected
-        + 0.25 * _clamp(fidelity / 0.5)                                   # ship-vs-generate fidelity (committed / generated)
-        + 0.35 * _clamp((b["delegate_actions"] + b["background_tasks"]) / max(prompts * 0.3, 1)))  # delegation/parallelism
-
     # PLANNING — think before you build. Behavior-led.
     # DROPPED the avg_prompt_length term (was 0.25): it is experience-INVERTING — expertise
     # produces TERSER, more precise prompts, so the term paid for verbosity. It's the main reason a
     # 4-month vibe-coder maxed Planning over a 30-year engineer (an expert-elicitation validity
     # review caught this). Weight redistributed to the construct-relevant terms.
-    plan_skills = _skill_uses_any(stats, ("brainstorm", "writing-plan", "plan", "spec",
-                                          "office-hours", "autoplan", "grill", "ceo-review",
-                                          "eng-review", "design-review"))
-    planning = 10 * (
-        0.45 * _clamp(b["planning_ratio_explore_to_doing"] / 0.65)        # explore-before-build (behavioral)
-        + 0.30 * _clamp((v["thinking_blocks"] / sess) / 12.0)           # reasoning depth per session
-        + 0.25 * _clamp((plan_skills / sess) / 0.8))                     # plan/spec ceremony (toolchain-biased → kept lowest)
-
     # STEERING IS NOT SCORED — it's DESCRIBED (see steering_reading). Hands-on cadence
     # (actions/prompt + how often the agent checks in) is real and measurable, but it has no
     # good/bad end: a deliberate hands-off operator who delegates and gets clean autonomous output
@@ -2974,25 +3052,21 @@ def compute_scores(stats):
     # backwards gauge with a disclaimer underneath it; you stop grading it and state the fact.
     # (An earlier "autonomous command" term that tried to credit delegation×low-error was also
     # reverted — it collapsed to error-rate-in-a-costume; see git history.)
-
     # ENGINEERING — craft / low rework. The old churn_back term (deletion ratio) was CUT:
     # it scored a clean refactor as "thrash" and gave a perfect score to anyone who never
     # committed. Replaced by iteration_depth_mean ("did you get the file right early"), the
     # honest rework signal. p90 + file-hammering stay here (their only home). Ceremony de-weighted.
     # "code-review" (not bare "review") so this doesn't greedily match Planning's
     # plan-eng-review / plan-design-review / ceo-review ceremonies (which live in plan_skills).
-    eng_skills = _skill_uses_any(stats, ("code-review", "test", "tdd", "qa", "investigate",
-                                         "retro", "learn", "cso", "karpathy", "debug")) \
-        + b.get("shell_test_runs", 0)   # CLI tests (pytest/go test/…) count as quality work too
-    engineering = 10 * (
-        0.30 * _ev(1 - _clamp((b["iteration_depth_mean"] - 2) / 8), ev)  # low rework: got files right early
-        + 0.25 * _ev(1 - _clamp((b["iteration_depth_p90"] - 3) / 9), ev)  # clean iteration: low typical depth
-        + 0.20 * _ev(1 - _clamp((b["files_hammered_over_15x"] / sess) / 0.25), ev)  # focused: few hammered files
-        + 0.15 * _clamp((eng_skills / sess) / 3.0)                       # quality ceremonies: review/qa/investigate
-        + 0.10 * _ev(1 - _clamp(b["error_rate_per_100_tools"] / 10), ev))  # low error rate: root-cause discipline
-
-    return {"Execution": round(execution, 1), "Planning": round(planning, 1),
-            "Engineering": round(engineering, 1)}
+    # All weights/targets/pct-formulas now live in _SCORE_AXES (single source of truth);
+    # `_ev` (inside the engineering pct callables) pulls INVERSE terms toward neutral on a
+    # thin corpus. The equality test pins these axis values to score_breakdown's.
+    ctx = _score_ctx(stats)
+    return {
+        "Execution": round(10 * sum(s.weight * s.pct(ctx) for s in _SCORE_AXES["execution"].subs), 1),
+        "Planning": round(10 * sum(s.weight * s.pct(ctx) for s in _SCORE_AXES["planning"].subs), 1),
+        "Engineering": round(10 * sum(s.weight * s.pct(ctx) for s in _SCORE_AXES["engineering"].subs), 1),
+    }
 
 
 def score_breakdown(stats):
@@ -3012,123 +3086,42 @@ def score_breakdown(stats):
                     "display_value": _fmt_val(0.0, unit),
                     "display_target": _fmt_target(target, unit, direction),
                     "narrative": f"No activity recorded for {label}."}
-        def _zero_axis(gloss, subs_spec):
-            subs = [_zero_sub(*sp) for sp in subs_spec]
+        def _zero_axis(axis_key):
+            axis = _SCORE_AXES[axis_key]
+            subs = [_zero_sub(s.label, s.target, s.unit, s.weight, s.direction)
+                    for s in axis.subs]
             subs[0]["is_drag"] = True   # deterministic sentinel for the no-activity case;
                                         # NOT a meaningful weakest-sub signal (all values are 0)
-            return {"value": 0.0, "gloss": gloss, "drag_note": "No activity recorded.", "subs": subs,
+            return {"value": 0.0, "gloss": axis.gloss, "drag_note": "No activity recorded.", "subs": subs,
                     "axis_verdict": "poor", "score_out_of_10": "0.0 / 10",
                     "drag_narrative": "No activity recorded.",
                     "axis_narrative": "No activity recorded."}
         return {
-            "execution": _zero_axis("How much you ship, at AI leverage", [
-                ("Committed-code rate", 400, "lines/hr", 0.40, "higher"),
-                ("Ship fidelity",       0.5, "committed/generated", 0.25, "higher"),
-                ("Delegation & parallelism", 0.30, "agent-runs/prompt", 0.35, "higher"),
-            ]),
-            "planning": _zero_axis("Think before you build", [
-                ("Explore-before-build", 0.65, "explore/doing ratio", 0.45, "higher"),
-                ("Reasoning depth",     12.0, "thinking blocks/session", 0.30, "higher"),
-                ("Plan ceremony",        0.8, "plan-skills/session", 0.25, "higher"),
-            ]),
-            "engineering": _zero_axis("Craft and low rework", [
-                ("Low rework",       2.0, "mean file-edit depth", 0.30, "lower"),
-                ("Clean iteration",  3.0, "p90 file-edit depth",  0.25, "lower"),
-                ("Focus",           0.25, "hammered-files/session", 0.20, "lower"),
-                ("Quality ceremony", 3.0, "quality-skills/session", 0.15, "higher"),
-                ("Low errors",      10.0, "errors/100 tools", 0.10, "lower"),
-            ]),
+            "execution": _zero_axis("execution"),
+            "planning": _zero_axis("planning"),
+            "engineering": _zero_axis("engineering"),
         }
 
-    sess = max(v["total_sessions"], 1)
-    prompts = max(v["total_prompts"], 1)
-    hours = max(vel.get("active_hours", 0.1), 0.1)
-    ev = _evidence(stats)
+    # All weights/targets/units/directions/pct/value formulas come from _SCORE_AXES (the
+    # single source of truth shared with compute_scores). pct = s.pct(ctx); your_value =
+    # s.value(ctx). NOTE on Delegation: value uses /prompts, pct uses /(prompts*0.3); they
+    # diverge for tiny corpora (see the table's per-sub comment) — both callables are kept
+    # so this never re-derives one from the other. The UI fills bars from pct, not your_value.
+    ctx = _score_ctx(stats)
 
-    # --- EXECUTION ---
-    git_cov = max(vel.get("git_repos_with_commits", 0) / max(vel.get("git_repos_seen", 1), 1), 0.7)
-    eff_git_churn = vel.get("git_churn_total", 0) / git_cov
-    fidelity = eff_git_churn / max(vel.get("tool_churn_edit_write", 1), 1)
-    rate_pct       = _clamp((eff_git_churn / hours) / 400)
-    fidelity_pct   = _clamp(fidelity / 0.5)
-    deleg_raw      = (b.get("delegate_actions", 0) + b.get("background_tasks", 0)) / max(prompts * 0.3, 1)
-    deleg_pct      = _clamp(deleg_raw)
-    execution_val  = round(10 * (0.40 * rate_pct + 0.25 * fidelity_pct + 0.35 * deleg_pct), 1)
-    exec_subs = [
-        {"label": "Committed-code rate", "your_value": eff_git_churn / hours,
-         "target": 400, "unit": "lines/hr", "weight": 0.40, "pct": rate_pct,
-         "direction": "higher", "is_drag": False},
-        {"label": "Ship fidelity", "your_value": fidelity,
-         "target": 0.5, "unit": "committed/generated", "weight": 0.25, "pct": fidelity_pct,
-         "direction": "higher", "is_drag": False},
-        # your_value is the raw measured agent-runs/prompt (denominator: actual prompts).
-        # pct matches compute_scores' clamp (denominator: prompts*0.3) and equals
-        # your_value/target in the normal regime (prompts ≥ 4).  For tiny corpora
-        # (prompts < 4) the score's floor (max(prompts*0.3, 1)) causes pct to diverge
-        # from your_value/target — DO NOT change pct to derive from your_value, as that
-        # would break the value==compute_scores invariant for small-corpus inputs.
-        # The UI must fill bars from pct, not recompute from your_value/target.
-        {"label": "Delegation & parallelism",
-         "your_value": (b.get("delegate_actions", 0) + b.get("background_tasks", 0)) / max(prompts, 1),
-         "target": 0.30, "unit": "agent-runs/prompt", "weight": 0.35, "pct": deleg_pct,
-         "direction": "higher", "is_drag": False},
-    ]
-    exec_subs = [_enrich_sub(s) for s in exec_subs]
+    def _build_subs(axis_key):
+        subs = [{"label": s.label, "your_value": s.value(ctx), "target": s.target,
+                 "unit": s.unit, "weight": s.weight, "pct": s.pct(ctx),
+                 "direction": s.direction, "is_drag": False}
+                for s in _SCORE_AXES[axis_key].subs]
+        return [_enrich_sub(s) for s in subs]
 
-    # --- PLANNING ---
-    plan_skills = _skill_uses_any(stats, ("brainstorm", "writing-plan", "plan", "spec",
-                                          "office-hours", "autoplan", "grill", "ceo-review",
-                                          "eng-review", "design-review"))
-    explore_pct       = _clamp(b.get("planning_ratio_explore_to_doing", 0) / 0.65)
-    thinking_raw      = v.get("thinking_blocks", 0) / sess
-    thinking_pct      = _clamp(thinking_raw / 12.0)
-    plan_skill_raw    = plan_skills / sess
-    plan_skill_pct    = _clamp(plan_skill_raw / 0.8)
-    planning_val      = round(10 * (0.45 * explore_pct + 0.30 * thinking_pct + 0.25 * plan_skill_pct), 1)
-    plan_subs = [
-        {"label": "Explore-before-build",
-         "your_value": b.get("planning_ratio_explore_to_doing", 0),
-         "target": 0.65, "unit": "explore/doing ratio", "weight": 0.45, "pct": explore_pct,
-         "direction": "higher", "is_drag": False},
-        {"label": "Reasoning depth", "your_value": thinking_raw,
-         "target": 12.0, "unit": "thinking blocks/session", "weight": 0.30, "pct": thinking_pct,
-         "direction": "higher", "is_drag": False},
-        {"label": "Plan ceremony", "your_value": plan_skill_raw,
-         "target": 0.8, "unit": "plan-skills/session", "weight": 0.25, "pct": plan_skill_pct,
-         "direction": "higher", "is_drag": False},
-    ]
-    plan_subs = [_enrich_sub(s) for s in plan_subs]
-
-    # --- ENGINEERING ---
-    eng_skills = _skill_uses_any(stats, ("code-review", "test", "tdd", "qa", "investigate",
-                                         "retro", "learn", "cso", "karpathy", "debug")) \
-        + b.get("shell_test_runs", 0)
-    rework_pct   = _ev(1 - _clamp((b.get("iteration_depth_mean", 0) - 2) / 8), ev)
-    iter_pct     = _ev(1 - _clamp((b.get("iteration_depth_p90", 0) - 3) / 9), ev)
-    focus_pct    = _ev(1 - _clamp((b.get("files_hammered_over_15x", 0) / sess) / 0.25), ev)
-    qual_raw     = eng_skills / sess
-    qual_pct     = _clamp(qual_raw / 3.0)
-    err_pct      = _ev(1 - _clamp(b.get("error_rate_per_100_tools", 0) / 10), ev)
-    engineering_val = round(10 * (0.30 * rework_pct + 0.25 * iter_pct + 0.20 * focus_pct
-                                  + 0.15 * qual_pct + 0.10 * err_pct), 1)
-    eng_subs = [
-        {"label": "Low rework", "your_value": b.get("iteration_depth_mean", 0),
-         "target": 2.0, "unit": "mean file-edit depth", "weight": 0.30, "pct": rework_pct,
-         "direction": "lower", "is_drag": False},
-        {"label": "Clean iteration", "your_value": b.get("iteration_depth_p90", 0),
-         "target": 3.0, "unit": "p90 file-edit depth", "weight": 0.25, "pct": iter_pct,
-         "direction": "lower", "is_drag": False},
-        {"label": "Focus", "your_value": b.get("files_hammered_over_15x", 0) / sess,
-         "target": 0.25, "unit": "hammered-files/session", "weight": 0.20, "pct": focus_pct,
-         "direction": "lower", "is_drag": False},
-        {"label": "Quality ceremony", "your_value": qual_raw,
-         "target": 3.0, "unit": "quality-skills/session", "weight": 0.15, "pct": qual_pct,
-         "direction": "higher", "is_drag": False},
-        {"label": "Low errors", "your_value": b.get("error_rate_per_100_tools", 0),
-         "target": 10.0, "unit": "errors/100 tools", "weight": 0.10, "pct": err_pct,
-         "direction": "lower", "is_drag": False},
-    ]
-    eng_subs = [_enrich_sub(s) for s in eng_subs]
+    exec_subs = _build_subs("execution")
+    plan_subs = _build_subs("planning")
+    eng_subs = _build_subs("engineering")
+    execution_val = round(10 * sum(s["weight"] * s["pct"] for s in exec_subs), 1)
+    planning_val = round(10 * sum(s["weight"] * s["pct"] for s in plan_subs), 1)
+    engineering_val = round(10 * sum(s["weight"] * s["pct"] for s in eng_subs), 1)
 
     def _mark_drag(axis_name, subs, gloss):
         """Flag the sub with the smallest weight*pct contribution; build a drag_note."""
@@ -3167,9 +3160,9 @@ def score_breakdown(stats):
                 "axis_narrative": axis_narr}
 
     return {
-        "execution": _mark_drag("execution", exec_subs, "How much you ship, at AI leverage"),
-        "planning":  _mark_drag("planning",  plan_subs, "Think before you build"),
-        "engineering": _mark_drag("engineering", eng_subs, "Craft and low rework"),
+        "execution": _mark_drag("execution", exec_subs, _SCORE_AXES["execution"].gloss),
+        "planning":  _mark_drag("planning",  plan_subs, _SCORE_AXES["planning"].gloss),
+        "engineering": _mark_drag("engineering", eng_subs, _SCORE_AXES["engineering"].gloss),
     }
 
 
