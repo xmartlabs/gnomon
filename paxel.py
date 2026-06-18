@@ -1240,14 +1240,146 @@ def _cursor_db_path():
 
 
 CURSOR_DB = _cursor_db_path()
-ALL_SOURCES = ("claude", "codex", "gemini", "pi", "opencode", "cursor")
 
+
+# ---------------------------------------------------------------------------
+# EventSource registry: ONE adapter per transcript source behind a single
+# interface. Each adapter owns its own glob (discover) and reader dispatch
+# (read), so adding a source means adding ONE class here — not editing three
+# parallel lists. discover_sources/iter_events iterate this registry; the
+# legacy ALL_SOURCES/_DIR_FLAGS are DERIVED from it (see below).
+#
+# Dir globals (BASE, CODEX_DIR, …) are reassigned at runtime by main() from
+# --<src>-dir= flags BEFORE discovery, so adapters read their root via the
+# global NAME (globals()[self.dir_global]) at discover() time — never captured.
+# ---------------------------------------------------------------------------
+class EventSource:
+    name = ""           # source name, e.g. "claude"
+    formats = ()        # fmt strings this source emits, e.g. ("claude",)
+    dir_global = ""     # name of the module global holding its root dir
+    dir_inner = None    # _DIR_FLAGS inner segment (config-root → transcripts subdir)
+
+    def _dir(self):
+        return globals()[self.dir_global]
+
+    def present(self):
+        return os.path.isdir(self._dir())
+
+    def discover(self):
+        """-> list[(fp, fmt)] for this source (reads its dir global dynamically)."""
+        raise NotImplementedError
+
+    def read(self, fp, fmt, twins=None):
+        """-> iterator of Claude-shaped event dicts for one (fp, fmt)."""
+        raise NotImplementedError
+
+
+def _read_claude_jsonl(fp):
+    """Claude transcripts are already Claude-shaped; emit dicts verbatim and a
+    {"__bad__": True} sentinel for unparseable / non-dict lines."""
+    try:
+        fh = open(fp, "r", errors="replace")
+    except Exception:
+        return
+    with fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except Exception:
+                yield {"__bad__": True}
+                continue
+            yield obj if isinstance(obj, dict) else {"__bad__": True}
+
+
+class ClaudeSource(EventSource):
+    name, formats, dir_global, dir_inner = "claude", ("claude",), "BASE", "projects"
+
+    def discover(self):
+        pat = os.path.join(self._dir(), "**", "*.jsonl")
+        return [(fp, "claude") for fp in sorted(glob.glob(pat, recursive=True))]
+
+    def read(self, fp, fmt, twins=None):
+        yield from _read_claude_jsonl(fp)
+
+
+class CodexSource(EventSource):
+    name, formats, dir_global, dir_inner = "codex", ("codex",), "CODEX_DIR", "sessions"
+
+    def discover(self):
+        pat = os.path.join(self._dir(), "**", "*.jsonl")
+        return [(fp, "codex") for fp in sorted(glob.glob(pat, recursive=True))]
+
+    def read(self, fp, fmt, twins=None):
+        yield from _codex_events(fp)
+
+
+class GeminiSource(EventSource):
+    name, formats, dir_global, dir_inner = "gemini", ("gemini",), "GEMINI_DIR", None
+
+    def discover(self):
+        pat = os.path.join(self._dir(), "**", "*.json")
+        return [(fp, "gemini") for fp in sorted(glob.glob(pat, recursive=True))]
+
+    def read(self, fp, fmt, twins=None):
+        yield from _gemini_events(fp)
+
+
+class PiSource(EventSource):
+    name, formats, dir_global, dir_inner = "pi", ("pi",), "PI_DIR", None
+
+    def discover(self):
+        pat = os.path.join(self._dir(), "**", "*.jsonl")
+        return [(fp, "pi") for fp in sorted(glob.glob(pat, recursive=True))]
+
+    def read(self, fp, fmt, twins=None):
+        yield from _pi_events(fp)
+
+
+class OpencodeSource(EventSource):
+    name, formats, dir_global, dir_inner = "opencode", ("opencode",), "OPENCODE_DIR", None
+
+    def discover(self):
+        pat = os.path.join(self._dir(), "storage", "session", "*", "*.json")
+        return [(fp, "opencode") for fp in sorted(glob.glob(pat))]
+
+    def read(self, fp, fmt, twins=None):
+        yield from _opencode_events(fp)
+
+
+class CursorSource(EventSource):
+    # One source, TWO formats: the JSONL agent-transcripts AND the SQLite copy.
+    # Dedup across them (_cursor_dedup) stays a separate orchestration step in main().
+    name = "cursor"
+    formats = ("cursor-jsonl", "cursor-sqlite")
+    dir_global, dir_inner = "CURSOR_DIR", "projects"
+
+    def discover(self):
+        out = [(fp, "cursor-jsonl") for fp in sorted(_cursor_jsonl_files())]
+        if os.path.isfile(CURSOR_DB):
+            out.append((CURSOR_DB, "cursor-sqlite"))
+        return out
+
+    def read(self, fp, fmt, twins=None):
+        if fmt == "cursor-sqlite":
+            yield from _cursor_sqlite_events(fp, twins)
+        else:
+            yield from _cursor_jsonl_events(fp)
+
+
+REGISTRY = (ClaudeSource(), CodexSource(), GeminiSource(), PiSource(),
+            OpencodeSource(), CursorSource())
+
+# Legacy views, DERIVED from REGISTRY (single source of truth).
+ALL_SOURCES = tuple(s.name for s in REGISTRY)
 # --<source>-dir=PATH → which module-level dir each flag overrides. For claude/codex the
 # flag may point at either the config root (~/.claude) or the inner transcripts dir;
 # _resolve_source_dir() picks the right one.
-_DIR_FLAGS = {"claude": ("BASE", "projects"), "codex": ("CODEX_DIR", "sessions"),
-              "gemini": ("GEMINI_DIR", None), "pi": ("PI_DIR", None),
-              "opencode": ("OPENCODE_DIR", None), "cursor": ("CURSOR_DIR", "projects")}
+_DIR_FLAGS = {s.name: (s.dir_global, s.dir_inner) for s in REGISTRY}
+# fmt → owning source, for iter_events dispatch.
+_FMT_SOURCE = {fmt: s for s in REGISTRY for fmt in s.formats}
 
 
 def parse_window(argv, now=None):
@@ -1297,28 +1429,11 @@ def _resolve_source_dir(path, inner):
 
 
 def discover_sources(selected):
+    """(name, fp, fmt) triples for every selected & present source, in REGISTRY order."""
     out = []
-    if "claude" in selected and os.path.isdir(BASE):
-        for fp in sorted(glob.glob(os.path.join(BASE, "**", "*.jsonl"), recursive=True)):
-            out.append(("claude", fp, "claude"))
-    if "codex" in selected and os.path.isdir(CODEX_DIR):
-        for fp in sorted(glob.glob(os.path.join(CODEX_DIR, "**", "*.jsonl"), recursive=True)):
-            out.append(("codex", fp, "codex"))
-    if "gemini" in selected and os.path.isdir(GEMINI_DIR):
-        for fp in sorted(glob.glob(os.path.join(GEMINI_DIR, "**", "*.json"), recursive=True)):
-            out.append(("gemini", fp, "gemini"))
-    if "pi" in selected and os.path.isdir(PI_DIR):
-        for fp in sorted(glob.glob(os.path.join(PI_DIR, "**", "*.jsonl"), recursive=True)):
-            out.append(("pi", fp, "pi"))
-    if "opencode" in selected and os.path.isdir(OPENCODE_DIR):
-        session_glob = os.path.join(OPENCODE_DIR, "storage", "session", "*", "*.json")
-        for fp in sorted(glob.glob(session_glob)):
-            out.append(("opencode", fp, "opencode"))
-    if "cursor" in selected and os.path.isdir(CURSOR_DIR):
-        for fp in sorted(_cursor_jsonl_files()):
-            out.append(("cursor", fp, "cursor-jsonl"))
-    if "cursor" in selected and os.path.isfile(CURSOR_DB):
-        out.append(("cursor", CURSOR_DB, "cursor-sqlite"))
+    for src in REGISTRY:
+        if src.name in selected and src.present():
+            out += [(src.name, fp, fmt) for fp, fmt in src.discover()]
     return out
 
 
@@ -1547,34 +1662,9 @@ def _canon_input(name, inp):
 
 def iter_events(fp, fmt, cursor_twins=None):
     """Yield Claude-shaped event dicts for any supported source format."""
-    if fmt == "claude":
-        try:
-            fh = open(fp, "r", errors="replace")
-        except Exception:
-            return
-        with fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except Exception:
-                    yield {"__bad__": True}
-                    continue
-                yield obj if isinstance(obj, dict) else {"__bad__": True}
-    elif fmt == "codex":
-        yield from _codex_events(fp)
-    elif fmt == "gemini":
-        yield from _gemini_events(fp)
-    elif fmt == "pi":
-        yield from _pi_events(fp)
-    elif fmt == "opencode":
-        yield from _opencode_events(fp)
-    elif fmt == "cursor-jsonl":
-        yield from _cursor_jsonl_events(fp)
-    elif fmt == "cursor-sqlite":
-        yield from _cursor_sqlite_events(fp, cursor_twins)
+    src = _FMT_SOURCE.get(fmt)
+    if src is not None:
+        yield from src.read(fp, fmt, cursor_twins)
 
 
 def _codex_tool(p):
