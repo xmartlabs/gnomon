@@ -3779,12 +3779,17 @@ def _hero_lead(archetype):
     return "You're" if (archetype or "")[:4].lower() == "the " else "You're a"
 
 
-def write_profile_html(stats, archetype, quote, scores, voice=None):
+def noticed_cards(stats, voice=None):
+    """Derive the 12 "What we noticed" cards from stats — PURE: no rendering.
+
+    Returns a list of (question, answer, detail) tuples in display order, exactly
+    the args write_profile_html passes to _card(...). Escaping of model/tool fields
+    and the inline <b>/HTML in detail strings is baked in here, identical to before.
+    These cards are descriptive (unflagged); the coral flag is reserved for Growth-edge
+    cards, which are derived elsewhere."""
     import html as _h
-    v, vel, b, r, t, st, c = (stats["volume"], stats["velocity"], stats["behavior"],
-                              stats["rhythm"], stats["tools"], stats["stack"], stats["corpus"])
-    logo = _img_data_uri(os.path.join(OUT_DIR, "tern.png"))
-    chip = f'<span class="chip"><img src="{logo}" alt="Roadmap tern"></span>' if logo else ""
+    v, vel, b, r, t, st = (stats["volume"], stats["velocity"], stats["behavior"],
+                           stats["rhythm"], stats["tools"], stats["stack"])
 
     peak = (r["peak_hours_local"] or [12])[0]
     tod = ("Night owl" if (peak >= 22 or peak <= 4) else "Morning person" if peak <= 11
@@ -3802,11 +3807,7 @@ def write_profile_html(stats, archetype, quote, scores, voice=None):
     sess = max(v["total_sessions"], 1)
     prompts = max(v["total_prompts"], 1)
     per_sess = round(b["delegate_actions"] / sess, 1)
-    git_pct = f'{vel["git_repos_with_commits"]}/{vel["git_repos_seen"]}'
 
-    # The coral left-bar (flag=True) means exactly one thing: "this is an action item."
-    # It is used ONLY on the Growth-edge cards. Signature-move and What-we-noticed cards
-    # are descriptive, so they stay plain — no flags here.
     h12 = f'{(peak - 1) % 12 + 1}{"am" if peak < 12 else "pm"}'   # 17 -> "5pm", 0 -> "12am"
     _DAYFULL = {"Mon": "Monday", "Tue": "Tuesday", "Wed": "Wednesday", "Thu": "Thursday",
                 "Fri": "Friday", "Sat": "Saturday", "Sun": "Sunday"}
@@ -3834,28 +3835,71 @@ def write_profile_html(stats, archetype, quote, scores, voice=None):
     agent_d = ('You bounce ideas off it and ask for pushback — more collaborator than command line.'
                if teammate else 'You hand it work and check the result — more command line than collaborator.')
     # "What we noticed" — question-framed eyebrows + plain second-person copy (no jargon).
-    cards = [
-        _card("How much did you ship?", "Depends how you count",
-              f'Edit/Write touched <b>{vel["tool_churn_edit_write"]:,}</b> lines and the shell ~{vel["shell_authored_lines_est"]:,} '
-              f'more — but only <b>{vel["git_churn_total"]:,}</b> actually landed in committed git history. '
-              f'That committed number is the honest one.'),
-        _card("How hard do you grind?", f'{b["iteration_depth_max"]}× on one file',
-              f'Your deepest single-file grind in one session — and {b["files_hammered_over_15x"]} files went past 15 edits. '
-              f'Your typical file, though? About {b["iteration_depth_mean"]:.1f}.'),
-        _card("How often do things break?", f'{b["tool_errors"]:,} errors, {round(b["error_recovery_ratio"]*100)}% recovered',
-              f'Roughly {b["error_rate_per_100_tools"]} per 100 tool calls — and you kept going after almost all of them.'),
-        _card("Which model do you reach for?", model_a, model_d),
-        _card("When do you do your best work?", tod, f'You do your heaviest work around {h12}.'),
-        _card("Do you take weekends off?", weekend_a, weekend_d),
-        _card("How long are your prompts?", prompt_a, prompt_d),
-        _card("How many agents do you run?", f'{b["delegate_actions"]:,} subagents',
-              f'About {per_sess} per session, plus {b["background_tasks"]:,} background tasks and {b["scheduled_actions"]} scheduled runs.'),
-        _card("How do you see your agent?", agent_a, agent_d),
-        _card("How polite are you to it?", polite_a, polite_d),
-        _card("What's your longest run?", longrun_a,
-              'Your longest unbroken stretch of active work in a single session.'),
-        _card("What's your go-to tool?", top_tool_name, f'{top_tool[1]:,} calls — more than any other tool.'),
+    return [
+        ("How much did you ship?", "Depends how you count",
+         f'Edit/Write touched <b>{vel["tool_churn_edit_write"]:,}</b> lines and the shell ~{vel["shell_authored_lines_est"]:,} '
+         f'more — but only <b>{vel["git_churn_total"]:,}</b> actually landed in committed git history. '
+         f'That committed number is the honest one.'),
+        ("How hard do you grind?", f'{b["iteration_depth_max"]}× on one file',
+         f'Your deepest single-file grind in one session — and {b["files_hammered_over_15x"]} files went past 15 edits. '
+         f'Your typical file, though? About {b["iteration_depth_mean"]:.1f}.'),
+        ("How often do things break?", f'{b["tool_errors"]:,} errors, {round(b["error_recovery_ratio"]*100)}% recovered',
+         f'Roughly {b["error_rate_per_100_tools"]} per 100 tool calls — and you kept going after almost all of them.'),
+        ("Which model do you reach for?", model_a, model_d),
+        ("When do you do your best work?", tod, f'You do your heaviest work around {h12}.'),
+        ("Do you take weekends off?", weekend_a, weekend_d),
+        ("How long are your prompts?", prompt_a, prompt_d),
+        ("How many agents do you run?", f'{b["delegate_actions"]:,} subagents',
+         f'About {per_sess} per session, plus {b["background_tasks"]:,} background tasks and {b["scheduled_actions"]} scheduled runs.'),
+        ("How do you see your agent?", agent_a, agent_d),
+        ("How polite are you to it?", polite_a, polite_d),
+        ("What's your longest run?", longrun_a,
+         'Your longest unbroken stretch of active work in a single session.'),
+        ("What's your go-to tool?", top_tool_name, f'{top_tool[1]:,} calls — more than any other tool.'),
     ]
+
+
+def write_profile_html(stats, archetype, quote, scores, voice=None):
+    import html as _h
+    v, vel, b, r, t, st, c = (stats["volume"], stats["velocity"], stats["behavior"],
+                              stats["rhythm"], stats["tools"], stats["stack"], stats["corpus"])
+    logo = _img_data_uri(os.path.join(OUT_DIR, "tern.png"))
+    chip = f'<span class="chip"><img src="{logo}" alt="Roadmap tern"></span>' if logo else ""
+
+    cards = [_card(q, a, d) for (q, a, d) in noticed_cards(stats, voice)]
+
+    # A handful of the derived insights are reused below by the share POSTER (per_sess,
+    # tod/h12, weekend, agent-perception, politeness). Re-derive them here, unchanged from
+    # noticed_cards, so the poster keeps the same copy. The 12 cards themselves come from
+    # noticed_cards above; this block exists only to feed the poster, not the card grid.
+    peak = (r["peak_hours_local"] or [12])[0]
+    tod = ("Night owl" if (peak >= 22 or peak <= 4) else "Morning person" if peak <= 11
+           else "Afternoon" if peak <= 16 else "Evening")
+    h12 = f'{(peak - 1) % 12 + 1}{"am" if peak < 12 else "pm"}'   # 17 -> "5pm", 0 -> "12am"
+    wd = r["weekday_histogram"]
+    wknd = wd.get("Sat", 0) + wd.get("Sun", 0)
+    wkday_avg = sum(wd.get(d, 0) for d in ["Mon", "Tue", "Wed", "Thu", "Fri"]) / 5 or 1
+    weekend_a = "No days off" if wknd / 2 >= wkday_avg * 0.6 else "Weekday warrior"
+    _DAYFULL = {"Mon": "Monday", "Tue": "Tuesday", "Wed": "Wednesday", "Thu": "Thursday",
+                "Fri": "Friday", "Sat": "Saturday", "Sun": "Sunday"}
+    busy_day = _DAYFULL.get((r["preferred_days"] or ["—"])[0], (r["preferred_days"] or ["—"])[0])
+    weekend_d = (f'Your busiest day is {busy_day} — and you logged time most days, weekends included.'
+                 if weekend_a == "No days off" else f'Your busiest day is {busy_day}; weekends stay quiet.')
+    sess = max(v["total_sessions"], 1)
+    prompts = max(v["total_prompts"], 1)
+    per_sess = round(b["delegate_actions"] / sess, 1)
+    polite_n = b.get("polite_prompts", 0)
+    polite_rate = polite_n / prompts
+    polite_a = ("You say thanks a lot" if polite_rate >= 0.12 else
+                "Polite enough" if polite_rate >= 0.04 else "All business")
+    polite_d = (f'You said please or thank-you in <b>{polite_n:,}</b> of your {v["total_prompts"]:,} prompts '
+                f'({polite_rate*100:.0f}%).' + (" When the robots take over, they'll remember."
+                                                if polite_rate >= 0.12 else ""))
+    qrate_c = b["questions_asked"] / prompts
+    teammate = polite_rate >= 0.05 or qrate_c >= 0.04
+    agent_a = "Like a teammate" if teammate else "Like a tool"
+    agent_d = ('You bounce ideas off it and ask for pushback — more collaborator than command line.'
+               if teammate else 'You hand it work and check the result — more command line than collaborator.')
 
     score_rows = "".join(
         f'<div class="score"><span class="name">{name}</span>'
