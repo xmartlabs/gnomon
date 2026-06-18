@@ -3847,7 +3847,7 @@ def _profile_signals(stats):
     }
 
 
-def noticed_cards(stats, voice=None):
+def noticed_cards(stats):
     """Derive the 12 "What we noticed" cards from stats — PURE: no rendering.
 
     Returns a list of (question, answer, detail) tuples in display order, exactly
@@ -3884,12 +3884,11 @@ def noticed_cards(stats, voice=None):
 
 def write_profile_html(stats, archetype, quote, scores, voice=None):
     import html as _h
-    v, vel, b, r, t, st, c = (stats["volume"], stats["velocity"], stats["behavior"],
-                              stats["rhythm"], stats["tools"], stats["stack"], stats["corpus"])
+    v, vel, b, c = (stats["volume"], stats["velocity"], stats["behavior"], stats["corpus"])
     logo = _img_data_uri(os.path.join(OUT_DIR, "tern.png"))
     chip = f'<span class="chip"><img src="{logo}" alt="Roadmap tern"></span>' if logo else ""
 
-    cards = [_card(q, a, d) for (q, a, d) in noticed_cards(stats, voice)]
+    cards = [_card(q, a, d) for (q, a, d) in noticed_cards(stats)]
 
     # The share POSTER (built below) reuses several of the same derived insights as the
     # cards (per_sess, tod/h12, weekend, agent-perception, politeness). Both read from the
