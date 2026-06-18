@@ -1356,8 +1356,15 @@ class CursorSource(EventSource):
     formats = ("cursor-jsonl", "cursor-sqlite")
     dir_global, dir_inner = "CURSOR_DIR", "projects"
 
+    def present(self):
+        # Independent gates: CURSOR_DIR (JSONL) and CURSOR_DB (SQLite) are unrelated
+        # paths; a user may have one without the other. Allow entry if EITHER exists.
+        return os.path.isdir(CURSOR_DIR) or os.path.isfile(CURSOR_DB)
+
     def discover(self):
-        out = [(fp, "cursor-jsonl") for fp in sorted(_cursor_jsonl_files())]
+        out = []
+        if os.path.isdir(CURSOR_DIR):
+            out += [(fp, "cursor-jsonl") for fp in sorted(_cursor_jsonl_files())]
         if os.path.isfile(CURSOR_DB):
             out.append((CURSOR_DB, "cursor-sqlite"))
         return out
