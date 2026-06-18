@@ -3779,14 +3779,15 @@ def _hero_lead(archetype):
     return "You're" if (archetype or "")[:4].lower() == "the " else "You're a"
 
 
-def noticed_cards(stats, voice=None):
-    """Derive the 12 "What we noticed" cards from stats — PURE: no rendering.
+def _profile_signals(stats):
+    """Derive every shared display signal from stats, ONCE — PURE, no rendering.
 
-    Returns a list of (question, answer, detail) tuples in display order, exactly
-    the args write_profile_html passes to _card(...). Escaping of model/tool fields
-    and the inline <b>/HTML in detail strings is baked in here, identical to before.
-    These cards are descriptive (unflagged); the coral flag is reserved for Growth-edge
-    cards, which are derived elsewhere."""
+    Single home for the formulas used by BOTH the "What we noticed" cards (noticed_cards)
+    and the share poster (write_profile_html). Returns a dict; keys map to the values both
+    consumers read. Escaping of model/tool fields and the inline <b>/HTML in detail strings
+    is baked in here, identical to the original inline derivation. Changing a threshold (e.g.
+    the weekend 0.6 ratio or the teammate 0.05/0.04 cutoffs) here updates cards and poster
+    together — no silent desync."""
     import html as _h
     v, vel, b, r, t, st = (stats["volume"], stats["velocity"], stats["behavior"],
                            stats["rhythm"], stats["tools"], stats["stack"])
@@ -3794,10 +3795,16 @@ def noticed_cards(stats, voice=None):
     peak = (r["peak_hours_local"] or [12])[0]
     tod = ("Night owl" if (peak >= 22 or peak <= 4) else "Morning person" if peak <= 11
            else "Afternoon" if peak <= 16 else "Evening")
+    h12 = f'{(peak - 1) % 12 + 1}{"am" if peak < 12 else "pm"}'   # 17 -> "5pm", 0 -> "12am"
     wd = r["weekday_histogram"]
     wknd = wd.get("Sat", 0) + wd.get("Sun", 0)
     wkday_avg = sum(wd.get(d, 0) for d in ["Mon", "Tue", "Wed", "Thu", "Fri"]) / 5 or 1
     weekend_a = "No days off" if wknd / 2 >= wkday_avg * 0.6 else "Weekday warrior"
+    _DAYFULL = {"Mon": "Monday", "Tue": "Tuesday", "Wed": "Wednesday", "Thu": "Thursday",
+                "Fri": "Friday", "Sat": "Saturday", "Sun": "Sunday"}
+    busy_day = _DAYFULL.get((r["preferred_days"] or ["—"])[0], (r["preferred_days"] or ["—"])[0])
+    weekend_d = (f'Your busiest day is {busy_day} — and you logged time most days, weekends included.'
+                 if weekend_a == "No days off" else f'Your busiest day is {busy_day}; weekends stay quiet.')
     models = st.get("models", [])
     mtot = sum(n for _, n in models) or 1
     model_a = _h.escape(" → ".join(_pretty_model(m) for m, _ in models[:2]) or "—")
@@ -3807,13 +3814,6 @@ def noticed_cards(stats, voice=None):
     sess = max(v["total_sessions"], 1)
     prompts = max(v["total_prompts"], 1)
     per_sess = round(b["delegate_actions"] / sess, 1)
-
-    h12 = f'{(peak - 1) % 12 + 1}{"am" if peak < 12 else "pm"}'   # 17 -> "5pm", 0 -> "12am"
-    _DAYFULL = {"Mon": "Monday", "Tue": "Tuesday", "Wed": "Wednesday", "Thu": "Thursday",
-                "Fri": "Friday", "Sat": "Saturday", "Sun": "Sunday"}
-    busy_day = _DAYFULL.get((r["preferred_days"] or ["—"])[0], (r["preferred_days"] or ["—"])[0])
-    weekend_d = (f'Your busiest day is {busy_day} — and you logged time most days, weekends included.'
-                 if weekend_a == "No days off" else f'Your busiest day is {busy_day}; weekends stay quiet.')
     two_gears = v["avg_prompt_length_chars"] > v["median_prompt_length_chars"] * 2
     prompt_a = "Short, with the odd essay" if two_gears else "Consistent length"
     prompt_d = (f'Half run under {v["median_prompt_length_chars"]:,.0f} characters — quick commands — '
@@ -3834,6 +3834,29 @@ def noticed_cards(stats, voice=None):
     agent_a = "Like a teammate" if teammate else "Like a tool"
     agent_d = ('You bounce ideas off it and ask for pushback — more collaborator than command line.'
                if teammate else 'You hand it work and check the result — more command line than collaborator.')
+    return {
+        "tod": tod, "h12": h12,
+        "weekend_a": weekend_a, "weekend_d": weekend_d,
+        "model_a": model_a, "model_d": model_d,
+        "top_tool": top_tool, "top_tool_name": top_tool_name,
+        "per_sess": per_sess,
+        "prompt_a": prompt_a, "prompt_d": prompt_d,
+        "polite_a": polite_a, "polite_d": polite_d,
+        "longrun_a": longrun_a,
+        "agent_a": agent_a, "agent_d": agent_d,
+    }
+
+
+def noticed_cards(stats, voice=None):
+    """Derive the 12 "What we noticed" cards from stats — PURE: no rendering.
+
+    Returns a list of (question, answer, detail) tuples in display order, exactly
+    the args write_profile_html passes to _card(...). All shared formulas come from
+    _profile_signals (single source of truth, shared with the poster).
+    These cards are descriptive (unflagged); the coral flag is reserved for Growth-edge
+    cards, which are derived elsewhere."""
+    b, vel = stats["behavior"], stats["velocity"]
+    s = _profile_signals(stats)
     # "What we noticed" — question-framed eyebrows + plain second-person copy (no jargon).
     return [
         ("How much did you ship?", "Depends how you count",
@@ -3845,17 +3868,17 @@ def noticed_cards(stats, voice=None):
          f'Your typical file, though? About {b["iteration_depth_mean"]:.1f}.'),
         ("How often do things break?", f'{b["tool_errors"]:,} errors, {round(b["error_recovery_ratio"]*100)}% recovered',
          f'Roughly {b["error_rate_per_100_tools"]} per 100 tool calls — and you kept going after almost all of them.'),
-        ("Which model do you reach for?", model_a, model_d),
-        ("When do you do your best work?", tod, f'You do your heaviest work around {h12}.'),
-        ("Do you take weekends off?", weekend_a, weekend_d),
-        ("How long are your prompts?", prompt_a, prompt_d),
+        ("Which model do you reach for?", s["model_a"], s["model_d"]),
+        ("When do you do your best work?", s["tod"], f'You do your heaviest work around {s["h12"]}.'),
+        ("Do you take weekends off?", s["weekend_a"], s["weekend_d"]),
+        ("How long are your prompts?", s["prompt_a"], s["prompt_d"]),
         ("How many agents do you run?", f'{b["delegate_actions"]:,} subagents',
-         f'About {per_sess} per session, plus {b["background_tasks"]:,} background tasks and {b["scheduled_actions"]} scheduled runs.'),
-        ("How do you see your agent?", agent_a, agent_d),
-        ("How polite are you to it?", polite_a, polite_d),
-        ("What's your longest run?", longrun_a,
+         f'About {s["per_sess"]} per session, plus {b["background_tasks"]:,} background tasks and {b["scheduled_actions"]} scheduled runs.'),
+        ("How do you see your agent?", s["agent_a"], s["agent_d"]),
+        ("How polite are you to it?", s["polite_a"], s["polite_d"]),
+        ("What's your longest run?", s["longrun_a"],
          'Your longest unbroken stretch of active work in a single session.'),
-        ("What's your go-to tool?", top_tool_name, f'{top_tool[1]:,} calls — more than any other tool.'),
+        ("What's your go-to tool?", s["top_tool_name"], f'{s["top_tool"][1]:,} calls — more than any other tool.'),
     ]
 
 
@@ -3868,38 +3891,11 @@ def write_profile_html(stats, archetype, quote, scores, voice=None):
 
     cards = [_card(q, a, d) for (q, a, d) in noticed_cards(stats, voice)]
 
-    # A handful of the derived insights are reused below by the share POSTER (per_sess,
-    # tod/h12, weekend, agent-perception, politeness). Re-derive them here, unchanged from
-    # noticed_cards, so the poster keeps the same copy. The 12 cards themselves come from
-    # noticed_cards above; this block exists only to feed the poster, not the card grid.
-    peak = (r["peak_hours_local"] or [12])[0]
-    tod = ("Night owl" if (peak >= 22 or peak <= 4) else "Morning person" if peak <= 11
-           else "Afternoon" if peak <= 16 else "Evening")
-    h12 = f'{(peak - 1) % 12 + 1}{"am" if peak < 12 else "pm"}'   # 17 -> "5pm", 0 -> "12am"
-    wd = r["weekday_histogram"]
-    wknd = wd.get("Sat", 0) + wd.get("Sun", 0)
-    wkday_avg = sum(wd.get(d, 0) for d in ["Mon", "Tue", "Wed", "Thu", "Fri"]) / 5 or 1
-    weekend_a = "No days off" if wknd / 2 >= wkday_avg * 0.6 else "Weekday warrior"
-    _DAYFULL = {"Mon": "Monday", "Tue": "Tuesday", "Wed": "Wednesday", "Thu": "Thursday",
-                "Fri": "Friday", "Sat": "Saturday", "Sun": "Sunday"}
-    busy_day = _DAYFULL.get((r["preferred_days"] or ["—"])[0], (r["preferred_days"] or ["—"])[0])
-    weekend_d = (f'Your busiest day is {busy_day} — and you logged time most days, weekends included.'
-                 if weekend_a == "No days off" else f'Your busiest day is {busy_day}; weekends stay quiet.')
-    sess = max(v["total_sessions"], 1)
-    prompts = max(v["total_prompts"], 1)
-    per_sess = round(b["delegate_actions"] / sess, 1)
-    polite_n = b.get("polite_prompts", 0)
-    polite_rate = polite_n / prompts
-    polite_a = ("You say thanks a lot" if polite_rate >= 0.12 else
-                "Polite enough" if polite_rate >= 0.04 else "All business")
-    polite_d = (f'You said please or thank-you in <b>{polite_n:,}</b> of your {v["total_prompts"]:,} prompts '
-                f'({polite_rate*100:.0f}%).' + (" When the robots take over, they'll remember."
-                                                if polite_rate >= 0.12 else ""))
-    qrate_c = b["questions_asked"] / prompts
-    teammate = polite_rate >= 0.05 or qrate_c >= 0.04
-    agent_a = "Like a teammate" if teammate else "Like a tool"
-    agent_d = ('You bounce ideas off it and ask for pushback — more collaborator than command line.'
-               if teammate else 'You hand it work and check the result — more command line than collaborator.')
+    # The share POSTER (built below) reuses several of the same derived insights as the
+    # cards (per_sess, tod/h12, weekend, agent-perception, politeness). Both read from the
+    # one pure helper, so a threshold change can't desync card copy from poster copy.
+    sig = _profile_signals(stats)
+    per_sess = sig["per_sess"]
 
     score_rows = "".join(
         f'<div class="score"><span class="name">{name}</span>'
@@ -3934,11 +3930,11 @@ def write_profile_html(stats, archetype, quote, scores, voice=None):
                              "sub": f'About {per_sess} per session, plus {b["background_tasks"]:,} '
                                     f'background tasks and {b["scheduled_actions"]} scheduled runs.'})
     poster_cards += [
-        {"mode": "insight", "eyebrow": "Best work?", "headline": tod,
-         "sub": f"Heaviest work around {h12}."},
-        {"mode": "insight", "eyebrow": "Weekends?", "headline": weekend_a, "sub": _plain(weekend_d)},
-        {"mode": "insight", "eyebrow": "Your agent is…", "headline": agent_a, "sub": _plain(agent_d)},
-        {"mode": "insight", "eyebrow": "Polite to it?", "headline": polite_a, "sub": _plain(polite_d)},
+        {"mode": "insight", "eyebrow": "Best work?", "headline": sig["tod"],
+         "sub": f"Heaviest work around {sig['h12']}."},
+        {"mode": "insight", "eyebrow": "Weekends?", "headline": sig["weekend_a"], "sub": _plain(sig["weekend_d"])},
+        {"mode": "insight", "eyebrow": "Your agent is…", "headline": sig["agent_a"], "sub": _plain(sig["agent_d"])},
+        {"mode": "insight", "eyebrow": "Polite to it?", "headline": sig["polite_a"], "sub": _plain(sig["polite_d"])},
     ]
     if _voc.get("goto") and _safe_quote(_voc["goto"][0]):
         _ph, _cnt, _ns = _voc["goto"]
