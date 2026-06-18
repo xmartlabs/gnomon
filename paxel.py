@@ -51,7 +51,7 @@ import subprocess
 import statistics
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timedelta, timezone as _tz
+from datetime import datetime, timedelta
 
 # ---- Stats dataclasses (ADR-0001: single-file) --------------------------------
 # These declare the cross-stage shape of stats.json so the contract is explicit.
@@ -1620,15 +1620,16 @@ def _codex_is_injected(text):
 def _codex_events(fp):
     rows = []
     try:
-        for line in open(fp, "r", errors="replace"):
-            line = line.strip()
-            if line:
-                try:
-                    obj = json.loads(line)
-                except Exception:
-                    continue
-                if isinstance(obj, dict):
-                    rows.append(obj)
+        with open(fp, "r", errors="replace") as _f:
+            for line in _f:
+                line = line.strip()
+                if line:
+                    try:
+                        obj = json.loads(line)
+                    except Exception:
+                        continue
+                    if isinstance(obj, dict):
+                        rows.append(obj)
     except Exception:
         return
     sid = os.path.basename(fp).split(".")[0]
@@ -1689,7 +1690,8 @@ def _codex_events(fp):
 
 def _gemini_events(fp):
     try:
-        d = json.load(open(fp, "r", errors="replace"))
+        with open(fp, "r", errors="replace") as _f:
+            d = json.load(_f)
     except Exception:
         return
     if not isinstance(d, dict):
@@ -1745,7 +1747,8 @@ def _pi_blocks(content):
 def _pi_events(fp):
     sid, cwd = os.path.basename(fp).split(".")[0], None
     try:
-        rows = [json.loads(line) for line in open(fp, "r", errors="replace") if line.strip()]
+        with open(fp, "r", errors="replace") as _f:
+            rows = [json.loads(line) for line in _f if line.strip()]
     except Exception:
         return
     for obj in rows:
@@ -1777,7 +1780,8 @@ def _pi_events(fp):
 
 def _opencode_events(fp):
     try:
-        sess = json.load(open(fp, "r", errors="replace"))
+        with open(fp, "r", errors="replace") as _f:
+            sess = json.load(_f)
     except Exception:
         return
     if not isinstance(sess, dict):
@@ -1789,7 +1793,8 @@ def _opencode_events(fp):
     messages = []
     for mp in sorted(glob.glob(os.path.join(msg_dir, "*.json"))):
         try:
-            m = json.load(open(mp, "r", errors="replace"))
+            with open(mp, "r", errors="replace") as _f:
+                m = json.load(_f)
         except Exception:
             continue
         if isinstance(m, dict):
@@ -1802,7 +1807,8 @@ def _opencode_events(fp):
         parts = []
         for pp in sorted(glob.glob(os.path.join(part_root, str(mid), "*.json"))):
             try:
-                p = json.load(open(pp, "r", errors="replace"))
+                with open(pp, "r", errors="replace") as _f:
+                    p = json.load(_f)
             except Exception:
                 continue
             if isinstance(p, dict):
