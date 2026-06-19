@@ -119,7 +119,7 @@ def _format_summary(summary: dict, quiet: bool = False) -> str:
     sessions = ctx.get("total_sessions", 0) or 0
 
     lines = []
-    lines.append(f"\n  Your build profile  ·  {sessions} sessions  ·  {start}→{end}")
+    lines.append(f"\n  Your build profile  -  {sessions} sessions  -  {start}->{end}")
 
     # Label column width — keep values aligned (longest label "Compounding writes" = 18)
     W = 19
@@ -205,14 +205,14 @@ def _resolve_output_dir(argv):
     return None
 
 
-def _copy_artifacts(src_dir, output_dir):
+def _copy_artifacts(src_dir, output_dir, file_prefix=""):
     """Copy final paxel outputs into output_dir, overwriting existing files."""
     dst_dir = os.path.abspath(os.path.expanduser(output_dir))
     os.makedirs(dst_dir, exist_ok=True)
     for name in _COPIED_OUTPUTS:
         src = os.path.join(src_dir, name)
         if os.path.exists(src):
-            shutil.copy2(src, os.path.join(dst_dir, name))
+            shutil.copy2(src, os.path.join(dst_dir, file_prefix + name))
     return dst_dir
 
 
@@ -227,7 +227,7 @@ def parse_window(argv):
         if a == "--window":
             print(
                 f"  warning: --window needs a value (use --window=N)"
-                f" — using default {_DEFAULT_WINDOW_MONTHS}",
+                f" -- using default {_DEFAULT_WINDOW_MONTHS}",
                 file=sys.stderr,
             )
             return _DEFAULT_WINDOW_MONTHS
@@ -239,14 +239,14 @@ def parse_window(argv):
             except ValueError:
                 print(
                     f"  warning: --window={raw!r} is not a valid integer"
-                    f" — using default {_DEFAULT_WINDOW_MONTHS}",
+                    f" -- using default {_DEFAULT_WINDOW_MONTHS}",
                     file=sys.stderr,
                 )
                 return _DEFAULT_WINDOW_MONTHS
             if n < 1:
                 print(
                     f"  warning: --window={n} must be >= 1"
-                    f" — using default {_DEFAULT_WINDOW_MONTHS}",
+                    f" -- using default {_DEFAULT_WINDOW_MONTHS}",
                     file=sys.stderr,
                 )
                 return _DEFAULT_WINDOW_MONTHS
@@ -344,7 +344,7 @@ def _paxel_until_arg(exclusive_until_iso):
     return (datetime.date.fromisoformat(exclusive_until_iso) - datetime.timedelta(days=1)).isoformat()
 
 
-def _run_paxel(paxel_src, paxel_args, verbose, quiet=False, output_dir=None):
+def _run_paxel(paxel_src, paxel_args, verbose, quiet=False, output_dir=None, file_prefix=""):
     """Run paxel.py in a temp directory and return the parsed summary dict.
 
     Returns the summary dict on success, or None on failure (errors already printed).
@@ -371,12 +371,12 @@ def _run_paxel(paxel_src, paxel_args, verbose, quiet=False, output_dir=None):
     if result.returncode != 0:
         if not verbose and result.stderr:
             print(result.stderr, end="", file=sys.stderr)
-        print(f"  error: paxel.py exited with code {result.returncode} — nothing to share")
+        print(f"  error: paxel.py exited with code {result.returncode} -- nothing to share")
         return None
 
     summary_path = os.path.join(tmp, "summary.json")
     if not os.path.isfile(summary_path):
-        print("  error: paxel.py did not write summary.json — nothing to share")
+        print("  error: paxel.py did not write summary.json -- nothing to share")
         return None
 
     try:
@@ -387,7 +387,7 @@ def _run_paxel(paxel_src, paxel_args, verbose, quiet=False, output_dir=None):
         return None
 
     if resolved_output_dir:
-        resolved_output_dir = _copy_artifacts(tmp, resolved_output_dir)
+        resolved_output_dir = _copy_artifacts(tmp, resolved_output_dir, file_prefix=file_prefix)
 
     if not quiet:
         if resolved_output_dir:
@@ -407,7 +407,8 @@ def _summary_is_empty(summary):
 
 
 def _upload_window(mirdash_base, token, paxel_src, paxel_args_base, since, until, label,
-                   verbose, quiet, output_dir=None, window_months=_DEFAULT_WINDOW_MONTHS):
+                   verbose, quiet, output_dir=None, window_months=_DEFAULT_WINDOW_MONTHS,
+                   file_prefix=""):
     """Run paxel for one calendar window and upload the summary.
 
     Returns the reportUrl string on success, or None if the window should be
@@ -422,16 +423,17 @@ def _upload_window(mirdash_base, token, paxel_src, paxel_args_base, since, until
     ]
 
     if not quiet:
-        print(f"  Analysing {label}…")
+        print(f"  Analysing {label}...")
 
-    summary = _run_paxel(paxel_src, window_args, verbose, quiet=quiet, output_dir=output_dir)
+    summary = _run_paxel(paxel_src, window_args, verbose, quiet=quiet, output_dir=output_dir,
+                         file_prefix=file_prefix)
     if summary is None:
-        print(f"  skip {label} — paxel error")
+        print(f"  skip {label} -- paxel error")
         return None
 
     if _summary_is_empty(summary):
         if not quiet:
-            print(f"  skip {label} — no activity")
+            print(f"  skip {label} -- no activity")
         return None
 
     summary.setdefault("context", {})["window_months"] = window_months
@@ -444,7 +446,7 @@ def _upload_window(mirdash_base, token, paxel_src, paxel_args_base, since, until
 
 def _upload_window_web(mirdash_base, token, paxel_src, paxel_args_base, since, until, label,
                        verbose, server, index, total, output_dir=None, quiet=False,
-                       window_months=_DEFAULT_WINDOW_MONTHS):
+                       window_months=_DEFAULT_WINDOW_MONTHS, file_prefix=""):
     """Run paxel for one calendar window, push SSE events, and upload.
 
     Returns the reportUrl string on success, or one of the failure sentinels:
@@ -460,7 +462,8 @@ def _upload_window_web(mirdash_base, token, paxel_src, paxel_args_base, since, u
 
     server.push_event("analyzing", {"month": label, "label": label, "index": index, "total": total})
 
-    summary = _run_paxel(paxel_src, window_args, verbose, quiet=quiet, output_dir=output_dir)
+    summary = _run_paxel(paxel_src, window_args, verbose, quiet=quiet, output_dir=output_dir,
+                         file_prefix=file_prefix)
     if summary is None:
         # paxel failed to compute this window — surface it as a failure (red),
         # not a "skip" (which the UI reserves for genuinely empty windows).

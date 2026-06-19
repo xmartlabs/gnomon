@@ -538,5 +538,5 @@ if(ib)ib.addEventListener("click",function(){
   }catch(e){alert("Image export failed — try a screenshot.");}
 });''')
     P("})();</script></body></html>")
-    with open(os.path.join(_dir, "profile.html"), "w") as f:
+    with open(os.path.join(_dir, "profile.html"), "w", encoding="utf-8") as f:
         f.write("\n".join(parts))

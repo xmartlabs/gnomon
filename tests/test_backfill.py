@@ -330,7 +330,7 @@ class TestBatchOutputContract(unittest.TestCase):
     - The final report URL must print even with --no-open (only the browser open
       is suppressed) — otherwise a batch run succeeds with no way to reach the report.
     - --quiet must print only errors and the final URL, never per-window status
-      lines ('↑ uploaded', 'initialised/backfilled X/Y', 'Analysing', 'skip — no
+      lines ('^ uploaded', 'initialised/backfilled X/Y', 'Analysing', 'skip -- no
       activity').
     """
 
@@ -371,7 +371,7 @@ class TestBatchOutputContract(unittest.TestCase):
         )
         self.assertIn("Report ready:", out)
         self.assertIn("/r/3", out)
-        self.assertNotIn("↑", out)
+        self.assertNotIn("^", out)
         self.assertNotIn("uploaded", out)
         self.assertNotIn("backfilled", out)
         self.assertNotIn("Analysing", out)
@@ -407,7 +407,7 @@ class TestBatchOutputContract(unittest.TestCase):
             tokens=[f"t{i}" for i in range(12)],
         )
         self.assertIn("Report ready:", out)
-        self.assertNotIn("↑", out)
+        self.assertNotIn("^", out)
         self.assertNotIn("uploaded", out)
         self.assertNotIn("initialised", out)
 

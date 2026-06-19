@@ -22,5 +22,5 @@ def write_narrative_input(s, opening_prompts, longest_prompts, output_dir=None):
     longest_prompts.sort(key=lambda x: -x[0])
     for ln, proj, text in longest_prompts[:20]:
         A(f"- [{ln} chars · {proj}] {text.replace(chr(10), ' ')[:280]}")
-    with open(os.path.join(output_dir or OUT_DIR, "narrative_input.md"), "w") as f:
+    with open(os.path.join(output_dir or OUT_DIR, "narrative_input.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(L))

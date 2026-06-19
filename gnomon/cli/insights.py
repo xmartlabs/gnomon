@@ -24,7 +24,7 @@ _HELP_TEXT = """Usage:
     xl-ai-insights --help
     xl-ai-insights -h
 
-    source        e.g. claude, codex, gemini — same as paxel.py (default: all)
+    source        e.g. claude, codex, gemini -- same as paxel.py (default: all)
     --local       run local analysis only (no login, no upload)
     --mirdash-base=URL  override the mirdash server URL
     --window=N    trailing window size in months for each scored point (default 6)
@@ -51,7 +51,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
     try:
         server = ProgressServer(port=port, auth_url=auth_url)
     except OSError as exc:
-        print(f"  warning: could not bind localhost:{port} ({exc}) — falling back to console mode")
+        print(f"  warning: could not bind localhost:{port} ({exc}) -- falling back to console mode")
         _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,
                       output_dir=output_dir, window_months=window_months)
         return
@@ -62,17 +62,17 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
     try:
         opened = webbrowser.open(auth_url)
     except Exception as exc:
-        print(f"  warning: could not open a browser ({exc}) — nothing was analysed or shared.")
+        print(f"  warning: could not open a browser ({exc}) -- nothing was analysed or shared.")
         server.shutdown(delay=0)
         sys.exit(0)
     if not opened:
-        print("  warning: no browser available (headless/CI) — nothing was analysed or shared.")
+        print("  warning: no browser available (headless/CI) -- nothing was analysed or shared.")
         server.shutdown(delay=0)
         sys.exit(0)
 
     tokens = _wait_for_auth_tokens(server, port)
     if not tokens:
-        print("  Authentication cancelled or timed out — nothing was analysed or shared.")
+        print("  Authentication cancelled or timed out -- nothing was analysed or shared.")
         # Tell any open progress page the truth instead of leaving it spinning.
         server.push_event("auth_timeout", {})
         server.shutdown(delay=1.0)
@@ -108,12 +108,14 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
         for i, (since, until, label) in enumerate(windows):
             if token_idx >= len(tokens):
                 break
+            prefix = f"gnomon-{label}-" if output_dir else ""
             report_url = _upload_window_web(
                 mirdash_base, tokens[token_idx], paxel_src,
                 paxel_forward, since, until, label, verbose, server, i, len(windows),
                 output_dir=output_dir,
                 quiet=quiet,
                 window_months=window_months,
+                file_prefix=prefix,
             )
             if _is_report_url(report_url):
                 last_report_url = report_url
@@ -134,13 +136,13 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
         if last_report_url:
             full_report = urllib.parse.urljoin(mirdash_base + "/", last_report_url)
             if not quiet:
-                msg = f"  ✓ {uploaded}/{len(windows)} months uploaded"
+                msg = f"  [ok] {uploaded}/{len(windows)} months uploaded"
                 if failed:
                     msg += f" ({failed} failed)"
                 print(msg)
             print(f"  Report ready: {full_report}")
         elif failed:
-            print(f"  error: {failed}/{len(windows)} months failed to upload — nothing was shared")
+            print(f"  error: {failed}/{len(windows)} months failed to upload -- nothing was shared")
 
         server.shutdown()
         # Hard-fail only when nothing made it through; partial success still
@@ -173,7 +175,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
         # current month as empty, masking the real failure.
         server.push_event("done", {"reportUrl": "", "uploaded": 0, "failed": 1, "total": 1,
                                     "noOpen": True, "mirdashBase": mirdash_base})
-        print(f"  error: could not compute {label} — nothing was shared")
+        print(f"  error: could not compute {label} -- nothing was shared")
         server.shutdown()
         sys.exit(1)
 
@@ -186,7 +188,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
             "noOpen": no_open,
         })
         full_report = urllib.parse.urljoin(mirdash_base + "/", report_url)
-        print(f"  ✓ {label} uploaded → {full_report}")
+        print(f"  [ok] {label} uploaded -> {full_report}")
         server.shutdown()
         return
 
@@ -230,7 +232,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
             "total": 1,
             "noOpen": no_open,
         })
-        print(f"  ✓ {fb_label} uploaded → {full_report}")
+        print(f"  [ok] {fb_label} uploaded -> {full_report}")
     elif report_url == _UPLOAD_ERROR:
         server.push_event("done", {"reportUrl": "", "uploaded": 0, "failed": 1, "total": 1,
                                     "noOpen": True, "mirdashBase": mirdash_base})
@@ -254,20 +256,20 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
         auth_url += f"&count={token_count}"
 
     if not quiet:
-        print(f"\n  Opening mirdash for authentication… (close the browser or wait {_SHARE_AUTH_TIMEOUT}s to skip)")
+        print(f"\n  Opening mirdash for authentication... (close the browser or wait {_SHARE_AUTH_TIMEOUT}s to skip)")
 
     try:
         opened = webbrowser.open(auth_url)
     except Exception as exc:
-        print(f"  warning: could not open a browser for auth ({exc}) — nothing was analysed or shared.")
+        print(f"  warning: could not open a browser for auth ({exc}) -- nothing was analysed or shared.")
         sys.exit(0)
     if not opened:
-        print("  warning: no browser available (headless/CI) — nothing was analysed or shared.")
+        print("  warning: no browser available (headless/CI) -- nothing was analysed or shared.")
         sys.exit(0)
 
     tokens = _capture_cli_token(port=port, timeout=_SHARE_AUTH_TIMEOUT)
     if not tokens:
-        print("  Authentication cancelled or timed out — nothing was analysed or shared.")
+        print("  Authentication cancelled or timed out -- nothing was analysed or shared.")
         sys.exit(0)
 
     paxel_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "paxel.py")
@@ -288,21 +290,23 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
 
         for since, until, label in windows:
             if token_idx >= len(tokens):
-                print("  warning: ran out of tokens before all months were uploaded — stopping")
+                print("  warning: ran out of tokens before all months were uploaded -- stopping")
                 break
 
+            prefix = f"gnomon-{label}-" if output_dir else ""
             report_url = _upload_window(
                 mirdash_base, tokens[token_idx], paxel_src,
                 paxel_forward, since, until, label, verbose, quiet,
                 output_dir=output_dir,
                 window_months=window_months,
+                file_prefix=prefix,
             )
             if report_url is not None:
                 last_report_url = report_url
                 uploaded += 1
                 token_idx += 1
                 if not quiet:
-                    print(f"  ↑ {label} uploaded")
+                    print(f"  ^ {label} uploaded")
 
         verb = "initialised" if mode == "init" else "backfilled"
         if not quiet:
@@ -321,7 +325,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
     since, until, label = month_windows(1, today, window_months=window_months)[0]
 
     if not quiet:
-        print(f"  Computing your build profile for {label}…")
+        print(f"  Computing your build profile for {label}...")
 
     window_args = paxel_forward + [
         f"--since={since}",
@@ -339,7 +343,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
 
     if not _summary_is_empty(summary):
         if not quiet:
-            print("  Uploading metrics summary to mirdash…")
+            print("  Uploading metrics summary to mirdash...")
         summary.setdefault("context", {})["window_months"] = window_months
         try:
             report_url = _upload_summary(mirdash_base, tokens[0], summary)
@@ -360,7 +364,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
         return
 
     if not quiet:
-        print(f"  No activity in {label} yet — checking for most recent month with data…")
+        print(f"  No activity in {label} yet -- checking for most recent month with data...")
 
     all_time_args = paxel_forward + ["--summary", "--no-open"]
     all_time_summary = _run_paxel(paxel_src, all_time_args, verbose, quiet=quiet, output_dir=output_dir)
@@ -381,7 +385,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
     fb_since, fb_until, fb_label = month_windows(1, fallback_date, window_months=window_months)[0]
 
     if not quiet:
-        print(f"  Uploading most recent month with data: {fb_label}…")
+        print(f"  Uploading most recent month with data: {fb_label}...")
 
     fb_args = paxel_forward + [
         f"--since={fb_since}",
@@ -396,7 +400,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
         sys.exit(0)
 
     if not quiet:
-        print("  Uploading metrics summary to mirdash…")
+        print("  Uploading metrics summary to mirdash...")
     fb_summary.setdefault("context", {})["window_months"] = window_months
     try:
         report_url = _upload_summary(mirdash_base, tokens[0], fb_summary)
@@ -417,6 +421,10 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
 
 
 def main(argv=None):
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")
+        sys.stderr.reconfigure(errors="replace")
+
     if argv is None:
         argv = sys.argv[1:]
 

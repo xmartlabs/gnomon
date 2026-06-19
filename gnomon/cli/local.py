@@ -42,10 +42,18 @@ from gnomon.output.profile_html import write_profile_html
 
 
 def main(argv=None, output_dir=None):
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")
+        sys.stderr.reconfigure(errors="replace")
+
     if argv is None:
         argv = sys.argv[1:]
 
-    _out_dir = output_dir or OUT_DIR
+    if output_dir:
+        _out_dir = os.path.abspath(os.path.expanduser(output_dir))
+        os.makedirs(_out_dir, exist_ok=True)
+    else:
+        _out_dir = OUT_DIR
 
     # Sources to analyze: pass names as args (e.g. `python3 paxel.py claude`) to
     # restrict; default is every detected source. ("claude" keeps it to your own
@@ -91,13 +99,13 @@ def main(argv=None, output_dir=None):
     sources, cursor_twins = _cursor_dedup(sources)
     antigravity = antigravity_summary()
     if antigravity:
-        print(f"  note: Google Antigravity detected — {antigravity['conversations']} conversations "
+        print(f"  note: Google Antigravity detected -- {antigravity['conversations']} conversations "
               f"(metadata only; transcripts live server-side, so it can't be scored)")
     if not sources:
         print("\n  No transcripts found in ~/.claude/projects, ~/.codex/sessions, "
               "~/.gemini/tmp, ~/.pi/agent/sessions, ~/.local/share/opencode/storage, "
               "or ~/.cursor/projects.")
-        print("  Nothing to analyze — run this where you've actually used a coding agent.")
+        print("  Nothing to analyze -- run this where you've actually used a coding agent.")
         return
 
     # ---- accumulators --------------------------------------------------------
@@ -874,13 +882,13 @@ def main(argv=None, output_dir=None):
         dow=DOW,
     )
 
-    with open(os.path.join(_out_dir, "stats.json"), "w") as f:
+    with open(os.path.join(_out_dir, "stats.json"), "w", encoding="utf-8") as f:
         json.dump(stats, f, indent=2, default=str)
 
     if "--summary" in argv:
-        with open(os.path.join(_out_dir, "summary.json"), "w") as f:
+        with open(os.path.join(_out_dir, "summary.json"), "w", encoding="utf-8") as f:
             json.dump(build_summary(stats), f, indent=2, default=str)
-        print("  wrote summary.json (shareable subset — measured metrics + monthly progression)")
+        print("  wrote summary.json (shareable subset -- measured metrics + monthly progression)")
 
     write_report(stats, output_dir=_out_dir)
     write_narrative_input(stats, opening_prompts, longest_prompts, output_dir=_out_dir)
@@ -922,8 +930,8 @@ def main(argv=None, output_dir=None):
     print(f"  sessions={total_sessions}  prompts={prompts_count}  tool_calls={tool_use_total}")
     print(f"  git churn={gc['churn']:,} lines (gold std, {gc['repos_with_commits']}/{gc['repos_seen']} repos)  "
           f"vs tool-only={total_churn:,}  git velocity={git_velocity:.0f} ln/hr")
-    _idm_str = f"{iteration_mean:.1f}" if iteration_mean is not None else "—"
-    _erp_str = f"{error_rate_per_100_tools:.1f}" if error_rate_per_100_tools is not None else "—"
+    _idm_str = f"{iteration_mean:.1f}" if iteration_mean is not None else "-"
+    _erp_str = f"{error_rate_per_100_tools:.1f}" if error_rate_per_100_tools is not None else "-"
     print(f"  iteration depth: mean {_idm_str} / max {iteration_max} ({heavy_files} files >15x)  "
           f"errors={tool_errors} ({_erp_str}/100 tools)")
     print(f"  autonomy={autonomy_score}/100  planning_ratio={planning_ratio:.2f}")

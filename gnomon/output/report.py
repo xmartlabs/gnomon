@@ -142,5 +142,5 @@ def write_report(s, output_dir=None):
           f"· ratio {_ratio} CLI-first")
         td = aq["tool_diversity"]
         A(f"- Tool diversity _(described)_: {td['distinct']} distinct tools, entropy {td['entropy']}")
-    with open(os.path.join(output_dir or OUT_DIR, "report.md"), "w") as f:
+    with open(os.path.join(output_dir or OUT_DIR, "report.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(L))
