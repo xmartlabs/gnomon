@@ -219,6 +219,8 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
                   tokens=None):
         if tokens is None:
             tokens = ["tok1"]
+        if "--console" not in argv:
+            argv = argv + ["--console"]
         with (
             patch.object(xl_ai_insights, "_capture_cli_token", return_value=tokens),
             patch.object(xl_ai_insights, "webbrowser") as mock_wb,
@@ -369,7 +371,7 @@ class TestInitMode(unittest.TestCase):
     """--init runs the backfill loop with 12 months."""
 
     def _run_init(self, run_paxel_side_effect, upload_return_values):
-        argv = ["--init", "--no-open"]
+        argv = ["--init", "--no-open", "--console"]
         tokens = [f"t{i}" for i in range(1, 13)]
 
         with (
@@ -442,7 +444,7 @@ class TestHeadlessAuthCleanExit(unittest.TestCase):
             patch.object(xl_ai_insights, "_run_paxel") as mock_paxel,
             patch.object(xl_ai_insights, "_upload_summary") as mock_upload,
             patch.object(xl_ai_insights.os.path, "isfile", return_value=True),
-            patch.object(xl_ai_insights.sys, "argv", ["xl-ai-insights", "--no-open"]),
+            patch.object(xl_ai_insights.sys, "argv", ["xl-ai-insights", "--no-open", "--console"]),
         ):
             if raises:
                 mock_wb.open.side_effect = RuntimeError("no display")
