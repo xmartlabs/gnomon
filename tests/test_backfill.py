@@ -240,7 +240,7 @@ class TestBackfillLoop(unittest.TestCase):
 
     def _run_backfill(self, run_paxel_side_effect, upload_return_values, extra_argv=None):
         """Helper: invoke main() with --backfill=N, intercepting I/O."""
-        argv = ["--backfill=3", "--no-open"] + (extra_argv or [])
+        argv = ["--backfill=3", "--no-open", "--console"] + (extra_argv or [])
 
         tokens = ["t1", "t2", "t3"]
 
@@ -336,6 +336,8 @@ class TestBatchOutputContract(unittest.TestCase):
 
     def _run_main(self, argv, summaries, upload_returns, tokens):
         """Invoke main() with batch I/O mocked; return captured stdout."""
+        if "--console" not in argv:
+            argv = argv + ["--console"]
         buf = io.StringIO()
         with (
             patch.object(xl_ai_insights, "_capture_cli_token", return_value=tokens),
