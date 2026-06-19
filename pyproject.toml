@@ -14,9 +14,10 @@ requires-python = ">=3.8"
 dependencies = []
 
 [project.scripts]
-xl-ai-insights = "xl_ai_insights:main"
+xl-ai-insights = "gnomon.cli.insights:main"
 
 [tool.setuptools]
+packages = ["gnomon", "gnomon.cli", "gnomon.upload", "gnomon.sources", "gnomon.analysis", "gnomon.scoring", "gnomon.output"]
 py-modules = ["paxel", "xl_ai_insights", "progress_server"]
 
 # tern.png is not yet committed to the repo (the PNG asset is missing).

@@ -1,6 +1,6 @@
 # gnomon
 
-> A local builder-profiler for AI-assisted coding. Reads your agent transcripts on-device and grades **how you build** (gstack) and **how well you operate agents** (Agentic Quotient). Everything runs locally — nothing leaves your machine. For AI-powered analysis and to track your evolution over time, run the separate opt-in command `uvx xl-ai-insights`.
+> A local builder-profiler for AI-assisted coding. Reads your agent transcripts on-device and grades **how you build** (gstack) and **how well you operate agents** (Agentic Quotient). Everything runs locally — nothing leaves your machine. For AI-powered analysis and to track your evolution over time, run the separate opt-in command `xl-ai-insights`.
 
 _gnomon (γνώμων): the part of a sundial that casts the shadow — "the one that knows/judges." It measures by what you cast._
 
@@ -16,34 +16,37 @@ Fork of [paxel-local](https://github.com/Photobombastic/paxel-local) (by Max Sch
 No dependencies — Python 3 stdlib only.
 
 ```bash
-# Option A: run directly (no install)
-python3 <(curl -sL https://raw.githubusercontent.com/xmartlabs/gnomon/main/paxel.py)
+# Recommended: install and run via uvx (no clone needed)
+uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --local
 
-# Option B: clone the repo
+# Or clone the repo and run directly
 git clone https://github.com/xmartlabs/gnomon
 cd gnomon
 python3 paxel.py
 ```
 
-Both read all detected local transcripts (Claude, Codex, Gemini, Cursor, …) and open your profile. Option A writes outputs to the current directory; Option B writes them to the repo directory.
+Both read all detected local transcripts (Claude, Codex, Gemini, Cursor, …) and open your profile.
 
 Restrict to one or more sources:
 
 ```bash
-python3 paxel.py claude            # Claude Code only
-python3 paxel.py claude codex      # Claude Code + Codex
-python3 paxel.py --no-open         # don't auto-open profile.html (headless / CI)
-python3 paxel.py --summary         # also write summary.json to disk
+xl-ai-insights --local claude            # Claude Code only
+xl-ai-insights --local claude codex      # Claude Code + Codex
+xl-ai-insights --local --no-open         # don't auto-open profile.html
+xl-ai-insights --local --summary         # also write summary.json
+xl-ai-insights --local --output-dir=.    # write outputs to current directory
 ```
 
-`python3 paxel.py` is 100% local — no network, nothing leaves your machine.
+`xl-ai-insights --local` is 100% local — no network, no login, nothing leaves your machine.
+
+> **Legacy:** `python3 paxel.py` still works from a repo checkout and behaves identically. It is a thin shim over `gnomon.cli.local`.
 
 ### Sharing your profile (opt-in)
 
-To upload `summary.json` and view your evolution over time, run the separate `xl-ai-insights` command:
+To upload `summary.json` and view your evolution over time, run `xl-ai-insights` **without** `--local`:
 
 ```bash
-# Until published to PyPI — run directly from the repo
+# Run from the repo via uvx
 uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights
 
 # Once published to PyPI
@@ -53,13 +56,12 @@ uvx xl-ai-insights
 pipx run xl-ai-insights
 ```
 
-It accepts the same source arguments as `paxel.py`:
+It accepts the same source arguments:
 
 ```bash
 uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights claude
 uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --no-open
 uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --output-dir=.
-uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --output-dir=./debug-artifacts
 uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --window=3
 uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --help
 ```
@@ -69,9 +71,9 @@ months** (default 6) ending at its anchor month, so a single weak month doesn't
 tank the score. `--window=1` scores each month on its own. The window applies to
 normal monthly runs and to `--backfill`/`--init`.
 
-What happens when you run it:
+What happens when you run it (without `--local`):
 
-1. Runs `paxel.py` locally (bundled) to compute your metrics.
+1. Runs the local analysis engine to compute your metrics.
 2. Opens your browser to mirdash for a one-time browser login (loopback callback on `127.0.0.1:8799`).
 3. Uploads `summary.json` (see below) — associated with your account via the login session.
 4. Opens your report page in the browser.
@@ -86,9 +88,9 @@ overwritten in that destination. The artifacts may include
 `narrative_input.md`, which contains local transcript excerpts; don't upload or
 share it.
 
-If the browser can't open (headless/CI) or the auth times out (120 s), the command prints a warning and exits cleanly — nothing is uploaded. If you don't want to share at all, just don't run it.
+If the browser can't open (headless/CI) or the auth times out (120 s), the command prints a warning and exits cleanly — nothing is uploaded. If you don't want to share at all, use `--local`.
 
-**What is uploaded — exactly.** `xl-ai-insights` uploads the same `summary.json` that `python3 paxel.py --summary` writes to disk:
+**What is uploaded — exactly.** `xl-ai-insights` uploads the same `summary.json` that `xl-ai-insights --local --summary` writes to disk:
 
 - `context` — date range, list of detected sources, total session count
 - `planning_ratio_explore_to_doing`
@@ -125,9 +127,9 @@ uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --mirdash-base
 Scope to a time window (for monthly / quarterly check-ins):
 
 ```bash
-python3 paxel.py --last=30d --summary              # rolling last month
-python3 paxel.py --last=90d                        # rolling last quarter (also Nw / Nm)
-python3 paxel.py --since=2026-03-01 --until=2026-05-31   # explicit window (until-day inclusive)
+xl-ai-insights --local --last=30d --summary         # rolling last month
+xl-ai-insights --local --last=90d                    # rolling last quarter (also Nw / Nm)
+xl-ai-insights --local --since=2026-03-01 --until=2026-05-31   # explicit window (until-day inclusive)
 ```
 
 Everything follows the window — **including git churn**, whose `git log --since/--until`
@@ -143,12 +145,12 @@ dir overrides — handy for transcripts mounted or `scp`'d from a sandbox, devco
 or remote box:
 
 ```bash
-python3 paxel.py --claude-dir=/mnt/sandbox-home/.claude     # root or .../projects both work
-python3 paxel.py --codex-dir=~/backups/codex                # root or .../sessions both work
+xl-ai-insights --local --claude-dir=/mnt/sandbox-home/.claude     # root or .../projects both work
+xl-ai-insights --local --codex-dir=~/backups/codex                # root or .../sessions both work
 # also: --gemini-dir, --pi-dir, --opencode-dir
 ```
 
-### Outputs (written to the repo dir, git-ignored)
+### Outputs (written to the current directory by default, git-ignored)
 
 | File | What |
 |------|------|
@@ -236,14 +238,14 @@ Covers the CLI extractor, Codex injected-message filter, compounding-path matche
 
 ## Privacy
 
-All analysis runs on-device. For accurate code-churn it shells out to your local `git` (`git log --numstat`) on the repos it finds. `python3 paxel.py` makes zero network calls — nothing leaves your machine.
+All analysis runs on-device. For accurate code-churn it shells out to your local `git` (`git log --numstat`) on the repos it finds. `xl-ai-insights --local` makes zero network calls — nothing leaves your machine.
 
-If you run `uvx xl-ai-insights`, it makes one outbound network call: a POST of `summary.json` (described above under "What is uploaded") to mirdash after you authenticate. No prompts, no quotes, no project names are ever sent. Running `xl-ai-insights` is entirely opt-in.
+If you run `xl-ai-insights` (without `--local`), it makes one outbound network call: a POST of `summary.json` (described above under "What is uploaded") to mirdash after you authenticate. No prompts, no quotes, no project names are ever sent. Running `xl-ai-insights` without `--local` is entirely opt-in.
 
 ### Cursor specifics
 
-**No special run needed.** Cursor is auto-detected like every other source — `python3 paxel.py`
-includes it, `python3 paxel.py cursor` restricts to it. You don't need to close Cursor first:
+**No special run needed.** Cursor is auto-detected like every other source — `xl-ai-insights --local`
+includes it, `xl-ai-insights --local cursor` restricts to it. You don't need to close Cursor first:
 the SQLite store is opened read-only (`mode=ro`), nothing is written to it.
 
 **Where it reads from** (two stores, merged and deduped):
