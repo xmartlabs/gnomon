@@ -304,6 +304,30 @@ def latest_month_with_data(progression_monthly):
     return max(months)
 
 
+def _anchor_window(anchor_year, anchor_month, window_months=1):
+    """Return (since_iso, until_iso, label) for a single anchor month.
+
+    Trailing-window semantics (same as month_windows per entry):
+      since = first day of the month that is (window_months-1) months before the anchor (inclusive).
+      until = first day of the month AFTER the anchor (exclusive).
+      label = 'YYYY-MM' of the anchor.
+
+    window_months=1 gives a single-calendar-month window (since == anchor's first day).
+    """
+    anchor_total_months = anchor_year * 12 + (anchor_month - 1)
+
+    # Compute start month
+    start_total_months = anchor_total_months - (window_months - 1)
+    start_year = start_total_months // 12
+    start_month = start_total_months % 12 + 1  # 1-based
+
+    since = datetime.date(start_year, start_month, 1)
+    # until = first day of the month after the anchor
+    _, last_day = calendar.monthrange(anchor_year, anchor_month)
+    until = datetime.date(anchor_year, anchor_month, 1) + datetime.timedelta(days=last_day)
+    return (since.isoformat(), until.isoformat(), f"{anchor_year:04d}-{anchor_month:02d}")
+
+
 def month_windows(n, today, window_months=1):
     """Return a list of (since_iso, until_iso, label) for the last *n* calendar months.
 
@@ -325,18 +349,139 @@ def month_windows(n, today, window_months=1):
         anchor_total_months = today.year * 12 + (today.month - 1) - i
         anchor_year = anchor_total_months // 12
         anchor_month = anchor_total_months % 12 + 1  # 1-based
-
-        # Compute the start month (window_months - 1) months before the anchor
-        start_total_months = anchor_total_months - (window_months - 1)
-        start_year = start_total_months // 12
-        start_month = start_total_months % 12 + 1  # 1-based
-
-        since = datetime.date(start_year, start_month, 1)
-        # until = first day of the month after the anchor
-        _, last_day = calendar.monthrange(anchor_year, anchor_month)
-        until = datetime.date(anchor_year, anchor_month, 1) + datetime.timedelta(days=last_day)
-        windows.append((since.isoformat(), until.isoformat(), f"{anchor_year:04d}-{anchor_month:02d}"))
+        windows.append(_anchor_window(anchor_year, anchor_month, window_months))
     return windows
+
+
+def windows_for_anchors(anchor_labels, window_months=1):
+    """Map a list of anchor labels ['YYYY-MM', ...] to [(since_iso, until_iso, label), ...].
+
+    Preserves the input order.  Uses _anchor_window for each label.
+    anchor_labels: list of 'YYYY-MM' strings, oldest first.
+    """
+    result = []
+    for label in anchor_labels:
+        year = int(label[:4])
+        month = int(label[5:7])
+        result.append(_anchor_window(year, month, window_months))
+    return result
+
+
+def months_to_upload(today, server_months, force=False, max_months=_MAX_BACKFILL):
+    """Return sorted list (oldest first) of anchor 'YYYY-MM' labels to upload.
+
+    today:         datetime.date — caller must supply; this function never calls date.today().
+    server_months: list of dicts {'monthKey': 'YYYY-MM', 'uploadedAt': <int ms epoch>}.
+                   Malformed entries are silently skipped.
+    force:         bool — when True, behave as if server were empty (full backfill).
+    max_months:    hard cap; never return more than this many anchors.
+
+    Algorithm:
+      force OR server empty → last max_months months (oldest first) — mirrors --init.
+      incremental:
+        1. Always include current month.
+        2. Gap fill: every month strictly between latest_server and current.
+        3. Stale refresh: include prev (current - 1 month) if it's in server_months
+           AND its uploadedAt < 00:00:00 UTC on the first day of the NEXT month after prev
+           (i.e. the snapshot did not yet capture the full month).
+        4. Dedup → sort → keep max_months most recent.
+    """
+    current = f"{today.year:04d}-{today.month:02d}"
+
+    # Parse server_months defensively; skip malformed entries
+    valid_server = {}
+    for entry in server_months:
+        if not isinstance(entry, dict):
+            continue
+        mk = entry.get("monthKey")
+        if not isinstance(mk, str) or not re.fullmatch(r"\d{4}-\d{2}", mk):
+            continue
+        try:
+            ua = int(entry["uploadedAt"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        valid_server[mk] = ua
+
+    # force or no valid server data → full backfill
+    if force or not valid_server:
+        return [w[2] for w in month_windows(max_months, today, 1)]
+
+    # Incremental path
+    anchors = set()
+    anchors.add(current)
+
+    # Gap fill: months strictly between latest_server (exclusive) and current (inclusive)
+    latest_server = max(valid_server)
+    ls_y = int(latest_server[:4])
+    ls_m = int(latest_server[5:7])
+    cur_y = today.year
+    cur_m = today.month
+    ls_total = ls_y * 12 + (ls_m - 1)
+    cur_total = cur_y * 12 + (cur_m - 1)
+    for t in range(ls_total + 1, cur_total):  # strictly between, current added separately
+        gy = t // 12
+        gm = t % 12 + 1
+        anchors.add(f"{gy:04d}-{gm:02d}")
+
+    # Stale refresh for prev month
+    prev_total = cur_total - 1
+    prev_y = prev_total // 12
+    prev_m = prev_total % 12 + 1
+    prev_label = f"{prev_y:04d}-{prev_m:02d}"
+    if prev_label in valid_server:
+        # end_of_month bound = 00:00:00 UTC of first day of next month after prev
+        if prev_m == 12:
+            bound_y, bound_m = prev_y + 1, 1
+        else:
+            bound_y, bound_m = prev_y, prev_m + 1
+        bound_ms = int(
+            datetime.datetime(bound_y, bound_m, 1, tzinfo=datetime.timezone.utc).timestamp() * 1000
+        )
+        if valid_server[prev_label] < bound_ms:
+            anchors.add(prev_label)
+
+    # Dedup + sort lexicographically (= chronologically for zero-padded YYYY-MM)
+    sorted_anchors = sorted(anchors)
+
+    # Truncate to max_months most recent
+    if len(sorted_anchors) > max_months:
+        sorted_anchors = sorted_anchors[-max_months:]
+
+    return sorted_anchors
+
+
+def _uploaded_from_query(parsed_qs):
+    """Extract the uploaded-month list from a parse_qs result dict.
+
+    Expects: &uploaded=<JSON url-encoded>
+    where the JSON is a list of {'monthKey': 'YYYY-MM', 'uploadedAt': <int>} dicts.
+
+    Returns a list of validated dicts with 'monthKey' (str) and 'uploadedAt' (int).
+    Returns [] if the key is absent, the JSON is malformed, or any validation fails.
+    Never raises.
+    """
+    raw = (parsed_qs.get("uploaded") or [""])[0]
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return []
+    if not isinstance(data, list):
+        return []
+    result = []
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+        mk = entry.get("monthKey")
+        if not isinstance(mk, str) or not re.fullmatch(r"\d{4}-\d{2}", mk):
+            continue
+        try:
+            ua = int(entry["uploadedAt"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        result.append({"monthKey": mk, "uploadedAt": ua})
+    return result
 
 
 def _paxel_until_arg(exclusive_until_iso):
