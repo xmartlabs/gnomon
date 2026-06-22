@@ -377,7 +377,7 @@ def months_to_upload(today, server_months, force=False, max_months=_MAX_BACKFILL
     max_months:    hard cap; never return more than this many anchors.
 
     Algorithm:
-      force OR server empty → last max_months months (oldest first) — mirrors --init.
+      force OR server empty → last max_months months (oldest first) — behaves like the old --init.
       incremental:
         1. Always include current month.
         2. Gap fill: every month strictly between latest_server and current.

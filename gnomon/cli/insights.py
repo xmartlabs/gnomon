@@ -289,7 +289,7 @@ def main(argv=None):
     # Flags appended literally below — strip from user passthrough to avoid duplicates
     paxel_literal_flags = {"--summary", "--no-open"}
 
-    # Build paxel args: strip wrapper-only flags, literal flags, backfill/init flags,
+    # Build paxel args: strip wrapper-only flags, literal flags, backfill/force flags,
     # mirdash overrides, and window override; keep source names and dir overrides
     paxel_forward = [
         a for a in argv
