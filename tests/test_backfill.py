@@ -245,7 +245,7 @@ class TestBackfillLoop(unittest.TestCase):
         tokens = ["t1", "t2", "t3"]
 
         with (
-            patch.object(_insights, "_capture_cli_token", return_value=tokens),
+            patch.object(_insights, "_capture_cli_token", return_value=(tokens, [])),
             patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(
                 _mirdash,
@@ -340,7 +340,7 @@ class TestBatchOutputContract(unittest.TestCase):
             argv = argv + ["--console"]
         buf = io.StringIO()
         with (
-            patch.object(_insights, "_capture_cli_token", return_value=tokens),
+            patch.object(_insights, "_capture_cli_token", return_value=(tokens, [])),
             patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(_mirdash, "_run_paxel", side_effect=summaries),
             patch.object(

@@ -76,6 +76,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
         sys.exit(0)
 
     tokens = _wait_for_auth_tokens(server, port)
+    uploaded = server.uploaded  # consumed in auto-mode (G4)
     if not tokens:
         print("  Authentication cancelled or timed out -- nothing was analysed or shared.")
         # Tell any open progress page the truth instead of leaving it spinning.
@@ -272,7 +273,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
         print("  warning: no browser available (headless/CI) -- nothing was analysed or shared.")
         sys.exit(0)
 
-    tokens = _capture_cli_token(port=port, timeout=_SHARE_AUTH_TIMEOUT)
+    tokens, uploaded = _capture_cli_token(port=port, timeout=_SHARE_AUTH_TIMEOUT)  # uploaded consumed in auto-mode (G4)
     if not tokens:
         print("  Authentication cancelled or timed out -- nothing was analysed or shared.")
         sys.exit(0)

@@ -203,7 +203,7 @@ class TestWindowMonthsInPayload(unittest.TestCase):
             return remaining_uploads.pop(0)
 
         with (
-            patch.object(_insights, "_capture_cli_token", return_value=tokens),
+            patch.object(_insights, "_capture_cli_token", return_value=(tokens, [])),
             patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(_insights, "_run_paxel", side_effect=fake_run_paxel),
             patch.object(_insights, "_upload_summary", side_effect=capture_upload),
@@ -262,7 +262,7 @@ class TestWindowMonthsInPayload(unittest.TestCase):
             return _make_summary(sessions=1)
 
         with (
-            patch.object(_insights, "_capture_cli_token", return_value=["t1", "t2"]),
+            patch.object(_insights, "_capture_cli_token", return_value=(["t1", "t2"], [])),
             patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(_mirdash, "_run_paxel", side_effect=capture_paxel),
             patch.object(_mirdash, "_upload_summary", return_value="/r/1"),
@@ -312,7 +312,7 @@ class TestWindowMonthsFallbackPayload(unittest.TestCase):
         ]
         argv = ["--no-open", "--console"] + ([window_arg] if window_arg else [])
         with (
-            patch.object(_insights, "_capture_cli_token", return_value=["tok1"]),
+            patch.object(_insights, "_capture_cli_token", return_value=(["tok1"], [])),
             patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(_insights, "_run_paxel", side_effect=list(summaries)),
             patch.object(_insights, "_upload_summary", side_effect=capture_upload),

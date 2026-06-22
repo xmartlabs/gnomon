@@ -17,6 +17,8 @@ import threading
 import time
 import urllib.parse
 
+from gnomon.upload.mirdash import _uploaded_from_query
+
 
 def _tokens_from_query(parsed_qs):
     raw_tokens = (parsed_qs.get("tokens") or [""])[0]
@@ -494,6 +496,7 @@ class ProgressServer:
         self._auth_url = auth_url
         self._auth_event = threading.Event()
         self._tokens = None
+        self._uploaded = []
         # SSE is broadcast: every connected client gets its own queue, and
         # push_event fans out to all of them. A history buffer lets a client
         # that connects late (or after navigating, e.g. in-page re-login) catch
@@ -528,6 +531,7 @@ class ProgressServer:
                 tokens = _tokens_from_query(params)
                 if tokens and not parent._auth_event.is_set():
                     parent._tokens = tokens
+                    parent._uploaded = _uploaded_from_query(params)
                     parent._auth_event.set()
                 page = _PROGRESS_PAGE.replace(
                     "__AUTH_URL__", html.escape(parent._auth_url, quote=True)
@@ -597,6 +601,11 @@ class ProgressServer:
     @property
     def url(self):
         return f"http://localhost:{self._port}"
+
+    @property
+    def uploaded(self):
+        """Return the list of already-uploaded month dicts from the auth callback."""
+        return self._uploaded
 
     def wait_for_auth(self, timeout=120):
         """Block until auth callback arrives. Returns token list or None."""

@@ -275,7 +275,7 @@ class TestOutputDirPropagation(unittest.TestCase):
 
     def _run_console(self, *, mode="current", token_count=1, run_paxel_side_effect=None):
         with (
-            patch.object(_insights, "_capture_cli_token", return_value=["tok"] * max(token_count, 1)),
+            patch.object(_insights, "_capture_cli_token", return_value=(["tok"] * max(token_count, 1), [])),
             patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(_insights.os.path, "isfile", return_value=True),
             patch.object(_insights, "_run_paxel", side_effect=run_paxel_side_effect) as mock_run,

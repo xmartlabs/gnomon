@@ -226,7 +226,7 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         if "--console" not in argv:
             argv = argv + ["--console"]
         with (
-            patch.object(_insights, "_capture_cli_token", return_value=tokens),
+            patch.object(_insights, "_capture_cli_token", return_value=(tokens, [])),
             patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(
                 _insights,
@@ -379,7 +379,7 @@ class TestForceMode(unittest.TestCase):
         tokens = [f"t{i}" for i in range(1, 13)]
 
         with (
-            patch.object(_insights, "_capture_cli_token", return_value=tokens),
+            patch.object(_insights, "_capture_cli_token", return_value=(tokens, [])),
             patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(
                 _mirdash,
