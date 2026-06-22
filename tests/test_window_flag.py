@@ -7,9 +7,9 @@ import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import xl_ai_insights
-from xl_ai_insights import _DEFAULT_WINDOW_MONTHS, parse_window
+import gnomon.cli.insights as _insights
+import gnomon.upload.mirdash as _mirdash
+from gnomon.upload.mirdash import _DEFAULT_WINDOW_MONTHS, parse_window
 
 
 # ---------------------------------------------------------------------------
@@ -77,14 +77,14 @@ class TestWindowNotForwardedToPaxel(unittest.TestCase):
     def test_window_flag_stripped_from_paxel_forward(self):
         """--window=N must not be forwarded to paxel."""
         with (
-            patch.object(xl_ai_insights, "_main_web") as mock_main_web,
+            patch.object(_insights, "_main_web") as mock_main_web,
             patch.object(
-                xl_ai_insights.sys,
+                _insights.sys,
                 "argv",
                 ["xl-ai-insights", "--window=3", "claude", "--no-open"],
             ),
         ):
-            xl_ai_insights.main()
+            _insights.main()
 
         args = mock_main_web.call_args[0]
         paxel_forward = args[4]
@@ -95,14 +95,14 @@ class TestWindowNotForwardedToPaxel(unittest.TestCase):
     def test_window_flag_not_forwarded_console_mode(self):
         """--window=N must not reach paxel in console mode either."""
         with (
-            patch.object(xl_ai_insights, "_main_console") as mock_main_console,
+            patch.object(_insights, "_main_console") as mock_main_console,
             patch.object(
-                xl_ai_insights.sys,
+                _insights.sys,
                 "argv",
                 ["xl-ai-insights", "--window=3", "--console", "claude", "--no-open"],
             ),
         ):
-            xl_ai_insights.main()
+            _insights.main()
 
         args = mock_main_console.call_args[0]
         paxel_forward = args[4]
@@ -118,42 +118,42 @@ class TestWindowNotForwardedToPaxel(unittest.TestCase):
 class TestWindowMonthsPassedToHandlers(unittest.TestCase):
     def test_window_months_passed_to_main_web(self):
         with (
-            patch.object(xl_ai_insights, "_main_web") as mock_main_web,
+            patch.object(_insights, "_main_web") as mock_main_web,
             patch.object(
-                xl_ai_insights.sys,
+                _insights.sys,
                 "argv",
                 ["xl-ai-insights", "--window=3", "--no-open"],
             ),
         ):
-            xl_ai_insights.main()
+            _insights.main()
 
         kwargs = mock_main_web.call_args[1]
         self.assertEqual(kwargs.get("window_months"), 3)
 
     def test_window_months_passed_to_main_console(self):
         with (
-            patch.object(xl_ai_insights, "_main_console") as mock_main_console,
+            patch.object(_insights, "_main_console") as mock_main_console,
             patch.object(
-                xl_ai_insights.sys,
+                _insights.sys,
                 "argv",
                 ["xl-ai-insights", "--window=3", "--console", "--no-open"],
             ),
         ):
-            xl_ai_insights.main()
+            _insights.main()
 
         kwargs = mock_main_console.call_args[1]
         self.assertEqual(kwargs.get("window_months"), 3)
 
     def test_default_window_months_passed_when_absent(self):
         with (
-            patch.object(xl_ai_insights, "_main_web") as mock_main_web,
+            patch.object(_insights, "_main_web") as mock_main_web,
             patch.object(
-                xl_ai_insights.sys,
+                _insights.sys,
                 "argv",
                 ["xl-ai-insights", "--no-open"],
             ),
         ):
-            xl_ai_insights.main()
+            _insights.main()
 
         kwargs = mock_main_web.call_args[1]
         self.assertEqual(kwargs.get("window_months"), _DEFAULT_WINDOW_MONTHS)
@@ -177,27 +177,45 @@ class TestWindowMonthsInPayload(unittest.TestCase):
     """Verify context.window_months is stamped before upload in console mode."""
 
     def _run_console(self, argv, summaries, upload_returns, tokens=None):
-        """Run main() in console mode with mocked I/O; return captured upload calls."""
+        """Run main() in console mode with mocked I/O; return captured upload calls.
+
+        Patches both _insights and _mirdash for _run_paxel / _upload_summary so
+        the helper works for current-month paths (direct calls in insights) and
+        backfill paths (calls through _upload_window in mirdash).
+        """
         if tokens is None:
             tokens = ["tok1"]
         uploaded_summaries = []
 
+        # Use a shared list for side effects so both patches draw from the same pool.
+        remaining_summaries = list(summaries)
+        remaining_uploads = list(upload_returns)
+
+        def fake_run_paxel(paxel_src, args, verbose, **kwargs):
+            if not remaining_summaries:
+                raise StopIteration("unexpected _run_paxel call")
+            return remaining_summaries.pop(0)
+
         def capture_upload(mirdash_base, token, summary):
             uploaded_summaries.append(summary)
-            return upload_returns.pop(0) if upload_returns else "/r/x"
+            if not remaining_uploads:
+                return "/r/x"
+            return remaining_uploads.pop(0)
 
         with (
-            patch.object(xl_ai_insights, "_capture_cli_token", return_value=tokens),
-            patch.object(xl_ai_insights, "webbrowser") as mock_wb,
-            patch.object(xl_ai_insights, "_run_paxel", side_effect=summaries),
-            patch.object(xl_ai_insights, "_upload_summary", side_effect=capture_upload),
-            patch.object(xl_ai_insights.os.path, "isfile", return_value=True),
-            patch.object(xl_ai_insights.sys, "argv", ["xl-ai-insights"] + argv),
+            patch.object(_insights, "_capture_cli_token", return_value=tokens),
+            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_insights, "_run_paxel", side_effect=fake_run_paxel),
+            patch.object(_insights, "_upload_summary", side_effect=capture_upload),
+            patch.object(_mirdash, "_run_paxel", side_effect=fake_run_paxel),
+            patch.object(_mirdash, "_upload_summary", side_effect=capture_upload),
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(_insights.sys, "argv", ["xl-ai-insights"] + argv),
             contextlib.redirect_stdout(io.StringIO()),
         ):
             mock_wb.open.return_value = True
             try:
-                xl_ai_insights.main()
+                _insights.main()
             except SystemExit:
                 pass
         return uploaded_summaries
@@ -244,17 +262,17 @@ class TestWindowMonthsInPayload(unittest.TestCase):
             return _make_summary(sessions=1)
 
         with (
-            patch.object(xl_ai_insights, "_capture_cli_token", return_value=["t1", "t2"]),
-            patch.object(xl_ai_insights, "webbrowser") as mock_wb,
-            patch.object(xl_ai_insights, "_run_paxel", side_effect=capture_paxel),
-            patch.object(xl_ai_insights, "_upload_summary", return_value="/r/1"),
-            patch.object(xl_ai_insights.os.path, "isfile", return_value=True),
-            patch.object(xl_ai_insights.sys, "argv",
+            patch.object(_insights, "_capture_cli_token", return_value=["t1", "t2"]),
+            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_mirdash, "_run_paxel", side_effect=capture_paxel),
+            patch.object(_mirdash, "_upload_summary", return_value="/r/1"),
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(_insights.sys, "argv",
                          ["xl-ai-insights", "--backfill=2", "--no-open", "--console", "--window=3"]),
             contextlib.redirect_stdout(io.StringIO()),
         ):
             mock_wb.open.return_value = True
-            xl_ai_insights.main()
+            _insights.main()
 
         self.assertEqual(len(captured_args), 2)
         for call_args in captured_args:
@@ -294,17 +312,17 @@ class TestWindowMonthsFallbackPayload(unittest.TestCase):
         ]
         argv = ["--no-open", "--console"] + ([window_arg] if window_arg else [])
         with (
-            patch.object(xl_ai_insights, "_capture_cli_token", return_value=["tok1"]),
-            patch.object(xl_ai_insights, "webbrowser") as mock_wb,
-            patch.object(xl_ai_insights, "_run_paxel", side_effect=summaries),
-            patch.object(xl_ai_insights, "_upload_summary", side_effect=capture_upload),
-            patch.object(xl_ai_insights.os.path, "isfile", return_value=True),
-            patch.object(xl_ai_insights.sys, "argv", ["xl-ai-insights"] + argv),
+            patch.object(_insights, "_capture_cli_token", return_value=["tok1"]),
+            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_insights, "_run_paxel", side_effect=list(summaries)),
+            patch.object(_insights, "_upload_summary", side_effect=capture_upload),
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(_insights.sys, "argv", ["xl-ai-insights"] + argv),
             contextlib.redirect_stdout(io.StringIO()),
         ):
             mock_wb.open.return_value = True
             try:
-                xl_ai_insights.main()
+                _insights.main()
             except SystemExit:
                 pass
         return uploaded_summaries

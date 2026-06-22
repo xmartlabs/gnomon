@@ -11,14 +11,14 @@ import sys
 import unittest
 from unittest.mock import MagicMock, call, patch
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import xl_ai_insights
-from xl_ai_insights import (
+import gnomon.cli.insights as _insights
+import gnomon.upload.mirdash as _mirdash
+from gnomon.upload.mirdash import (
     _MAX_BACKFILL,
-    _tokens_from_query,
     month_windows,
     parse_backfill,
 )
+from gnomon.upload.auth import _tokens_from_query
 
 
 # ---------------------------------------------------------------------------
@@ -245,23 +245,23 @@ class TestBackfillLoop(unittest.TestCase):
         tokens = ["t1", "t2", "t3"]
 
         with (
-            patch.object(xl_ai_insights, "_capture_cli_token", return_value=tokens),
-            patch.object(xl_ai_insights, "webbrowser") as mock_wb,
+            patch.object(_insights, "_capture_cli_token", return_value=tokens),
+            patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(
-                xl_ai_insights,
+                _mirdash,
                 "_run_paxel",
                 side_effect=run_paxel_side_effect,
             ) as mock_paxel,
             patch.object(
-                xl_ai_insights,
+                _mirdash,
                 "_upload_summary",
                 side_effect=upload_return_values,
             ) as mock_upload,
-            patch.object(xl_ai_insights.os.path, "isfile", return_value=True),
-            patch.object(xl_ai_insights.sys, "argv", ["xl-ai-insights"] + argv),
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(_insights.sys, "argv", ["xl-ai-insights"] + argv),
         ):
             mock_wb.open.return_value = True
-            xl_ai_insights.main()
+            _insights.main()
             return mock_paxel, mock_upload
 
     def test_skips_empty_months_no_token_consumed(self):
@@ -340,18 +340,18 @@ class TestBatchOutputContract(unittest.TestCase):
             argv = argv + ["--console"]
         buf = io.StringIO()
         with (
-            patch.object(xl_ai_insights, "_capture_cli_token", return_value=tokens),
-            patch.object(xl_ai_insights, "webbrowser") as mock_wb,
-            patch.object(xl_ai_insights, "_run_paxel", side_effect=summaries),
+            patch.object(_insights, "_capture_cli_token", return_value=tokens),
+            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_mirdash, "_run_paxel", side_effect=summaries),
             patch.object(
-                xl_ai_insights, "_upload_summary", side_effect=upload_returns
+                _mirdash, "_upload_summary", side_effect=upload_returns
             ),
-            patch.object(xl_ai_insights.os.path, "isfile", return_value=True),
-            patch.object(xl_ai_insights.sys, "argv", ["xl-ai-insights"] + argv),
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(_insights.sys, "argv", ["xl-ai-insights"] + argv),
             contextlib.redirect_stdout(buf),
         ):
             mock_wb.open.return_value = True
-            xl_ai_insights.main()
+            _insights.main()
         return buf.getvalue()
 
     def test_backfill_no_open_still_prints_report_url(self):

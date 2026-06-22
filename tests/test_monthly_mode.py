@@ -15,12 +15,16 @@ import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import xl_ai_insights
-from xl_ai_insights import (
+import gnomon.cli.insights as _insights
+import gnomon.upload.mirdash as _mirdash
+from gnomon.upload.mirdash import (
     decide_mode,
     latest_month_with_data,
     month_windows,
+    _is_report_url,
+    _PAXEL_ERROR,
+    _UPLOAD_ERROR,
+    _absolutize_dir_flags,
 )
 
 
@@ -222,24 +226,24 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         if "--console" not in argv:
             argv = argv + ["--console"]
         with (
-            patch.object(xl_ai_insights, "_capture_cli_token", return_value=tokens),
-            patch.object(xl_ai_insights, "webbrowser") as mock_wb,
+            patch.object(_insights, "_capture_cli_token", return_value=tokens),
+            patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(
-                xl_ai_insights,
+                _insights,
                 "_run_paxel",
                 side_effect=run_paxel_side_effect,
             ) as mock_paxel,
             patch.object(
-                xl_ai_insights,
+                _insights,
                 "_upload_summary",
                 side_effect=upload_return_values,
             ) as mock_upload,
-            patch.object(xl_ai_insights.os.path, "isfile", return_value=True),
-            patch.object(xl_ai_insights.sys, "argv", ["xl-ai-insights"] + argv),
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(_insights.sys, "argv", ["xl-ai-insights"] + argv),
         ):
             mock_wb.open.return_value = True
             try:
-                xl_ai_insights.main()
+                _insights.main()
             except SystemExit:
                 pass
             return mock_paxel, mock_upload
@@ -375,23 +379,23 @@ class TestInitMode(unittest.TestCase):
         tokens = [f"t{i}" for i in range(1, 13)]
 
         with (
-            patch.object(xl_ai_insights, "_capture_cli_token", return_value=tokens),
-            patch.object(xl_ai_insights, "webbrowser") as mock_wb,
+            patch.object(_insights, "_capture_cli_token", return_value=tokens),
+            patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(
-                xl_ai_insights,
+                _mirdash,
                 "_run_paxel",
                 side_effect=run_paxel_side_effect,
             ) as mock_paxel,
             patch.object(
-                xl_ai_insights,
+                _mirdash,
                 "_upload_summary",
                 side_effect=upload_return_values,
             ) as mock_upload,
-            patch.object(xl_ai_insights.os.path, "isfile", return_value=True),
-            patch.object(xl_ai_insights.sys, "argv", ["xl-ai-insights"] + argv),
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(_insights.sys, "argv", ["xl-ai-insights"] + argv),
         ):
             mock_wb.open.return_value = True
-            xl_ai_insights.main()
+            _insights.main()
             return mock_paxel, mock_upload
 
     def test_init_runs_12_paxel_calls(self):
@@ -439,19 +443,19 @@ class TestHeadlessAuthCleanExit(unittest.TestCase):
 
     def _run_headless(self, *, raises):
         with (
-            patch.object(xl_ai_insights, "_capture_cli_token") as mock_capture,
-            patch.object(xl_ai_insights, "webbrowser") as mock_wb,
-            patch.object(xl_ai_insights, "_run_paxel") as mock_paxel,
-            patch.object(xl_ai_insights, "_upload_summary") as mock_upload,
-            patch.object(xl_ai_insights.os.path, "isfile", return_value=True),
-            patch.object(xl_ai_insights.sys, "argv", ["xl-ai-insights", "--no-open", "--console"]),
+            patch.object(_insights, "_capture_cli_token") as mock_capture,
+            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_insights, "_run_paxel") as mock_paxel,
+            patch.object(_insights, "_upload_summary") as mock_upload,
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(_insights.sys, "argv", ["xl-ai-insights", "--no-open", "--console"]),
         ):
             if raises:
                 mock_wb.open.side_effect = RuntimeError("no display")
             else:
                 mock_wb.open.return_value = False
             with self.assertRaises(SystemExit) as ctx:
-                xl_ai_insights.main()
+                _insights.main()
             return ctx.exception, mock_capture, mock_paxel, mock_upload
 
     def test_browser_returns_false_exits_zero_no_upload(self):
@@ -476,16 +480,16 @@ class TestHeadlessAuthCleanExit(unittest.TestCase):
 
 class TestIsReportUrl(unittest.TestCase):
     def test_real_url_is_report_url(self):
-        self.assertTrue(xl_ai_insights._is_report_url("/report/abc"))
+        self.assertTrue(_is_report_url("/report/abc"))
 
     def test_none_is_not_report_url(self):
-        self.assertFalse(xl_ai_insights._is_report_url(None))
+        self.assertFalse(_is_report_url(None))
 
     def test_paxel_error_sentinel_is_not_report_url(self):
-        self.assertFalse(xl_ai_insights._is_report_url(xl_ai_insights._PAXEL_ERROR))
+        self.assertFalse(_is_report_url(_PAXEL_ERROR))
 
     def test_upload_error_sentinel_is_not_report_url(self):
-        self.assertFalse(xl_ai_insights._is_report_url(xl_ai_insights._UPLOAD_ERROR))
+        self.assertFalse(_is_report_url(_UPLOAD_ERROR))
 
 
 class TestUploadWindowWebSentinels(unittest.TestCase):
@@ -494,17 +498,18 @@ class TestUploadWindowWebSentinels(unittest.TestCase):
     def _call(self, run_paxel_return=None, run_paxel_side=None, upload_side=None):
         server = MagicMock()
         with (
-            patch.object(xl_ai_insights, "_run_paxel",
+            patch.object(_mirdash, "_run_paxel",
                          return_value=run_paxel_return, side_effect=run_paxel_side),
-            patch.object(xl_ai_insights, "_upload_summary", side_effect=upload_side),
+            patch.object(_mirdash, "_upload_summary", side_effect=upload_side),
         ):
-            return xl_ai_insights._upload_window_web(
+            from gnomon.upload.mirdash import _upload_window_web
+            return _upload_window_web(
                 "https://m", "tok", "/paxel.py", [], "2025-12-01", "2026-01-01",
                 "2025-12", False, server, 0, 1,
             )
 
     def test_paxel_failure_returns_paxel_error_sentinel(self):
-        self.assertEqual(self._call(run_paxel_return=None), xl_ai_insights._PAXEL_ERROR)
+        self.assertEqual(self._call(run_paxel_return=None), _PAXEL_ERROR)
 
     def test_empty_summary_returns_none(self):
         empty = _make_summary(sessions=0)
@@ -513,7 +518,7 @@ class TestUploadWindowWebSentinels(unittest.TestCase):
     def test_upload_exception_returns_upload_error_sentinel(self):
         good = _make_summary(sessions=5)
         result = self._call(run_paxel_return=good, upload_side=RuntimeError("boom"))
-        self.assertEqual(result, xl_ai_insights._UPLOAD_ERROR)
+        self.assertEqual(result, _UPLOAD_ERROR)
 
     def test_success_returns_report_url(self):
         good = _make_summary(sessions=5)
@@ -524,12 +529,13 @@ class TestUploadWindowWebSentinels(unittest.TestCase):
         """Run _upload_window_web and return the list of pushed event types."""
         server = MagicMock()
         with (
-            patch.object(xl_ai_insights, "_run_paxel",
+            patch.object(_mirdash, "_run_paxel",
                          return_value=kw.get("run_paxel_return"),
                          side_effect=kw.get("run_paxel_side")),
-            patch.object(xl_ai_insights, "_upload_summary", side_effect=kw.get("upload_side")),
+            patch.object(_mirdash, "_upload_summary", side_effect=kw.get("upload_side")),
         ):
-            xl_ai_insights._upload_window_web(
+            from gnomon.upload.mirdash import _upload_window_web
+            _upload_window_web(
                 "https://m", "tok", "/paxel.py", [], "2025-12-01", "2026-01-01",
                 "2025-12", False, server, 0, 1,
             )
@@ -555,21 +561,21 @@ class TestUploadWindowWebSentinels(unittest.TestCase):
 
 class TestAbsolutizeDirFlags(unittest.TestCase):
     def test_relative_dir_flag_made_absolute(self):
-        out = xl_ai_insights._absolutize_dir_flags(["--claude-dir=./backup/.claude"])
+        out = _absolutize_dir_flags(["--claude-dir=./backup/.claude"])
         self.assertEqual(out[0], "--claude-dir=" + os.path.abspath("./backup/.claude"))
         self.assertTrue(out[0].split("=", 1)[1].startswith("/"))
 
     def test_absolute_dir_flag_unchanged(self):
-        out = xl_ai_insights._absolutize_dir_flags(["--codex-dir=/abs/path"])
+        out = _absolutize_dir_flags(["--codex-dir=/abs/path"])
         self.assertEqual(out, ["--codex-dir=/abs/path"])
 
     def test_home_dir_flag_expanded(self):
-        out = xl_ai_insights._absolutize_dir_flags(["--gemini-dir=~/x"])
+        out = _absolutize_dir_flags(["--gemini-dir=~/x"])
         self.assertEqual(out[0], "--gemini-dir=" + os.path.abspath(os.path.expanduser("~/x")))
 
     def test_non_dir_flags_and_sources_untouched(self):
         args = ["claude", "--mirdash-base=https://m", "--quiet"]
-        self.assertEqual(xl_ai_insights._absolutize_dir_flags(args), args)
+        self.assertEqual(_absolutize_dir_flags(args), args)
 
 
 if __name__ == "__main__":
