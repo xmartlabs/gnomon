@@ -1,10 +1,10 @@
 """Tests for the monthly-dashboard mode introduced in v0.5.0.
 
 Covers:
-  - decide_mode: arg-parsing precedence (--init, --backfill=N, neither)
+  - decide_mode: arg-parsing precedence (--force, --backfill=N, neither)
   - month_windows(1, ...) for current-month window + year rollover
   - latest_month_with_data: picks most recent month with data, handles edge cases
-  - backfill/init loop: N windows produced (reuses month_windows)
+  - force/backfill loop: N windows produced (reuses month_windows)
   - current-month orchestration: non-empty upload, empty-fallback, total-empty exit
 """
 
@@ -34,16 +34,16 @@ from gnomon.upload.mirdash import (
 
 
 class TestDecideMode(unittest.TestCase):
-    """decide_mode(argv) -> ('init', 12) | ('backfill', N) | ('current', 1)"""
+    """decide_mode(argv) -> ('force', 12) | ('backfill', N) | ('auto', 12)"""
 
-    def test_no_flags_returns_current(self):
+    def test_no_flags_returns_auto(self):
         mode, n = decide_mode([])
-        self.assertEqual(mode, "current")
-        self.assertEqual(n, 1)
+        self.assertEqual(mode, "auto")
+        self.assertEqual(n, 12)
 
-    def test_init_flag_returns_init_12(self):
-        mode, n = decide_mode(["--init"])
-        self.assertEqual(mode, "init")
+    def test_force_flag_returns_force_12(self):
+        mode, n = decide_mode(["--force"])
+        self.assertEqual(mode, "force")
         self.assertEqual(n, 12)
 
     def test_backfill_3_returns_backfill_3(self):
@@ -56,25 +56,25 @@ class TestDecideMode(unittest.TestCase):
         self.assertEqual(mode, "backfill")
         self.assertEqual(n, 6)
 
-    def test_init_takes_precedence_over_backfill(self):
-        # --init wins if both are present
-        mode, n = decide_mode(["--init", "--backfill=5"])
-        self.assertEqual(mode, "init")
+    def test_force_takes_precedence_over_backfill(self):
+        # --force wins if both are present
+        mode, n = decide_mode(["--force", "--backfill=5"])
+        self.assertEqual(mode, "force")
         self.assertEqual(n, 12)
 
-    def test_current_with_other_flags(self):
+    def test_auto_with_other_flags(self):
         mode, n = decide_mode(["--quiet", "--no-open", "claude"])
-        self.assertEqual(mode, "current")
-        self.assertEqual(n, 1)
+        self.assertEqual(mode, "auto")
+        self.assertEqual(n, 12)
 
     def test_backfill_with_other_flags(self):
         mode, n = decide_mode(["--quiet", "--backfill=7", "--no-open"])
         self.assertEqual(mode, "backfill")
         self.assertEqual(n, 7)
 
-    def test_init_with_other_flags(self):
-        mode, n = decide_mode(["--no-open", "--quiet", "--init"])
-        self.assertEqual(mode, "init")
+    def test_force_with_other_flags(self):
+        mode, n = decide_mode(["--no-open", "--quiet", "--force"])
+        self.assertEqual(mode, "force")
         self.assertEqual(n, 12)
 
     def test_backfill_12_returns_12(self):
@@ -175,7 +175,7 @@ class TestLatestMonthWithData(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# month_windows for --init (n=12) and --backfill=N
+# month_windows for --force (n=12) and --backfill=N
 # ---------------------------------------------------------------------------
 
 
@@ -367,15 +367,15 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Orchestration tests: --init mode (mocked)
+# Orchestration tests: --force mode (mocked)
 # ---------------------------------------------------------------------------
 
 
-class TestInitMode(unittest.TestCase):
-    """--init runs the backfill loop with 12 months."""
+class TestForceMode(unittest.TestCase):
+    """--force runs the backfill loop with 12 months."""
 
     def _run_init(self, run_paxel_side_effect, upload_return_values):
-        argv = ["--init", "--no-open", "--console"]
+        argv = ["--force", "--no-open", "--console"]
         tokens = [f"t{i}" for i in range(1, 13)]
 
         with (

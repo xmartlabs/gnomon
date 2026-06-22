@@ -21,11 +21,13 @@ from gnomon.upload.mirdash import (
 
 _HELP_TEXT = """Usage:
     xl-ai-insights [source ...] [--local] [--mirdash-base=URL] [--window=N] [--no-open] [--quiet] [--verbose] [--console] [--output-dir=PATH]
+    xl-ai-insights --force
     xl-ai-insights --help
     xl-ai-insights -h
 
     source        e.g. claude, codex, gemini -- same as paxel.py (default: all)
     --local       run local analysis only (no login, no upload)
+    --force       re-upload all months (ignores what has already been uploaded)
     --mirdash-base=URL  override the mirdash server URL
     --window=N    trailing window size in months for each scored point (default 6)
     --no-open     skip redirecting to the mirdash report at the end
@@ -34,6 +36,9 @@ _HELP_TEXT = """Usage:
     --console     show progress in the terminal instead of the browser
     --output-dir=PATH
                   copy final artifacts into PATH (use . for current directory)
+
+    Without flags, xl-ai-insights auto-detects which months are missing and
+    uploads only what is needed (first run uploads everything automatically).
 """
 
 
@@ -87,7 +92,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
 
     today = datetime.date.today()
 
-    if mode in ("init", "backfill"):
+    if mode in ("force", "backfill"):
         windows = month_windows(token_count, today, window_months=window_months)
         month_labels = [label for _, _, label in windows]
     else:
@@ -99,7 +104,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
         "months": month_labels,
     })
 
-    if mode in ("init", "backfill"):
+    if mode in ("force", "backfill"):
         token_idx = 0
         uploaded = 0
         failed = 0
@@ -280,7 +285,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
 
     today = datetime.date.today()
 
-    if mode in ("init", "backfill"):
+    if mode in ("force", "backfill"):
         n_months = token_count
         windows = month_windows(n_months, today, window_months=window_months)
 
@@ -438,7 +443,7 @@ def main(argv=None):
         # Strip --local and wrapper-only flags, pass the rest to local_main
         local_argv = [a for a in argv if a != "--local" and not re.match(r"--mirdash-base=", a)
                       and not re.match(r"--window(=.*)?$", a) and a != "--console"
-                      and not re.match(r"--backfill(=.*)?$", a) and a != "--init"]
+                      and not re.match(r"--backfill(=.*)?$", a) and a != "--force"]
         # Ensure --summary is passed for summary.json generation
         if "--summary" not in local_argv:
             local_argv.append("--summary")
@@ -473,7 +478,7 @@ def main(argv=None):
         and not re.match(r"--backfill(=.*)?$", a)
         and not re.match(r"--window(=.*)?$", a)
         and not re.match(r"--output-dir=(.+)$", a)
-        and a != "--init"
+        and a != "--force"
     ]
     # Resolve relative --<source>-dir overrides against the caller's cwd before paxel
     # runs from its temp directory (see _absolutize_dir_flags).

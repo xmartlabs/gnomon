@@ -325,7 +325,7 @@ class TestBackfillLoop(unittest.TestCase):
 
 
 class TestBatchOutputContract(unittest.TestCase):
-    """Output contract for the batch paths (--init / --backfill):
+    """Output contract for the batch paths (--force / --backfill):
 
     - The final report URL must print even with --no-open (only the browser open
       is suppressed) — otherwise a batch run succeeds with no way to reach the report.
@@ -392,18 +392,18 @@ class TestBatchOutputContract(unittest.TestCase):
         self.assertNotIn("no activity", out)
         self.assertIn("Report ready:", out)
 
-    def test_init_no_open_still_prints_report_url(self):
+    def test_force_no_open_still_prints_report_url(self):
         out = self._run_main(
-            ["--init", "--no-open"],
+            ["--force", "--no-open"],
             summaries=[_make_summary(sessions=i + 1) for i in range(12)],
             upload_returns=[f"/r/{i}" for i in range(12)],
             tokens=[f"t{i}" for i in range(12)],
         )
         self.assertIn("Report ready:", out)
 
-    def test_init_quiet_suppresses_status_but_keeps_url(self):
+    def test_force_quiet_suppresses_status_but_keeps_url(self):
         out = self._run_main(
-            ["--init", "--quiet"],
+            ["--force", "--quiet"],
             summaries=[_make_summary(sessions=i + 1) for i in range(12)],
             upload_returns=[f"/r/{i}" for i in range(12)],
             tokens=[f"t{i}" for i in range(12)],

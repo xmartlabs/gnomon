@@ -343,6 +343,8 @@ class TestHelpOutput(unittest.TestCase):
         self.assertEqual(exc.exception.code, 0)
         self.assertIn("Usage:", stdout.getvalue())
         self.assertIn("--output-dir=PATH", stdout.getvalue())
+        self.assertIn("--force", stdout.getvalue())
+        self.assertNotIn("--init", stdout.getvalue())
         self.assertNotIn("--keep-artifacts", stdout.getvalue())
         mock_main_web.assert_not_called()
         mock_main_console.assert_not_called()
@@ -360,6 +362,8 @@ class TestHelpOutput(unittest.TestCase):
 
         self.assertEqual(exc.exception.code, 0)
         self.assertIn("--output-dir=PATH", stdout.getvalue())
+        self.assertIn("--force", stdout.getvalue())
+        self.assertNotIn("--init", stdout.getvalue())
         mock_main_web.assert_not_called()
         mock_main_console.assert_not_called()
 

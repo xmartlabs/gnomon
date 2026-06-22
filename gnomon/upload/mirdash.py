@@ -279,16 +279,16 @@ def decide_mode(argv):
     """Return (mode, n) from argv.
 
     Precedence (first match wins):
-      --init              → ('init', 12)
+      --force             → ('force', _MAX_BACKFILL)
       --backfill[=N]      → ('backfill', N)
-      neither             → ('current', 1)
+      neither             → ('auto', _MAX_BACKFILL)
     """
-    if "--init" in argv:
-        return ("init", 12)
+    if "--force" in argv:
+        return ("force", _MAX_BACKFILL)
     n = parse_backfill(argv)
     if n is not None:
         return ("backfill", n)
-    return ("current", 1)
+    return ("auto", _MAX_BACKFILL)
 
 
 def latest_month_with_data(progression_monthly):

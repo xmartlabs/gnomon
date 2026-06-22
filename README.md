@@ -69,7 +69,7 @@ uvx --from git+https://github.com/xmartlabs/gnomon xl-ai-insights --help
 Each scored point is computed over a **trailing window of `--window=N` calendar
 months** (default 6) ending at its anchor month, so a single weak month doesn't
 tank the score. `--window=1` scores each month on its own. The window applies to
-normal monthly runs and to `--backfill`/`--init`.
+normal monthly runs and to `--backfill`/`--force`.
 
 What happens when you run it (without `--local`):
 
@@ -80,7 +80,7 @@ What happens when you run it (without `--local`):
 
 By default, `xl-ai-insights` writes paxel outputs to a temporary directory and
 keeps that directory after the run finishes. This applies to normal monthly
-runs, `--backfill`, and `--init` on macOS, Linux, and Windows. The command
+runs, `--backfill`, and `--force` on macOS, Linux, and Windows. The command
 prints the temp path unless you pass `--quiet`. If you want the final files in a
 specific location, pass `--output-dir=PATH` (for example `--output-dir=.` to
 write into the current directory). Existing files with the same names are
