@@ -262,46 +262,55 @@ class TestOutputDirArgParsing(unittest.TestCase):
 
 
 class TestOutputDirPropagation(unittest.TestCase):
-    def _summary(self, sessions=1, progression_monthly=None):
-        summary = {
+    def _summary(self, sessions=1):
+        return {
             "context": {
                 "date_range": ["2026-01-01", "2026-02-01"],
                 "total_sessions": sessions,
             }
         }
-        if progression_monthly is not None:
-            summary["progression_monthly"] = progression_monthly
-        return summary
 
-    def _run_console(self, *, mode="current", token_count=1, run_paxel_side_effect=None):
+    def _run_console(self, *, mode, token_count, run_paxel_side_effect, uploaded=None):
+        """Drive _main_console directly; the per-window loop now runs through
+        _mirdash._upload_window → _mirdash._run_paxel, so patch the mirdash names."""
+        if uploaded is None:
+            uploaded = []
         with (
-            patch.object(_insights, "_capture_cli_token", return_value=(["tok"] * max(token_count, 1), [])),
+            patch.object(_insights, "_capture_cli_token",
+                         return_value=(["tok"] * max(token_count, 1), uploaded)),
             patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(_insights.os.path, "isfile", return_value=True),
-            patch.object(_insights, "_run_paxel", side_effect=run_paxel_side_effect) as mock_run,
-            patch.object(_insights, "_upload_summary", return_value="/r/1"),
+            patch.object(_mirdash, "_run_paxel", side_effect=run_paxel_side_effect) as mock_run,
+            patch.object(_mirdash, "_upload_summary", return_value="/r/1"),
             contextlib.redirect_stdout(io.StringIO()),
         ):
             mock_wb.open.return_value = True
-            _insights._main_console(
-                [], "https://mirdash.example", mode, token_count, [], True, True, False,
-                output_dir="./exports",
-            )
+            try:
+                _insights._main_console(
+                    [], "https://mirdash.example", mode, token_count, [], True, True, False,
+                    output_dir="./exports",
+                )
+            except SystemExit:
+                pass
         return mock_run
 
-    def test_console_current_passes_output_dir_to_run_paxel(self):
-        mock_run = self._run_console(run_paxel_side_effect=[self._summary()])
-        self.assertEqual(mock_run.call_args.kwargs["output_dir"], "./exports")
-
-    def test_console_fallback_passes_output_dir_to_all_run_paxel_calls(self):
+    def test_force_passes_output_dir_to_run_paxel(self):
+        """force mode: every window's _run_paxel call gets output_dir."""
         mock_run = self._run_console(
-            run_paxel_side_effect=[
-                self._summary(sessions=0),
-                self._summary(progression_monthly=[{"month": "2026-01"}]),
-                self._summary(),
-            ]
+            mode="force", token_count=12,
+            run_paxel_side_effect=[self._summary() for _ in range(12)],
         )
-        self.assertEqual(mock_run.call_count, 3)
+        self.assertEqual(mock_run.call_count, 12)
+        self.assertTrue(all(c.kwargs["output_dir"] == "./exports" for c in mock_run.call_args_list))
+
+    def test_auto_multi_window_passes_output_dir_to_all_run_paxel_calls(self):
+        """auto mode with empty server-state sweeps 12 windows; each call carries output_dir."""
+        mock_run = self._run_console(
+            mode="auto", token_count=12,
+            run_paxel_side_effect=[self._summary() for _ in range(12)],
+            uploaded=[],
+        )
+        self.assertEqual(mock_run.call_count, 12)
         self.assertTrue(all(c.kwargs["output_dir"] == "./exports" for c in mock_run.call_args_list))
 
     def test_batch_upload_window_passes_output_dir_to_run_paxel(self):

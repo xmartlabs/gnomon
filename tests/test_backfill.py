@@ -261,7 +261,12 @@ class TestBackfillLoop(unittest.TestCase):
             patch.object(_insights.sys, "argv", ["xl-ai-insights"] + argv),
         ):
             mock_wb.open.return_value = True
-            _insights.main()
+            # All-empty runs now exit cleanly (0) via the unified "nothing to
+            # share" path; tolerate that here.
+            try:
+                _insights.main()
+            except SystemExit:
+                pass
             return mock_paxel, mock_upload
 
     def test_skips_empty_months_no_token_consumed(self):

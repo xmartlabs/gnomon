@@ -10,12 +10,13 @@ import webbrowser
 from gnomon.upload.auth import _capture_cli_token, _wait_for_auth_tokens, _SHARE_AUTH_TIMEOUT, _WEB_AUTH_TIMEOUT
 from gnomon.upload.mirdash import (
     _resolve_mirdash_base, _resolve_output_dir, _absolutize_dir_flags,
-    _DEFAULT_WINDOW_MONTHS, parse_window, parse_backfill, decide_mode,
-    month_windows, _run_paxel, _summary_is_empty, _is_report_url,
-    _upload_summary, _upload_window, _upload_window_web,
-    _format_summary, _PAXEL_ERROR, _UPLOAD_ERROR,
-    _paxel_until_arg, _copy_artifacts,
-    latest_month_with_data,
+    _DEFAULT_WINDOW_MONTHS, parse_window, decide_mode,
+    month_windows, months_to_upload, windows_for_anchors,
+    _is_report_url, _upload_window, _upload_window_web,
+    _PAXEL_ERROR, _UPLOAD_ERROR,
+    # Re-exported so tests can patch them as attributes of this module and so the
+    # web fallback to console mode keeps a stable surface.
+    _run_paxel, _upload_summary,  # noqa: F401
 )
 
 
@@ -93,11 +94,15 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
 
     today = datetime.date.today()
 
-    if mode in ("force", "backfill"):
+    # Decide which month windows to upload. auto/force run through the
+    # detection helpers; backfill keeps the explicit trailing-N window list.
+    if mode == "backfill":
         windows = month_windows(token_count, today, window_months=window_months)
-        month_labels = [label for _, _, label in windows]
-    else:
-        month_labels = [month_windows(1, today, window_months=window_months)[0][2]]
+    else:  # auto or force
+        anchors = months_to_upload(today, uploaded, force=(mode == "force"))
+        windows = windows_for_anchors(anchors, window_months=window_months)
+
+    month_labels = [label for _, _, label in windows]
 
     server.push_event("auth_ok", {
         "message": "Authenticated",
@@ -105,151 +110,57 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
         "months": month_labels,
     })
 
-    if mode in ("force", "backfill"):
-        token_idx = 0
-        uploaded = 0
-        failed = 0
-        last_report_url = None
+    token_idx = 0
+    uploaded_count = 0
+    failed = 0
+    last_report_url = None
 
-        for i, (since, until, label) in enumerate(windows):
-            if token_idx >= len(tokens):
-                break
-            prefix = f"gnomon-{label}-" if output_dir else ""
-            report_url = _upload_window_web(
-                mirdash_base, tokens[token_idx], paxel_src,
-                paxel_forward, since, until, label, verbose, server, i, len(windows),
-                output_dir=output_dir,
-                quiet=quiet,
-                window_months=window_months,
-                file_prefix=prefix,
-            )
-            if _is_report_url(report_url):
-                last_report_url = report_url
-                uploaded += 1
-                token_idx += 1
-            elif report_url in (_UPLOAD_ERROR, _PAXEL_ERROR):
-                failed += 1
+    for i, (since, until, label) in enumerate(windows):
+        if token_idx >= len(tokens):
+            break
+        prefix = f"gnomon-{label}-" if output_dir else ""
+        report_url = _upload_window_web(
+            mirdash_base, tokens[token_idx], paxel_src,
+            paxel_forward, since, until, label, verbose, server, i, len(windows),
+            output_dir=output_dir,
+            quiet=quiet,
+            window_months=window_months,
+            file_prefix=prefix,
+        )
+        if _is_report_url(report_url):
+            last_report_url = report_url
+            uploaded_count += 1
+            token_idx += 1
+        elif report_url in (_UPLOAD_ERROR, _PAXEL_ERROR):
+            failed += 1
 
-        server.push_event("done", {
-            "reportUrl": last_report_url or "",
-            "mirdashBase": mirdash_base,
-            "uploaded": uploaded,
-            "failed": failed,
-            "total": len(windows),
-            "noOpen": no_open,
-        })
+    server.push_event("done", {
+        "reportUrl": last_report_url or "",
+        "mirdashBase": mirdash_base,
+        "uploaded": uploaded_count,
+        "failed": failed,
+        "total": len(windows),
+        "noOpen": no_open,
+    })
 
-        if last_report_url:
-            full_report = urllib.parse.urljoin(mirdash_base + "/", last_report_url)
-            if not quiet:
-                msg = f"  [ok] {uploaded}/{len(windows)} months uploaded"
-                if failed:
-                    msg += f" ({failed} failed)"
-                print(msg)
-            print(f"  Report ready: {full_report}")
-        elif failed:
-            print(f"  error: {failed}/{len(windows)} months failed to upload -- nothing was shared")
-
-        server.shutdown()
-        # Hard-fail only when nothing made it through; partial success still
-        # exits 0 (the UI and terminal already flag the failed months).
-        if failed and uploaded == 0:
-            sys.exit(1)
-        return
-
-    # --- Default: current month ---
-    since, until, label = month_windows(1, today, window_months=window_months)[0]
-
-    report_url = _upload_window_web(
-        mirdash_base, tokens[0], paxel_src,
-        paxel_forward, since, until, label, verbose, server, 0, 1,
-        output_dir=output_dir,
-        quiet=quiet,
-        window_months=window_months,
-    )
-
-    if report_url == _UPLOAD_ERROR:
-        server.push_event("done", {"reportUrl": "", "uploaded": 0, "failed": 1, "total": 1,
-                                    "noOpen": True, "mirdashBase": mirdash_base})
-        print(f"  error: upload failed for {label}")
-        server.shutdown()
-        sys.exit(1)
-
-    if report_url == _PAXEL_ERROR:
-        # paxel itself failed (error already printed by _run_paxel). Do NOT fall through
-        # to the historical-month fallback — that would upload stale data and report the
-        # current month as empty, masking the real failure.
-        server.push_event("done", {"reportUrl": "", "uploaded": 0, "failed": 1, "total": 1,
-                                    "noOpen": True, "mirdashBase": mirdash_base})
-        print(f"  error: could not compute {label} -- nothing was shared")
-        server.shutdown()
-        sys.exit(1)
-
-    if _is_report_url(report_url):
-        server.push_event("done", {
-            "reportUrl": report_url,
-            "mirdashBase": mirdash_base,
-            "uploaded": 1,
-            "total": 1,
-            "noOpen": no_open,
-        })
-        full_report = urllib.parse.urljoin(mirdash_base + "/", report_url)
-        print(f"  [ok] {label} uploaded -> {full_report}")
-        server.shutdown()
-        return
-
-    # Fallback: current month genuinely empty (report_url is None) — find most recent month with data
-    all_time_args = paxel_forward + ["--summary", "--no-open"]
-    all_time_summary = _run_paxel(paxel_src, all_time_args, verbose, output_dir=output_dir)
-
-    if all_time_summary is None or _summary_is_empty(all_time_summary):
-        server.push_event("done", {"reportUrl": "", "uploaded": 0, "total": 1, "noOpen": True})
-        print("  nothing to share (no sessions found)")
-        server.shutdown()
-        sys.exit(0)
-
-    progression = all_time_summary.get("progression_monthly") or []
-    fallback_month = latest_month_with_data(progression)
-
-    if not fallback_month:
-        server.push_event("done", {"reportUrl": "", "uploaded": 0, "total": 1, "noOpen": True})
-        print("  nothing to share (no sessions found)")
-        server.shutdown()
-        sys.exit(0)
-
-    fallback_year, fallback_mo = int(fallback_month[:4]), int(fallback_month[5:7])
-    fallback_date = datetime.date(fallback_year, fallback_mo, 1)
-    fb_since, fb_until, fb_label = month_windows(1, fallback_date, window_months=window_months)[0]
-
-    report_url = _upload_window_web(
-        mirdash_base, tokens[0], paxel_src,
-        paxel_forward, fb_since, fb_until, fb_label, verbose, server, 0, 1,
-        output_dir=output_dir,
-        quiet=quiet,
-        window_months=window_months,
-    )
-
-    if _is_report_url(report_url):
-        full_report = urllib.parse.urljoin(mirdash_base + "/", report_url)
-        server.push_event("done", {
-            "reportUrl": report_url,
-            "mirdashBase": mirdash_base,
-            "uploaded": 1,
-            "total": 1,
-            "noOpen": no_open,
-        })
-        print(f"  [ok] {fb_label} uploaded -> {full_report}")
-    elif report_url == _UPLOAD_ERROR:
-        server.push_event("done", {"reportUrl": "", "uploaded": 0, "failed": 1, "total": 1,
-                                    "noOpen": True, "mirdashBase": mirdash_base})
-        print(f"  error: upload failed for {fb_label}")
-        server.shutdown()
-        sys.exit(1)
+    if last_report_url:
+        full_report = urllib.parse.urljoin(mirdash_base + "/", last_report_url)
+        if not quiet:
+            msg = f"  [ok] {uploaded_count}/{len(windows)} months uploaded"
+            if failed:
+                msg += f" ({failed} failed)"
+            print(msg)
+        print(f"  Report ready: {full_report}")
+    elif failed:
+        print(f"  error: {failed}/{len(windows)} months failed to upload -- nothing was shared")
     else:
-        server.push_event("done", {"reportUrl": "", "uploaded": 0, "total": 1, "noOpen": True})
         print("  nothing to share (no sessions found)")
 
     server.shutdown()
+    # Hard-fail only when nothing made it through; partial success still
+    # exits 0 (the UI and terminal already flag the failed months).
+    if failed and uploaded_count == 0:
+        sys.exit(1)
 
 
 def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,
@@ -286,81 +197,43 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
 
     today = datetime.date.today()
 
-    if mode in ("force", "backfill"):
-        n_months = token_count
-        windows = month_windows(n_months, today, window_months=window_months)
+    # Decide which month windows to upload. auto/force run through the
+    # detection helpers; backfill keeps the explicit trailing-N window list.
+    if mode == "backfill":
+        windows = month_windows(token_count, today, window_months=window_months)
+    else:  # auto or force
+        anchors = months_to_upload(today, uploaded, force=(mode == "force"))
+        windows = windows_for_anchors(anchors, window_months=window_months)
 
-        token_idx = 0
-        uploaded = 0
-        last_report_url = None
+    token_idx = 0
+    uploaded_count = 0
+    last_report_url = None
 
-        for since, until, label in windows:
-            if token_idx >= len(tokens):
-                print("  warning: ran out of tokens before all months were uploaded -- stopping")
-                break
+    for since, until, label in windows:
+        if token_idx >= len(tokens):
+            print("  warning: ran out of tokens before all months were uploaded -- stopping")
+            break
 
-            prefix = f"gnomon-{label}-" if output_dir else ""
-            report_url = _upload_window(
-                mirdash_base, tokens[token_idx], paxel_src,
-                paxel_forward, since, until, label, verbose, quiet,
-                output_dir=output_dir,
-                window_months=window_months,
-                file_prefix=prefix,
-            )
-            if report_url is not None:
-                last_report_url = report_url
-                uploaded += 1
-                token_idx += 1
-                if not quiet:
-                    print(f"  ^ {label} uploaded")
-
-        verb = "initialised" if mode == "init" else "backfilled"
-        if not quiet:
-            print(f"  {verb} {uploaded}/{len(windows)} months")
-
-        if last_report_url:
-            full_report = urllib.parse.urljoin(mirdash_base + "/", last_report_url)
-            print(f"  Report ready: {full_report}")
-            if not no_open:
-                try:
-                    webbrowser.open(full_report)
-                except Exception as exc:
-                    print(f"  warning: could not open report in browser: {exc}")
-        return
-
-    since, until, label = month_windows(1, today, window_months=window_months)[0]
+        prefix = f"gnomon-{label}-" if output_dir else ""
+        report_url = _upload_window(
+            mirdash_base, tokens[token_idx], paxel_src,
+            paxel_forward, since, until, label, verbose, quiet,
+            output_dir=output_dir,
+            window_months=window_months,
+            file_prefix=prefix,
+        )
+        if report_url is not None:
+            last_report_url = report_url
+            uploaded_count += 1
+            token_idx += 1
+            if not quiet:
+                print(f"  ^ {label} uploaded")
 
     if not quiet:
-        print(f"  Computing your build profile for {label}...")
+        print(f"  uploaded {uploaded_count}/{len(windows)} months")
 
-    window_args = paxel_forward + [
-        f"--since={since}",
-        f"--until={_paxel_until_arg(until)}",
-        "--summary",
-        "--no-open",
-    ]
-    summary = _run_paxel(paxel_src, window_args, verbose, quiet=quiet, output_dir=output_dir)
-
-    if summary is None:
-        # paxel failed (error already printed by _run_paxel). Do NOT fall through to the
-        # historical-month fallback — that would upload stale data and report the current
-        # month as empty, masking the real failure.
-        sys.exit(1)
-
-    if not _summary_is_empty(summary):
-        if not quiet:
-            print("  Uploading metrics summary to mirdash...")
-        summary.setdefault("context", {})["window_months"] = window_months
-        try:
-            report_url = _upload_summary(mirdash_base, tokens[0], summary)
-        except Exception as exc:
-            print(f"  warning: {exc}")
-            return
-
-        full_report = urllib.parse.urljoin(mirdash_base + "/", report_url)
-        formatted = _format_summary(summary, quiet=quiet)
-        if formatted:
-            print(formatted)
+    if last_report_url:
+        full_report = urllib.parse.urljoin(mirdash_base + "/", last_report_url)
         print(f"  Report ready: {full_report}")
         if not no_open:
             try:
@@ -369,61 +242,8 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
                 print(f"  warning: could not open report in browser: {exc}")
         return
 
-    if not quiet:
-        print(f"  No activity in {label} yet -- checking for most recent month with data...")
-
-    all_time_args = paxel_forward + ["--summary", "--no-open"]
-    all_time_summary = _run_paxel(paxel_src, all_time_args, verbose, quiet=quiet, output_dir=output_dir)
-
-    if all_time_summary is None or _summary_is_empty(all_time_summary):
-        print("  nothing to share (no sessions found)")
-        sys.exit(0)
-
-    progression = all_time_summary.get("progression_monthly") or []
-    fallback_month = latest_month_with_data(progression)
-
-    if not fallback_month:
-        print("  nothing to share (no sessions found)")
-        sys.exit(0)
-
-    fallback_year, fallback_mo = int(fallback_month[:4]), int(fallback_month[5:7])
-    fallback_date = datetime.date(fallback_year, fallback_mo, 1)
-    fb_since, fb_until, fb_label = month_windows(1, fallback_date, window_months=window_months)[0]
-
-    if not quiet:
-        print(f"  Uploading most recent month with data: {fb_label}...")
-
-    fb_args = paxel_forward + [
-        f"--since={fb_since}",
-        f"--until={_paxel_until_arg(fb_until)}",
-        "--summary",
-        "--no-open",
-    ]
-    fb_summary = _run_paxel(paxel_src, fb_args, verbose, quiet=quiet, output_dir=output_dir)
-
-    if fb_summary is None or _summary_is_empty(fb_summary):
-        print("  nothing to share (no sessions found)")
-        sys.exit(0)
-
-    if not quiet:
-        print("  Uploading metrics summary to mirdash...")
-    fb_summary.setdefault("context", {})["window_months"] = window_months
-    try:
-        report_url = _upload_summary(mirdash_base, tokens[0], fb_summary)
-    except Exception as exc:
-        print(f"  warning: {exc}")
-        return
-
-    full_report = urllib.parse.urljoin(mirdash_base + "/", report_url)
-    formatted = _format_summary(fb_summary, quiet=quiet)
-    if formatted:
-        print(formatted)
-    print(f"  Report ready: {full_report}")
-    if not no_open:
-        try:
-            webbrowser.open(full_report)
-        except Exception as exc:
-            print(f"  warning: could not open report in browser: {exc}")
+    print("  nothing to share (no sessions found)")
+    sys.exit(0)
 
 
 def main(argv=None):

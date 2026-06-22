@@ -216,25 +216,55 @@ def _make_summary(sessions=5, since="2025-03-01", until="2025-04-01",
     return s
 
 
+def _ms(dt):
+    """datetime.datetime → epoch-ms int."""
+    return int(dt.replace(tzinfo=datetime.timezone.utc).timestamp() * 1000)
+
+
+def _current_only_uploaded(today):
+    """Server-state that makes months_to_upload(today, ...) return exactly [current].
+
+    current is present and fresh; prev is present and NOT stale (uploadedAt >=
+    first day of the month after prev), so neither gap-fill nor stale-refresh adds it.
+    """
+    cur_total = today.year * 12 + (today.month - 1)
+    cur = f"{cur_total // 12:04d}-{cur_total % 12 + 1:02d}"
+    prev_total = cur_total - 1
+    prev = f"{prev_total // 12:04d}-{prev_total % 12 + 1:02d}"
+    # Bound = first day of the month after prev = current month's first day.
+    fresh_prev = _ms(datetime.datetime(today.year, today.month, 1))
+    return [
+        {"monthKey": cur, "uploadedAt": _ms(datetime.datetime(2999, 1, 1))},
+        {"monthKey": prev, "uploadedAt": fresh_prev},
+    ]
+
+
 class TestCurrentMonthOrchestration(unittest.TestCase):
-    """Light integration tests for the default (no-flag) monthly mode."""
+    """Light integration tests for the default (no-flag) auto mode.
+
+    In auto mode the months to upload come from months_to_upload(today, uploaded).
+    These tests pin a single-window (current month) run by supplying server-state
+    where current is fresh and prev is not stale, so [current] is the only anchor.
+    """
 
     def _run_main(self, argv, run_paxel_side_effect, upload_return_values,
-                  tokens=None):
+                  tokens=None, uploaded=None):
         if tokens is None:
             tokens = ["tok1"]
+        if uploaded is None:
+            uploaded = _current_only_uploaded(datetime.date.today())
         if "--console" not in argv:
             argv = argv + ["--console"]
         with (
-            patch.object(_insights, "_capture_cli_token", return_value=(tokens, [])),
+            patch.object(_insights, "_capture_cli_token", return_value=(tokens, uploaded)),
             patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(
-                _insights,
+                _mirdash,
                 "_run_paxel",
                 side_effect=run_paxel_side_effect,
             ) as mock_paxel,
             patch.object(
-                _insights,
+                _mirdash,
                 "_upload_summary",
                 side_effect=upload_return_values,
             ) as mock_upload,
@@ -249,7 +279,7 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
             return mock_paxel, mock_upload
 
     def test_current_month_nonempty_uploads_once(self):
-        """Non-empty current month → exactly 1 paxel run + 1 upload."""
+        """auto + server-state pinned to [current] → exactly 1 paxel run + 1 upload."""
         mock_paxel, mock_upload = self._run_main(
             argv=["--no-open"],
             run_paxel_side_effect=[_make_summary(sessions=5)],
@@ -280,73 +310,61 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         last_day = calendar.monthrange(since_d.year, since_d.month)[1]
         self.assertEqual(until_d, datetime.date(since_d.year, since_d.month, last_day))
 
-    def test_current_month_empty_fallback_uses_progression_monthly(self):
-        """Empty current month → all-time paxel run → picks latest month → 1 upload."""
-        prog = [
-            {"month": "2025-01"},
-            {"month": "2025-02"},
+    def test_auto_empty_server_sweeps_twelve_months(self):
+        """auto + empty server-state → full backfill of 12 windows (oldest first)."""
+        # 12 windows; make every one empty so no token is consumed and we just
+        # count paxel runs.
+        mock_paxel, mock_upload = self._run_main(
+            argv=["--no-open"],
+            run_paxel_side_effect=[_make_summary(sessions=0)] * 12,
+            upload_return_values=[],
+            tokens=[f"t{i}" for i in range(12)],
+            uploaded=[],   # empty server-state → months_to_upload returns 12 months
+        )
+        self.assertEqual(mock_paxel.call_count, 12)
+        self.assertEqual(mock_upload.call_count, 0)
+
+    def test_auto_current_pinned_empty_uploads_nothing_no_fallback(self):
+        """auto pinned to [current], current empty → no upload, no historical fallback.
+
+        Exactly one paxel run for the current window; the old empty-month fallback
+        (all-time scan + latest_month_with_data) no longer exists.
+        """
+        mock_paxel, mock_upload = self._run_main(
+            argv=["--no-open"],
+            run_paxel_side_effect=[_make_summary(sessions=0)],
+            upload_return_values=[],
+        )
+        self.assertEqual(mock_paxel.call_count, 1)
+        self.assertEqual(mock_upload.call_count, 0)
+
+    def test_auto_prev_stale_uploads_prev_and_current(self):
+        """auto + prev present-but-stale → windows = [prev, current], both uploaded."""
+        today = datetime.date.today()
+        cur_total = today.year * 12 + (today.month - 1)
+        cur = f"{cur_total // 12:04d}-{cur_total % 12 + 1:02d}"
+        prev_total = cur_total - 1
+        prev = f"{prev_total // 12:04d}-{prev_total % 12 + 1:02d}"
+        # prev present but stale: uploadedAt strictly before the start of current month.
+        stale_prev = _ms(datetime.datetime(today.year, today.month, 1)) - 1
+        uploaded = [
+            {"monthKey": cur, "uploadedAt": _ms(datetime.datetime(2999, 1, 1))},
+            {"monthKey": prev, "uploadedAt": stale_prev},
         ]
-        # paxel call 1: current month → empty
-        # paxel call 2: all-time → has progression_monthly
-        # paxel call 3: latest month (2025-02) → non-empty
         mock_paxel, mock_upload = self._run_main(
             argv=["--no-open"],
-            run_paxel_side_effect=[
-                _make_summary(sessions=0),              # current month empty
-                _make_summary(sessions=10,              # all-time with prog
-                              progression_monthly=prog),
-                _make_summary(sessions=4),              # fallback month window
-            ],
-            upload_return_values=["/report/fallback"],
+            run_paxel_side_effect=[_make_summary(sessions=2), _make_summary(sessions=3)],
+            upload_return_values=["/r/prev", "/r/cur"],
+            tokens=["t1", "t2"],
+            uploaded=uploaded,
         )
-        self.assertEqual(mock_paxel.call_count, 3)
-        self.assertEqual(mock_upload.call_count, 1)
-
-    def test_current_month_empty_fallback_paxel_args_for_latest_month(self):
-        """Fallback window paxel call uses paxel's inclusive month-end semantics."""
-        prog = [{"month": "2025-02"}]
-        mock_paxel, mock_upload = self._run_main(
-            argv=["--no-open", "--window=1"],
-            run_paxel_side_effect=[
-                _make_summary(sessions=0),
-                _make_summary(sessions=8, progression_monthly=prog),
-                _make_summary(sessions=2),
-            ],
-            upload_return_values=["/r"],
-        )
-        # Third paxel call must include --since=2025-02-01
-        call3_args = mock_paxel.call_args_list[2][0][1]
-        self.assertIn("--since=2025-02-01", call3_args)
-        self.assertIn("--until=2025-02-28", call3_args)
-
-    def test_current_month_empty_no_progression_exits_cleanly(self):
-        """Empty current month + all-time has no data → clean exit, no upload."""
-        mock_paxel, mock_upload = self._run_main(
-            argv=["--no-open"],
-            run_paxel_side_effect=[
-                _make_summary(sessions=0),           # current month empty
-                _make_summary(sessions=0),           # all-time empty too
-            ],
-            upload_return_values=[],
-        )
-        self.assertEqual(mock_upload.call_count, 0)
-
-    def test_current_month_empty_progression_empty_list_exits_cleanly(self):
-        """progression_monthly present but empty list → no upload."""
-        mock_paxel, mock_upload = self._run_main(
-            argv=["--no-open"],
-            run_paxel_side_effect=[
-                _make_summary(sessions=0),
-                _make_summary(sessions=0, progression_monthly=[]),
-            ],
-            upload_return_values=[],
-        )
-        self.assertEqual(mock_upload.call_count, 0)
+        self.assertEqual(mock_paxel.call_count, 2)
+        self.assertEqual(mock_upload.call_count, 2)
 
     def test_current_month_paxel_error_does_not_fall_back(self):
-        """A paxel run FAILURE (None) on the current month must NOT trigger the
-        historical-month fallback — that would upload stale data and mislabel the
-        current month as empty. Expect exactly 1 paxel run and 0 uploads."""
+        """A paxel run FAILURE (None) for the only window must NOT trigger any
+        historical-month fallback — that path no longer exists. Expect exactly 1
+        paxel run and 0 uploads."""
         mock_paxel, mock_upload = self._run_main(
             argv=["--no-open"],
             run_paxel_side_effect=[None],   # current-month paxel run failed

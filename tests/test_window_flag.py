@@ -1,6 +1,7 @@
 """Tests for the --window=N flag: parsing, paxel_forward stripping, and payload stamping."""
 
 import contextlib
+import datetime
 import io
 import os
 import sys
@@ -10,6 +11,24 @@ from unittest.mock import MagicMock, patch
 import gnomon.cli.insights as _insights
 import gnomon.upload.mirdash as _mirdash
 from gnomon.upload.mirdash import _DEFAULT_WINDOW_MONTHS, parse_window
+
+
+def _ms(dt):
+    return int(dt.replace(tzinfo=datetime.timezone.utc).timestamp() * 1000)
+
+
+def _current_only_uploaded(today=None):
+    """Server-state pinning months_to_upload to exactly [current month]."""
+    today = today or datetime.date.today()
+    cur_total = today.year * 12 + (today.month - 1)
+    cur = f"{cur_total // 12:04d}-{cur_total % 12 + 1:02d}"
+    prev_total = cur_total - 1
+    prev = f"{prev_total // 12:04d}-{prev_total % 12 + 1:02d}"
+    fresh_prev = _ms(datetime.datetime(today.year, today.month, 1))
+    return [
+        {"monthKey": cur, "uploadedAt": _ms(datetime.datetime(2999, 1, 1))},
+        {"monthKey": prev, "uploadedAt": fresh_prev},
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -176,15 +195,16 @@ def _make_summary(sessions=5, since="2026-01-01", until="2026-07-01"):
 class TestWindowMonthsInPayload(unittest.TestCase):
     """Verify context.window_months is stamped before upload in console mode."""
 
-    def _run_console(self, argv, summaries, upload_returns, tokens=None):
+    def _run_console(self, argv, summaries, upload_returns, tokens=None, uploaded=None):
         """Run main() in console mode with mocked I/O; return captured upload calls.
 
         Patches both _insights and _mirdash for _run_paxel / _upload_summary so
-        the helper works for current-month paths (direct calls in insights) and
-        backfill paths (calls through _upload_window in mirdash).
+        the helper works regardless of which module the call resolves through.
         """
         if tokens is None:
             tokens = ["tok1"]
+        if uploaded is None:
+            uploaded = _current_only_uploaded()
         uploaded_summaries = []
 
         # Use a shared list for side effects so both patches draw from the same pool.
@@ -203,7 +223,7 @@ class TestWindowMonthsInPayload(unittest.TestCase):
             return remaining_uploads.pop(0)
 
         with (
-            patch.object(_insights, "_capture_cli_token", return_value=(tokens, [])),
+            patch.object(_insights, "_capture_cli_token", return_value=(tokens, uploaded)),
             patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(_insights, "_run_paxel", side_effect=fake_run_paxel),
             patch.object(_insights, "_upload_summary", side_effect=capture_upload),
@@ -283,39 +303,36 @@ class TestWindowMonthsInPayload(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Fallback path: progression_monthly test (proper)
+# Auto mode (multi-month sweep): window_months stamped on every payload
 # ---------------------------------------------------------------------------
 
 
-class TestWindowMonthsFallbackPayload(unittest.TestCase):
-    """Verify window_months propagates through the fallback (empty current month) path."""
+class TestWindowMonthsAutoSweepPayload(unittest.TestCase):
+    """In auto mode with empty server-state (full 12-month sweep), every uploaded
+    summary must carry context.window_months — replaces the removed fallback path."""
 
-    def _run_console_with_fallback(self, window_arg):
+    def _run_auto_sweep(self, window_arg):
         uploaded_summaries = []
 
         def capture_upload(mirdash_base, token, summary):
             uploaded_summaries.append(summary)
-            return "/r/fallback"
+            return "/r/x"
 
-        prog = [{"month": "2026-04"}]
-        summaries = [
-            {   # current month: empty
-                "context": {"total_sessions": 0, "date_range": ["2026-06-01", "2026-07-01"]},
-            },
-            {   # all-time: has progression_monthly
-                "context": {"total_sessions": 10, "date_range": ["2025-01-01", "2026-06-01"]},
-                "progression_monthly": prog,
-            },
-            {   # fallback month window
-                "context": {"total_sessions": 3, "date_range": ["2026-04-01", "2026-05-01"]},
-            },
-        ]
+        # Empty server-state → months_to_upload returns 12 windows; make 3 of them
+        # non-empty so they get uploaded (and stamped), the rest skipped.
+        summaries = []
+        for i in range(12):
+            sessions = 5 if i in (2, 5, 9) else 0
+            summaries.append({
+                "context": {"total_sessions": sessions, "date_range": ["2026-01-01", "2026-02-01"]},
+            })
+
         argv = ["--no-open", "--console"] + ([window_arg] if window_arg else [])
         with (
-            patch.object(_insights, "_capture_cli_token", return_value=(["tok1"], [])),
+            patch.object(_insights, "_capture_cli_token", return_value=([f"t{i}" for i in range(12)], [])),
             patch.object(_insights, "webbrowser") as mock_wb,
-            patch.object(_insights, "_run_paxel", side_effect=list(summaries)),
-            patch.object(_insights, "_upload_summary", side_effect=capture_upload),
+            patch.object(_mirdash, "_run_paxel", side_effect=list(summaries)),
+            patch.object(_mirdash, "_upload_summary", side_effect=capture_upload),
             patch.object(_insights.os.path, "isfile", return_value=True),
             patch.object(_insights.sys, "argv", ["xl-ai-insights"] + argv),
             contextlib.redirect_stdout(io.StringIO()),
@@ -327,15 +344,17 @@ class TestWindowMonthsFallbackPayload(unittest.TestCase):
                 pass
         return uploaded_summaries
 
-    def test_fallback_payload_carries_window_months_4(self):
-        uploaded = self._run_console_with_fallback("--window=4")
-        self.assertEqual(len(uploaded), 1)
-        self.assertEqual(uploaded[0]["context"]["window_months"], 4)
+    def test_auto_sweep_payload_carries_window_months_4(self):
+        uploaded = self._run_auto_sweep("--window=4")
+        self.assertEqual(len(uploaded), 3)
+        for s in uploaded:
+            self.assertEqual(s["context"]["window_months"], 4)
 
-    def test_fallback_payload_carries_default_window_months(self):
-        uploaded = self._run_console_with_fallback(None)
-        self.assertEqual(len(uploaded), 1)
-        self.assertEqual(uploaded[0]["context"]["window_months"], _DEFAULT_WINDOW_MONTHS)
+    def test_auto_sweep_payload_carries_default_window_months(self):
+        uploaded = self._run_auto_sweep(None)
+        self.assertEqual(len(uploaded), 3)
+        for s in uploaded:
+            self.assertEqual(s["context"]["window_months"], _DEFAULT_WINDOW_MONTHS)
 
 
 if __name__ == "__main__":
