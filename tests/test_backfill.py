@@ -240,7 +240,7 @@ class TestBackfillLoop(unittest.TestCase):
 
     def _run_backfill(self, run_paxel_side_effect, upload_return_values, extra_argv=None):
         """Helper: invoke main() with --backfill=N, intercepting I/O."""
-        argv = ["--backfill=3", "--no-open"] + (extra_argv or [])
+        argv = ["--backfill=3", "--no-open", "--console"] + (extra_argv or [])
 
         tokens = ["t1", "t2", "t3"]
 
@@ -330,12 +330,14 @@ class TestBatchOutputContract(unittest.TestCase):
     - The final report URL must print even with --no-open (only the browser open
       is suppressed) — otherwise a batch run succeeds with no way to reach the report.
     - --quiet must print only errors and the final URL, never per-window status
-      lines ('↑ uploaded', 'initialised/backfilled X/Y', 'Analysing', 'skip — no
+      lines ('^ uploaded', 'initialised/backfilled X/Y', 'Analysing', 'skip -- no
       activity').
     """
 
     def _run_main(self, argv, summaries, upload_returns, tokens):
         """Invoke main() with batch I/O mocked; return captured stdout."""
+        if "--console" not in argv:
+            argv = argv + ["--console"]
         buf = io.StringIO()
         with (
             patch.object(xl_ai_insights, "_capture_cli_token", return_value=tokens),
@@ -371,7 +373,7 @@ class TestBatchOutputContract(unittest.TestCase):
         )
         self.assertIn("Report ready:", out)
         self.assertIn("/r/3", out)
-        self.assertNotIn("↑", out)
+        self.assertNotIn("^", out)
         self.assertNotIn("uploaded", out)
         self.assertNotIn("backfilled", out)
         self.assertNotIn("Analysing", out)
@@ -407,7 +409,7 @@ class TestBatchOutputContract(unittest.TestCase):
             tokens=[f"t{i}" for i in range(12)],
         )
         self.assertIn("Report ready:", out)
-        self.assertNotIn("↑", out)
+        self.assertNotIn("^", out)
         self.assertNotIn("uploaded", out)
         self.assertNotIn("initialised", out)
 
