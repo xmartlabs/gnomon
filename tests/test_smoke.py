@@ -304,6 +304,86 @@ class TestUnits(unittest.TestCase):
         self.assertNotIn("Steering", zero)
 
 
+class TestCursorStatsFixes(unittest.TestCase):
+    """Regression tests for the four Cursor parser bugs that corrupted its stats:
+    model mix, tool-name casing split, MCP server naming, and dashed-slug cwd."""
+
+    # --- Bug 2: casing variants of one tool must collapse to a single canonical name ---
+    def test_tool_name_casing_collapses_for_mapped_plan_tool(self):
+        names = {paxel._cursor_tool_name(n) for n in
+                 ("update_current_step", "UpdateCurrentStep", "updateCurrentStep")}
+        self.assertEqual(names, {"TodoWrite"})  # mapped like Codex update_plan
+
+    def test_tool_name_casing_collapses_for_unmapped_tool(self):
+        names = {paxel._cursor_tool_name(n) for n in ("switch_mode", "SwitchMode", "switchMode")}
+        self.assertEqual(names, {"switch_mode"})  # one canonical, not three
+
+    # --- Bug 3: Cursor MCP tool names canonicalize to mcp__<server>__<tool> ---
+    def test_mcp_name_splits_server_and_tool(self):
+        self.assertEqual(paxel._cursor_tool_name("mcp-figma-get_design_context"),
+                         "mcp__figma__get_design_context")
+
+    def test_mcp_name_server_groups_multiple_tools(self):
+        servers = {paxel._cursor_tool_name(n).split("__")[1] for n in
+                   ("mcp_figma_get_screenshot", "mcp_figma_download_assets")}
+        self.assertEqual(servers, {"figma"})  # one server bucket, not one-per-tool
+
+    def test_mcp_name_single_token_does_not_emit_empty_server(self):
+        out = paxel._cursor_tool_name("mcp_foo")
+        self.assertEqual(out, "mcp__cursor__foo")
+        self.assertNotIn("mcp--", out)
+
+    def test_already_canonical_mcp_name_untouched(self):
+        self.assertEqual(paxel._cursor_tool_name("mcp__github__create_issue"),
+                         "mcp__github__create_issue")
+
+    # --- Bug 4: dashed folder names reconstruct against disk, with naive fallback ---
+    def test_cwd_reconstructs_dashed_leaf_against_disk(self):
+        existing = {"/Users", "/Users/mirland", "/Users/mirland/Projects",
+                    "/Users/mirland/Projects/carp-health-flutter"}
+        with mock.patch("gnomon.sources.cursor.os.path.isdir", side_effect=existing.__contains__):
+            cwd = paxel._cursor_project_cwd("Users-mirland-Projects-carp-health-flutter")
+        self.assertEqual(cwd, "/Users/mirland/Projects/carp-health-flutter")
+
+    def test_cwd_falls_back_to_naive_when_nothing_on_disk(self):
+        with mock.patch("gnomon.sources.cursor.os.path.isdir", return_value=False):
+            self.assertEqual(paxel._cursor_project_cwd("Users-demo-cursorproj"),
+                             "/Users/demo/cursorproj")
+
+    def test_cwd_none_for_non_home_slug(self):
+        self.assertIsNone(paxel._cursor_project_cwd("1777578696277"))
+
+    # --- Bug 1: the session model surfaces from composerData.modelConfig.modelName ---
+    def test_session_model_read_from_model_config(self):
+        temp_db = tempfile.NamedTemporaryFile(suffix=".vscdb", delete=False)
+        temp_db.close()
+        self.addCleanup(lambda: os.path.exists(temp_db.name) and os.unlink(temp_db.name))
+        import sqlite3
+        conn = sqlite3.connect(temp_db.name)
+        conn.execute("CREATE TABLE cursorDiskKV (key TEXT PRIMARY KEY, value BLOB)")
+        bid = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+        conn.execute("INSERT INTO cursorDiskKV VALUES (?, ?)",
+                     ("composerData:mdl-session",
+                      json.dumps({"modelConfig": {"modelName": "claude-4.5-sonnet-thinking"},
+                                  "fullConversationHeadersOnly": [{"bubbleId": bid, "type": 2}]})))
+        conn.execute("INSERT INTO cursorDiskKV VALUES (?, ?)",
+                     (f"bubbleId:mdl-session:{bid}",
+                      json.dumps({"type": 2, "createdAt": "2026-01-01T10:00:00.000Z",
+                                  "text": "hello",
+                                  "tokenCount": {"inputTokens": 10, "outputTokens": 5}})))
+        conn.commit()
+        conn.close()
+        events = list(paxel._cursor_sqlite_events(temp_db.name, {}))
+        asst = [e for e in events if e.get("type") == "assistant"]
+        self.assertTrue(asst, "no assistant event emitted")
+        self.assertEqual(asst[0]["message"]["model"], "claude-4.5-sonnet-thinking")
+
+    def test_pretty_model_cursor_ids(self):
+        self.assertEqual(paxel._pretty_model("default"), "Cursor Auto")
+        self.assertEqual(paxel._pretty_model("composer-2.5-fast"), "Cursor Composer 2.5 Fast")
+        self.assertEqual(paxel._pretty_model("claude-4.5-sonnet-thinking"), "Sonnet 4.5 Thinking")
+
+
 class TestCanonToolGeminiMappings(unittest.TestCase):
     """_canon_tool must map Gemini-native tool names to Claude taxonomy."""
 

@@ -63,6 +63,13 @@ def _open_in_browser(path):
 def _pretty_model(m):
     # "claude-opus-4-7" -> "Opus 4.7"; "claude-3-5-sonnet-20241022" -> "Sonnet 3.5";
     # "gpt-5.4" -> "GPT 5.4"; "gpt-5-codex" -> "GPT 5 Codex"; "gemini-2.5-pro" -> "Gemini 2.5 Pro".
+    # Cursor's own model ids: "default" = auto-routed pick, "composer-*" = Cursor's models,
+    # bare "cursor" = token-only fallback when the session model id is missing.
+    low = (m or "").lower()
+    if low == "default":
+        return "Cursor Auto"
+    if low.startswith("composer"):
+        return "Cursor " + " ".join(p.capitalize() for p in low.split("-"))
     s = re.sub(r"^claude-", "", m or "")
     s = re.sub(r"-\d{6,}$", "", s)              # drop trailing date snapshot
     parts = [p for p in s.split("-") if p]

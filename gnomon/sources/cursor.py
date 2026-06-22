@@ -25,21 +25,53 @@ _CURSOR_TOOL_MAP = {
     "create_plan": "EnterPlanMode", "ask_question": "AskUserQuestion",
     "read_lints": "Read", "edit_notebook": "NotebookEdit",
     "await_shell": "BashOutput", "await": "BashOutput",
+    # Cursor's plan/step-tracking tools ~ Claude's TodoWrite (mirrors codex.py mapping
+    # of `update_plan` -> TodoWrite). Counted as planning, not noise.
+    "update_current_step": "TodoWrite", "update_todo": "TodoWrite",
+    "update_todos": "TodoWrite",
 }
 
 _CURSOR_PATCH_FILE_RE = re.compile(r"^\*{3}\s*(?:Update|Add|Create|Delete)\s+File:\s*(.+)$", re.M)
 
 
 def _cursor_project_cwd(project_slug):
-    """Best-effort reverse of Cursor's project folder slug -> workspace path."""
+    """Best-effort reverse of Cursor's project folder slug -> workspace path.
+
+    Cursor flattens the absolute path into a slug joining segments with '-', but folder
+    names themselves contain '-' too (`Users-mirland-Projects-carp-health-flutter`), so a
+    blind `replace('-', '/')` invents a non-existent path (`.../carp/health/flutter`) and
+    git churn silently reads 0. The ambiguity is real, so we resolve it against the disk:
+    descend through path segments that actually exist as directories, then treat whatever
+    is left as the leaf folder name (dashes preserved). Numeric / temp slugs that don't map
+    to a home path return None."""
     if not project_slug:
         return None
-    norm = project_slug.replace("\\", "/")
-    if norm.startswith("Users/") or norm.startswith("Users-"):
-        return "/" + norm.replace("-", "/")
-    if norm.startswith("home/") or norm.startswith("home-"):
-        return "/" + norm.replace("-", "/")
-    return None
+    norm = project_slug.replace("\\", "/").strip("/")
+    # Only home-anchored slugs map to a real workspace; numeric ids / var-folders / etc. don't.
+    head = norm.split("-", 1)[0].split("/", 1)[0]
+    if head not in ("Users", "home"):
+        return None
+    tokens = norm.replace("/", "-").split("-")
+    path = ""
+    i = 0
+    # Descend while each next token is a real directory at this level.
+    while i < len(tokens):
+        cand = (path + "/" + tokens[i]) if path else ("/" + tokens[i])
+        if os.path.isdir(cand):
+            path = cand
+            i += 1
+        else:
+            break
+    # Remaining tokens form the leaf folder name, with its internal dashes restored.
+    if i < len(tokens):
+        leaf = "-".join(tokens[i:])
+        path = (path + "/" + leaf) if path else ("/" + leaf)
+    if path and os.path.isdir(path):
+        return path
+    # Nothing on disk matched (history copied/mounted, repo since deleted): fall back to
+    # the naive '-'->'/' reconstruction so the workspace still gets a label, even though
+    # git churn won't find a repo there.
+    return "/" + norm.replace("-", "/")
 
 
 def _cursor_jsonl_meta(fp):
@@ -85,17 +117,33 @@ def _cursor_tool_key(name):
     return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", n).lower().replace("-", "_")
 
 
+def _cursor_mcp_name(key):
+    """Canonicalize a Cursor MCP tool key ('mcp_figma_get_design_context') to
+    'mcp__<server>__<tool>' so the server is one bucket, not one-per-tool. The raw name
+    flattens server+tool with single separators, so '__'.split downstream used to read the
+    whole tail as a distinct 'server' and inflate mcp_servers_distinct."""
+    rest = key[len("mcp"):].lstrip("_")
+    parts = [p for p in rest.split("_") if p]
+    if len(parts) >= 2:
+        return f"mcp__{parts[0]}__{'_'.join(parts[1:])}"
+    if len(parts) == 1:
+        return f"mcp__cursor__{parts[0]}"
+    return "mcp__cursor__tool"
+
+
 def _cursor_tool_name(name):
     n = str(name or "tool")
     key = _cursor_tool_key(n)
-    if key.startswith("mcp") and not key.startswith("mcp__"):
-        return "mcp__" + n
     if n.startswith("mcp__"):
         return n
+    if key == "mcp" or key.startswith("mcp_"):
+        return _cursor_mcp_name(key)
     mapped = _CURSOR_TOOL_MAP.get(key)
     if mapped:
         return mapped
-    return _canon_tool(n)
+    # Fall back to the NORMALIZED key, not the raw name, so casing variants of an
+    # unmapped tool ('UpdateCurrentStep' / 'updateCurrentStep') collapse to one entry.
+    return _canon_tool(key)
 
 
 def _cursor_tool_input(raw_name, raw):
@@ -321,6 +369,11 @@ def _cursor_sqlite_events(db_path, twins=None):
         # cwd comes from the JSONL twin's project slug -- the DB stores no workspace path
         twin = twins.get(composer_id) or {}
         base = {"sessionId": composer_id, "cwd": twin.get("cwd")}
+        # The real model lives on the session, not the bubble: composerData carries
+        # modelConfig.modelName (e.g. "claude-4.5-sonnet-thinking", "gemini-3-pro",
+        # "default"). Per-bubble `model` is always None on disk, so without this the
+        # whole source reads as model-less and AQ Model mix collapses to 0.
+        session_model = (meta.get("modelConfig") or {}).get("modelName")
         edit_queues = _cursor_jsonl_edit_inputs(twin["jsonl"]) if twin.get("jsonl") else None
         for hdr in headers:
             if not isinstance(hdr, dict):
@@ -368,12 +421,16 @@ def _cursor_sqlite_events(db_path, twins=None):
                 # a separate usage-only turn. Ignore empty token payloads.
                 tok_count = bubble.get("tokenCount")
                 msg = {"role": "assistant"}
+                if session_model:
+                    msg["model"] = session_model
                 usage = None
                 if isinstance(tok_count, dict):
                     input_tok = int(tok_count.get("inputTokens") or 0)
                     output_tok = int(tok_count.get("outputTokens") or 0)
                     if input_tok > 0 or output_tok > 0:
-                        msg["model"] = "cursor"
+                        # Keep the real model if we have one; only fall back to "cursor"
+                        # so tokens are still attributed to *something* in by_model.
+                        msg.setdefault("model", "cursor")
                         usage = {
                             "input_tokens": input_tok,
                             "output_tokens": output_tok,
