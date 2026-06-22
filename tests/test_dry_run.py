@@ -482,5 +482,75 @@ class TestDryRunNotForwardedToPaxel(unittest.TestCase):
         self.assertTrue(kwargs.get("dry_run"))
 
 
+# ---------------------------------------------------------------------------
+# _main_web OSError fallback preserves dry_run
+# ---------------------------------------------------------------------------
+
+
+class TestMainWebOSErrorFallbackDryRun(unittest.TestCase):
+    """When ProgressServer raises OSError, --dry-run must survive the fallback to console mode."""
+
+    TODAY = datetime.date(2025, 7, 15)
+
+    def _run_web_oserror_dry_run(self, mode="auto", token_count=12, uploaded=None):
+        """Drive _main_web with dry_run=True and ProgressServer raising OSError."""
+        if uploaded is None:
+            uploaded = []
+        buf = io.StringIO()
+        mock_date = MagicMock()
+        mock_date.today.return_value = self.TODAY
+
+        with (
+            patch("gnomon.cli.insights.ProgressServer", side_effect=OSError("address already in use"), create=True),
+            patch.object(_insights, "_capture_cli_token",
+                         return_value=(["tok"] * token_count, uploaded)),
+            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(_mirdash, "_run_paxel") as mock_paxel,
+            patch.object(_mirdash, "_upload_summary") as mock_upload,
+            patch("gnomon.cli.insights.datetime") as mock_dt,
+            contextlib.redirect_stdout(buf),
+        ):
+            mock_wb.open.return_value = True
+            mock_dt.date = mock_date
+            mock_dt.datetime = datetime.datetime
+            mock_dt.timezone = datetime.timezone
+            mock_dt.timedelta = datetime.timedelta
+            try:
+                _insights._main_web(
+                    [], "https://mirdash.example", mode, token_count, [], True, False, False,
+                    dry_run=True,
+                )
+                exited = False
+                exit_code = None
+            except SystemExit as e:
+                exited = True
+                exit_code = e.code
+
+        return buf.getvalue(), mock_paxel, mock_upload, exited, exit_code
+
+    def test_no_paxel_calls_after_oserror_fallback(self):
+        _, mock_paxel, _, _, _ = self._run_web_oserror_dry_run()
+        mock_paxel.assert_not_called()
+
+    def test_no_upload_calls_after_oserror_fallback(self):
+        _, _, mock_upload, _, _ = self._run_web_oserror_dry_run()
+        mock_upload.assert_not_called()
+
+    def test_exits_0_after_oserror_fallback(self):
+        _, _, _, exited, code = self._run_web_oserror_dry_run()
+        self.assertTrue(exited)
+        self.assertEqual(code, 0)
+
+    def test_prints_dry_run_header_after_oserror_fallback(self):
+        out, _, _, _, _ = self._run_web_oserror_dry_run()
+        self.assertIn("Dry run", out)
+        self.assertIn("no uploads", out)
+
+    def test_warns_about_fallback(self):
+        out, _, _, _, _ = self._run_web_oserror_dry_run()
+        self.assertIn("falling back to console mode", out)
+
+
 if __name__ == "__main__":
     unittest.main()

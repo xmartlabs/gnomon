@@ -91,7 +91,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
     except OSError as exc:
         print(f"  warning: could not bind localhost:{port} ({exc}) -- falling back to console mode")
         _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,
-                      output_dir=output_dir, window_months=window_months)
+                      output_dir=output_dir, window_months=window_months, dry_run=dry_run)
         return
 
     if not quiet:
