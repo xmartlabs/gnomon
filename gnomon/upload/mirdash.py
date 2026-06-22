@@ -367,6 +367,95 @@ def windows_for_anchors(anchor_labels, window_months=1):
     return result
 
 
+def plan_upload(today, server_months, force=False, max_months=_MAX_BACKFILL):
+    """Return sorted list (oldest first) of (anchor 'YYYY-MM', reason) pairs to upload.
+
+    today:         datetime.date — caller must supply; this function never calls date.today().
+    server_months: list of dicts {'monthKey': 'YYYY-MM', 'uploadedAt': <int ms epoch>}.
+                   Malformed entries are silently skipped.
+    force:         bool — when True, behave as if server were empty (full backfill).
+    max_months:    hard cap; never return more than this many anchors.
+
+    reason ∈ {'force', 'initial', 'current', 'gap', 'refresh'}
+      force=True                      → each anchor gets reason 'force'
+      server empty (no valid entries) → each anchor gets reason 'initial'
+      incremental:
+        current month                 → 'current'
+        gap months (missing on server, strictly between latest_server and current) → 'gap'
+        prev if stale                 → 'refresh'
+        Precedence if overlap: current > gap > refresh (disjoint in practice)
+    """
+    current = f"{today.year:04d}-{today.month:02d}"
+
+    # Parse server_months defensively; skip malformed entries
+    valid_server = {}
+    for entry in server_months:
+        if not isinstance(entry, dict):
+            continue
+        mk = entry.get("monthKey")
+        if not isinstance(mk, str) or not re.fullmatch(r"\d{4}-\d{2}", mk):
+            continue
+        try:
+            ua = int(entry["uploadedAt"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        valid_server[mk] = ua
+
+    # force → full backfill with reason 'force'
+    if force:
+        return [(w[2], "force") for w in month_windows(max_months, today, 1)]
+
+    # no valid server data → full backfill with reason 'initial'
+    if not valid_server:
+        return [(w[2], "initial") for w in month_windows(max_months, today, 1)]
+
+    # Incremental path: build {label: reason} dict
+    reasons = {}
+    reasons[current] = "current"
+
+    # Gap fill: months strictly between latest_server (exclusive) and current (exclusive)
+    latest_server = max(valid_server)
+    ls_y = int(latest_server[:4])
+    ls_m = int(latest_server[5:7])
+    cur_y = today.year
+    cur_m = today.month
+    ls_total = ls_y * 12 + (ls_m - 1)
+    cur_total = cur_y * 12 + (cur_m - 1)
+    for t in range(ls_total + 1, cur_total):  # strictly between, current added separately
+        gy = t // 12
+        gm = t % 12 + 1
+        label = f"{gy:04d}-{gm:02d}"
+        if label not in reasons:
+            reasons[label] = "gap"
+
+    # Stale refresh for prev month
+    prev_total = cur_total - 1
+    prev_y = prev_total // 12
+    prev_m = prev_total % 12 + 1
+    prev_label = f"{prev_y:04d}-{prev_m:02d}"
+    if prev_label in valid_server:
+        # end_of_month bound = 00:00:00 UTC of first day of next month after prev
+        if prev_m == 12:
+            bound_y, bound_m = prev_y + 1, 1
+        else:
+            bound_y, bound_m = prev_y, prev_m + 1
+        bound_ms = int(
+            datetime.datetime(bound_y, bound_m, 1, tzinfo=datetime.timezone.utc).timestamp() * 1000
+        )
+        if valid_server[prev_label] < bound_ms:
+            if prev_label not in reasons:
+                reasons[prev_label] = "refresh"
+
+    # Dedup + sort lexicographically (= chronologically for zero-padded YYYY-MM)
+    sorted_pairs = sorted(reasons.items())
+
+    # Truncate to max_months most recent
+    if len(sorted_pairs) > max_months:
+        sorted_pairs = sorted_pairs[-max_months:]
+
+    return sorted_pairs
+
+
 def months_to_upload(today, server_months, force=False, max_months=_MAX_BACKFILL):
     """Return sorted list (oldest first) of anchor 'YYYY-MM' labels to upload.
 
@@ -386,68 +475,7 @@ def months_to_upload(today, server_months, force=False, max_months=_MAX_BACKFILL
            (i.e. the snapshot did not yet capture the full month).
         4. Dedup → sort → keep max_months most recent.
     """
-    current = f"{today.year:04d}-{today.month:02d}"
-
-    # Parse server_months defensively; skip malformed entries
-    valid_server = {}
-    for entry in server_months:
-        if not isinstance(entry, dict):
-            continue
-        mk = entry.get("monthKey")
-        if not isinstance(mk, str) or not re.fullmatch(r"\d{4}-\d{2}", mk):
-            continue
-        try:
-            ua = int(entry["uploadedAt"])
-        except (KeyError, TypeError, ValueError):
-            continue
-        valid_server[mk] = ua
-
-    # force or no valid server data → full backfill
-    if force or not valid_server:
-        return [w[2] for w in month_windows(max_months, today, 1)]
-
-    # Incremental path
-    anchors = set()
-    anchors.add(current)
-
-    # Gap fill: months strictly between latest_server (exclusive) and current (inclusive)
-    latest_server = max(valid_server)
-    ls_y = int(latest_server[:4])
-    ls_m = int(latest_server[5:7])
-    cur_y = today.year
-    cur_m = today.month
-    ls_total = ls_y * 12 + (ls_m - 1)
-    cur_total = cur_y * 12 + (cur_m - 1)
-    for t in range(ls_total + 1, cur_total):  # strictly between, current added separately
-        gy = t // 12
-        gm = t % 12 + 1
-        anchors.add(f"{gy:04d}-{gm:02d}")
-
-    # Stale refresh for prev month
-    prev_total = cur_total - 1
-    prev_y = prev_total // 12
-    prev_m = prev_total % 12 + 1
-    prev_label = f"{prev_y:04d}-{prev_m:02d}"
-    if prev_label in valid_server:
-        # end_of_month bound = 00:00:00 UTC of first day of next month after prev
-        if prev_m == 12:
-            bound_y, bound_m = prev_y + 1, 1
-        else:
-            bound_y, bound_m = prev_y, prev_m + 1
-        bound_ms = int(
-            datetime.datetime(bound_y, bound_m, 1, tzinfo=datetime.timezone.utc).timestamp() * 1000
-        )
-        if valid_server[prev_label] < bound_ms:
-            anchors.add(prev_label)
-
-    # Dedup + sort lexicographically (= chronologically for zero-padded YYYY-MM)
-    sorted_anchors = sorted(anchors)
-
-    # Truncate to max_months most recent
-    if len(sorted_anchors) > max_months:
-        sorted_anchors = sorted_anchors[-max_months:]
-
-    return sorted_anchors
+    return [m for m, _ in plan_upload(today, server_months, force, max_months)]
 
 
 def _uploaded_from_query(parsed_qs):

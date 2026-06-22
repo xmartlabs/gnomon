@@ -11,7 +11,7 @@ from gnomon.upload.auth import _capture_cli_token, _wait_for_auth_tokens, _SHARE
 from gnomon.upload.mirdash import (
     _resolve_mirdash_base, _resolve_output_dir, _absolutize_dir_flags,
     _DEFAULT_WINDOW_MONTHS, parse_window, decide_mode,
-    month_windows, months_to_upload, windows_for_anchors,
+    month_windows, months_to_upload, plan_upload, windows_for_anchors,
     _is_report_url, _upload_window, _upload_window_web,
     _PAXEL_ERROR, _UPLOAD_ERROR,
     # Re-exported so tests can patch them as attributes of this module and so the
@@ -23,12 +23,14 @@ from gnomon.upload.mirdash import (
 _HELP_TEXT = """Usage:
     xl-ai-insights [source ...] [--local] [--mirdash-base=URL] [--window=N] [--no-open] [--quiet] [--verbose] [--console] [--output-dir=PATH]
     xl-ai-insights --force
+    xl-ai-insights --dry-run
     xl-ai-insights --help
     xl-ai-insights -h
 
     source        e.g. claude, codex, gemini -- same as paxel.py (default: all)
     --local       run local analysis only (no login, no upload)
     --force       re-upload all months (ignores what has already been uploaded)
+    --dry-run     show what would be uploaded (and why) without uploading anything
     --mirdash-base=URL  override the mirdash server URL
     --window=N    trailing window size in months for each scored point (default 6)
     --no-open     skip redirecting to the mirdash report at the end
@@ -43,8 +45,38 @@ _HELP_TEXT = """Usage:
 """
 
 
+_REASON_LABELS = {
+    "force":   "force re-upload",
+    "initial": "no prior uploads",
+    "current": "current month",
+    "gap":     "missing on server",
+    "refresh": "refresh (server snapshot predates month end)",
+    "backfill": "backfill",
+}
+
+
+def _print_dry_run_plan(mode, windows, plan_pairs):
+    """Print the dry-run plan to stdout.
+
+    windows:    list of (since, until, label) — used to count total months
+    plan_pairs: list of (monthKey, reason) or list of monthKey strings (backfill)
+    """
+    print("  Dry run -- no uploads, no tokens consumed.")
+    print(f"  Mode: {mode}")
+    print(f"  Would analyze and upload {len(windows)} month(s):")
+    if plan_pairs and isinstance(plan_pairs[0], tuple):
+        for label, reason in plan_pairs:
+            readable = _REASON_LABELS.get(reason, reason)
+            print(f"    {label}  {readable}")
+    else:
+        # backfill: plain list of labels
+        for label in plan_pairs:
+            print(f"    {label}  {_REASON_LABELS['backfill']}")
+    print("  (empty months are skipped automatically on a real run)")
+
+
 def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,
-              output_dir=None, window_months=_DEFAULT_WINDOW_MONTHS):
+              output_dir=None, window_months=_DEFAULT_WINDOW_MONTHS, *, dry_run=False):
     """Web progress mode: auth + progress in browser, minimal console output."""
     from gnomon.upload.progress_server import ProgressServer
 
@@ -103,6 +135,24 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
         windows = windows_for_anchors(anchors, window_months=window_months)
 
     month_labels = [label for _, _, label in windows]
+
+    if dry_run:
+        if mode == "backfill":
+            plan_pairs = [label for _, _, label in windows]
+        else:
+            plan_pairs = plan_upload(today, uploaded, force=(mode == "force"))
+        _print_dry_run_plan(mode, windows, plan_pairs)
+        server.push_event("done", {
+            "reportUrl": "",
+            "mirdashBase": mirdash_base,
+            "uploaded": 0,
+            "failed": 0,
+            "total": len(windows),
+            "noOpen": True,
+            "dryRun": True,
+        })
+        server.shutdown()
+        sys.exit(0)
 
     server.push_event("auth_ok", {
         "message": "Authenticated",
@@ -164,7 +214,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
 
 
 def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,
-                  output_dir=None, window_months=_DEFAULT_WINDOW_MONTHS):
+                  output_dir=None, window_months=_DEFAULT_WINDOW_MONTHS, *, dry_run=False):
     """Console mode: original behavior with full terminal output."""
     port = 8799
     redirect_uri = f"http://127.0.0.1:{port}/callback"
@@ -204,6 +254,14 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
     else:  # auto or force
         anchors = months_to_upload(today, uploaded, force=(mode == "force"))
         windows = windows_for_anchors(anchors, window_months=window_months)
+
+    if dry_run:
+        if mode == "backfill":
+            plan_pairs = [label for _, _, label in windows]
+        else:
+            plan_pairs = plan_upload(today, uploaded, force=(mode == "force"))
+        _print_dry_run_plan(mode, windows, plan_pairs)
+        sys.exit(0)
 
     token_idx = 0
     uploaded_count = 0
@@ -278,6 +336,7 @@ def main(argv=None):
     quiet = "--quiet" in argv
     verbose = "--verbose" in argv
     console = "--console" in argv
+    dry_run = "--dry-run" in argv
     output_dir = _resolve_output_dir(argv)
 
     # Parse --window=N (trailing N-month scoring window; default 6)
@@ -289,7 +348,7 @@ def main(argv=None):
     # Flags appended literally below — strip from user passthrough to avoid duplicates
     paxel_literal_flags = {"--summary", "--no-open"}
 
-    # Build paxel args: strip wrapper-only flags, literal flags, backfill/force flags,
+    # Build paxel args: strip wrapper-only flags, literal flags, backfill/force/dry-run flags,
     # mirdash overrides, and window override; keep source names and dir overrides
     paxel_forward = [
         a for a in argv
@@ -300,6 +359,7 @@ def main(argv=None):
         and not re.match(r"--window(=.*)?$", a)
         and not re.match(r"--output-dir=(.+)$", a)
         and a != "--force"
+        and a != "--dry-run"
     ]
     # Resolve relative --<source>-dir overrides against the caller's cwd before paxel
     # runs from its temp directory (see _absolutize_dir_flags).
@@ -309,10 +369,10 @@ def main(argv=None):
 
     if console:
         _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,
-                      output_dir, window_months=window_months)
+                      output_dir, window_months=window_months, dry_run=dry_run)
     else:
         _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,
-                  output_dir, window_months=window_months)
+                  output_dir, window_months=window_months, dry_run=dry_run)
 
 
 if __name__ == "__main__":
