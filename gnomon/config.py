@@ -10,6 +10,35 @@ BASE = os.path.join(os.path.expanduser(os.environ.get("CLAUDE_CONFIG_DIR", "~/.c
 OUT_DIR = os.getcwd()
 
 
+# Which presence-signals a source can even record on disk. Scoring uses this to avoid
+# penalizing a tool for a signal it CANNOT emit (vs. "could, but the user didn't"): a
+# sub-axis whose capability no present source supports is dropped and its weight is
+# renormalized away, instead of scoring 0. Capabilities:
+#   skills     - first-class Skill tool usage (attributionSkill / SKILL.md reads)
+#   toolsearch - ToolSearch tool calls (Claude Code only)
+#   tasktool   - TaskCreate/TaskUpdate task-tracking tools (Claude Code only)
+SOURCE_CAPS = {
+    "claude":   {"skills", "toolsearch", "tasktool"},
+    "codex":    {"skills"},   # no first-class Skill tool, but SKILL.md shell-reads are counted
+    "gemini":   set(),
+    "pi":       set(),
+    "opencode": set(),
+    "cursor":   set(),        # no Skill tool, no ToolSearch, no Task tool
+}
+_ALL_CAPS = {"skills", "toolsearch", "tasktool"}
+
+
+def available_caps(sources):
+    """Union of capabilities across the sources present in this run. Unknown sources are
+    assumed fully capable (don't silently strip signal for a source we haven't mapped)."""
+    if not sources:
+        return set(_ALL_CAPS)
+    caps = set()
+    for s in sources:
+        caps |= SOURCE_CAPS.get(str(s).lower(), _ALL_CAPS)
+    return caps
+
+
 def parse_ts(ts):
     if not ts:
         return None

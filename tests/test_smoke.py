@@ -501,6 +501,56 @@ class TestCursorStatsFixes(unittest.TestCase):
         self.assertTrue(any(p.startswith("/Users/j.a/Projects/m") for p in paths))
 
 
+class TestCapabilityAwareScoring(unittest.TestCase):
+    """Fase 4: a signal a source CANNOT record (skills/toolsearch/tasktool on Cursor) is
+    dropped + renormalized, not scored 0. Full-capability corpora (Claude) are a no-op."""
+
+    def _stats(self, sources, **over):
+        base = {
+            "corpus": {"sources": {s: {} for s in sources}},
+            "tools": {"mcp_servers_distinct": 4, "clis_distinct": 10, "toolsearch_calls": 0,
+                      "task_tool_calls": 0, "cli_calls": 100, "mcp_calls": 5},
+            "stack": {"models": [["a", 10], ["b", 5]], "skills_all": [], "top_skills": [],
+                      "skills_distinct": 0, "skills_total": 0, "compounding_writes": 6,
+                      "subagent_types": [], "subagent_types_distinct": 1},
+            "behavior": {"planning_ratio_explore_to_doing": 1.0, "actions_per_prompt": 10,
+                         "error_recovery_ratio": 1.0, "shell_test_runs": 5, "fanout_median": 2},
+        }
+        base.update(over)
+        return base
+
+    def test_cursor_drops_unsupported_axes(self):
+        aq = paxel.compute_aq(self._stats(["cursor"]))
+        breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
+        self.assertIn("Skill fluency", breadth.get("not_applicable", []))
+        self.assertIn("Discipline", breadth.get("not_applicable", []))
+        # surviving axes renormalize to the full pillar weight (100)
+        self.assertEqual(sum(a["weight"] for a in breadth["axes"]), 100)
+
+    def test_claude_keeps_all_axes_noop(self):
+        aq = paxel.compute_aq(self._stats(["claude"]))
+        breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
+        self.assertNotIn("not_applicable", breadth)
+        self.assertEqual({a["name"] for a in breadth["axes"]},
+                         {"Orchestration", "Skill fluency", "Tool command (MCP + CLI)", "Discipline"})
+
+    def test_mixed_sources_union_keeps_skills(self):
+        # claude in the mix supports skills/toolsearch/tasktool -> nothing dropped
+        aq = paxel.compute_aq(self._stats(["claude", "cursor"]))
+        breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
+        self.assertNotIn("not_applicable", breadth)
+
+    def test_cursor_not_penalized_below_claude_on_unmeasurable(self):
+        # identical underlying behavior: cursor must not score LOWER than claude on the
+        # Savvy Token-economy axis just because it lacks ToolSearch (it gets renormalized).
+        cur = paxel.compute_aq(self._stats(["cursor"]))
+        cla = paxel.compute_aq(self._stats(["claude"]))
+        def tok(aq):
+            sav = next(p for p in aq["pillars"] if p["name"] == "Savvy")
+            return next(a["score"] for a in sav["axes"] if a["name"] == "Token economy")
+        self.assertGreaterEqual(tok(cur), tok(cla))
+
+
 class TestCanonToolGeminiMappings(unittest.TestCase):
     """_canon_tool must map Gemini-native tool names to Claude taxonomy."""
 

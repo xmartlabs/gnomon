@@ -1,17 +1,34 @@
 import re
 
 from gnomon.analysis.metrics import _review_skill_uses
+from gnomon.config import available_caps
 
 
 def compute_aq(stats):
     """Agentic Quotient v2 — 'how well you OPERATE AGENTS' (distinct from the gstack
     scorecard, which grades how you BUILD). Four pillars: Breadth (how much machinery),
     Craft (how well), Efficiency (leverage per intervention), Savvy (smart choices).
-    MCP-vs-CLI and tool diversity stay descriptive (not graded)."""
+    MCP-vs-CLI and tool diversity stay descriptive (not graded).
+
+    Capability-aware: a signal a source CANNOT record (skills/toolsearch on Cursor, etc.)
+    is dropped and its weight renormalized away — not scored 0 — so non-Claude tools aren't
+    penalized for what their backend never persists. With a full-capability corpus (Claude)
+    every term stays and this is a no-op."""
     t, st, b = stats.get("tools", {}), stats.get("stack", {}), stats.get("behavior", {})
+    caps = available_caps((stats.get("corpus", {}).get("sources") or {}).keys())
+    has_skills = "skills" in caps
+    has_toolsearch = "toolsearch" in caps
 
     def sat(x, target):
         return min(1.0, x / target) if target else 0.0
+
+    def wsum(*terms):
+        """Weighted mean of (coef, value, required_cap) terms, dropping terms whose cap is
+        unavailable and renormalizing the remaining coefficients to sum 1. Returns None when
+        NO term is measurable (the whole axis is unsupported -> build_pillar drops it)."""
+        live = [(c, v) for c, v, cap in terms if cap is None or cap in caps]
+        tot = sum(c for c, _ in live)
+        return sum(c * v for c, v in live) / tot if tot else None
 
     skills = st.get("skills_all") or st.get("top_skills", [])
 
@@ -36,15 +53,18 @@ def compute_aq(stats):
     skill_fluency = (.40 * sat(st.get("skills_distinct", 0), 40) + .30 * sat(st.get("skills_total", 0), 1500)
                      + .30 * (1.0 if has_skill(["subagent-driven", "brainstorm", "writing-plans",
                                                 "cerberus", "systematic-debugging"]) else 0.6))
-    tool_command = (.40 * sat(t.get("mcp_servers_distinct", 0), 15) + .40 * sat(t.get("clis_distinct", 0), 40)
-                    + .20 * sat(t.get("toolsearch_calls", 0), 300))
-    discipline = (.60 * sat(t.get("task_tool_calls", 0), 1500)
-                  + .40 * (1.0 if has_skill(["writing-plans", "autoplan", "plan"]) else 0.6))
+    # toolsearch term drops out (renormalized) when no present source can record it
+    tool_command = wsum((.40, sat(t.get("mcp_servers_distinct", 0), 15), None),
+                        (.40, sat(t.get("clis_distinct", 0), 40), None),
+                        (.20, sat(t.get("toolsearch_calls", 0), 300), "toolsearch"))
+    # plan-skill term needs the Skill capability; falls back to task-tool usage alone
+    discipline = wsum((.60, sat(t.get("task_tool_calls", 0), 1500), "tasktool"),
+                      (.40, (1.0 if has_skill(["writing-plans", "autoplan", "plan"]) else 0.6), "skills"))
     breadth_axes = [
         ("Orchestration", 33, orchestration, {"agent_runs": agent_runs,
          "subagent_types": st.get("subagent_types_distinct", 0), "fanout_median": fanout}),
         ("Skill fluency", 22, skill_fluency, {"skills_distinct": st.get("skills_distinct", 0),
-         "skills_total": st.get("skills_total", 0)}),
+         "skills_total": st.get("skills_total", 0)}, "skills"),
         ("Tool command (MCP + CLI)", 28, tool_command, {"mcp_servers": t.get("mcp_servers_distinct", 0),
          "clis": t.get("clis_distinct", 0), "toolsearch": t.get("toolsearch_calls", 0)}),
         ("Discipline", 17, discipline, {"task_tool_calls": t.get("task_tool_calls", 0)}),
@@ -52,10 +72,12 @@ def compute_aq(stats):
 
     # ---- Pillar 2: Craft ----
     review_n = _review_skill_uses(skills)
-    verification = .5 * sat(b.get("shell_test_runs", 0), 150) + .5 * sat(review_n, 100)
+    # review-skill term needs Skill capability; falls back to shell test runs alone
+    verification = wsum((.5, sat(b.get("shell_test_runs", 0), 150), None),
+                        (.5, sat(review_n, 100), "skills"))
     grounding = sat(b.get("planning_ratio_explore_to_doing", 0), 1.0)
-    compounding = (.6 * sat(st.get("compounding_writes", 0), 30)
-                   + .4 * (1.0 if has_skill(["retro", "writing-plans", "brainstorm"]) else 0.6))
+    compounding = wsum((.6, sat(st.get("compounding_writes", 0), 30), None),
+                       (.4, (1.0 if has_skill(["retro", "writing-plans", "brainstorm"]) else 0.6), "skills"))
     craft_axes = [
         ("Verification", 40, verification, {"test_runs": b.get("shell_test_runs", 0), "review_skills": review_n}),
         ("Grounding", 30, grounding, {"planning_ratio": b.get("planning_ratio_explore_to_doing", 0)}),
@@ -90,15 +112,33 @@ def compute_aq(stats):
     model_mix = .5 * sat(len(models), 3) + .5 * sat(offload_share, 0.30)
     cli_calls, mcp_calls = t.get("cli_calls", 0), t.get("mcp_calls", 0)
     cli_share = cli_calls / (cli_calls + mcp_calls) if (cli_calls + mcp_calls) else 0
-    token_economy = .5 * sat(t.get("toolsearch_calls", 0), 300) + .5 * sat(cli_share, 0.70)
+    # toolsearch term drops out (renormalized) when unsupported, leaving CLI-share
+    token_economy = wsum((.5, sat(t.get("toolsearch_calls", 0), 300), "toolsearch"),
+                         (.5, sat(cli_share, 0.70), None))
     savvy_axes = [
         ("Model mix", 50, model_mix, {"distinct_models": len(models), "offload_share": round(offload_share, 2)}),
         ("Token economy", 50, token_economy, {"toolsearch": t.get("toolsearch_calls", 0), "cli_share": round(cli_share, 2)}),
     ]
 
     def build_pillar(name, weight, axes):
-        out = [{"name": n, "weight": w, "score": round(w * s, 1), "signals": sig} for n, w, s, sig in axes]
-        return {"name": name, "weight": weight, "score": round(sum(a["score"] for a in out), 1), "axes": out}
+        # An axis may carry a 5th element: a required capability. If no present source can
+        # record it, drop the axis and renormalize the remaining axis weights back to 100 so
+        # the pillar isn't dragged down by an unmeasurable signal. Full-capability corpora
+        # (Claude) keep every axis -> scale == 1.0 -> no-op.
+        def _live(a):
+            if a[2] is None:                               # wsum found no measurable term
+                return False
+            return len(a) < 5 or a[4] is None or a[4] in caps   # required cap available
+        live = [a for a in axes if _live(a)]
+        wlive = sum(a[1] for a in live) or 1
+        scale = 100.0 / wlive
+        out = [{"name": a[0], "weight": round(a[1] * scale), "score": round(a[1] * scale * a[2], 1),
+                "signals": a[3]} for a in live]
+        pillar = {"name": name, "weight": weight, "score": round(sum(x["score"] for x in out), 1), "axes": out}
+        dropped = [a[0] for a in axes if a not in live]
+        if dropped:
+            pillar["not_applicable"] = dropped
+        return pillar
 
     pillars = [build_pillar("Breadth", 30, breadth_axes), build_pillar("Craft", 35, craft_axes),
                build_pillar("Efficiency", 20, eff_axes), build_pillar("Savvy", 15, savvy_axes)]
