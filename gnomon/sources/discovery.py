@@ -13,6 +13,9 @@ ANTIGRAVITY_DB = os.path.expanduser(
 PI_DIR = os.path.expanduser("~/.pi/agent/sessions")
 OPENCODE_DIR = os.path.expanduser("~/.local/share/opencode")
 CURSOR_DIR = os.path.expanduser("~/.cursor/projects")
+# Cursor CLI (cursor-agent) per-chat store: <hash>/<chatId>/{meta.json, store.db}. Carries
+# the real session timestamp + model that the agent-transcripts JSONL omits.
+CURSOR_CHATS_DIR = os.path.expanduser("~/.cursor/chats")
 
 
 def _cursor_db_path():

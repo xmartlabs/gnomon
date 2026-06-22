@@ -383,6 +383,123 @@ class TestCursorStatsFixes(unittest.TestCase):
         self.assertEqual(paxel._pretty_model("composer-2.5-fast"), "Cursor Composer 2.5 Fast")
         self.assertEqual(paxel._pretty_model("claude-4.5-sonnet-thinking"), "Sonnet 4.5 Thinking")
 
+    # --- Bug 5: cwd inferred from JSONL tool-input paths when the slug is unrecoverable ---
+    def test_cwd_from_paths_recovers_dotted_username(self):
+        # slug 'Users-jorge-artave-...' loses the '.' in 'jorge.artave'; the tool paths keep it.
+        paths = [
+            "/Users/jorge.artave/Projects/maps/maps-server/src/Main.java",
+            "/Users/jorge.artave/Projects/maps/maps-server/src/Other.java",
+            "/Users/jorge.artave/Projects/maps/maps-server/src/Main.java",
+        ]
+        cwd = paxel._cursor_cwd_from_paths(paths)
+        self.assertTrue(cwd.startswith("/Users/jorge.artave/Projects/maps"))
+
+    def test_cwd_from_paths_most_touched_dir_wins(self):
+        paths = (["/Users/x/Projects/a/one.py"] * 1
+                 + ["/Users/x/Projects/b/two.py"] * 3)
+        self.assertEqual(paxel._cursor_cwd_from_paths(paths), "/Users/x/Projects/b")
+
+    def test_cwd_from_paths_ignores_noise_dirs(self):
+        paths = [
+            "/Users/x/.cursor/skills/foo/SKILL.md",
+            "/Users/x/Projects/app/src/main.ts",
+            "/Users/x/Projects/app/src/util.ts",
+        ]
+        self.assertEqual(paxel._cursor_cwd_from_paths(paths), "/Users/x/Projects/app/src")
+
+    def test_cwd_from_paths_none_when_no_abs_paths(self):
+        self.assertIsNone(paxel._cursor_cwd_from_paths(["relative/x.py", "", None]))
+
+    def test_resolve_cwd_prefers_existing_slug_dir(self):
+        # when the slug already maps to a real dir, don't bother scanning content
+        with mock.patch("gnomon.sources.cursor.os.path.isdir", return_value=True):
+            self.assertEqual(paxel._cursor_resolve_cwd("/nonexistent.jsonl", "/Users/me/proj"),
+                             "/Users/me/proj")
+
+    # --- Fix 6: flat CLI MCP tool names -> mcp__server__tool via mcps/ sidecar ---
+    def test_mcp_name_from_servers_matches_identifier_and_friendly_name(self):
+        servers = {"plugin-atlassian-atlassian": "atlassian", "user-bitbucket": "bitbucket"}
+        # full identifier prefix
+        self.assertEqual(
+            paxel._cursor_mcp_name_from_servers("plugin-atlassian-atlassian-search", servers),
+            "mcp__atlassian__search")
+        # friendly serverName prefix
+        self.assertEqual(
+            paxel._cursor_mcp_name_from_servers("bitbucket-listPullRequests", servers),
+            "mcp__bitbucket__listPullRequests")
+
+    def test_mcp_name_from_servers_none_when_no_match(self):
+        self.assertIsNone(paxel._cursor_mcp_name_from_servers("read_file_v2", {"x": "x"}))
+        self.assertIsNone(paxel._cursor_mcp_name_from_servers("anything", None))
+
+    def test_mcp_servers_loaded_from_sidecar(self):
+        import tempfile, json as _json
+        root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        # <root>/<slug>/mcps/<ident>/SERVER_METADATA.json  +  a sibling agent-transcripts file
+        slug = os.path.join(root, "Users-x-Projects-app")
+        meta_dir = os.path.join(slug, "mcps", "plugin-atlassian-atlassian")
+        os.makedirs(meta_dir)
+        with open(os.path.join(meta_dir, "SERVER_METADATA.json"), "w") as fh:
+            _json.dump({"serverIdentifier": "plugin-atlassian-atlassian",
+                        "serverName": "atlassian"}, fh)
+        fp = os.path.join(slug, "agent-transcripts", "sess1", "sess1.jsonl")
+        os.makedirs(os.path.dirname(fp)); open(fp, "w").close()
+        paxel._CURSOR_MCP_SERVERS_CACHE.clear()
+        servers = paxel._cursor_mcp_servers(fp)
+        self.assertEqual(servers.get("plugin-atlassian-atlassian"), "atlassian")
+
+    # --- Fix 7: opener retries with immutable when mode=ro fails (and tolerates spaces) ---
+    def test_open_sqlite_reads_db_with_space_in_name(self):
+        import tempfile, sqlite3
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        path = os.path.join(d, "My State.vscdb")  # space in filename
+        conn = sqlite3.connect(path)
+        conn.execute("CREATE TABLE t (k TEXT)"); conn.execute("INSERT INTO t VALUES ('x')")
+        conn.commit(); conn.close()
+        ro = paxel._cursor_open_sqlite(path)
+        self.assertIsNotNone(ro)
+        self.assertEqual(ro.execute("SELECT count(*) FROM t").fetchone()[0], 1)
+
+    # --- Fix 9: CLI sessions enriched with model+timestamp from ~/.cursor/chats ---
+    def test_chat_meta_reads_timestamp_and_model(self):
+        import tempfile, sqlite3, json as _json
+        root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        cid = "abc-123-chat"
+        cdir = os.path.join(root, "wshash", cid)
+        os.makedirs(cdir)
+        with open(os.path.join(cdir, "meta.json"), "w") as fh:
+            _json.dump({"createdAtMs": 1782167750008, "title": "X"}, fh)
+        conn = sqlite3.connect(os.path.join(cdir, "store.db"))
+        conn.execute("CREATE TABLE meta (key TEXT, value)")
+        conn.execute("INSERT INTO meta VALUES ('0', ?)",
+                     (_json.dumps({"lastUsedModel": "composer-2.5"}).encode().hex(),))
+        conn.commit(); conn.close()
+        paxel._CURSOR_CHAT_META_CACHE.clear()
+        m = paxel._cursor_chat_meta(cid, chats_dir=root)
+        self.assertEqual(m.get("model"), "composer-2.5")
+        self.assertTrue((m.get("ts") or "").startswith("2026-06"))
+
+    def test_chat_meta_empty_when_absent(self):
+        paxel._CURSOR_CHAT_META_CACHE.clear()
+        self.assertEqual(paxel._cursor_chat_meta("no-such-chat", chats_dir="/tmp/nope-xyz"), {})
+
+    def test_jsonl_tool_paths_extracts_from_tool_inputs(self):
+        import tempfile, json as _json
+        ev = {"role": "assistant", "message": {"role": "assistant", "content": [
+            {"type": "tool_use", "name": "Read", "input": {"path": "/Users/j.a/Projects/m/A.java"}},
+            {"type": "tool_use", "name": "Shell",
+             "input": {"command": "cd /Users/j.a/Projects/m && ls"}},
+        ]}}
+        f = tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False)
+        f.write(_json.dumps(ev) + "\n"); f.close()
+        self.addCleanup(lambda: os.path.exists(f.name) and os.unlink(f.name))
+        paths = paxel._cursor_jsonl_tool_paths(f.name)
+        self.assertIn("/Users/j.a/Projects/m/A.java", paths)
+        self.assertTrue(any(p.startswith("/Users/j.a/Projects/m") for p in paths))
+
 
 class TestCanonToolGeminiMappings(unittest.TestCase):
     """_canon_tool must map Gemini-native tool names to Claude taxonomy."""

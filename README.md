@@ -259,10 +259,32 @@ The same modern session exists in **both** with complementary data, so gnomon pr
 SQLite copy and backfills workspace path + edit churn from its JSONL twin. JSONL-only
 sessions (and subagent sidechains, which exist only as JSONL) are kept as-is.
 
+The DB is opened with `mode=ro`; if Cursor is running and holds a write-ahead lock, gnomon
+retries with `immutable=1` (still read-only) so an open editor never blanks out your SQLite data.
+
+**GUI app vs. CLI (`cursor-agent`) — what each backend records.** The two entry points persist
+to different stores, and the CLI's transcript is leaner:
+
+| Signal | GUI app (`state.vscdb`) | CLI `cursor-agent` |
+|--------|--------------------------|---------------------|
+| Tokens (input/output) | ✅ `tokenCount` per turn | ❌ not persisted anywhere (handled only in-flight) |
+| Model name | ✅ `modelConfig.modelName` | ✅ `~/.cursor/chats/*/<chatId>/store.db` → `lastUsedModel` |
+| Session timestamp | ✅ `createdAt` per turn | ✅ `~/.cursor/chats/*/<chatId>/meta.json` → `createdAtMs` |
+| Workspace / cwd | ✅ (+ slug) | ✅ inferred from absolute tool-input paths |
+| Tools, prompts, errors, churn | ✅ | ✅ |
+| MCP servers | ✅ | ✅ resolved via the `<slug>/mcps/*/SERVER_METADATA.json` sidecar |
+
+The CLI transcript JSONL is lean (`role` + `content` + `turn_ended`), but its sibling
+`~/.cursor/chats/<workspaceHash>/<chatId>/` store backfills the real model and session date,
+so a CLI profile is scored on everything **except token economy** — tokens are the one signal
+the CLI never writes to disk. (If the `chats` dir is absent — e.g. a copied/mounted `projects`
+dir without it — the session falls back to file mtime and no model, as before.)
+
 **Overrides:** `--cursor-dir=PATH` points at a copied/mounted `projects` dir (root or the
 `projects` subdir both work). The `state.vscdb` path is fixed per platform — there's no
 flag for it, so DB-backed sessions are only read from the local Cursor install.
 
-**Known caveats** (from upstream): workspace slugs with dashes may mis-parse; JSONL-only
-sessions get a single file-mtime timestamp; `ApplyPatch` churn counts raw patch lines
-(slight over-estimate).
+**Known caveats:** CLI transcripts carry no per-event timestamps (single file-mtime stamp) and
+no tokens/model; if a `projects` dir is copied/synced to a new machine, mtimes reset and the
+monthly timeline compresses; `ApplyPatch` churn counts raw patch lines (slight over-estimate).
+Workspace slugs encode `.`/`-` ambiguously, so cwd is recovered from real tool-input paths.
