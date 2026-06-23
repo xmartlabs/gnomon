@@ -6,11 +6,12 @@ import re
 import sys
 import urllib.parse
 import webbrowser
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from gnomon.upload.auth import _capture_cli_token, _wait_for_auth_tokens, _SHARE_AUTH_TIMEOUT, _WEB_AUTH_TIMEOUT
 from gnomon.upload.mirdash import (
     _resolve_mirdash_base, _resolve_output_dir, _absolutize_dir_flags,
-    _DEFAULT_WINDOW_MONTHS, parse_window, decide_mode,
+    _DEFAULT_WINDOW_MONTHS, _UPLOAD_CONCURRENCY, parse_window, decide_mode,
     month_windows, months_to_upload, plan_upload, windows_for_anchors,
     _is_report_url, _upload_window, _upload_window_web,
     _PAXEL_ERROR, _UPLOAD_ERROR, _format_summary,
@@ -160,29 +161,44 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
         "months": month_labels,
     })
 
-    token_idx = 0
-    uploaded_count = 0
-    failed = 0
-    last_report_url = None
+    # Pre-assign one token per window by index (zip truncates to the shorter
+    # list, which replaces the old `token_idx >= len(tokens)` guard). Each month
+    # runs paxel as a subprocess, so a bounded thread pool gives real multi-core
+    # parallelism without GIL contention.
+    scheduled = list(enumerate(zip(windows, tokens)))
+    total = len(windows)
 
-    for i, (since, until, label) in enumerate(windows):
-        if token_idx >= len(tokens):
-            break
+    def _run_one(i, since, until, label, token):
         prefix = f"gnomon-{label}-" if output_dir else ""
-        report_url = _upload_window_web(
-            mirdash_base, tokens[token_idx], paxel_src,
-            paxel_forward, since, until, label, verbose, server, i, len(windows),
+        # Patched as an attribute of this module by tests -- call via the module
+        # name so the indirection is preserved.
+        return _upload_window_web(
+            mirdash_base, token, paxel_src,
+            paxel_forward, since, until, label, verbose, server, i, total,
             output_dir=output_dir,
             quiet=quiet,
             window_months=window_months,
             file_prefix=prefix,
         )
-        if _is_report_url(report_url):
-            last_report_url = report_url
-            uploaded_count += 1
-            token_idx += 1
-        elif report_url in (_UPLOAD_ERROR, _PAXEL_ERROR):
-            failed += 1
+
+    results = {}  # index -> report_url / sentinel
+    workers = min(_UPLOAD_CONCURRENCY, len(scheduled)) or 1
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {
+            ex.submit(_run_one, i, since, until, label, tok): i
+            for i, ((since, until, label), tok) in scheduled
+        }
+        for fut in as_completed(futs):
+            results[futs[fut]] = fut.result()
+
+    # Aggregate deterministically from results keyed by window index. Pick the
+    # highest successful index as last_report_url to preserve "most recent month".
+    uploaded_count = sum(1 for r in results.values() if _is_report_url(r))
+    failed = sum(1 for r in results.values() if r in (_UPLOAD_ERROR, _PAXEL_ERROR))
+    last_report_url = None
+    for i in sorted(results):
+        if _is_report_url(results[i]):
+            last_report_url = results[i]
 
     server.push_event("done", {
         "reportUrl": last_report_url or "",
@@ -263,34 +279,49 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
         _print_dry_run_plan(mode, windows, plan_pairs)
         sys.exit(0)
 
-    token_idx = 0
-    uploaded_count = 0
-    failed = 0
-    last_report_url = None
-    last_summary = None
+    # Pre-assign one token per window by index; zip truncates to the shorter
+    # list. If there are fewer tokens than windows, warn (preserves the old
+    # "ran out of tokens" message) before the truncated windows are dropped.
+    scheduled = list(enumerate(zip(windows, tokens)))
+    if len(windows) > len(tokens):
+        print("  warning: ran out of tokens before all months were uploaded -- stopping")
 
-    for since, until, label in windows:
-        if token_idx >= len(tokens):
-            print("  warning: ran out of tokens before all months were uploaded -- stopping")
-            break
-
+    def _run_one(since, until, label, token):
         prefix = f"gnomon-{label}-" if output_dir else ""
-        result, summary = _upload_window(
-            mirdash_base, tokens[token_idx], paxel_src,
+        # Patched as an attribute of this module by tests -- call via the module
+        # name so the indirection is preserved.
+        return _upload_window(
+            mirdash_base, token, paxel_src,
             paxel_forward, since, until, label, verbose, quiet,
             output_dir=output_dir,
             window_months=window_months,
             file_prefix=prefix,
         )
+
+    results = {}  # index -> (result, summary)
+    workers = min(_UPLOAD_CONCURRENCY, len(scheduled)) or 1
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {
+            ex.submit(_run_one, since, until, label, tok): (i, label)
+            for i, ((since, until, label), tok) in scheduled
+        }
+        for fut in as_completed(futs):
+            i, label = futs[fut]
+            result, summary = fut.result()
+            results[i] = (result, summary)
+            if _is_report_url(result) and not quiet:
+                print(f"  ^ {label} uploaded")
+
+    # Aggregate deterministically from results keyed by window index.
+    uploaded_count = sum(1 for r, _ in results.values() if _is_report_url(r))
+    failed = sum(1 for r, _ in results.values() if r in (_UPLOAD_ERROR, _PAXEL_ERROR))
+    last_report_url = None
+    last_summary = None
+    for i in sorted(results):
+        result, summary = results[i]
         if _is_report_url(result):
             last_report_url = result
             last_summary = summary
-            uploaded_count += 1
-            token_idx += 1
-            if not quiet:
-                print(f"  ^ {label} uploaded")
-        elif result in (_UPLOAD_ERROR, _PAXEL_ERROR):
-            failed += 1
 
     if not quiet:
         msg = f"  uploaded {uploaded_count}/{len(windows)} months"

@@ -60,6 +60,10 @@ _MAX_BACKFILL = 12
 # Default window size when --window is absent.
 _DEFAULT_WINDOW_MONTHS = 6
 
+# Parallel month uploads. Each month runs paxel.py as a subprocess (CPU-bound),
+# so threads only block on subprocess.run -- no GIL contention, real multi-core.
+_UPLOAD_CONCURRENCY = 4
+
 # Sentinels returned by the web upload helper so callers can tell a real reportUrl
 # apart from the two distinct failure modes (paxel run failed vs. upload POST failed).
 _PAXEL_ERROR = "PAXEL_ERROR"

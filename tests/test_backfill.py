@@ -270,24 +270,27 @@ class TestBackfillLoop(unittest.TestCase):
             return mock_paxel, mock_upload
 
     def test_skips_empty_months_no_token_consumed(self):
-        """Empty months must NOT consume a token."""
+        """Empty months must NOT trigger an upload (no token spent server-side)."""
         # Window 0: empty, window 1: non-empty, window 2: non-empty
         summaries = [
-            _make_summary(sessions=0),         # skip
-            _make_summary(sessions=3),          # upload → t1
-            _make_summary(sessions=7),          # upload → t2
+            _make_summary(sessions=0),          # skip (empty)
+            _make_summary(sessions=3),          # upload
+            _make_summary(sessions=7),          # upload
         ]
         upload_returns = ["/report/1", "/report/2"]
 
         mock_paxel, mock_upload = self._run_backfill(summaries, upload_returns)
 
         self.assertEqual(mock_paxel.call_count, 3)
-        # Only 2 uploads (2 non-empty months)
+        # Only 2 uploads (2 non-empty months); the empty month never POSTs, so
+        # no token is consumed server-side. Tokens are pre-assigned per window
+        # index and uploads now run in parallel, so the specific token each
+        # upload uses (and its order) is non-deterministic -- assert only that
+        # each upload got a distinct token drawn from the pool.
         self.assertEqual(mock_upload.call_count, 2)
-        # First upload gets token t1
-        self.assertEqual(mock_upload.call_args_list[0][0][1], "t1")
-        # Second upload gets token t2
-        self.assertEqual(mock_upload.call_args_list[1][0][1], "t2")
+        used_tokens = [c[0][1] for c in mock_upload.call_args_list]
+        self.assertEqual(len(set(used_tokens)), 2)
+        self.assertTrue(set(used_tokens).issubset({"t1", "t2", "t3"}))
 
     def test_all_months_uploaded(self):
         summaries = [
@@ -308,13 +311,15 @@ class TestBackfillLoop(unittest.TestCase):
         _, mock_upload = self._run_backfill(summaries, [])
         self.assertEqual(mock_upload.call_count, 0)
 
-    def test_tokens_consumed_in_order(self):
+    def test_each_upload_gets_a_distinct_token(self):
+        # Tokens are pre-assigned one-per-window and uploads run in parallel, so
+        # completion order is non-deterministic. The invariant is that every
+        # upload consumes a distinct token from the pool (no double use).
         summaries = [_make_summary(sessions=i + 1) for i in range(3)]
         upload_returns = [f"/r/{i}" for i in range(3)]
         _, mock_upload = self._run_backfill(summaries, upload_returns)
-        # Tokens should be t1, t2, t3 in that order
         used_tokens = [c[0][1] for c in mock_upload.call_args_list]
-        self.assertEqual(used_tokens, ["t1", "t2", "t3"])
+        self.assertEqual(sorted(used_tokens), ["t1", "t2", "t3"])
 
     def test_paxel_error_skips_month(self):
         """If _run_paxel returns None (error), that month is skipped."""
@@ -325,8 +330,12 @@ class TestBackfillLoop(unittest.TestCase):
         ]
         upload_returns = ["/r/1", "/r/2"]
         _, mock_upload = self._run_backfill(summaries, upload_returns)
+        # The errored month never uploads; the other two each consume a distinct
+        # token (order non-deterministic under parallel uploads).
         self.assertEqual(mock_upload.call_count, 2)
-        self.assertEqual(mock_upload.call_args_list[0][0][1], "t1")
+        used_tokens = [c[0][1] for c in mock_upload.call_args_list]
+        self.assertEqual(len(set(used_tokens)), 2)
+        self.assertTrue(set(used_tokens).issubset({"t1", "t2", "t3"}))
 
 
 class TestBatchOutputContract(unittest.TestCase):
@@ -340,16 +349,30 @@ class TestBatchOutputContract(unittest.TestCase):
     """
 
     def _run_main(self, argv, summaries, upload_returns, tokens):
-        """Invoke main() with batch I/O mocked; return captured stdout."""
+        """Invoke main() with batch I/O mocked; return captured stdout.
+
+        Uploads now run in parallel, so the order in which the mocked
+        ``_upload_summary`` is called no longer matches window index. Tokens are
+        pre-assigned one-per-window (``token[i]`` -> ``window[i]``), so the token
+        deterministically identifies the window: derive the report URL from it
+        (``"t3"`` -> ``"/r/3"``) instead of relying on call order. This keeps the
+        "most recent month wins" assertion (highest-index window -> highest token
+        -> ``/r/3``) meaningful regardless of completion order. ``upload_returns``
+        is unused now but kept so call sites stay unchanged.
+        """
         if "--console" not in argv:
             argv = argv + ["--console"]
         buf = io.StringIO()
+
+        def _upload_by_token(mirdash_base, token, summary):
+            return f"/r/{token[1:]}"
+
         with (
             patch.object(_insights, "_capture_cli_token", return_value=(tokens, [])),
             patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(_mirdash, "_run_paxel", side_effect=summaries),
             patch.object(
-                _mirdash, "_upload_summary", side_effect=upload_returns
+                _mirdash, "_upload_summary", side_effect=_upload_by_token
             ),
             patch.object(_insights.os.path, "isfile", return_value=True),
             patch.object(_insights.sys, "argv", ["xl-ai-insights"] + argv),
@@ -417,6 +440,76 @@ class TestBatchOutputContract(unittest.TestCase):
         self.assertNotIn("^", out)
         self.assertNotIn("uploaded", out)
         self.assertNotIn("initialised", out)
+
+
+class TestParallelAggregation(unittest.TestCase):
+    """The parallel console loop must aggregate per-window results deterministically
+    regardless of completion order: count successes/failures, skip empties, and pick
+    the highest-index successful window as the final ('most recent') report URL.
+    """
+
+    def _run(self, per_token_result, tokens, argv=None):
+        """Invoke main() with --console, mocking _upload_window per token.
+
+        per_token_result: {token: (result, summary)} returned by _upload_window.
+        Tokens are pre-assigned token[i] -> window[i], so keying on the token
+        deterministically pins a result to a window index even though uploads
+        complete out of order.
+        """
+        argv = (argv or [f"--backfill={len(tokens)}"]) + ["--no-open", "--console"]
+        buf = io.StringIO()
+
+        def _fake_upload_window(mirdash_base, token, *a, **k):
+            return per_token_result[token]
+
+        with (
+            patch.object(_insights, "_capture_cli_token", return_value=(tokens, [])),
+            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_insights, "_upload_window", side_effect=_fake_upload_window),
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(_insights.sys, "argv", ["xl-ai-insights"] + argv),
+            contextlib.redirect_stdout(buf),
+        ):
+            mock_wb.open.return_value = True
+            try:
+                _insights.main()
+            except SystemExit:
+                pass
+        return buf.getvalue()
+
+    def test_mixed_results_aggregate_correctly(self):
+        # 4 windows: success, empty, upload-error, success.
+        # token[i] -> window[i] (oldest..newest); highest-index success is t3.
+        summary = _make_summary(sessions=5)
+        out = self._run(
+            {
+                "t0": ("/r/0", summary),                 # success
+                "t1": (None, None),                      # empty -> skip
+                "t2": (_mirdash._UPLOAD_ERROR, None),    # failed
+                "t3": ("/r/3", summary),                 # success (most recent)
+            },
+            tokens=["t0", "t1", "t2", "t3"],
+        )
+        # 2 uploaded, 1 failed, 1 empty (not counted as failure).
+        self.assertIn("uploaded 2/4 months", out)
+        self.assertIn("(1 failed)", out)
+        # Final report URL is the highest-index successful window, not whichever
+        # finished last.
+        self.assertIn("/r/3", out)
+        self.assertNotIn("/r/0", out.split("Report ready:")[-1])
+
+    def test_paxel_error_counts_as_failure(self):
+        summary = _make_summary(sessions=5)
+        out = self._run(
+            {
+                "t0": (_mirdash._PAXEL_ERROR, None),
+                "t1": ("/r/1", summary),
+            },
+            tokens=["t0", "t1"],
+        )
+        self.assertIn("uploaded 1/2 months", out)
+        self.assertIn("(1 failed)", out)
+        self.assertIn("/r/1", out)
 
 
 if __name__ == "__main__":
