@@ -1,3 +1,4 @@
+import glob
 import json
 import os
 import re
@@ -8,7 +9,7 @@ from datetime import datetime
 from gnomon.sources._util import _texts, _iso_ms
 from gnomon.config import strip_injections, parse_ts, line_count
 from gnomon.taxonomy import _canon_tool, _canon_input
-from gnomon.sources.discovery import CURSOR_DIR, CURSOR_DB
+from gnomon.sources.discovery import CURSOR_DIR, CURSOR_DB, CURSOR_CHATS_DIR
 
 
 _CURSOR_TOOL_MAP = {
@@ -25,21 +26,127 @@ _CURSOR_TOOL_MAP = {
     "create_plan": "EnterPlanMode", "ask_question": "AskUserQuestion",
     "read_lints": "Read", "edit_notebook": "NotebookEdit",
     "await_shell": "BashOutput", "await": "BashOutput",
+    # Cursor's plan/step-tracking tools ~ Claude's TodoWrite (mirrors codex.py mapping
+    # of `update_plan` -> TodoWrite). Counted as planning, not noise.
+    "update_current_step": "TodoWrite", "update_todo": "TodoWrite",
+    "update_todos": "TodoWrite",
 }
 
 _CURSOR_PATCH_FILE_RE = re.compile(r"^\*{3}\s*(?:Update|Add|Create|Delete)\s+File:\s*(.+)$", re.M)
+_CURSOR_ABS_PATH_RE = re.compile(r"(/(?:Users|home)/[^\s\"'`:]+)")
+# Paths outside the working repo (tool/config dirs) that would drag a common-ancestor cwd up
+# above the project root -- excluded so the inferred cwd stays inside the repo being worked on.
+_CURSOR_NOISE_PATH_RE = re.compile(
+    r"/\.(cursor|config|vscode|cache|npm|gradle|m2)/|/var/folders/|/node_modules/|^/(private/)?tmp/")
+
+
+def _cursor_cwd_from_paths(paths):
+    """Workspace dir inferred from the absolute file paths a session's tool calls touched.
+    Cursor's folder-slug encodes '.' (and other chars) as '-', so a username like
+    'jorge.artave' becomes 'jorge-artave' and is unrecoverable from the slug alone. The tool
+    inputs carry the REAL absolute paths, so we take the most-touched directory (tie-broken by
+    depth): a dir INSIDE the repo, from which `git rev-parse --show-toplevel` resolves the repo
+    root (churn dedups repos by identity, so a deep subdir is fine). Using the most-touched dir
+    rather than the common ancestor avoids collapsing to a non-repo parent when a session reads
+    files across several projects."""
+    dirs = defaultdict(int)
+    for p in paths:
+        if not isinstance(p, str) or not p.startswith("/") or _CURSOR_NOISE_PATH_RE.search(p):
+            continue
+        base = p.rsplit("/", 1)[-1]
+        d = p.rsplit("/", 1)[0] if "." in base else p
+        if d.startswith("/") and d != "/":
+            dirs[d] += 1
+    if not dirs:
+        return None
+    return max(dirs.items(), key=lambda kv: (kv[1], kv[0].count("/")))[0]
+
+
+def _cursor_jsonl_tool_paths(fp):
+    """Absolute file paths from a JSONL session's tool inputs (Read/Edit/Write file args and
+    paths embedded in Bash commands). Raw single-pass read -- independent of event parsing."""
+    out = []
+    try:
+        fh = open(fp, "r", errors="replace")
+    except Exception:
+        return out
+    with fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except Exception:
+                continue
+            msg = obj.get("message") if isinstance(obj, dict) else None
+            cont = msg.get("content") if isinstance(msg, dict) else None
+            if not isinstance(cont, list):
+                continue
+            for part in cont:
+                if not isinstance(part, dict) or part.get("type") not in ("tool_use", "toolCall"):
+                    continue
+                inp = part.get("input") or part.get("arguments") or {}
+                if not isinstance(inp, dict):
+                    continue
+                for key in ("path", "file_path", "targetFile", "filePath", "relativeWorkspacePath"):
+                    v = inp.get(key)
+                    if isinstance(v, str) and v.startswith("/"):
+                        out.append(v)
+                cmd = inp.get("command")
+                if isinstance(cmd, str):
+                    out.extend(_CURSOR_ABS_PATH_RE.findall(cmd))
+    return out
+
+
+def _cursor_resolve_cwd(fp, slug_cwd):
+    """Prefer the slug-derived cwd when it points at a real directory; otherwise fall back to
+    the workspace root inferred from the session's tool-input paths (handles '.'-in-username
+    and other slug-mangling). Only reads file content in the problem case."""
+    if slug_cwd and os.path.isdir(slug_cwd):
+        return slug_cwd
+    derived = _cursor_cwd_from_paths(_cursor_jsonl_tool_paths(fp))
+    return derived or slug_cwd
 
 
 def _cursor_project_cwd(project_slug):
-    """Best-effort reverse of Cursor's project folder slug -> workspace path."""
+    """Best-effort reverse of Cursor's project folder slug -> workspace path.
+
+    Cursor flattens the absolute path into a slug joining segments with '-', but folder
+    names themselves contain '-' too (`Users-mirland-Projects-carp-health-flutter`), so a
+    blind `replace('-', '/')` invents a non-existent path (`.../carp/health/flutter`) and
+    git churn silently reads 0. The ambiguity is real, so we resolve it against the disk:
+    descend through path segments that actually exist as directories, then treat whatever
+    is left as the leaf folder name (dashes preserved). Numeric / temp slugs that don't map
+    to a home path return None."""
     if not project_slug:
         return None
-    norm = project_slug.replace("\\", "/")
-    if norm.startswith("Users/") or norm.startswith("Users-"):
-        return "/" + norm.replace("-", "/")
-    if norm.startswith("home/") or norm.startswith("home-"):
-        return "/" + norm.replace("-", "/")
-    return None
+    norm = project_slug.replace("\\", "/").strip("/")
+    # Only home-anchored slugs map to a real workspace; numeric ids / var-folders / etc. don't.
+    head = norm.split("-", 1)[0].split("/", 1)[0]
+    if head not in ("Users", "home"):
+        return None
+    tokens = norm.replace("/", "-").split("-")
+    path = ""
+    i = 0
+    # Descend while each next token is a real directory at this level.
+    while i < len(tokens):
+        cand = (path + "/" + tokens[i]) if path else ("/" + tokens[i])
+        if os.path.isdir(cand):
+            path = cand
+            i += 1
+        else:
+            break
+    # Remaining tokens form the leaf folder name, with its internal dashes restored.
+    if i < len(tokens):
+        leaf = "-".join(tokens[i:])
+        path = (path + "/" + leaf) if path else ("/" + leaf)
+    if path and os.path.isdir(path):
+        return path
+    # Nothing on disk matched (history copied/mounted, repo since deleted): fall back to
+    # the naive '-'->'/' reconstruction so the workspace still gets a label, even though
+    # git churn won't find a repo there.
+    return "/" + norm.replace("-", "/")
 
 
 def _cursor_jsonl_meta(fp):
@@ -85,17 +192,97 @@ def _cursor_tool_key(name):
     return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", n).lower().replace("-", "_")
 
 
+def _cursor_mcp_name(key):
+    """Canonicalize a Cursor MCP tool key ('mcp_figma_get_design_context') to
+    'mcp__<server>__<tool>' so the server is one bucket, not one-per-tool. The raw name
+    flattens server+tool with single separators, so '__'.split downstream used to read the
+    whole tail as a distinct 'server' and inflate mcp_servers_distinct."""
+    rest = key[len("mcp"):].lstrip("_")
+    parts = [p for p in rest.split("_") if p]
+    if len(parts) >= 2:
+        return f"mcp__{parts[0]}__{'_'.join(parts[1:])}"
+    if len(parts) == 1:
+        return f"mcp__cursor__{parts[0]}"
+    return "mcp__cursor__tool"
+
+
+_CURSOR_MCP_SERVERS_CACHE = {}
+
+
+def _cursor_mcp_servers(fp):
+    """Map of {serverIdentifier -> serverName} for the CLI, built from ALL
+    `<projects>/*/mcps/*/SERVER_METADATA.json`. The CLI records MCP tool calls with flat
+    names (`plugin-atlassian-atlassian-search`, `bitbucket-listPullRequests`) and no `mcp`
+    prefix, so without this they read as native and mcp_servers_distinct=0. The metadata is
+    written per-workspace but a server is the same everywhere, so a tool used in workspace X
+    may only have its metadata under workspace Y -- hence we union across the whole projects
+    dir (the parent of the session's slug), cached by that root."""
+    norm = fp.replace("\\", "/")
+    parts = norm.split("/agent-transcripts/")
+    if len(parts) != 2:
+        return {}
+    projects_root = os.path.dirname(parts[0])
+    if projects_root in _CURSOR_MCP_SERVERS_CACHE:
+        return _CURSOR_MCP_SERVERS_CACHE[projects_root]
+    servers = {}
+    try:
+        slugs = os.listdir(projects_root)
+    except Exception:
+        slugs = []
+    for slug in slugs:
+        mcps_dir = os.path.join(projects_root, slug, "mcps")
+        try:
+            idents = os.listdir(mcps_dir)
+        except Exception:
+            continue
+        for ident in idents:
+            sid, sname = ident, ident
+            try:
+                with open(os.path.join(mcps_dir, ident, "SERVER_METADATA.json")) as fh:
+                    d = json.load(fh)
+                sid = d.get("serverIdentifier") or ident
+                sname = d.get("serverName") or sid
+            except Exception:
+                pass
+            servers.setdefault(sid, sname)
+    _CURSOR_MCP_SERVERS_CACHE[projects_root] = servers
+    return servers
+
+
+def _cursor_mcp_name_from_servers(raw_name, servers):
+    """If a flat CLI tool name starts with a known server identifier or friendly name,
+    rewrite it to canonical `mcp__<serverName>__<tool>`. Tool names sometimes use the full
+    identifier (`plugin-atlassian-atlassian-search`) and sometimes the short serverName
+    (`bitbucket-listPullRequests`), so match both; longest prefix wins to avoid collisions."""
+    if not servers:
+        return None
+    n = str(raw_name or "")
+    cands = []
+    for ident, sname in servers.items():
+        for base in (ident, sname):
+            if base:
+                cands.append((base + "-", sname))
+                cands.append((base + "_", sname))
+    cands.sort(key=lambda x: -len(x[0]))
+    for pref, sname in cands:
+        if n.startswith(pref):
+            return f"mcp__{sname}__{n[len(pref):] or 'tool'}"
+    return None
+
+
 def _cursor_tool_name(name):
     n = str(name or "tool")
     key = _cursor_tool_key(n)
-    if key.startswith("mcp") and not key.startswith("mcp__"):
-        return "mcp__" + n
     if n.startswith("mcp__"):
         return n
+    if key == "mcp" or key.startswith("mcp_"):
+        return _cursor_mcp_name(key)
     mapped = _CURSOR_TOOL_MAP.get(key)
     if mapped:
         return mapped
-    return _canon_tool(n)
+    # Fall back to the NORMALIZED key, not the raw name, so casing variants of an
+    # unmapped tool ('UpdateCurrentStep' / 'updateCurrentStep') collapse to one entry.
+    return _canon_tool(key)
 
 
 def _cursor_tool_input(raw_name, raw):
@@ -132,19 +319,23 @@ def _cursor_tool_input(raw_name, raw):
     return _canon_input(cname, inp)
 
 
-def _cursor_tool(raw_name, raw_input):
+def _cursor_tool(raw_name, raw_input, mcp_servers=None):
     """Resolve a Cursor tool call to (canonical name, normalized input).
     CallMcpTool is special: the real MCP tool lives in the input (server/toolName),
-    so it's renamed mcp__<server>__<tool> to count as an MCP call, not a native one."""
+    so it's renamed mcp__<server>__<tool> to count as an MCP call, not a native one.
+    mcp_servers (from the CLI's mcps/ sidecar) rewrites flat MCP tool names too."""
     inp = _cursor_tool_input(raw_name, raw_input)
     if _cursor_tool_key(raw_name) == "call_mcp_tool":
         server = str(inp.get("server") or "server")
         tool = str(inp.get("toolName") or inp.get("tool_name") or "tool")
         return f"mcp__{server}__{tool}", inp
+    flat_mcp = _cursor_mcp_name_from_servers(raw_name, mcp_servers)
+    if flat_mcp:
+        return flat_mcp, inp
     return _cursor_tool_name(raw_name), inp
 
 
-def _cursor_jsonl_blocks(content):
+def _cursor_jsonl_blocks(content, mcp_servers=None):
     blocks = []
     if isinstance(content, str):
         if content:
@@ -163,7 +354,7 @@ def _cursor_jsonl_blocks(content):
                             "thinking": part.get("thinking") or part.get("text") or ""})
         elif pt in ("tool_use", "toolCall"):
             raw_inp = part.get("input") or part.get("arguments") or {}
-            name, inp = _cursor_tool(part.get("name"), raw_inp)
+            name, inp = _cursor_tool(part.get("name"), raw_inp, mcp_servers)
             blocks.append({"type": "tool_use", "name": name, "input": inp})
         elif pt == "tool_result":
             blocks.append({"type": "tool_result",
@@ -171,8 +362,57 @@ def _cursor_jsonl_blocks(content):
     return blocks
 
 
+_CURSOR_CHAT_META_CACHE = {}
+
+
+def _cursor_chat_meta(chat_id, chats_dir=None):
+    """Look up a CLI chat's real metadata by chatId in ~/.cursor/chats/<hash>/<chatId>/.
+    The agent-transcripts JSONL has no per-event timestamps and no model; this sidecar store
+    does: meta.json carries createdAtMs/updatedAtMs and store.db's meta row carries
+    lastUsedModel. Returns {'ts': iso_or_None, 'model': str_or_None}. Cached per chatId."""
+    if not chat_id:
+        return {}
+    if chat_id in _CURSOR_CHAT_META_CACHE:
+        return _CURSOR_CHAT_META_CACHE[chat_id]
+    root = chats_dir or CURSOR_CHATS_DIR
+    out = {}
+    # <hash> is a workspace digest we don't know from the JSONL, so glob across hashes.
+    hits = glob.glob(os.path.join(root, "*", chat_id))
+    for chat_dir in hits:
+        try:
+            with open(os.path.join(chat_dir, "meta.json")) as fh:
+                m = json.load(fh)
+            ms = m.get("createdAtMs") or m.get("updatedAtMs")
+            if ms:
+                out["ts"] = datetime.fromtimestamp(ms / 1000).astimezone().isoformat()
+        except Exception:
+            pass
+        conn = _cursor_open_sqlite(os.path.join(chat_dir, "store.db"))
+        if conn is not None:
+            try:
+                row = conn.execute("SELECT value FROM meta WHERE key='0'").fetchone()
+                if row and row[0]:
+                    raw = bytes.fromhex(row[0]) if isinstance(row[0], str) else row[0]
+                    out["model"] = json.loads(raw).get("lastUsedModel") or out.get("model")
+            except Exception:
+                pass
+            finally:
+                conn.close()
+        if out:
+            break
+    _CURSOR_CHAT_META_CACHE[chat_id] = out
+    return out
+
+
 def _cursor_jsonl_events(fp):
     sid, cwd, is_sidechain = _cursor_jsonl_meta(fp)
+    cwd = _cursor_resolve_cwd(fp, cwd)
+    mcp_servers = _cursor_mcp_servers(fp)
+    # CLI sessions: pull the real timestamp + model from the ~/.cursor/chats sidecar, which
+    # the transcript JSONL lacks. (Sidechains attribute to the parent chat id, so this still
+    # resolves.) Falls back to file mtime / no-model when the sidecar isn't present.
+    chat_meta = _cursor_chat_meta(sid)
+    chat_model = chat_meta.get("model")
     base = {"sessionId": sid, "cwd": cwd}
     if is_sidechain:
         base["isSidechain"] = True
@@ -180,11 +420,14 @@ def _cursor_jsonl_events(fp):
     # session does -- and is preferred). For JSONL-only sessions, stamp the FIRST event
     # with the file mtime so the session still lands on the calendar / time window,
     # without flooding the hour histogram with thousands of identical fake timestamps.
-    mtime_iso = None
-    try:
-        mtime_iso = datetime.fromtimestamp(os.path.getmtime(fp)).astimezone().isoformat()
-    except Exception:
-        pass
+    # Prefer the chat sidecar's real createdAt over the file mtime (mtime lies when the
+    # projects dir was copied/synced) so the session lands on the right calendar day.
+    mtime_iso = chat_meta.get("ts")
+    if mtime_iso is None:
+        try:
+            mtime_iso = datetime.fromtimestamp(os.path.getmtime(fp)).astimezone().isoformat()
+        except Exception:
+            pass
     first = True
     try:
         fh = open(fp, "r", errors="replace")
@@ -225,13 +468,14 @@ def _cursor_jsonl_events(fp):
                     yield {**base, "type": "user", "timestamp": ts, "__synth_ts__": synth_ts,
                            "message": {"role": "user", "content": text}}
             elif role == "assistant":
-                blocks = _cursor_jsonl_blocks(content)
+                blocks = _cursor_jsonl_blocks(content, mcp_servers)
                 tool_results = [b for b in blocks if b.get("type") == "tool_result"]
                 blocks = [b for b in blocks if b.get("type") != "tool_result"]
                 if blocks:
                     first = False
                     yield {**base, "type": "assistant", "timestamp": ts, "__synth_ts__": synth_ts,
-                           "message": {"role": "assistant", "model": msg.get("model"),
+                           "message": {"role": "assistant",
+                                       "model": msg.get("model") or chat_model,
                                        "content": blocks}}
                 if tool_results:
                     yield {**base, "type": "user", "timestamp": ts, "__synth_ts__": synth_ts,
@@ -271,10 +515,20 @@ def _cursor_bubble_blocks(bubble):
 
 
 def _cursor_open_sqlite(db_path):
-    try:
-        return sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    except Exception:
-        return None
+    # mode=ro stays read-only (never writes). But if state.vscdb has an active WAL/lock
+    # (Cursor is open), a plain mode=ro open fails with "unable to open database file" and
+    # we'd silently lose ALL SQLite data -- retry with immutable=1, which also never writes.
+    # Percent-encode the path so spaces / special chars don't break the file: URI.
+    from urllib.parse import quote
+    uri = "file:" + quote(db_path)
+    for suffix in ("?mode=ro", "?mode=ro&immutable=1"):
+        try:
+            conn = sqlite3.connect(uri + suffix, uri=True)
+            conn.execute("SELECT 1")  # sqlite3.connect is lazy; force the open to surface a lock error
+            return conn
+        except Exception:
+            continue
+    return None
 
 
 def _cursor_jsonl_edit_inputs(fp):
@@ -321,6 +575,11 @@ def _cursor_sqlite_events(db_path, twins=None):
         # cwd comes from the JSONL twin's project slug -- the DB stores no workspace path
         twin = twins.get(composer_id) or {}
         base = {"sessionId": composer_id, "cwd": twin.get("cwd")}
+        # The real model lives on the session, not the bubble: composerData carries
+        # modelConfig.modelName (e.g. "claude-4.5-sonnet-thinking", "gemini-3-pro",
+        # "default"). Per-bubble `model` is always None on disk, so without this the
+        # whole source reads as model-less and AQ Model mix collapses to 0.
+        session_model = (meta.get("modelConfig") or {}).get("modelName")
         edit_queues = _cursor_jsonl_edit_inputs(twin["jsonl"]) if twin.get("jsonl") else None
         for hdr in headers:
             if not isinstance(hdr, dict):
@@ -368,12 +627,16 @@ def _cursor_sqlite_events(db_path, twins=None):
                 # a separate usage-only turn. Ignore empty token payloads.
                 tok_count = bubble.get("tokenCount")
                 msg = {"role": "assistant"}
+                if session_model:
+                    msg["model"] = session_model
                 usage = None
                 if isinstance(tok_count, dict):
                     input_tok = int(tok_count.get("inputTokens") or 0)
                     output_tok = int(tok_count.get("outputTokens") or 0)
                     if input_tok > 0 or output_tok > 0:
-                        msg["model"] = "cursor"
+                        # Keep the real model if we have one; only fall back to "cursor"
+                        # so tokens are still attributed to *something* in by_model.
+                        msg.setdefault("model", "cursor")
                         usage = {
                             "input_tokens": input_tok,
                             "output_tokens": output_tok,
@@ -424,7 +687,9 @@ def _cursor_dedup(sources):
         if is_sidechain or sid not in sqlite_ids:
             out.append(entry)
         else:
-            twins[sid] = {"cwd": cwd, "jsonl": fp}
+            # SQLite copy wins, but it stores no workspace path -- backfill cwd from the twin,
+            # resolving it against the JSONL's real tool-input paths (slug may be unrecoverable).
+            twins[sid] = {"cwd": _cursor_resolve_cwd(fp, cwd), "jsonl": fp}
     return out, twins
 
 

@@ -22,6 +22,9 @@ from gnomon.sources.cursor import (  # noqa: F401
     _cursor_dedup, _cursor_sqlite_events, _cursor_jsonl_events,
     _cursor_clean_prompt, _cursor_jsonl_meta, _cursor_project_cwd,
     _cursor_tool, _cursor_tool_name,
+    _cursor_cwd_from_paths, _cursor_jsonl_tool_paths, _cursor_resolve_cwd,
+    _cursor_open_sqlite, _cursor_mcp_servers, _cursor_mcp_name_from_servers,
+    _CURSOR_MCP_SERVERS_CACHE, _cursor_chat_meta, _CURSOR_CHAT_META_CACHE,
 )
 from gnomon.sources.antigravity import _pb_fields  # noqa: F401
 from gnomon.analysis.quotes import _crashout_score, _cryptic_score, _POLITE_RE, _safe_quote, _RAGE_RE, _FILLER  # noqa: F401

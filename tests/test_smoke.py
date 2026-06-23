@@ -304,6 +304,253 @@ class TestUnits(unittest.TestCase):
         self.assertNotIn("Steering", zero)
 
 
+class TestCursorStatsFixes(unittest.TestCase):
+    """Regression tests for the four Cursor parser bugs that corrupted its stats:
+    model mix, tool-name casing split, MCP server naming, and dashed-slug cwd."""
+
+    # --- Bug 2: casing variants of one tool must collapse to a single canonical name ---
+    def test_tool_name_casing_collapses_for_mapped_plan_tool(self):
+        names = {paxel._cursor_tool_name(n) for n in
+                 ("update_current_step", "UpdateCurrentStep", "updateCurrentStep")}
+        self.assertEqual(names, {"TodoWrite"})  # mapped like Codex update_plan
+
+    def test_tool_name_casing_collapses_for_unmapped_tool(self):
+        names = {paxel._cursor_tool_name(n) for n in ("switch_mode", "SwitchMode", "switchMode")}
+        self.assertEqual(names, {"switch_mode"})  # one canonical, not three
+
+    # --- Bug 3: Cursor MCP tool names canonicalize to mcp__<server>__<tool> ---
+    def test_mcp_name_splits_server_and_tool(self):
+        self.assertEqual(paxel._cursor_tool_name("mcp-figma-get_design_context"),
+                         "mcp__figma__get_design_context")
+
+    def test_mcp_name_server_groups_multiple_tools(self):
+        servers = {paxel._cursor_tool_name(n).split("__")[1] for n in
+                   ("mcp_figma_get_screenshot", "mcp_figma_download_assets")}
+        self.assertEqual(servers, {"figma"})  # one server bucket, not one-per-tool
+
+    def test_mcp_name_single_token_does_not_emit_empty_server(self):
+        out = paxel._cursor_tool_name("mcp_foo")
+        self.assertEqual(out, "mcp__cursor__foo")
+        self.assertNotIn("mcp--", out)
+
+    def test_already_canonical_mcp_name_untouched(self):
+        self.assertEqual(paxel._cursor_tool_name("mcp__github__create_issue"),
+                         "mcp__github__create_issue")
+
+    # --- Bug 4: dashed folder names reconstruct against disk, with naive fallback ---
+    def test_cwd_reconstructs_dashed_leaf_against_disk(self):
+        existing = {"/Users", "/Users/mirland", "/Users/mirland/Projects",
+                    "/Users/mirland/Projects/carp-health-flutter"}
+        with mock.patch("gnomon.sources.cursor.os.path.isdir", side_effect=existing.__contains__):
+            cwd = paxel._cursor_project_cwd("Users-mirland-Projects-carp-health-flutter")
+        self.assertEqual(cwd, "/Users/mirland/Projects/carp-health-flutter")
+
+    def test_cwd_falls_back_to_naive_when_nothing_on_disk(self):
+        with mock.patch("gnomon.sources.cursor.os.path.isdir", return_value=False):
+            self.assertEqual(paxel._cursor_project_cwd("Users-demo-cursorproj"),
+                             "/Users/demo/cursorproj")
+
+    def test_cwd_none_for_non_home_slug(self):
+        self.assertIsNone(paxel._cursor_project_cwd("1777578696277"))
+
+    # --- Bug 1: the session model surfaces from composerData.modelConfig.modelName ---
+    def test_session_model_read_from_model_config(self):
+        temp_db = tempfile.NamedTemporaryFile(suffix=".vscdb", delete=False)
+        temp_db.close()
+        self.addCleanup(lambda: os.path.exists(temp_db.name) and os.unlink(temp_db.name))
+        import sqlite3
+        conn = sqlite3.connect(temp_db.name)
+        conn.execute("CREATE TABLE cursorDiskKV (key TEXT PRIMARY KEY, value BLOB)")
+        bid = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+        conn.execute("INSERT INTO cursorDiskKV VALUES (?, ?)",
+                     ("composerData:mdl-session",
+                      json.dumps({"modelConfig": {"modelName": "claude-4.5-sonnet-thinking"},
+                                  "fullConversationHeadersOnly": [{"bubbleId": bid, "type": 2}]})))
+        conn.execute("INSERT INTO cursorDiskKV VALUES (?, ?)",
+                     (f"bubbleId:mdl-session:{bid}",
+                      json.dumps({"type": 2, "createdAt": "2026-01-01T10:00:00.000Z",
+                                  "text": "hello",
+                                  "tokenCount": {"inputTokens": 10, "outputTokens": 5}})))
+        conn.commit()
+        conn.close()
+        events = list(paxel._cursor_sqlite_events(temp_db.name, {}))
+        asst = [e for e in events if e.get("type") == "assistant"]
+        self.assertTrue(asst, "no assistant event emitted")
+        self.assertEqual(asst[0]["message"]["model"], "claude-4.5-sonnet-thinking")
+
+    def test_pretty_model_cursor_ids(self):
+        self.assertEqual(paxel._pretty_model("default"), "Cursor Auto")
+        self.assertEqual(paxel._pretty_model("composer-2.5-fast"), "Cursor Composer 2.5 Fast")
+        self.assertEqual(paxel._pretty_model("claude-4.5-sonnet-thinking"), "Sonnet 4.5 Thinking")
+
+    # --- Bug 5: cwd inferred from JSONL tool-input paths when the slug is unrecoverable ---
+    def test_cwd_from_paths_recovers_dotted_username(self):
+        # slug 'Users-jorge-artave-...' loses the '.' in 'jorge.artave'; the tool paths keep it.
+        paths = [
+            "/Users/jorge.artave/Projects/maps/maps-server/src/Main.java",
+            "/Users/jorge.artave/Projects/maps/maps-server/src/Other.java",
+            "/Users/jorge.artave/Projects/maps/maps-server/src/Main.java",
+        ]
+        cwd = paxel._cursor_cwd_from_paths(paths)
+        self.assertTrue(cwd.startswith("/Users/jorge.artave/Projects/maps"))
+
+    def test_cwd_from_paths_most_touched_dir_wins(self):
+        paths = (["/Users/x/Projects/a/one.py"] * 1
+                 + ["/Users/x/Projects/b/two.py"] * 3)
+        self.assertEqual(paxel._cursor_cwd_from_paths(paths), "/Users/x/Projects/b")
+
+    def test_cwd_from_paths_ignores_noise_dirs(self):
+        paths = [
+            "/Users/x/.cursor/skills/foo/SKILL.md",
+            "/Users/x/Projects/app/src/main.ts",
+            "/Users/x/Projects/app/src/util.ts",
+        ]
+        self.assertEqual(paxel._cursor_cwd_from_paths(paths), "/Users/x/Projects/app/src")
+
+    def test_cwd_from_paths_none_when_no_abs_paths(self):
+        self.assertIsNone(paxel._cursor_cwd_from_paths(["relative/x.py", "", None]))
+
+    def test_resolve_cwd_prefers_existing_slug_dir(self):
+        # when the slug already maps to a real dir, don't bother scanning content
+        with mock.patch("gnomon.sources.cursor.os.path.isdir", return_value=True):
+            self.assertEqual(paxel._cursor_resolve_cwd("/nonexistent.jsonl", "/Users/me/proj"),
+                             "/Users/me/proj")
+
+    # --- Fix 6: flat CLI MCP tool names -> mcp__server__tool via mcps/ sidecar ---
+    def test_mcp_name_from_servers_matches_identifier_and_friendly_name(self):
+        servers = {"plugin-atlassian-atlassian": "atlassian", "user-bitbucket": "bitbucket"}
+        # full identifier prefix
+        self.assertEqual(
+            paxel._cursor_mcp_name_from_servers("plugin-atlassian-atlassian-search", servers),
+            "mcp__atlassian__search")
+        # friendly serverName prefix
+        self.assertEqual(
+            paxel._cursor_mcp_name_from_servers("bitbucket-listPullRequests", servers),
+            "mcp__bitbucket__listPullRequests")
+
+    def test_mcp_name_from_servers_none_when_no_match(self):
+        self.assertIsNone(paxel._cursor_mcp_name_from_servers("read_file_v2", {"x": "x"}))
+        self.assertIsNone(paxel._cursor_mcp_name_from_servers("anything", None))
+
+    def test_mcp_servers_loaded_from_sidecar(self):
+        import tempfile, json as _json
+        root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        # <root>/<slug>/mcps/<ident>/SERVER_METADATA.json  +  a sibling agent-transcripts file
+        slug = os.path.join(root, "Users-x-Projects-app")
+        meta_dir = os.path.join(slug, "mcps", "plugin-atlassian-atlassian")
+        os.makedirs(meta_dir)
+        with open(os.path.join(meta_dir, "SERVER_METADATA.json"), "w") as fh:
+            _json.dump({"serverIdentifier": "plugin-atlassian-atlassian",
+                        "serverName": "atlassian"}, fh)
+        fp = os.path.join(slug, "agent-transcripts", "sess1", "sess1.jsonl")
+        os.makedirs(os.path.dirname(fp)); open(fp, "w").close()
+        paxel._CURSOR_MCP_SERVERS_CACHE.clear()
+        servers = paxel._cursor_mcp_servers(fp)
+        self.assertEqual(servers.get("plugin-atlassian-atlassian"), "atlassian")
+
+    # --- Fix 7: opener retries with immutable when mode=ro fails (and tolerates spaces) ---
+    def test_open_sqlite_reads_db_with_space_in_name(self):
+        import tempfile, sqlite3
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        path = os.path.join(d, "My State.vscdb")  # space in filename
+        conn = sqlite3.connect(path)
+        conn.execute("CREATE TABLE t (k TEXT)"); conn.execute("INSERT INTO t VALUES ('x')")
+        conn.commit(); conn.close()
+        ro = paxel._cursor_open_sqlite(path)
+        self.assertIsNotNone(ro)
+        self.assertEqual(ro.execute("SELECT count(*) FROM t").fetchone()[0], 1)
+
+    # --- Fix 9: CLI sessions enriched with model+timestamp from ~/.cursor/chats ---
+    def test_chat_meta_reads_timestamp_and_model(self):
+        import tempfile, sqlite3, json as _json
+        root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        cid = "abc-123-chat"
+        cdir = os.path.join(root, "wshash", cid)
+        os.makedirs(cdir)
+        with open(os.path.join(cdir, "meta.json"), "w") as fh:
+            _json.dump({"createdAtMs": 1782167750008, "title": "X"}, fh)
+        conn = sqlite3.connect(os.path.join(cdir, "store.db"))
+        conn.execute("CREATE TABLE meta (key TEXT, value)")
+        conn.execute("INSERT INTO meta VALUES ('0', ?)",
+                     (_json.dumps({"lastUsedModel": "composer-2.5"}).encode().hex(),))
+        conn.commit(); conn.close()
+        paxel._CURSOR_CHAT_META_CACHE.clear()
+        m = paxel._cursor_chat_meta(cid, chats_dir=root)
+        self.assertEqual(m.get("model"), "composer-2.5")
+        self.assertTrue((m.get("ts") or "").startswith("2026-06"))
+
+    def test_chat_meta_empty_when_absent(self):
+        paxel._CURSOR_CHAT_META_CACHE.clear()
+        self.assertEqual(paxel._cursor_chat_meta("no-such-chat", chats_dir="/tmp/nope-xyz"), {})
+
+    def test_jsonl_tool_paths_extracts_from_tool_inputs(self):
+        import tempfile, json as _json
+        ev = {"role": "assistant", "message": {"role": "assistant", "content": [
+            {"type": "tool_use", "name": "Read", "input": {"path": "/Users/j.a/Projects/m/A.java"}},
+            {"type": "tool_use", "name": "Shell",
+             "input": {"command": "cd /Users/j.a/Projects/m && ls"}},
+        ]}}
+        f = tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False)
+        f.write(_json.dumps(ev) + "\n"); f.close()
+        self.addCleanup(lambda: os.path.exists(f.name) and os.unlink(f.name))
+        paths = paxel._cursor_jsonl_tool_paths(f.name)
+        self.assertIn("/Users/j.a/Projects/m/A.java", paths)
+        self.assertTrue(any(p.startswith("/Users/j.a/Projects/m") for p in paths))
+
+
+class TestCapabilityAwareScoring(unittest.TestCase):
+    """Fase 4: a signal a source CANNOT record (skills/toolsearch/tasktool on Cursor) is
+    dropped + renormalized, not scored 0. Full-capability corpora (Claude) are a no-op."""
+
+    def _stats(self, sources, **over):
+        base = {
+            "corpus": {"sources": {s: {} for s in sources}},
+            "tools": {"mcp_servers_distinct": 4, "clis_distinct": 10, "toolsearch_calls": 0,
+                      "task_tool_calls": 0, "cli_calls": 100, "mcp_calls": 5},
+            "stack": {"models": [["a", 10], ["b", 5]], "skills_all": [], "top_skills": [],
+                      "skills_distinct": 0, "skills_total": 0, "compounding_writes": 6,
+                      "subagent_types": [], "subagent_types_distinct": 1},
+            "behavior": {"planning_ratio_explore_to_doing": 1.0, "actions_per_prompt": 10,
+                         "error_recovery_ratio": 1.0, "shell_test_runs": 5, "fanout_median": 2},
+        }
+        base.update(over)
+        return base
+
+    def test_cursor_drops_unsupported_axes(self):
+        aq = paxel.compute_aq(self._stats(["cursor"]))
+        breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
+        self.assertIn("Skill fluency", breadth.get("not_applicable", []))
+        self.assertIn("Discipline", breadth.get("not_applicable", []))
+        # surviving axes renormalize to the full pillar weight (100)
+        self.assertEqual(sum(a["weight"] for a in breadth["axes"]), 100)
+
+    def test_claude_keeps_all_axes_noop(self):
+        aq = paxel.compute_aq(self._stats(["claude"]))
+        breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
+        self.assertNotIn("not_applicable", breadth)
+        self.assertEqual({a["name"] for a in breadth["axes"]},
+                         {"Orchestration", "Skill fluency", "Tool command (MCP + CLI)", "Discipline"})
+
+    def test_mixed_sources_union_keeps_skills(self):
+        # claude in the mix supports skills/toolsearch/tasktool -> nothing dropped
+        aq = paxel.compute_aq(self._stats(["claude", "cursor"]))
+        breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
+        self.assertNotIn("not_applicable", breadth)
+
+    def test_cursor_not_penalized_below_claude_on_unmeasurable(self):
+        # identical underlying behavior: cursor must not score LOWER than claude on the
+        # Savvy Token-economy axis just because it lacks ToolSearch (it gets renormalized).
+        cur = paxel.compute_aq(self._stats(["cursor"]))
+        cla = paxel.compute_aq(self._stats(["claude"]))
+        def tok(aq):
+            sav = next(p for p in aq["pillars"] if p["name"] == "Savvy")
+            return next(a["score"] for a in sav["axes"] if a["name"] == "Token economy")
+        self.assertGreaterEqual(tok(cur), tok(cla))
+
+
 class TestCanonToolGeminiMappings(unittest.TestCase):
     """_canon_tool must map Gemini-native tool names to Claude taxonomy."""
 
