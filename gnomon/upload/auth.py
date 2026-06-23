@@ -90,7 +90,7 @@ _SUCCESS_PAGE = b"""\
     font-family:'JetBrains Mono',monospace}
   .term svg{width:15px;height:15px;stroke:var(--purple);stroke-width:2;fill:none;
     stroke-linecap:round;stroke-linejoin:round;flex:none}
-  .foot{margin-top:22px;font-size:12px;color:var(--text-muted)}
+  .foot{margin-top:22px;font-size:12px;line-height:1.5;color:var(--text-muted)}
   .foot b{color:var(--text-secondary);font-weight:600}
 </style>
 </head>
@@ -101,7 +101,7 @@ _SUCCESS_PAGE = b"""\
     <h1>You\xe2\x80\x99re authenticated</h1>
     <p class="sub">Signed in with your XL account. Close this tab and head back to your terminal \xe2\x80\x94 it\xe2\x80\x99s computing your build profile and sharing it now.</p>
     <div class="term"><svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> Return to your terminal</div>
-    <div class="foot">Only summary.json is uploaded \xc2\xb7 <b>your transcripts never leave your machine</b></div>
+    <div class="foot"><b>Your transcripts never leave your machine.</b> Only aggregated usage statistics (summary.json) are uploaded \xe2\x80\x94 mirdash uses them to generate your recommendations.</div>
   </div>
 </body>
 </html>
