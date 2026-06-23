@@ -128,15 +128,22 @@ class TestPipeline(unittest.TestCase):
             "context", "planning_ratio_explore_to_doing", "errors", "iteration_depth",
             "churn", "orchestration", "compounding_writes", "ecosystem",
             "progression_monthly", "noticed_stats_monthly", "profile",
-            "noticed_stats", "token_usage"})
+            "scoring_inputs_version", "scoring_inputs_by_source",
+            "profiles_by_source", "source_usage", "source_usage_monthly", "token_usage"})
         # profile must have the expected sub-keys
         prof = summary["profile"]
         self.assertEqual(set(prof), {"aq", "archetype", "scores", "steering",
                                      "growth_edges", "signature_moves", "model_usage"})
-        # no raw prompt/verbatim text in the shareable summary
+        # no raw prompt/verbatim text in the shareable summary. NOTE: raw skill names
+        # ARE now intentionally present (scoring_inputs_by_source carries top_skills /
+        # skills_all as the cross-language parity contract), so "top_skills" is no longer
+        # banned — only verbatim PROMPT text is.
         raw = json.dumps(summary).lower()
-        for banned in ("top_skills", "prompt_text"):
+        for banned in ("prompt_text",):
             self.assertNotIn(banned, raw, f"verbatim field leaked: {banned}")
+        # scoring inputs are present and re-scorable
+        self.assertEqual(summary["scoring_inputs_version"], 1)
+        self.assertIsInstance(summary["scoring_inputs_by_source"], dict)
 
     def test_no_summary_without_flag(self):
         _, out = _run(self, [])
@@ -1428,25 +1435,29 @@ class TestGA2BuildSummaryMonthly(unittest.TestCase):
     # noticed_stats_monthly present in build_summary() output
     # ------------------------------------------------------------------
 
-    def test_noticed_stats_monthly_in_build_summary(self):
-        """build_summary() must include noticed_stats_monthly."""
+    # NOTE: noticed_stats_monthly is KEPT in the build_summary() payload — mirdash's
+    # ingest route unpacks it into the buildMetricMonthlyStats table. The per-month data
+    # lives on stats["monthly_noticed_stats"] and is mirrored verbatim into the summary.
+
+    def test_noticed_stats_monthly_in_summary(self):
+        """summary must carry noticed_stats_monthly, mirroring stats['monthly_noticed_stats']."""
         stats = self._run(self._two_month_rows())
         summary = paxel.build_summary(stats)
+        self.assertIn("monthly_noticed_stats", stats)
         self.assertIn("noticed_stats_monthly", summary)
+        self.assertEqual(summary["noticed_stats_monthly"], stats["monthly_noticed_stats"])
 
     def test_noticed_stats_monthly_non_empty_for_multi_month(self):
-        """noticed_stats_monthly is a non-empty list when window spans >=1 month."""
+        """monthly_noticed_stats is a non-empty list when window spans >=1 month."""
         stats = self._run(self._two_month_rows())
-        summary = paxel.build_summary(stats)
-        nsm = summary["noticed_stats_monthly"]
+        nsm = stats["monthly_noticed_stats"]
         self.assertIsInstance(nsm, list)
         self.assertGreater(len(nsm), 0)
 
     def test_noticed_stats_monthly_entry_shape(self):
         """Each entry must carry month, range_start, range_end, stats, token_usage."""
         stats = self._run(self._two_month_rows())
-        summary = paxel.build_summary(stats)
-        for entry in summary["noticed_stats_monthly"]:
+        for entry in stats["monthly_noticed_stats"]:
             self.assertIn("month", entry)
             self.assertIn("range_start", entry)
             self.assertIn("range_end", entry)
@@ -1456,30 +1467,23 @@ class TestGA2BuildSummaryMonthly(unittest.TestCase):
     def test_noticed_stats_monthly_stats_shape_matches_window(self):
         """Each entry's stats must have the same top-level keys as window noticed_stats."""
         stats = self._run(self._two_month_rows())
-        summary = paxel.build_summary(stats)
-        window_keys = set(summary["noticed_stats"])
-        for entry in summary["noticed_stats_monthly"]:
+        window_keys = set(paxel._build_noticed_stats(stats))
+        for entry in stats["monthly_noticed_stats"]:
             self.assertEqual(set(entry["stats"]), window_keys,
-                             "noticed_stats_monthly entry shape diverged from window noticed_stats")
-
-    def test_noticed_stats_monthly_matches_stats_field(self):
-        """summary['noticed_stats_monthly'] must equal stats['monthly_noticed_stats']."""
-        stats = self._run(self._two_month_rows())
-        summary = paxel.build_summary(stats)
-        self.assertEqual(summary["noticed_stats_monthly"], stats["monthly_noticed_stats"])
+                             "monthly_noticed_stats entry shape diverged from window noticed_stats")
 
     # ------------------------------------------------------------------
-    # progression_monthly reconciliation with noticed_stats_monthly
+    # progression_monthly reconciliation with monthly_noticed_stats
     # ------------------------------------------------------------------
 
     def test_progression_monthly_prompts_match_noticed(self):
-        """progression_monthly[i].prompts == noticed_stats_monthly[i].stats.volume.total_prompts."""
+        """progression_monthly[i].prompts == monthly_noticed_stats[i].stats.volume.total_prompts."""
         stats = self._run(self._two_month_rows())
         summary = paxel.build_summary(stats)
         pm = {e["month"]: e for e in summary["progression_monthly"]}
-        nm = {e["month"]: e for e in summary["noticed_stats_monthly"]}
+        nm = {e["month"]: e for e in stats["monthly_noticed_stats"]}
         self.assertEqual(set(pm), set(nm),
-                         "progression_monthly and noticed_stats_monthly must cover the same months")
+                         "progression_monthly and monthly_noticed_stats must cover the same months")
         for month, p in pm.items():
             n = nm[month]
             self.assertEqual(p["prompts"], n["stats"]["volume"]["total_prompts"],
@@ -1487,11 +1491,11 @@ class TestGA2BuildSummaryMonthly(unittest.TestCase):
                              f"progression={p['prompts']} noticed={n['stats']['volume']['total_prompts']}")
 
     def test_progression_monthly_tool_calls_match_noticed(self):
-        """progression_monthly[i].tool_calls == noticed_stats_monthly[i].stats.volume.tool_calls_total."""
+        """progression_monthly[i].tool_calls == monthly_noticed_stats[i].stats.volume.tool_calls_total."""
         stats = self._run(self._two_month_rows())
         summary = paxel.build_summary(stats)
         pm = {e["month"]: e for e in summary["progression_monthly"]}
-        nm = {e["month"]: e for e in summary["noticed_stats_monthly"]}
+        nm = {e["month"]: e for e in stats["monthly_noticed_stats"]}
         for month, p in pm.items():
             n = nm[month]
             self.assertEqual(p["tool_calls"], n["stats"]["volume"]["tool_calls_total"],
@@ -1499,11 +1503,11 @@ class TestGA2BuildSummaryMonthly(unittest.TestCase):
                              f"progression={p['tool_calls']} noticed={n['stats']['volume']['tool_calls_total']}")
 
     def test_progression_monthly_tokens_total_match_noticed(self):
-        """progression_monthly[i].tokens_total == sum of noticed_stats_monthly[i].token_usage totals."""
+        """progression_monthly[i].tokens_total == sum of monthly_noticed_stats[i].token_usage totals."""
         stats = self._run(self._two_month_rows())
         summary = paxel.build_summary(stats)
         pm = {e["month"]: e for e in summary["progression_monthly"]}
-        nm = {e["month"]: e for e in summary["noticed_stats_monthly"]}
+        nm = {e["month"]: e for e in stats["monthly_noticed_stats"]}
         for month, p in pm.items():
             n = nm[month]
             tu = n["token_usage"]
@@ -1518,12 +1522,87 @@ class TestGA2BuildSummaryMonthly(unittest.TestCase):
         stats = self._run(self._two_month_rows())
         summary = paxel.build_summary(stats)
         pm_months = [e["month"] for e in summary["progression_monthly"]]
-        nm_months = [e["month"] for e in summary["noticed_stats_monthly"]]
+        nm_months = [e["month"] for e in stats["monthly_noticed_stats"]]
         self.assertEqual(pm_months, sorted(pm_months), "progression_monthly not chronological")
         self.assertEqual(nm_months, sorted(nm_months), "noticed_stats_monthly not chronological")
         # same set of months in same order
         self.assertEqual(pm_months, nm_months,
                          "progression_monthly and noticed_stats_monthly month order must match")
+
+
+class TestProfilesBySourceAndUsage(unittest.TestCase):
+    """build_summary emits precomputed per-source/aggregate profiles + per-tool usage share."""
+
+    def _summary(self):
+        rows = []
+        for i in range(6):
+            rows += _claude_turn(f"pbs-{i}", f"2026-03-1{i}T10:00:00.000Z", tool="Edit",
+                                 file_path=f"/Users/demo/proj/f{i}.py",
+                                 new_string="a\nb\nc", prompt=f"do thing {i}",
+                                 usage={"input_tokens": 300, "output_tokens": 30,
+                                        "cache_read_input_tokens": 5,
+                                        "cache_creation_input_tokens": 1})
+        stats = _run_claude_transcript(self, rows)
+        return paxel.build_summary(stats), stats
+
+    def test_profiles_by_source_shape(self):
+        summary, _ = self._summary()
+        pbs = summary["profiles_by_source"]
+        self.assertIn("by_source", pbs)
+        self.assertIn("aggregate", pbs)
+        self.assertIn("claude", pbs["by_source"])
+        prof = pbs["by_source"]["claude"]
+        for key in ("aq", "scores", "archetype", "steering", "growth_edges",
+                    "signature_moves", "model_usage"):
+            self.assertIn(key, prof)
+        self.assertIn("aq_0_100", prof["aq"])
+
+    def test_per_source_model_usage_populated(self):
+        """score_by_source leaves model_usage empty; build_summary fills it per source."""
+        summary, _ = self._summary()
+        mu = summary["profiles_by_source"]["by_source"]["claude"]["model_usage"]
+        self.assertTrue(mu, "per-source model_usage should be populated from stack.models")
+        self.assertIn("pct", mu[0])
+        self.assertIn("model", mu[0])
+
+    def test_source_usage_primary_and_pcts(self):
+        summary, _ = self._summary()
+        su = summary["source_usage"]
+        self.assertEqual(su["primary_metric"], "prompts")
+        self.assertIn("claude", su["by_source"])
+        # single source → its share of every metric is the whole (1.0)
+        self.assertEqual(su["by_source"]["claude"]["prompts_pct"], 1.0)
+        # totals reconcile with the context prompt count
+        self.assertEqual(su["totals"]["prompts"], summary["context"]["total_prompts"])
+
+    def test_source_usage_monthly_per_month(self):
+        """source_usage_monthly is per calendar month (so the monthly view shows the
+        month's share, not the whole-window share)."""
+        summary, _ = self._summary()
+        sum_ = summary["source_usage_monthly"]
+        self.assertIsInstance(sum_, list)
+        self.assertTrue(sum_, "expected at least one month")
+        for entry in sum_:
+            self.assertIn("month", entry)
+            self.assertEqual(entry["primary_metric"], "prompts")
+            self.assertIn("claude", entry["by_source"])
+        months = [e["month"] for e in sum_]
+        self.assertEqual(months, sorted(months), "must be chronological")
+
+    def test_per_source_model_usage_keeps_tokens(self):
+        """Per-source model_usage carries real token counts (not zeroed)."""
+        summary, _ = self._summary()
+        mu = summary["profiles_by_source"]["by_source"]["claude"]["model_usage"]
+        self.assertTrue(mu)
+        # the fixture turns carry usage tokens → at least one model has non-zero input
+        self.assertTrue(any(e["tokens_input"] > 0 for e in mu),
+                        "per-source model_usage should keep token counts")
+
+    def test_pooled_profile_still_the_headline(self):
+        """The legacy pooled `profile` stays (it is the displayed 'Combined')."""
+        summary, _ = self._summary()
+        self.assertIn("profile", summary)
+        self.assertIn("aq", summary["profile"])
 
 
 def _claude_prompt_only(sid, ts, cwd="/Users/demo/proj", model="claude-opus-4-8",
@@ -1626,6 +1705,144 @@ class TestPerMonthNullHonesty(unittest.TestCase):
                              "Window error_rate_per_100_tools should not be None")
         self.assertIsNotNone(stats["behavior"]["error_recovery_ratio"],
                              "Window error_recovery_ratio should not be None")
+
+
+class TestPerSourceChurnIsolation(unittest.TestCase):
+    """Per-source git churn must be restricted to the cwds touched by THAT source's
+    events (no cross-source bleed)."""
+
+    def test_each_source_churn_sees_only_its_own_cwds(self):
+        claude_dir = tempfile.mkdtemp(prefix="paxel-iso-claude-")
+        gemini_dir = tempfile.mkdtemp(prefix="paxel-iso-gemini-")
+        out = tempfile.mkdtemp(prefix="paxel-iso-out-")
+        empty = tempfile.mkdtemp(prefix="paxel-iso-empty-")
+        for d in (claude_dir, gemini_dir, out, empty):
+            self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+
+        # claude transcript touches /repoA; gemini transcript touches /repoB
+        csess = os.path.join(claude_dir, "proj-a")
+        os.makedirs(csess, exist_ok=True)
+        with open(os.path.join(csess, "s.jsonl"), "w", encoding="utf-8") as fh:
+            for r in _claude_turn("c1", "2026-04-01T10:00:00.000Z", cwd="/repoA",
+                                  tool="Edit", file_path="/repoA/x.py",
+                                  new_string="a", prompt="claude work"):
+                fh.write(json.dumps(r) + "\n")
+        # gemini: session.json whose tool call carries a dir_path → cwd /repoB
+        gsess = os.path.join(gemini_dir, "hash1")
+        os.makedirs(gsess, exist_ok=True)
+        gem = {"sessionId": "g1", "projectHash": "hash1",
+               "messages": [
+                   {"id": "u1", "type": "user", "content": "gemini work",
+                    "timestamp": "2026-04-02T10:00:00.000Z"},
+                   {"id": "m1", "type": "gemini", "content": "done",
+                    "timestamp": "2026-04-02T10:00:01.000Z",
+                    "toolCalls": [{"name": "read_file",
+                                   "args": {"dir_path": "/repoB"}}]},
+               ]}
+        with open(os.path.join(gsess, "session-x.json"), "w", encoding="utf-8") as fh:
+            json.dump(gem, fh)
+
+        churn_cwds = []
+
+        def spy(cwds, since, until):
+            churn_cwds.append(set(cwds))
+            return {"repos_seen": 0, "repos_with_commits": 0, "insertions": 0,
+                    "deletions": 0, "churn": 0, "commits": 0, "per_repo": []}
+
+        dirs = dict(BASE=claude_dir, GEMINI_DIR=gemini_dir, CODEX_DIR=empty,
+                    PI_DIR=empty, OPENCODE_DIR=empty, CURSOR_DIR=empty,
+                    CURSOR_DB=os.path.join(empty, "no.vscdb"))
+        with mock.patch.multiple(paxel, OUT_DIR=out, **dirs), \
+                mock.patch.object(paxel, "git_churn", spy), \
+                mock.patch.object(sys, "argv",
+                                  ["paxel.py", "claude", "gemini", "--no-open"]), \
+                contextlib.redirect_stdout(io.StringIO()):
+            paxel.main()
+
+        # The whole-corpus churn call legitimately sees BOTH repos. But the per-source
+        # partition must produce churn calls that each see ONLY their own source's repo:
+        # one call sees just /repoA (claude) and another sees just /repoB (gemini).
+        self.assertTrue(any(c == {"/repoA"} for c in churn_cwds),
+                        f"no claude-only churn call; saw {churn_cwds}")
+        self.assertTrue(any(c == {"/repoB"} for c in churn_cwds),
+                        f"no gemini-only churn call; saw {churn_cwds}")
+        self.assertTrue(any(c == {"/repoA", "/repoB"} for c in churn_cwds),
+                        f"expected a whole-corpus churn call over both repos; saw {churn_cwds}")
+
+
+class TestScoringInputsBySource(unittest.TestCase):
+    """scoring_inputs_by_source — raw scoring inputs per source × (window + month)."""
+
+    _VOLUME = {"total_sessions", "total_prompts", "tool_calls_total", "thinking_blocks"}
+    _VELOCITY = {"active_hours", "tool_churn_edit_write", "shell_authored_lines_est"}
+    _BEHAVIOR = {"planning_ratio_explore_to_doing", "actions_per_prompt", "questions_asked",
+                 "error_recovery_ratio", "error_rate_per_100_tools", "api_errors_retries",
+                 "fanout_median", "shell_test_runs", "delegate_actions", "background_tasks",
+                 "iteration_depth_mean", "iteration_depth_p90", "iteration_depth_max",
+                 "files_hammered_over_15x"}
+    _STACK = {"skills_distinct", "skills_total", "compounding_writes",
+              "subagent_types_distinct", "subagent_types", "top_skills", "skills_all", "models"}
+    _TOOLS = {"agent_calls", "mcp_servers_distinct", "clis_distinct", "toolsearch_calls",
+              "task_tool_calls", "cli_calls", "mcp_calls", "tool_diversity",
+              "tool_entropy_normalized", "top_tools"}
+
+    def _stats(self):
+        rows = []
+        rows += _claude_turn("si-jan", "2026-01-10T10:00:00.000Z", tool="Edit",
+                             file_path="/Users/demo/proj/a.py",
+                             new_string="x\ny", prompt="jan one")
+        rows += _claude_turn("si-feb", "2026-02-12T11:00:00.000Z", tool="Write",
+                             file_path="/Users/demo/proj/b.py",
+                             new_string="z", prompt="feb one")
+        return _run_claude_transcript(self, rows)
+
+    def test_payload_has_version_and_by_source(self):
+        stats = self._stats()
+        summary = paxel.build_summary(stats)
+        self.assertEqual(summary["scoring_inputs_version"], 1)
+        self.assertIn("claude", summary["scoring_inputs_by_source"])
+
+    def test_block_field_set_window_and_monthly(self):
+        stats = self._stats()
+        sibs = paxel.build_summary(stats)["scoring_inputs_by_source"]
+        block = sibs["claude"]
+        self.assertIn("window", block)
+        self.assertIn("monthly", block)
+        all_blocks = [block["window"]] + list(block["monthly"])
+        for b in all_blocks:
+            self.assertEqual(b["source"], "claude")
+            self.assertEqual(set(b["volume"]), self._VOLUME)
+            self.assertEqual(set(b["velocity"]), self._VELOCITY)
+            self.assertEqual(set(b["behavior"]), self._BEHAVIOR)
+            self.assertEqual(set(b["stack"]), self._STACK)
+            self.assertEqual(set(b["tools"]), self._TOOLS)
+        # monthly entries are tagged with their YYYY-MM month
+        months = sorted(m["month"] for m in block["monthly"])
+        self.assertEqual(months, ["2026-01", "2026-02"])
+
+    def test_window_volume_matches_corpus(self):
+        """A claude-only run: the per-source window slice equals the whole-corpus stats."""
+        stats = self._stats()
+        sibs = paxel.build_summary(stats)["scoring_inputs_by_source"]
+        w = sibs["claude"]["window"]["volume"]
+        self.assertEqual(w["total_prompts"], stats["volume"]["total_prompts"])
+        self.assertEqual(w["tool_calls_total"], stats["volume"]["tool_calls_total"])
+
+    def test_scoring_monthly_full_not_serialized(self):
+        """The internal _scoring_monthly_full working field must not leak into stats.json."""
+        stats = self._stats()
+        self.assertNotIn("_scoring_monthly_full", stats)
+
+    def test_raw_skill_names_present(self):
+        """skills_all / top_skills carry RAW skill names (the parity contract needs them)."""
+        rows = _claude_turn("sk", "2026-03-01T10:00:00.000Z", prompt="use skill",
+                            tool="Skill")
+        # inject a skill name into the tool_use input
+        rows[1]["message"]["content"][1]["input"]["skill"] = "writing-plans"
+        stats = _run_claude_transcript(self, rows)
+        block = paxel.build_summary(stats)["scoring_inputs_by_source"]["claude"]["window"]
+        names = [k for k, _ in block["stack"]["skills_all"]]
+        self.assertIn("writing-plans", names)
 
 
 if __name__ == "__main__":
