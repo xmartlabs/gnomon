@@ -35,6 +35,7 @@ from gnomon.scoring.archetype import pick_archetype
 from gnomon.scoring.insights import (
     steering_reading, growth_edges_structured, signature_moves_structured,
 )
+from gnomon.scoring.profiles import build_profile, stats_from_scoring_block
 
 
 def _aq_tier_for(total):
@@ -47,21 +48,7 @@ def _slice_to_stats(block):
     """A scoring-input block is already stats-shaped (corpus.sources + volume/velocity/
     behavior/stack/tools). The scoring fns also read a few optional keys via .get(); this
     fills the ones that matter so single-source scoring matches the whole-corpus path."""
-    s = {
-        "corpus": {"sources": (block.get("corpus", {}).get("sources")
-                               or ({block["source"]: {}} if block.get("source") else {}))},
-        "volume": dict(block.get("volume") or {}),
-        "velocity": dict(block.get("velocity") or {}),
-        "behavior": dict(block.get("behavior") or {}),
-        "stack": dict(block.get("stack") or {}),
-        "tools": dict(block.get("tools") or {}),
-    }
-    # _build_profile / score_breakdown read volume.total_sessions & tool_calls_total
-    # (already present) and token_usage.by_model for model_usage (absent here → empty).
-    s["volume"].setdefault("total_sessions", 0)
-    s["volume"].setdefault("tool_calls_total", 0)
-    s["token_usage"] = {"by_model": []}
-    return s
+    return stats_from_scoring_block(block)
 
 
 def _profile_from_block(block):
@@ -69,22 +56,7 @@ def _profile_from_block(block):
     a profile dict in the SAME shape build_summary's `profile` produces."""
     stats = _slice_to_stats(block)
     stats["agentic"] = compute_aq(stats)
-    sb = score_breakdown(stats)
-    arch_scores = {
-        "Execution": sb["execution"]["value"],
-        "Planning": sb["planning"]["value"],
-        "Engineering": sb["engineering"]["value"],
-    }
-    arch_title, arch_quote = pick_archetype(stats, arch_scores)
-    return {
-        "aq": stats["agentic"],
-        "archetype": {"title": arch_title, "quote": arch_quote},
-        "scores": sb,
-        "steering": steering_reading(stats),
-        "growth_edges": growth_edges_structured(stats, arch_scores),
-        "signature_moves": signature_moves_structured(stats),
-        "model_usage": [],
-    }
+    return build_profile(stats, model_usage=[])
 
 
 def _weighted_mean(pairs):

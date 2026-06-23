@@ -17,7 +17,7 @@ import json
 import os
 import unittest
 
-from gnomon.output.summary import SCORING_INPUTS_VERSION
+from gnomon.scoring.inputs import SCORING_INPUTS_VERSION
 from gnomon.scoring.aggregate import score_by_source
 from tests._scoring_vectors_cases import CLAUDE_BLOCK, CURSOR_BLOCK, cases
 
