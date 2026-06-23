@@ -567,7 +567,7 @@ def _run_paxel(paxel_src, paxel_args, verbose, quiet=False, output_dir=None, fil
             print(f"  Artifacts copied to: {resolved_output_dir}")
             if verbose:
                 print(f"  Artifacts kept at: {os.path.abspath(tmp)}")
-        else:
+        elif verbose:
             print(f"  Artifacts kept at: {os.path.abspath(tmp)}")
     return summary
 

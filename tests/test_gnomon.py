@@ -768,7 +768,9 @@ class TestBuildSummaryPayloadFields(unittest.TestCase):
                          self.stats["behavior"]["actions_per_prompt"])
 
     def test_noticed_stats_share_safe_slice(self):
-        ns = self.summary["noticed_stats"]
+        # noticed_stats was dropped from the summary payload (superseded by
+        # scoring_inputs_by_source); the shaper itself is still exercised directly.
+        ns = paxel._build_noticed_stats(self.stats)
         self.assertEqual(set(ns.keys()), {
             "volume", "shipping", "iteration", "errors", "models",
             "rhythm", "prompts", "agents", "sessions", "tools",
@@ -828,7 +830,7 @@ class TestBuildSummaryPayloadFields(unittest.TestCase):
             {"name": "Read", "calls": 300},
         ])
 
-    def test_top_tools_keeps_40_global_and_monthly_entries(self):
+    def test_top_tools_keeps_20_global_and_monthly_entries(self):
         import contextlib, io, json, shutil, tempfile
         from unittest import mock
 
@@ -873,9 +875,9 @@ class TestBuildSummaryPayloadFields(unittest.TestCase):
         with open(os.path.join(out, "stats.json"), encoding="utf-8") as fh:
             stats = json.load(fh)
 
-        self.assertEqual(len(stats["tools"]["top_tools"]), 40)
+        self.assertEqual(len(stats["tools"]["top_tools"]), 20)
         monthly = stats["monthly_noticed_stats"][0]["stats"]["tools"]["top_tools"]
-        self.assertEqual(len(monthly), 40)
+        self.assertEqual(len(monthly), 20)
 
 
 if __name__ == "__main__":
