@@ -35,8 +35,10 @@ from gnomon.analysis.quotes import _POLITE_RE, _safe_quote, _cryptic_score, _cra
 from gnomon.scoring.gstack import compute_scores
 from gnomon.scoring.aq import compute_aq
 from gnomon.scoring.archetype import pick_archetype
+from gnomon.scoring.inputs import SCORING_INPUTS_VERSION, build_monthly_scoring_stats
+from gnomon.cli.scoring_inputs import build_scoring_inputs_by_source
 from gnomon.output.summary import (
-    build_summary, _build_monthly_noticed_stats, _build_monthly_scoring_stats,
+    build_summary, _build_monthly_noticed_stats,
 )
 from gnomon.output.report import write_report
 from gnomon.output.narrative import write_narrative_input
@@ -144,8 +146,9 @@ def main(argv=None, output_dir=None):
     # source's caps, cwds for git churn, cursor dedup partition, etc.). The window +
     # per-month raw inputs for every source feed scoring_inputs_by_source.
     stats["scoring_inputs_version"] = SCORING_INPUTS_VERSION
-    stats["scoring_inputs_by_source"] = _build_scoring_inputs_by_source(
+    stats["scoring_inputs_by_source"] = build_scoring_inputs_by_source(
         sources, since_dt, until_dt, cursor_twins, antigravity,
+        accumulate_fn=_accumulate,
         corpus_stats=stats)
     # internal-only working field (per-month full stats slices); not part of the payload
     stats.pop("_scoring_monthly_full", None)
@@ -205,50 +208,12 @@ def main(argv=None, output_dir=None):
     print(f"  autonomy={autonomy_score}/100  planning_ratio={planning_ratio:.2f}")
 
 
-SCORING_INPUTS_VERSION = 1
-
-
-def _build_scoring_inputs_by_source(sources, since_dt, until_dt, cursor_twins,
-                                    antigravity, corpus_stats=None):
-    """Run _accumulate once PER SOURCE (events partitioned by cur_src) and shape each
-    source's window + per-month stats into the raw scoring-input field set. Returns
-    {"<source>": {"window": {...}, "monthly": [{"month": "YYYY-MM", ...}, ...]}, ...}.
-
-    Partitioning by source means each slice naturally carries only that source's caps,
-    its own cwds for git churn, its own cursor GUI+CLI dedup partition, and its own
-    active_hours / fanout / iteration_depth (all derived inside _accumulate from that
-    source's session_ts / edits_per_file / fanouts).
-
-    Fast path: when only ONE source is present, the whole-corpus stats already IS that
-    source's slice (same events, same caps, same cwds), so we reuse `corpus_stats` and
-    skip the redundant re-parse + re-churn."""
-    from gnomon.output.summary import _build_scoring_inputs
-    by_source = {}
-    srcs_present = sorted({s for s, _, _ in sources})
-    single_source = corpus_stats is not None and len(srcs_present) == 1
-    for src in srcs_present:
-        if single_source:
-            s_stats = corpus_stats
-        else:
-            src_sources = [(s, fp, fmt) for (s, fp, fmt) in sources if s == src]
-            s_stats, _ = _accumulate(
-                src_sources, since_dt, until_dt, cursor_twins, antigravity,
-                total_file_count=len(src_sources), verbose=False)
-        window = _build_scoring_inputs(s_stats)
-        monthly = [
-            dict(_build_scoring_inputs(entry["stats_full"]), month=entry["month"])
-            for entry in s_stats.get("_scoring_monthly_full", [])
-        ]
-        by_source[src] = {"window": window, "monthly": monthly}
-    return by_source
-
-
 def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
                 total_file_count=None, verbose=True):
     """Accumulate every per-event signal over `sources` and return (stats, narrative).
 
     This is the single aggregation engine. main() calls it once over ALL sources
-    (legacy whole-corpus stats), and _build_scoring_inputs_by_source calls it once per
+    (legacy whole-corpus stats), and build_scoring_inputs_by_source calls it once per
     source partition. Because the SAME function runs for both, a per-source slice uses
     identical aggregation rules (no drift) and naturally scopes git churn (to that
     source's cwds), cursor dedup (within the cursor partition), and the post-processed
@@ -1077,8 +1042,8 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
     # Same months as monthly_noticed_stats; each entry's stats_full is a full
     # stats-shaped dict (corpus/volume/behavior/velocity/stack/tools) so the SAME
     # _build_scoring_inputs shaper runs over window AND each month (no drift).
-    # NOT serialized into stats.json — consumed only by _build_scoring_inputs_by_source.
-    stats["_scoring_monthly_full"] = _build_monthly_scoring_stats(
+    # NOT serialized into stats.json — consumed only by build_scoring_inputs_by_source.
+    stats["_scoring_monthly_full"] = build_monthly_scoring_stats(
         months=sorted(set(month_dates) | set(month_prompts) | set(month_tools)
                       | set(month_tokens) | set(month_sessions)),
         sources_present=sorted(source_files),
