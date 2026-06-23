@@ -143,11 +143,7 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
   text-decoration:line-through;font-size:9px}
 .pill.failed{background:rgba(248,113,113,.1);color:var(--danger);border:1px solid rgba(248,113,113,.28);font-weight:600}
 .pill .pi{display:block;font-size:12px;margin-bottom:2px}
-.pill.active .pi{animation:uprise .85s ease-in-out infinite}
-@keyframes uprise{
-  0%,100%{transform:translateY(0)}
-  50%{transform:translateY(-2px)}
-}
+.pill.active .pi{animation:spin 1.2s linear infinite}
 
 /* --- Done state --- */
 .redir{display:inline-flex;align-items:center;gap:6px;

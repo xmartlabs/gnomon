@@ -80,11 +80,10 @@ class TestFailedState(unittest.TestCase):
         self.assertIn("Partial upload", page)
         self.assertIn("Upload failed", page)
 
-    def test_active_pill_icon_is_uparrow_animated(self):
+    def test_active_pill_icon_matches_single_month_spinner(self):
         page = progress_server._PROGRESS_PAGE
-        self.assertIn("@keyframes uprise", page)
-        self.assertIn(".pill.active .pi{animation:uprise", page)
-        # active pill icon keeps animated refresh glyph, not upload arrow.
+        self.assertIn(".pill.active .pi{animation:spin 1.2s linear infinite}", page)
+        # batch mode reuses same animated refresh glyph as single-month mode.
         self.assertIn("if (state === 'active') icon = '\\u21BB';", page)
 
 
