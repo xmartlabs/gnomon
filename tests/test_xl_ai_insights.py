@@ -8,8 +8,13 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import xl_ai_insights
+import gnomon.cli.insights as _insights
+import gnomon.upload.mirdash as _mirdash
+from gnomon.upload.mirdash import (
+    _format_summary, _run_paxel, _absolutize_dir_flags,
+    _upload_window, _upload_window_web,
+)
+from gnomon.upload.mirdash import month_windows
 
 
 def _full_summary():
@@ -50,18 +55,18 @@ def _full_summary():
 
 class TestFormatSummaryQuiet(unittest.TestCase):
     def test_quiet_returns_empty_string(self):
-        result = xl_ai_insights._format_summary(_full_summary(), quiet=True)
+        result = _format_summary(_full_summary(), quiet=True)
         self.assertEqual(result, "")
 
     def test_quiet_false_is_default(self):
         # Calling without quiet should return a non-empty string
-        result = xl_ai_insights._format_summary(_full_summary())
+        result = _format_summary(_full_summary())
         self.assertNotEqual(result, "")
 
 
 class TestFormatSummaryContent(unittest.TestCase):
     def setUp(self):
-        self.out = xl_ai_insights._format_summary(_full_summary())
+        self.out = _format_summary(_full_summary())
 
     def test_session_count_present(self):
         self.assertIn("42", self.out)
@@ -108,36 +113,36 @@ class TestFormatSummaryContent(unittest.TestCase):
 
 class TestFormatSummaryDefensive(unittest.TestCase):
     def test_empty_dict_does_not_crash(self):
-        result = xl_ai_insights._format_summary({})
+        result = _format_summary({})
         self.assertIsInstance(result, str)
 
     def test_missing_context_keys(self):
-        result = xl_ai_insights._format_summary({"context": {}})
+        result = _format_summary({"context": {}})
         self.assertIsInstance(result, str)
 
     def test_missing_errors_block(self):
         s = _full_summary()
         del s["errors"]
-        result = xl_ai_insights._format_summary(s)
+        result = _format_summary(s)
         self.assertNotIn("recovery", result.lower())
 
     def test_missing_iteration_depth(self):
         s = _full_summary()
         del s["iteration_depth"]
-        result = xl_ai_insights._format_summary(s)
+        result = _format_summary(s)
         self.assertNotIn("edits/file", result)
 
     def test_missing_orchestration(self):
         s = _full_summary()
         del s["orchestration"]
-        result = xl_ai_insights._format_summary(s)
+        result = _format_summary(s)
         self.assertNotIn("fanout", result)
 
     def test_none_values_in_errors(self):
         # Both ratio fields set to None: only error block lines should be suppressed
         s = _full_summary()
         s["errors"] = {"error_recovery_ratio": None, "error_rate_per_100_tools": None}
-        result = xl_ai_insights._format_summary(s)
+        result = _format_summary(s)
         self.assertIsInstance(result, str)
         self.assertNotIn("Error recovery", result)
         self.assertNotIn("errors / 100 tools", result)
@@ -145,7 +150,7 @@ class TestFormatSummaryDefensive(unittest.TestCase):
     def test_partial_ecosystem(self):
         s = _full_summary()
         s["ecosystem"] = {"skills_distinct": 5}
-        result = xl_ai_insights._format_summary(s)
+        result = _format_summary(s)
         self.assertIn("5 skills", result)
         self.assertNotIn("MCP", result)
 
@@ -169,7 +174,7 @@ class TestPaxelArtifacts(unittest.TestCase):
             paxel_src = self._write_fake_paxel(src_dir)
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
-                summary = xl_ai_insights._run_paxel(
+                summary = _run_paxel(
                     paxel_src, ["--summary", "--no-open"], verbose=False
                 )
 
@@ -186,7 +191,7 @@ class TestPaxelArtifacts(unittest.TestCase):
             paxel_src = self._write_fake_paxel(src_dir)
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
-                summary = xl_ai_insights._run_paxel(
+                summary = _run_paxel(
                     paxel_src, ["--summary", "--no-open"], verbose=False, quiet=True
                 )
 
@@ -204,7 +209,7 @@ class TestPaxelArtifacts(unittest.TestCase):
             try:
                 buf = io.StringIO()
                 with contextlib.redirect_stdout(buf):
-                    summary = xl_ai_insights._run_paxel(
+                    summary = _run_paxel(
                         paxel_src, ["--summary", "--no-open"], verbose=False, output_dir="./exports"
                     )
             finally:
@@ -226,7 +231,7 @@ class TestPaxelArtifacts(unittest.TestCase):
             summary_path = os.path.join(dest, "summary.json")
             with open(summary_path, "w", encoding="utf-8") as fh:
                 fh.write("old")
-            summary = xl_ai_insights._run_paxel(
+            summary = _run_paxel(
                 paxel_src, ["--summary", "--no-open"], verbose=False, output_dir=dest, quiet=True
             )
 
@@ -239,14 +244,14 @@ class TestPaxelArtifacts(unittest.TestCase):
 class TestOutputDirArgParsing(unittest.TestCase):
     def test_output_dir_is_consumed_by_wrapper_not_forwarded_to_paxel(self):
         with (
-            patch.object(xl_ai_insights, "_main_web") as mock_main_web,
+            patch.object(_insights, "_main_web") as mock_main_web,
             patch.object(
-                xl_ai_insights.sys,
+                _insights.sys,
                 "argv",
                 ["xl-ai-insights", "--output-dir=.", "claude", "--no-open"],
             ),
         ):
-            xl_ai_insights.main()
+            _insights.main()
 
         args = mock_main_web.call_args[0]
         paxel_forward = args[4]
@@ -257,54 +262,63 @@ class TestOutputDirArgParsing(unittest.TestCase):
 
 
 class TestOutputDirPropagation(unittest.TestCase):
-    def _summary(self, sessions=1, progression_monthly=None):
-        summary = {
+    def _summary(self, sessions=1):
+        return {
             "context": {
                 "date_range": ["2026-01-01", "2026-02-01"],
                 "total_sessions": sessions,
             }
         }
-        if progression_monthly is not None:
-            summary["progression_monthly"] = progression_monthly
-        return summary
 
-    def _run_console(self, *, mode="current", token_count=1, run_paxel_side_effect=None):
+    def _run_console(self, *, mode, token_count, run_paxel_side_effect, uploaded=None):
+        """Drive _main_console directly; the per-window loop now runs through
+        _mirdash._upload_window → _mirdash._run_paxel, so patch the mirdash names."""
+        if uploaded is None:
+            uploaded = []
         with (
-            patch.object(xl_ai_insights, "_capture_cli_token", return_value=["tok"] * max(token_count, 1)),
-            patch.object(xl_ai_insights, "webbrowser") as mock_wb,
-            patch.object(xl_ai_insights.os.path, "isfile", return_value=True),
-            patch.object(xl_ai_insights, "_run_paxel", side_effect=run_paxel_side_effect) as mock_run,
-            patch.object(xl_ai_insights, "_upload_summary", return_value="/r/1"),
+            patch.object(_insights, "_capture_cli_token",
+                         return_value=(["tok"] * max(token_count, 1), uploaded)),
+            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(_mirdash, "_run_paxel", side_effect=run_paxel_side_effect) as mock_run,
+            patch.object(_mirdash, "_upload_summary", return_value="/r/1"),
             contextlib.redirect_stdout(io.StringIO()),
         ):
             mock_wb.open.return_value = True
-            xl_ai_insights._main_console(
-                [], "https://mirdash.example", mode, token_count, [], True, True, False,
-                output_dir="./exports",
-            )
+            try:
+                _insights._main_console(
+                    [], "https://mirdash.example", mode, token_count, [], True, True, False,
+                    output_dir="./exports",
+                )
+            except SystemExit:
+                pass
         return mock_run
 
-    def test_console_current_passes_output_dir_to_run_paxel(self):
-        mock_run = self._run_console(run_paxel_side_effect=[self._summary()])
-        self.assertEqual(mock_run.call_args.kwargs["output_dir"], "./exports")
-
-    def test_console_fallback_passes_output_dir_to_all_run_paxel_calls(self):
+    def test_force_passes_output_dir_to_run_paxel(self):
+        """force mode: every window's _run_paxel call gets output_dir."""
         mock_run = self._run_console(
-            run_paxel_side_effect=[
-                self._summary(sessions=0),
-                self._summary(progression_monthly=[{"month": "2026-01"}]),
-                self._summary(),
-            ]
+            mode="force", token_count=12,
+            run_paxel_side_effect=[self._summary() for _ in range(12)],
         )
-        self.assertEqual(mock_run.call_count, 3)
+        self.assertEqual(mock_run.call_count, 12)
+        self.assertTrue(all(c.kwargs["output_dir"] == "./exports" for c in mock_run.call_args_list))
+
+    def test_auto_multi_window_passes_output_dir_to_all_run_paxel_calls(self):
+        """auto mode with empty server-state sweeps 12 windows; each call carries output_dir."""
+        mock_run = self._run_console(
+            mode="auto", token_count=12,
+            run_paxel_side_effect=[self._summary() for _ in range(12)],
+            uploaded=[],
+        )
+        self.assertEqual(mock_run.call_count, 12)
         self.assertTrue(all(c.kwargs["output_dir"] == "./exports" for c in mock_run.call_args_list))
 
     def test_batch_upload_window_passes_output_dir_to_run_paxel(self):
         with (
-            patch.object(xl_ai_insights, "_run_paxel", return_value=self._summary()) as mock_run,
-            patch.object(xl_ai_insights, "_upload_summary", return_value="/r/1"),
+            patch.object(_mirdash, "_run_paxel", return_value=self._summary()) as mock_run,
+            patch.object(_mirdash, "_upload_summary", return_value="/r/1"),
         ):
-            xl_ai_insights._upload_window(
+            _upload_window(
                 "https://mirdash.example", "tok", __file__, [], "2026-01-01", "2026-02-01",
                 "2026-01", False, True, output_dir="./exports",
             )
@@ -313,31 +327,138 @@ class TestOutputDirPropagation(unittest.TestCase):
     def test_web_upload_window_passes_output_dir_to_run_paxel(self):
         server = MagicMock()
         with (
-            patch.object(xl_ai_insights, "_run_paxel", return_value=self._summary()) as mock_run,
-            patch.object(xl_ai_insights, "_upload_summary", return_value="/r/1"),
+            patch.object(_mirdash, "_run_paxel", return_value=self._summary()) as mock_run,
+            patch.object(_mirdash, "_upload_summary", return_value="/r/1"),
         ):
-            xl_ai_insights._upload_window_web(
+            _upload_window_web(
                 "https://mirdash.example", "tok", __file__, [], "2026-01-01", "2026-02-01",
                 "2026-01", False, server, 0, 1, output_dir="./exports",
             )
         self.assertEqual(mock_run.call_args.kwargs["output_dir"], "./exports")
 
 
+class TestConsoleFailureAndSummary(unittest.TestCase):
+    """P1 + _format_summary restoration: the console loop must surface real
+    failures (exit 1, not 'nothing to share') and print the build-profile block
+    on a successful single-month run."""
+
+    TODAY = datetime.date(2025, 7, 15)
+
+    def _summary(self, sessions=1):
+        return {
+            "context": {
+                "date_range": ["2025-07-01", "2025-08-01"],
+                "total_sessions": sessions,
+            },
+            "planning_ratio_explore_to_doing": 0.62,
+        }
+
+    def _run_console(self, *, mode, token_count, run_paxel_side_effect,
+                     upload_side_effect=None, uploaded=None, quiet=False):
+        """Drive _main_console directly; return (stdout, exited, exit_code)."""
+        if uploaded is None:
+            uploaded = []
+        buf = io.StringIO()
+        mock_date = MagicMock()
+        mock_date.today.return_value = self.TODAY
+        upload_kwargs = {}
+        if upload_side_effect is not None:
+            upload_kwargs["side_effect"] = upload_side_effect
+        else:
+            upload_kwargs["return_value"] = "/r/1"
+        with (
+            patch.object(_insights, "_capture_cli_token",
+                         return_value=(["tok"] * max(token_count, 1), uploaded)),
+            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(_mirdash, "_run_paxel", side_effect=run_paxel_side_effect),
+            patch.object(_mirdash, "_upload_summary", **upload_kwargs),
+            patch("gnomon.cli.insights.datetime") as mock_dt,
+            contextlib.redirect_stdout(buf),
+        ):
+            mock_wb.open.return_value = True
+            mock_dt.date = mock_date
+            mock_dt.datetime = datetime.datetime
+            mock_dt.timezone = datetime.timezone
+            mock_dt.timedelta = datetime.timedelta
+            try:
+                _insights._main_console(
+                    [], "https://mirdash.example", mode, token_count, [],
+                    True, quiet, False,
+                )
+                exited, code = False, None
+            except SystemExit as e:
+                exited, code = True, e.code
+        return buf.getvalue(), exited, code
+
+    def test_single_month_paxel_failure_exits_1_not_nothing_to_share(self):
+        """auto single-month run where paxel fails → exit 1, not 'nothing to share'."""
+        uploaded = [{"monthKey": "2025-07", "uploadedAt": 9999999999999}]
+        out, exited, code = self._run_console(
+            mode="auto", token_count=12,
+            run_paxel_side_effect=[None],  # paxel error for the single window
+            uploaded=uploaded,
+        )
+        self.assertTrue(exited)
+        self.assertEqual(code, 1)
+        self.assertNotIn("nothing to share", out)
+        self.assertIn("failed to upload", out)
+
+    def test_single_month_upload_failure_exits_1(self):
+        """auto single-month run where the upload POST fails → exit 1."""
+        uploaded = [{"monthKey": "2025-07", "uploadedAt": 9999999999999}]
+        out, exited, code = self._run_console(
+            mode="auto", token_count=12,
+            run_paxel_side_effect=[self._summary()],
+            upload_side_effect=RuntimeError("boom"),
+            uploaded=uploaded,
+        )
+        self.assertTrue(exited)
+        self.assertEqual(code, 1)
+        self.assertNotIn("nothing to share", out)
+
+    def test_empty_month_still_nothing_to_share_exit_0(self):
+        """A genuinely empty window (0 sessions) keeps the legitimate skip path."""
+        uploaded = [{"monthKey": "2025-07", "uploadedAt": 9999999999999}]
+        out, exited, code = self._run_console(
+            mode="auto", token_count=12,
+            run_paxel_side_effect=[self._summary(sessions=0)],
+            uploaded=uploaded,
+        )
+        self.assertTrue(exited)
+        self.assertEqual(code, 0)
+        self.assertIn("nothing to share", out)
+
+    def test_single_month_success_prints_build_profile(self):
+        """auto single-month success → stdout includes the 'Your build profile' block."""
+        uploaded = [{"monthKey": "2025-07", "uploadedAt": 9999999999999}]
+        out, exited, code = self._run_console(
+            mode="auto", token_count=12,
+            run_paxel_side_effect=[self._summary()],
+            uploaded=uploaded,
+        )
+        self.assertIn("Your build profile", out)
+        self.assertIn("Report ready", out)
+        self.assertFalse(exited)
+
+
 class TestHelpOutput(unittest.TestCase):
     def test_help_prints_usage_and_exits_before_running(self):
         stdout = io.StringIO()
         with (
-            patch.object(xl_ai_insights, "_main_web") as mock_main_web,
-            patch.object(xl_ai_insights, "_main_console") as mock_main_console,
-            patch.object(xl_ai_insights.sys, "argv", ["xl-ai-insights", "--help"]),
+            patch.object(_insights, "_main_web") as mock_main_web,
+            patch.object(_insights, "_main_console") as mock_main_console,
+            patch.object(_insights.sys, "argv", ["xl-ai-insights", "--help"]),
             contextlib.redirect_stdout(stdout),
             self.assertRaises(SystemExit) as exc,
         ):
-            xl_ai_insights.main()
+            _insights.main()
 
         self.assertEqual(exc.exception.code, 0)
         self.assertIn("Usage:", stdout.getvalue())
         self.assertIn("--output-dir=PATH", stdout.getvalue())
+        self.assertIn("--force", stdout.getvalue())
+        self.assertNotIn("--init", stdout.getvalue())
         self.assertNotIn("--keep-artifacts", stdout.getvalue())
         mock_main_web.assert_not_called()
         mock_main_console.assert_not_called()
@@ -345,16 +466,18 @@ class TestHelpOutput(unittest.TestCase):
     def test_short_help_alias_prints_usage_and_exits(self):
         stdout = io.StringIO()
         with (
-            patch.object(xl_ai_insights, "_main_web") as mock_main_web,
-            patch.object(xl_ai_insights, "_main_console") as mock_main_console,
-            patch.object(xl_ai_insights.sys, "argv", ["xl-ai-insights", "-h"]),
+            patch.object(_insights, "_main_web") as mock_main_web,
+            patch.object(_insights, "_main_console") as mock_main_console,
+            patch.object(_insights.sys, "argv", ["xl-ai-insights", "-h"]),
             contextlib.redirect_stdout(stdout),
             self.assertRaises(SystemExit) as exc,
         ):
-            xl_ai_insights.main()
+            _insights.main()
 
         self.assertEqual(exc.exception.code, 0)
         self.assertIn("--output-dir=PATH", stdout.getvalue())
+        self.assertIn("--force", stdout.getvalue())
+        self.assertNotIn("--init", stdout.getvalue())
         mock_main_web.assert_not_called()
         mock_main_console.assert_not_called()
 
@@ -365,7 +488,7 @@ class TestMonthWindows(unittest.TestCase):
     def test_window_months_1_legacy_single_month(self):
         """window_months=1 should produce single-calendar-month windows (legacy behavior)."""
         today = datetime.date(2026, 6, 16)
-        windows = xl_ai_insights.month_windows(3, today, window_months=1)
+        windows = month_windows(3, today, window_months=1)
 
         # Should be 3 months: 2026-04, 2026-05, 2026-06 (oldest first)
         self.assertEqual(len(windows), 3)
@@ -391,7 +514,7 @@ class TestMonthWindows(unittest.TestCase):
     def test_window_months_6_current_month(self):
         """window_months=6 with current month 2026-06 should span 6 months."""
         today = datetime.date(2026, 6, 16)
-        windows = xl_ai_insights.month_windows(1, today, window_months=6)
+        windows = month_windows(1, today, window_months=6)
 
         self.assertEqual(len(windows), 1)
         since, until, label = windows[0]
@@ -405,7 +528,7 @@ class TestMonthWindows(unittest.TestCase):
     def test_window_months_6_with_year_boundary(self):
         """window_months=6 with n=2 should handle year boundary crossing correctly."""
         today = datetime.date(2026, 6, 16)
-        windows = xl_ai_insights.month_windows(2, today, window_months=6)
+        windows = month_windows(2, today, window_months=6)
 
         self.assertEqual(len(windows), 2)
 
@@ -424,8 +547,8 @@ class TestMonthWindows(unittest.TestCase):
     def test_window_months_default_is_1(self):
         """Default window_months should be 1 (legacy behavior)."""
         today = datetime.date(2026, 6, 16)
-        windows_default = xl_ai_insights.month_windows(2, today)
-        windows_explicit = xl_ai_insights.month_windows(2, today, window_months=1)
+        windows_default = month_windows(2, today)
+        windows_explicit = month_windows(2, today, window_months=1)
 
         self.assertEqual(len(windows_default), len(windows_explicit))
         for d, e in zip(windows_default, windows_explicit):
@@ -434,7 +557,7 @@ class TestMonthWindows(unittest.TestCase):
     def test_window_months_label_always_anchor_month(self):
         """Label should always be the anchor (end) month, never the start month."""
         today = datetime.date(2026, 6, 16)
-        windows = xl_ai_insights.month_windows(3, today, window_months=4)
+        windows = month_windows(3, today, window_months=4)
 
         # All labels should be the anchor months (oldest first in order)
         labels = [label for _, _, label in windows]
@@ -447,7 +570,7 @@ class TestMonthWindows(unittest.TestCase):
     def test_window_months_3_at_year_start(self):
         """window_months=3 with anchor near year start should handle year boundary."""
         today = datetime.date(2026, 2, 1)
-        windows = xl_ai_insights.month_windows(2, today, window_months=3)
+        windows = month_windows(2, today, window_months=3)
 
         self.assertEqual(len(windows), 2)
 
@@ -467,7 +590,7 @@ class TestMonthWindows(unittest.TestCase):
         """Verify correct handling of February in a leap year."""
         # 2024 is a leap year
         today = datetime.date(2024, 2, 15)
-        windows = xl_ai_insights.month_windows(1, today, window_months=1)
+        windows = month_windows(1, today, window_months=1)
 
         self.assertEqual(len(windows), 1)
         since, until, label = windows[0]
@@ -479,7 +602,7 @@ class TestMonthWindows(unittest.TestCase):
     def test_window_months_february_non_leap_year(self):
         """Verify correct handling of February in a non-leap year."""
         today = datetime.date(2025, 2, 15)
-        windows = xl_ai_insights.month_windows(1, today, window_months=1)
+        windows = month_windows(1, today, window_months=1)
 
         self.assertEqual(len(windows), 1)
         since, until, label = windows[0]
@@ -491,7 +614,7 @@ class TestMonthWindows(unittest.TestCase):
     def test_window_months_single_window_spanning_two_years(self):
         """window_months larger than 12 can span across year boundaries."""
         today = datetime.date(2026, 6, 15)
-        windows = xl_ai_insights.month_windows(1, today, window_months=12)
+        windows = month_windows(1, today, window_months=12)
 
         self.assertEqual(len(windows), 1)
         since, until, label = windows[0]
@@ -505,7 +628,7 @@ class TestMonthWindows(unittest.TestCase):
         today = datetime.date(2026, 6, 16)
 
         for window_size in [1, 2, 3, 6, 12]:
-            windows = xl_ai_insights.month_windows(1, today, window_months=window_size)
+            windows = month_windows(1, today, window_months=window_size)
             self.assertEqual(len(windows), 1, f"Failed for window_size={window_size}")
             _, _, label = windows[0]
             self.assertEqual(label, "2026-06", f"Failed for window_size={window_size}")

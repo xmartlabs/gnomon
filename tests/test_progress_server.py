@@ -1,4 +1,6 @@
+import json
 import unittest
+import urllib.parse
 import urllib.request
 
 import progress_server
@@ -86,6 +88,22 @@ class TestFailedState(unittest.TestCase):
         self.assertIn("if (state === 'active') icon = '\\u21BB';", page)
 
 
+class TestDryRunDone(unittest.TestCase):
+    """P3: showDone() must handle a dry-run done event without claiming
+    'nothing to upload' — months were planned, just not uploaded."""
+
+    def test_showdone_has_dryrun_branch(self):
+        page = progress_server._PROGRESS_PAGE
+        self.assertIn("if (data.dryRun)", page)
+        self.assertIn("Dry run", page)
+
+    def test_dryrun_branch_precedes_nothing_to_upload(self):
+        """The dryRun branch must come BEFORE the 'Nothing to upload' fallback so
+        a dry-run with planned months never falls through to it."""
+        page = progress_server._PROGRESS_PAGE
+        self.assertLess(page.index("if (data.dryRun)"), page.index("Nothing to upload"))
+
+
 class TestAuthUrlInjection(unittest.TestCase):
     """The served page must embed the real auth_url so the sign-in button works."""
 
@@ -152,6 +170,54 @@ class TestSSEBroadcast(unittest.TestCase):
             server.push_event("analyzing", {"label": "2025-12"})
             events = self._read_events(f"{server.url}/events", expected=2)
             self.assertEqual(events[:2], ["auth_ok", "analyzing"])
+        finally:
+            server.shutdown(delay=0)
+
+
+class TestUploadedFromCallback(unittest.TestCase):
+    """Integration: GET /callback with uploaded param populates server.uploaded."""
+
+    def _fetch_callback(self, server, qs):
+        """GET /callback?<qs> and return the response body (discarded)."""
+        with urllib.request.urlopen(f"{server.url}/callback?{qs}", timeout=5) as resp:
+            resp.read()
+
+    def test_callback_with_uploaded_populates_server_uploaded(self):
+        """A valid uploaded param is parsed and stored on the server."""
+        server = progress_server.ProgressServer(port=8821)
+        try:
+            uploaded_data = [{"monthKey": "2025-11", "uploadedAt": 1700000000}]
+            qs = urllib.parse.urlencode({
+                "token": "tok123",
+                "uploaded": json.dumps(uploaded_data),
+            })
+            self._fetch_callback(server, qs)
+            self.assertEqual(server.uploaded, uploaded_data)
+        finally:
+            server.shutdown(delay=0)
+
+    def test_callback_without_uploaded_gives_empty_list(self):
+        """When uploaded is absent from the callback, server.uploaded is []."""
+        server = progress_server.ProgressServer(port=8822)
+        try:
+            self._fetch_callback(server, "token=tok456")
+            self.assertEqual(server.uploaded, [])
+        finally:
+            server.shutdown(delay=0)
+
+    def test_callback_with_malformed_uploaded_gives_empty_list(self):
+        """Malformed uploaded JSON does not raise — server.uploaded is [] and token is captured."""
+        server = progress_server.ProgressServer(port=8823)
+        try:
+            qs = urllib.parse.urlencode({
+                "token": "tok789",
+                "uploaded": "not-valid-json{{",
+            })
+            self._fetch_callback(server, qs)
+            self.assertEqual(server.uploaded, [])
+            # Tokens must still be captured despite bad uploaded.
+            self.assertIsNotNone(server._tokens)
+            self.assertIn("tok789", server._tokens)
         finally:
             server.shutdown(delay=0)
 

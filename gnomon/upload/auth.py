@@ -3,6 +3,8 @@ import json
 import time
 import urllib.parse
 
+from gnomon.upload.mirdash import _uploaded_from_query
+
 
 def _tokens_from_query(parsed_qs):
     """Extract a list of tokens from a parse_qs result dict.
@@ -114,9 +116,9 @@ def _capture_cli_token(port=8799, timeout=_SHARE_AUTH_TIMEOUT):
     Waits up to *timeout* seconds for a single GET /callback?token=<JWT>
     (and optionally tokens=<url-encoded JSON array>).
 
-    Returns a list of token strings on success (at least one element), or None
-    on timeout or error.  The server binds only to loopback and suppresses all
-    access-log output.
+    Returns a tuple (tokens, uploaded) where tokens is a list of token strings
+    on success (at least one element) or None on timeout or error, and uploaded
+    is a list of already-uploaded month dicts (may be empty).
     """
     import http.server
 
@@ -129,6 +131,7 @@ def _capture_cli_token(port=8799, timeout=_SHARE_AUTH_TIMEOUT):
             tokens = _tokens_from_query(params)
             if parsed.path == "/callback" and tokens:
                 captured["tokens"] = tokens
+                captured["uploaded"] = _uploaded_from_query(params)
                 body = _SUCCESS_PAGE
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -147,26 +150,38 @@ def _capture_cli_token(port=8799, timeout=_SHARE_AUTH_TIMEOUT):
         server.timeout = 1  # poll interval for the outer loop
     except OSError as exc:
         print(f"  warning: could not bind localhost:{port} for auth callback: {exc}")
-        return None
+        return (None, [])
 
     deadline = time.time() + timeout
     try:
         while "tokens" not in captured:
             if time.time() > deadline:
                 print(f"  warning: timed out waiting for auth callback after {timeout}s")
-                return None
+                return (None, [])
             server.handle_request()
     finally:
         server.server_close()
 
-    return captured.get("tokens")
+    return (captured.get("tokens"), captured.get("uploaded") or [])
 
 
 _ORIGINAL_CAPTURE_CLI_TOKEN = _capture_cli_token
 
 
 def _wait_for_auth_tokens(server, port):
-    """Prefer progress-server auth, but keep legacy token mocks usable in tests."""
+    """Prefer progress-server auth, but keep legacy token mocks usable in tests.
+
+    Always returns just the token list (not the uploaded state) — the ProgressServer
+    path stores uploaded in server._uploaded; the mock path stashes it there too.
+    """
     if _capture_cli_token is not _ORIGINAL_CAPTURE_CLI_TOKEN:
-        return _capture_cli_token(port=port, timeout=_SHARE_AUTH_TIMEOUT)
+        result = _capture_cli_token(port=port, timeout=_SHARE_AUTH_TIMEOUT)
+        # Normalize: updated mocks return (tokens, uploaded); legacy mocks return list.
+        if isinstance(result, tuple):
+            tokens, uploaded = result
+            server._uploaded = uploaded
+        else:
+            tokens = result
+            server._uploaded = []
+        return tokens
     return server.wait_for_auth(timeout=_WEB_AUTH_TIMEOUT)

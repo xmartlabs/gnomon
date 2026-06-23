@@ -1,10 +1,10 @@
 """Tests for the monthly-dashboard mode introduced in v0.5.0.
 
 Covers:
-  - decide_mode: arg-parsing precedence (--init, --backfill=N, neither)
+  - decide_mode: arg-parsing precedence (--force, --backfill=N, neither)
   - month_windows(1, ...) for current-month window + year rollover
   - latest_month_with_data: picks most recent month with data, handles edge cases
-  - backfill/init loop: N windows produced (reuses month_windows)
+  - force/backfill loop: N windows produced (reuses month_windows)
   - current-month orchestration: non-empty upload, empty-fallback, total-empty exit
 """
 
@@ -15,12 +15,16 @@ import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import xl_ai_insights
-from xl_ai_insights import (
+import gnomon.cli.insights as _insights
+import gnomon.upload.mirdash as _mirdash
+from gnomon.upload.mirdash import (
     decide_mode,
     latest_month_with_data,
     month_windows,
+    _is_report_url,
+    _PAXEL_ERROR,
+    _UPLOAD_ERROR,
+    _absolutize_dir_flags,
 )
 
 
@@ -30,16 +34,16 @@ from xl_ai_insights import (
 
 
 class TestDecideMode(unittest.TestCase):
-    """decide_mode(argv) -> ('init', 12) | ('backfill', N) | ('current', 1)"""
+    """decide_mode(argv) -> ('force', 12) | ('backfill', N) | ('auto', 12)"""
 
-    def test_no_flags_returns_current(self):
+    def test_no_flags_returns_auto(self):
         mode, n = decide_mode([])
-        self.assertEqual(mode, "current")
-        self.assertEqual(n, 1)
+        self.assertEqual(mode, "auto")
+        self.assertEqual(n, 12)
 
-    def test_init_flag_returns_init_12(self):
-        mode, n = decide_mode(["--init"])
-        self.assertEqual(mode, "init")
+    def test_force_flag_returns_force_12(self):
+        mode, n = decide_mode(["--force"])
+        self.assertEqual(mode, "force")
         self.assertEqual(n, 12)
 
     def test_backfill_3_returns_backfill_3(self):
@@ -52,25 +56,25 @@ class TestDecideMode(unittest.TestCase):
         self.assertEqual(mode, "backfill")
         self.assertEqual(n, 6)
 
-    def test_init_takes_precedence_over_backfill(self):
-        # --init wins if both are present
-        mode, n = decide_mode(["--init", "--backfill=5"])
-        self.assertEqual(mode, "init")
+    def test_force_takes_precedence_over_backfill(self):
+        # --force wins if both are present
+        mode, n = decide_mode(["--force", "--backfill=5"])
+        self.assertEqual(mode, "force")
         self.assertEqual(n, 12)
 
-    def test_current_with_other_flags(self):
+    def test_auto_with_other_flags(self):
         mode, n = decide_mode(["--quiet", "--no-open", "claude"])
-        self.assertEqual(mode, "current")
-        self.assertEqual(n, 1)
+        self.assertEqual(mode, "auto")
+        self.assertEqual(n, 12)
 
     def test_backfill_with_other_flags(self):
         mode, n = decide_mode(["--quiet", "--backfill=7", "--no-open"])
         self.assertEqual(mode, "backfill")
         self.assertEqual(n, 7)
 
-    def test_init_with_other_flags(self):
-        mode, n = decide_mode(["--no-open", "--quiet", "--init"])
-        self.assertEqual(mode, "init")
+    def test_force_with_other_flags(self):
+        mode, n = decide_mode(["--no-open", "--quiet", "--force"])
+        self.assertEqual(mode, "force")
         self.assertEqual(n, 12)
 
     def test_backfill_12_returns_12(self):
@@ -171,7 +175,7 @@ class TestLatestMonthWithData(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# month_windows for --init (n=12) and --backfill=N
+# month_windows for --force (n=12) and --backfill=N
 # ---------------------------------------------------------------------------
 
 
@@ -212,40 +216,70 @@ def _make_summary(sessions=5, since="2025-03-01", until="2025-04-01",
     return s
 
 
+def _ms(dt):
+    """datetime.datetime → epoch-ms int."""
+    return int(dt.replace(tzinfo=datetime.timezone.utc).timestamp() * 1000)
+
+
+def _current_only_uploaded(today):
+    """Server-state that makes months_to_upload(today, ...) return exactly [current].
+
+    current is present and fresh; prev is present and NOT stale (uploadedAt >=
+    first day of the month after prev), so neither gap-fill nor stale-refresh adds it.
+    """
+    cur_total = today.year * 12 + (today.month - 1)
+    cur = f"{cur_total // 12:04d}-{cur_total % 12 + 1:02d}"
+    prev_total = cur_total - 1
+    prev = f"{prev_total // 12:04d}-{prev_total % 12 + 1:02d}"
+    # Bound = first day of the month after prev = current month's first day.
+    fresh_prev = _ms(datetime.datetime(today.year, today.month, 1))
+    return [
+        {"monthKey": cur, "uploadedAt": _ms(datetime.datetime(2999, 1, 1))},
+        {"monthKey": prev, "uploadedAt": fresh_prev},
+    ]
+
+
 class TestCurrentMonthOrchestration(unittest.TestCase):
-    """Light integration tests for the default (no-flag) monthly mode."""
+    """Light integration tests for the default (no-flag) auto mode.
+
+    In auto mode the months to upload come from months_to_upload(today, uploaded).
+    These tests pin a single-window (current month) run by supplying server-state
+    where current is fresh and prev is not stale, so [current] is the only anchor.
+    """
 
     def _run_main(self, argv, run_paxel_side_effect, upload_return_values,
-                  tokens=None):
+                  tokens=None, uploaded=None):
         if tokens is None:
             tokens = ["tok1"]
+        if uploaded is None:
+            uploaded = _current_only_uploaded(datetime.date.today())
         if "--console" not in argv:
             argv = argv + ["--console"]
         with (
-            patch.object(xl_ai_insights, "_capture_cli_token", return_value=tokens),
-            patch.object(xl_ai_insights, "webbrowser") as mock_wb,
+            patch.object(_insights, "_capture_cli_token", return_value=(tokens, uploaded)),
+            patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(
-                xl_ai_insights,
+                _mirdash,
                 "_run_paxel",
                 side_effect=run_paxel_side_effect,
             ) as mock_paxel,
             patch.object(
-                xl_ai_insights,
+                _mirdash,
                 "_upload_summary",
                 side_effect=upload_return_values,
             ) as mock_upload,
-            patch.object(xl_ai_insights.os.path, "isfile", return_value=True),
-            patch.object(xl_ai_insights.sys, "argv", ["xl-ai-insights"] + argv),
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(_insights.sys, "argv", ["xl-ai-insights"] + argv),
         ):
             mock_wb.open.return_value = True
             try:
-                xl_ai_insights.main()
+                _insights.main()
             except SystemExit:
                 pass
             return mock_paxel, mock_upload
 
     def test_current_month_nonempty_uploads_once(self):
-        """Non-empty current month → exactly 1 paxel run + 1 upload."""
+        """auto + server-state pinned to [current] → exactly 1 paxel run + 1 upload."""
         mock_paxel, mock_upload = self._run_main(
             argv=["--no-open"],
             run_paxel_side_effect=[_make_summary(sessions=5)],
@@ -276,73 +310,61 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         last_day = calendar.monthrange(since_d.year, since_d.month)[1]
         self.assertEqual(until_d, datetime.date(since_d.year, since_d.month, last_day))
 
-    def test_current_month_empty_fallback_uses_progression_monthly(self):
-        """Empty current month → all-time paxel run → picks latest month → 1 upload."""
-        prog = [
-            {"month": "2025-01"},
-            {"month": "2025-02"},
+    def test_auto_empty_server_sweeps_twelve_months(self):
+        """auto + empty server-state → full backfill of 12 windows (oldest first)."""
+        # 12 windows; make every one empty so no token is consumed and we just
+        # count paxel runs.
+        mock_paxel, mock_upload = self._run_main(
+            argv=["--no-open"],
+            run_paxel_side_effect=[_make_summary(sessions=0)] * 12,
+            upload_return_values=[],
+            tokens=[f"t{i}" for i in range(12)],
+            uploaded=[],   # empty server-state → months_to_upload returns 12 months
+        )
+        self.assertEqual(mock_paxel.call_count, 12)
+        self.assertEqual(mock_upload.call_count, 0)
+
+    def test_auto_current_pinned_empty_uploads_nothing_no_fallback(self):
+        """auto pinned to [current], current empty → no upload, no historical fallback.
+
+        Exactly one paxel run for the current window; the old empty-month fallback
+        (all-time scan + latest_month_with_data) no longer exists.
+        """
+        mock_paxel, mock_upload = self._run_main(
+            argv=["--no-open"],
+            run_paxel_side_effect=[_make_summary(sessions=0)],
+            upload_return_values=[],
+        )
+        self.assertEqual(mock_paxel.call_count, 1)
+        self.assertEqual(mock_upload.call_count, 0)
+
+    def test_auto_prev_stale_uploads_prev_and_current(self):
+        """auto + prev present-but-stale → windows = [prev, current], both uploaded."""
+        today = datetime.date.today()
+        cur_total = today.year * 12 + (today.month - 1)
+        cur = f"{cur_total // 12:04d}-{cur_total % 12 + 1:02d}"
+        prev_total = cur_total - 1
+        prev = f"{prev_total // 12:04d}-{prev_total % 12 + 1:02d}"
+        # prev present but stale: uploadedAt strictly before the start of current month.
+        stale_prev = _ms(datetime.datetime(today.year, today.month, 1)) - 1
+        uploaded = [
+            {"monthKey": cur, "uploadedAt": _ms(datetime.datetime(2999, 1, 1))},
+            {"monthKey": prev, "uploadedAt": stale_prev},
         ]
-        # paxel call 1: current month → empty
-        # paxel call 2: all-time → has progression_monthly
-        # paxel call 3: latest month (2025-02) → non-empty
         mock_paxel, mock_upload = self._run_main(
             argv=["--no-open"],
-            run_paxel_side_effect=[
-                _make_summary(sessions=0),              # current month empty
-                _make_summary(sessions=10,              # all-time with prog
-                              progression_monthly=prog),
-                _make_summary(sessions=4),              # fallback month window
-            ],
-            upload_return_values=["/report/fallback"],
+            run_paxel_side_effect=[_make_summary(sessions=2), _make_summary(sessions=3)],
+            upload_return_values=["/r/prev", "/r/cur"],
+            tokens=["t1", "t2"],
+            uploaded=uploaded,
         )
-        self.assertEqual(mock_paxel.call_count, 3)
-        self.assertEqual(mock_upload.call_count, 1)
-
-    def test_current_month_empty_fallback_paxel_args_for_latest_month(self):
-        """Fallback window paxel call uses paxel's inclusive month-end semantics."""
-        prog = [{"month": "2025-02"}]
-        mock_paxel, mock_upload = self._run_main(
-            argv=["--no-open", "--window=1"],
-            run_paxel_side_effect=[
-                _make_summary(sessions=0),
-                _make_summary(sessions=8, progression_monthly=prog),
-                _make_summary(sessions=2),
-            ],
-            upload_return_values=["/r"],
-        )
-        # Third paxel call must include --since=2025-02-01
-        call3_args = mock_paxel.call_args_list[2][0][1]
-        self.assertIn("--since=2025-02-01", call3_args)
-        self.assertIn("--until=2025-02-28", call3_args)
-
-    def test_current_month_empty_no_progression_exits_cleanly(self):
-        """Empty current month + all-time has no data → clean exit, no upload."""
-        mock_paxel, mock_upload = self._run_main(
-            argv=["--no-open"],
-            run_paxel_side_effect=[
-                _make_summary(sessions=0),           # current month empty
-                _make_summary(sessions=0),           # all-time empty too
-            ],
-            upload_return_values=[],
-        )
-        self.assertEqual(mock_upload.call_count, 0)
-
-    def test_current_month_empty_progression_empty_list_exits_cleanly(self):
-        """progression_monthly present but empty list → no upload."""
-        mock_paxel, mock_upload = self._run_main(
-            argv=["--no-open"],
-            run_paxel_side_effect=[
-                _make_summary(sessions=0),
-                _make_summary(sessions=0, progression_monthly=[]),
-            ],
-            upload_return_values=[],
-        )
-        self.assertEqual(mock_upload.call_count, 0)
+        self.assertEqual(mock_paxel.call_count, 2)
+        self.assertEqual(mock_upload.call_count, 2)
 
     def test_current_month_paxel_error_does_not_fall_back(self):
-        """A paxel run FAILURE (None) on the current month must NOT trigger the
-        historical-month fallback — that would upload stale data and mislabel the
-        current month as empty. Expect exactly 1 paxel run and 0 uploads."""
+        """A paxel run FAILURE (None) for the only window must NOT trigger any
+        historical-month fallback — that path no longer exists. Expect exactly 1
+        paxel run and 0 uploads."""
         mock_paxel, mock_upload = self._run_main(
             argv=["--no-open"],
             run_paxel_side_effect=[None],   # current-month paxel run failed
@@ -363,35 +385,35 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Orchestration tests: --init mode (mocked)
+# Orchestration tests: --force mode (mocked)
 # ---------------------------------------------------------------------------
 
 
-class TestInitMode(unittest.TestCase):
-    """--init runs the backfill loop with 12 months."""
+class TestForceMode(unittest.TestCase):
+    """--force runs the backfill loop with 12 months."""
 
     def _run_init(self, run_paxel_side_effect, upload_return_values):
-        argv = ["--init", "--no-open", "--console"]
+        argv = ["--force", "--no-open", "--console"]
         tokens = [f"t{i}" for i in range(1, 13)]
 
         with (
-            patch.object(xl_ai_insights, "_capture_cli_token", return_value=tokens),
-            patch.object(xl_ai_insights, "webbrowser") as mock_wb,
+            patch.object(_insights, "_capture_cli_token", return_value=(tokens, [])),
+            patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(
-                xl_ai_insights,
+                _mirdash,
                 "_run_paxel",
                 side_effect=run_paxel_side_effect,
             ) as mock_paxel,
             patch.object(
-                xl_ai_insights,
+                _mirdash,
                 "_upload_summary",
                 side_effect=upload_return_values,
             ) as mock_upload,
-            patch.object(xl_ai_insights.os.path, "isfile", return_value=True),
-            patch.object(xl_ai_insights.sys, "argv", ["xl-ai-insights"] + argv),
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(_insights.sys, "argv", ["xl-ai-insights"] + argv),
         ):
             mock_wb.open.return_value = True
-            xl_ai_insights.main()
+            _insights.main()
             return mock_paxel, mock_upload
 
     def test_init_runs_12_paxel_calls(self):
@@ -439,19 +461,19 @@ class TestHeadlessAuthCleanExit(unittest.TestCase):
 
     def _run_headless(self, *, raises):
         with (
-            patch.object(xl_ai_insights, "_capture_cli_token") as mock_capture,
-            patch.object(xl_ai_insights, "webbrowser") as mock_wb,
-            patch.object(xl_ai_insights, "_run_paxel") as mock_paxel,
-            patch.object(xl_ai_insights, "_upload_summary") as mock_upload,
-            patch.object(xl_ai_insights.os.path, "isfile", return_value=True),
-            patch.object(xl_ai_insights.sys, "argv", ["xl-ai-insights", "--no-open", "--console"]),
+            patch.object(_insights, "_capture_cli_token") as mock_capture,
+            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_insights, "_run_paxel") as mock_paxel,
+            patch.object(_insights, "_upload_summary") as mock_upload,
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(_insights.sys, "argv", ["xl-ai-insights", "--no-open", "--console"]),
         ):
             if raises:
                 mock_wb.open.side_effect = RuntimeError("no display")
             else:
                 mock_wb.open.return_value = False
             with self.assertRaises(SystemExit) as ctx:
-                xl_ai_insights.main()
+                _insights.main()
             return ctx.exception, mock_capture, mock_paxel, mock_upload
 
     def test_browser_returns_false_exits_zero_no_upload(self):
@@ -476,16 +498,16 @@ class TestHeadlessAuthCleanExit(unittest.TestCase):
 
 class TestIsReportUrl(unittest.TestCase):
     def test_real_url_is_report_url(self):
-        self.assertTrue(xl_ai_insights._is_report_url("/report/abc"))
+        self.assertTrue(_is_report_url("/report/abc"))
 
     def test_none_is_not_report_url(self):
-        self.assertFalse(xl_ai_insights._is_report_url(None))
+        self.assertFalse(_is_report_url(None))
 
     def test_paxel_error_sentinel_is_not_report_url(self):
-        self.assertFalse(xl_ai_insights._is_report_url(xl_ai_insights._PAXEL_ERROR))
+        self.assertFalse(_is_report_url(_PAXEL_ERROR))
 
     def test_upload_error_sentinel_is_not_report_url(self):
-        self.assertFalse(xl_ai_insights._is_report_url(xl_ai_insights._UPLOAD_ERROR))
+        self.assertFalse(_is_report_url(_UPLOAD_ERROR))
 
 
 class TestUploadWindowWebSentinels(unittest.TestCase):
@@ -494,17 +516,18 @@ class TestUploadWindowWebSentinels(unittest.TestCase):
     def _call(self, run_paxel_return=None, run_paxel_side=None, upload_side=None):
         server = MagicMock()
         with (
-            patch.object(xl_ai_insights, "_run_paxel",
+            patch.object(_mirdash, "_run_paxel",
                          return_value=run_paxel_return, side_effect=run_paxel_side),
-            patch.object(xl_ai_insights, "_upload_summary", side_effect=upload_side),
+            patch.object(_mirdash, "_upload_summary", side_effect=upload_side),
         ):
-            return xl_ai_insights._upload_window_web(
+            from gnomon.upload.mirdash import _upload_window_web
+            return _upload_window_web(
                 "https://m", "tok", "/paxel.py", [], "2025-12-01", "2026-01-01",
                 "2025-12", False, server, 0, 1,
             )
 
     def test_paxel_failure_returns_paxel_error_sentinel(self):
-        self.assertEqual(self._call(run_paxel_return=None), xl_ai_insights._PAXEL_ERROR)
+        self.assertEqual(self._call(run_paxel_return=None), _PAXEL_ERROR)
 
     def test_empty_summary_returns_none(self):
         empty = _make_summary(sessions=0)
@@ -513,7 +536,7 @@ class TestUploadWindowWebSentinels(unittest.TestCase):
     def test_upload_exception_returns_upload_error_sentinel(self):
         good = _make_summary(sessions=5)
         result = self._call(run_paxel_return=good, upload_side=RuntimeError("boom"))
-        self.assertEqual(result, xl_ai_insights._UPLOAD_ERROR)
+        self.assertEqual(result, _UPLOAD_ERROR)
 
     def test_success_returns_report_url(self):
         good = _make_summary(sessions=5)
@@ -524,12 +547,13 @@ class TestUploadWindowWebSentinels(unittest.TestCase):
         """Run _upload_window_web and return the list of pushed event types."""
         server = MagicMock()
         with (
-            patch.object(xl_ai_insights, "_run_paxel",
+            patch.object(_mirdash, "_run_paxel",
                          return_value=kw.get("run_paxel_return"),
                          side_effect=kw.get("run_paxel_side")),
-            patch.object(xl_ai_insights, "_upload_summary", side_effect=kw.get("upload_side")),
+            patch.object(_mirdash, "_upload_summary", side_effect=kw.get("upload_side")),
         ):
-            xl_ai_insights._upload_window_web(
+            from gnomon.upload.mirdash import _upload_window_web
+            _upload_window_web(
                 "https://m", "tok", "/paxel.py", [], "2025-12-01", "2026-01-01",
                 "2025-12", False, server, 0, 1,
             )
@@ -555,21 +579,21 @@ class TestUploadWindowWebSentinels(unittest.TestCase):
 
 class TestAbsolutizeDirFlags(unittest.TestCase):
     def test_relative_dir_flag_made_absolute(self):
-        out = xl_ai_insights._absolutize_dir_flags(["--claude-dir=./backup/.claude"])
+        out = _absolutize_dir_flags(["--claude-dir=./backup/.claude"])
         self.assertEqual(out[0], "--claude-dir=" + os.path.abspath("./backup/.claude"))
         self.assertTrue(out[0].split("=", 1)[1].startswith("/"))
 
     def test_absolute_dir_flag_unchanged(self):
-        out = xl_ai_insights._absolutize_dir_flags(["--codex-dir=/abs/path"])
+        out = _absolutize_dir_flags(["--codex-dir=/abs/path"])
         self.assertEqual(out, ["--codex-dir=/abs/path"])
 
     def test_home_dir_flag_expanded(self):
-        out = xl_ai_insights._absolutize_dir_flags(["--gemini-dir=~/x"])
+        out = _absolutize_dir_flags(["--gemini-dir=~/x"])
         self.assertEqual(out[0], "--gemini-dir=" + os.path.abspath(os.path.expanduser("~/x")))
 
     def test_non_dir_flags_and_sources_untouched(self):
         args = ["claude", "--mirdash-base=https://m", "--quiet"]
-        self.assertEqual(xl_ai_insights._absolutize_dir_flags(args), args)
+        self.assertEqual(_absolutize_dir_flags(args), args)
 
 
 if __name__ == "__main__":

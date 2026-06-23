@@ -11,14 +11,14 @@ import sys
 import unittest
 from unittest.mock import MagicMock, call, patch
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import xl_ai_insights
-from xl_ai_insights import (
+import gnomon.cli.insights as _insights
+import gnomon.upload.mirdash as _mirdash
+from gnomon.upload.mirdash import (
     _MAX_BACKFILL,
-    _tokens_from_query,
     month_windows,
     parse_backfill,
 )
+from gnomon.upload.auth import _tokens_from_query
 
 
 # ---------------------------------------------------------------------------
@@ -245,23 +245,28 @@ class TestBackfillLoop(unittest.TestCase):
         tokens = ["t1", "t2", "t3"]
 
         with (
-            patch.object(xl_ai_insights, "_capture_cli_token", return_value=tokens),
-            patch.object(xl_ai_insights, "webbrowser") as mock_wb,
+            patch.object(_insights, "_capture_cli_token", return_value=(tokens, [])),
+            patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(
-                xl_ai_insights,
+                _mirdash,
                 "_run_paxel",
                 side_effect=run_paxel_side_effect,
             ) as mock_paxel,
             patch.object(
-                xl_ai_insights,
+                _mirdash,
                 "_upload_summary",
                 side_effect=upload_return_values,
             ) as mock_upload,
-            patch.object(xl_ai_insights.os.path, "isfile", return_value=True),
-            patch.object(xl_ai_insights.sys, "argv", ["xl-ai-insights"] + argv),
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(_insights.sys, "argv", ["xl-ai-insights"] + argv),
         ):
             mock_wb.open.return_value = True
-            xl_ai_insights.main()
+            # All-empty runs now exit cleanly (0) via the unified "nothing to
+            # share" path; tolerate that here.
+            try:
+                _insights.main()
+            except SystemExit:
+                pass
             return mock_paxel, mock_upload
 
     def test_skips_empty_months_no_token_consumed(self):
@@ -325,7 +330,7 @@ class TestBackfillLoop(unittest.TestCase):
 
 
 class TestBatchOutputContract(unittest.TestCase):
-    """Output contract for the batch paths (--init / --backfill):
+    """Output contract for the batch paths (--force / --backfill):
 
     - The final report URL must print even with --no-open (only the browser open
       is suppressed) — otherwise a batch run succeeds with no way to reach the report.
@@ -340,18 +345,18 @@ class TestBatchOutputContract(unittest.TestCase):
             argv = argv + ["--console"]
         buf = io.StringIO()
         with (
-            patch.object(xl_ai_insights, "_capture_cli_token", return_value=tokens),
-            patch.object(xl_ai_insights, "webbrowser") as mock_wb,
-            patch.object(xl_ai_insights, "_run_paxel", side_effect=summaries),
+            patch.object(_insights, "_capture_cli_token", return_value=(tokens, [])),
+            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_mirdash, "_run_paxel", side_effect=summaries),
             patch.object(
-                xl_ai_insights, "_upload_summary", side_effect=upload_returns
+                _mirdash, "_upload_summary", side_effect=upload_returns
             ),
-            patch.object(xl_ai_insights.os.path, "isfile", return_value=True),
-            patch.object(xl_ai_insights.sys, "argv", ["xl-ai-insights"] + argv),
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(_insights.sys, "argv", ["xl-ai-insights"] + argv),
             contextlib.redirect_stdout(buf),
         ):
             mock_wb.open.return_value = True
-            xl_ai_insights.main()
+            _insights.main()
         return buf.getvalue()
 
     def test_backfill_no_open_still_prints_report_url(self):
@@ -392,18 +397,18 @@ class TestBatchOutputContract(unittest.TestCase):
         self.assertNotIn("no activity", out)
         self.assertIn("Report ready:", out)
 
-    def test_init_no_open_still_prints_report_url(self):
+    def test_force_no_open_still_prints_report_url(self):
         out = self._run_main(
-            ["--init", "--no-open"],
+            ["--force", "--no-open"],
             summaries=[_make_summary(sessions=i + 1) for i in range(12)],
             upload_returns=[f"/r/{i}" for i in range(12)],
             tokens=[f"t{i}" for i in range(12)],
         )
         self.assertIn("Report ready:", out)
 
-    def test_init_quiet_suppresses_status_but_keeps_url(self):
+    def test_force_quiet_suppresses_status_but_keeps_url(self):
         out = self._run_main(
-            ["--init", "--quiet"],
+            ["--force", "--quiet"],
             summaries=[_make_summary(sessions=i + 1) for i in range(12)],
             upload_returns=[f"/r/{i}" for i in range(12)],
             tokens=[f"t{i}" for i in range(12)],
