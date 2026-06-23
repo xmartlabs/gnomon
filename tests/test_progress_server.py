@@ -88,6 +88,22 @@ class TestFailedState(unittest.TestCase):
         self.assertIn("if (state === 'active') icon = '\\u21BB';", page)
 
 
+class TestDryRunDone(unittest.TestCase):
+    """P3: showDone() must handle a dry-run done event without claiming
+    'nothing to upload' — months were planned, just not uploaded."""
+
+    def test_showdone_has_dryrun_branch(self):
+        page = progress_server._PROGRESS_PAGE
+        self.assertIn("if (data.dryRun)", page)
+        self.assertIn("Dry run", page)
+
+    def test_dryrun_branch_precedes_nothing_to_upload(self):
+        """The dryRun branch must come BEFORE the 'Nothing to upload' fallback so
+        a dry-run with planned months never falls through to it."""
+        page = progress_server._PROGRESS_PAGE
+        self.assertLess(page.index("if (data.dryRun)"), page.index("Nothing to upload"))
+
+
 class TestAuthUrlInjection(unittest.TestCase):
     """The served page must embed the real auth_url so the sign-in button works."""
 

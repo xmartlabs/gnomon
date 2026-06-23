@@ -584,9 +584,14 @@ def _upload_window(mirdash_base, token, paxel_src, paxel_args_base, since, until
                    file_prefix=""):
     """Run paxel for one calendar window and upload the summary.
 
-    Returns the reportUrl string on success, or None if the window should be
-    skipped (empty summary or paxel error).  Upload errors are printed as
-    warnings but do not raise.
+    Returns a ``(result, summary)`` tuple mirroring the sentinel semantics of
+    ``_upload_window_web`` so the console loop can distinguish a real success
+    from the two failure modes:
+      - ``result``: the reportUrl string on success | ``None`` when the window
+        is genuinely empty (a normal skip) | ``_PAXEL_ERROR`` if the paxel run
+        failed | ``_UPLOAD_ERROR`` if the upload POST failed.
+      - ``summary``: the paxel summary dict on a successful upload; ``None``
+        otherwise (enables the caller to print ``_format_summary``).
     """
     window_args = paxel_args_base + [
         f"--since={since}",
@@ -602,19 +607,19 @@ def _upload_window(mirdash_base, token, paxel_src, paxel_args_base, since, until
                          file_prefix=file_prefix)
     if summary is None:
         print(f"  skip {label} -- paxel error")
-        return None
+        return (_PAXEL_ERROR, None)
 
     if _summary_is_empty(summary):
         if not quiet:
             print(f"  skip {label} -- no activity")
-        return None
+        return (None, None)
 
     summary.setdefault("context", {})["window_months"] = window_months
     try:
-        return _upload_summary(mirdash_base, token, summary)
+        return (_upload_summary(mirdash_base, token, summary), summary)
     except Exception as exc:
         print(f"  warning: {label} upload failed: {exc}")
-        return None
+        return (_UPLOAD_ERROR, None)
 
 
 def _upload_window_web(mirdash_base, token, paxel_src, paxel_args_base, since, until, label,

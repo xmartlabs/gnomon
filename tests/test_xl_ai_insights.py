@@ -337,6 +337,111 @@ class TestOutputDirPropagation(unittest.TestCase):
         self.assertEqual(mock_run.call_args.kwargs["output_dir"], "./exports")
 
 
+class TestConsoleFailureAndSummary(unittest.TestCase):
+    """P1 + _format_summary restoration: the console loop must surface real
+    failures (exit 1, not 'nothing to share') and print the build-profile block
+    on a successful single-month run."""
+
+    TODAY = datetime.date(2025, 7, 15)
+
+    def _summary(self, sessions=1):
+        return {
+            "context": {
+                "date_range": ["2025-07-01", "2025-08-01"],
+                "total_sessions": sessions,
+            },
+            "planning_ratio_explore_to_doing": 0.62,
+        }
+
+    def _run_console(self, *, mode, token_count, run_paxel_side_effect,
+                     upload_side_effect=None, uploaded=None, quiet=False):
+        """Drive _main_console directly; return (stdout, exited, exit_code)."""
+        if uploaded is None:
+            uploaded = []
+        buf = io.StringIO()
+        mock_date = MagicMock()
+        mock_date.today.return_value = self.TODAY
+        upload_kwargs = {}
+        if upload_side_effect is not None:
+            upload_kwargs["side_effect"] = upload_side_effect
+        else:
+            upload_kwargs["return_value"] = "/r/1"
+        with (
+            patch.object(_insights, "_capture_cli_token",
+                         return_value=(["tok"] * max(token_count, 1), uploaded)),
+            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(_mirdash, "_run_paxel", side_effect=run_paxel_side_effect),
+            patch.object(_mirdash, "_upload_summary", **upload_kwargs),
+            patch("gnomon.cli.insights.datetime") as mock_dt,
+            contextlib.redirect_stdout(buf),
+        ):
+            mock_wb.open.return_value = True
+            mock_dt.date = mock_date
+            mock_dt.datetime = datetime.datetime
+            mock_dt.timezone = datetime.timezone
+            mock_dt.timedelta = datetime.timedelta
+            try:
+                _insights._main_console(
+                    [], "https://mirdash.example", mode, token_count, [],
+                    True, quiet, False,
+                )
+                exited, code = False, None
+            except SystemExit as e:
+                exited, code = True, e.code
+        return buf.getvalue(), exited, code
+
+    def test_single_month_paxel_failure_exits_1_not_nothing_to_share(self):
+        """auto single-month run where paxel fails → exit 1, not 'nothing to share'."""
+        uploaded = [{"monthKey": "2025-07", "uploadedAt": 9999999999999}]
+        out, exited, code = self._run_console(
+            mode="auto", token_count=12,
+            run_paxel_side_effect=[None],  # paxel error for the single window
+            uploaded=uploaded,
+        )
+        self.assertTrue(exited)
+        self.assertEqual(code, 1)
+        self.assertNotIn("nothing to share", out)
+        self.assertIn("failed to upload", out)
+
+    def test_single_month_upload_failure_exits_1(self):
+        """auto single-month run where the upload POST fails → exit 1."""
+        uploaded = [{"monthKey": "2025-07", "uploadedAt": 9999999999999}]
+        out, exited, code = self._run_console(
+            mode="auto", token_count=12,
+            run_paxel_side_effect=[self._summary()],
+            upload_side_effect=RuntimeError("boom"),
+            uploaded=uploaded,
+        )
+        self.assertTrue(exited)
+        self.assertEqual(code, 1)
+        self.assertNotIn("nothing to share", out)
+
+    def test_empty_month_still_nothing_to_share_exit_0(self):
+        """A genuinely empty window (0 sessions) keeps the legitimate skip path."""
+        uploaded = [{"monthKey": "2025-07", "uploadedAt": 9999999999999}]
+        out, exited, code = self._run_console(
+            mode="auto", token_count=12,
+            run_paxel_side_effect=[self._summary(sessions=0)],
+            uploaded=uploaded,
+        )
+        self.assertTrue(exited)
+        self.assertEqual(code, 0)
+        self.assertIn("nothing to share", out)
+
+    def test_single_month_success_prints_build_profile(self):
+        """auto single-month success → stdout includes the 'Your build profile' block."""
+        uploaded = [{"monthKey": "2025-07", "uploadedAt": 9999999999999}]
+        out, exited, code = self._run_console(
+            mode="auto", token_count=12,
+            run_paxel_side_effect=[self._summary()],
+            uploaded=uploaded,
+        )
+        self.assertIn("Your build profile", out)
+        self.assertIn("Report ready", out)
+        self.assertFalse(exited)
+
+
 class TestHelpOutput(unittest.TestCase):
     def test_help_prints_usage_and_exits_before_running(self):
         stdout = io.StringIO()

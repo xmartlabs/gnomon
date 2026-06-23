@@ -13,7 +13,7 @@ from gnomon.upload.mirdash import (
     _DEFAULT_WINDOW_MONTHS, parse_window, decide_mode,
     month_windows, months_to_upload, plan_upload, windows_for_anchors,
     _is_report_url, _upload_window, _upload_window_web,
-    _PAXEL_ERROR, _UPLOAD_ERROR,
+    _PAXEL_ERROR, _UPLOAD_ERROR, _format_summary,
     # Re-exported so tests can patch them as attributes of this module and so the
     # web fallback to console mode keeps a stable surface.
     _run_paxel, _upload_summary,  # noqa: F401
@@ -265,7 +265,9 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
 
     token_idx = 0
     uploaded_count = 0
+    failed = 0
     last_report_url = None
+    last_summary = None
 
     for since, until, label in windows:
         if token_idx >= len(tokens):
@@ -273,24 +275,36 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
             break
 
         prefix = f"gnomon-{label}-" if output_dir else ""
-        report_url = _upload_window(
+        result, summary = _upload_window(
             mirdash_base, tokens[token_idx], paxel_src,
             paxel_forward, since, until, label, verbose, quiet,
             output_dir=output_dir,
             window_months=window_months,
             file_prefix=prefix,
         )
-        if report_url is not None:
-            last_report_url = report_url
+        if _is_report_url(result):
+            last_report_url = result
+            last_summary = summary
             uploaded_count += 1
             token_idx += 1
             if not quiet:
                 print(f"  ^ {label} uploaded")
+        elif result in (_UPLOAD_ERROR, _PAXEL_ERROR):
+            failed += 1
 
     if not quiet:
-        print(f"  uploaded {uploaded_count}/{len(windows)} months")
+        msg = f"  uploaded {uploaded_count}/{len(windows)} months"
+        if failed:
+            msg += f" ({failed} failed)"
+        print(msg)
 
     if last_report_url:
+        # Single successful window (the common default run): print the build
+        # profile block. For batch runs (>1 uploaded) keep the consolidated output.
+        if uploaded_count == 1 and last_summary is not None:
+            block = _format_summary(last_summary, quiet=quiet)
+            if block:
+                print(block)
         full_report = urllib.parse.urljoin(mirdash_base + "/", last_report_url)
         print(f"  Report ready: {full_report}")
         if not no_open:
@@ -299,6 +313,11 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
             except Exception as exc:
                 print(f"  warning: could not open report in browser: {exc}")
         return
+
+    # Mirror the web loop: a real failure must not be reported as "nothing to share".
+    if failed:
+        print(f"  error: {failed}/{len(windows)} months failed to upload -- nothing was shared")
+        sys.exit(1)
 
     print("  nothing to share (no sessions found)")
     sys.exit(0)
@@ -366,6 +385,20 @@ def main(argv=None):
     paxel_forward = _absolutize_dir_flags(paxel_forward)
 
     mirdash_base = _resolve_mirdash_base(argv)
+
+    # force/backfill dry-run plans depend only on `today`, not on the server's
+    # uploaded state, so compute and print them without auth/browser/tokens.
+    # auto dry-run still needs login (the plan depends on `uploaded`) and is
+    # handled inside _main_web/_main_console.
+    if dry_run and mode in ("force", "backfill"):
+        today = datetime.date.today()
+        windows = month_windows(token_count, today, window_months=window_months)
+        if mode == "backfill":
+            plan_pairs = [label for _, _, label in windows]
+        else:  # force
+            plan_pairs = plan_upload(today, [], force=True)
+        _print_dry_run_plan(mode, windows, plan_pairs)
+        sys.exit(0)
 
     if console:
         _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,

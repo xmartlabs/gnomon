@@ -323,7 +323,14 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     const h1 = document.getElementById('title');
     const sub = document.getElementById('subtitle');
 
-    if (uploaded > 0 && failedCount > 0) {
+    if (data.dryRun) {
+      // Dry run: no uploads happened, but months were planned. Don't claim
+      // "nothing to upload" — point the user at the terminal for the plan.
+      icon.className = 'icon-wrap icon-done';
+      h1.textContent = 'Dry run';
+      h1.style.color = 'var(--ok)';
+      sub.textContent = 'See the terminal for the upload plan \\u2014 nothing was uploaded.';
+    } else if (uploaded > 0 && failedCount > 0) {
       // Partial: some uploaded, some failed.
       icon.className = 'icon-wrap icon-progress';
       icon.style.background = 'rgba(251,191,36,.12)';

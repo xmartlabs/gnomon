@@ -552,5 +552,71 @@ class TestMainWebOSErrorFallbackDryRun(unittest.TestCase):
         self.assertIn("falling back to console mode", out)
 
 
+# ---------------------------------------------------------------------------
+# P2: force/backfill dry-run short-circuits BEFORE auth (headless/CI)
+# ---------------------------------------------------------------------------
+
+
+class TestForceBackfillDryRunNoAuth(unittest.TestCase):
+    """--dry-run --force and --dry-run --backfill=N compute the plan from `today`
+    alone, so they must print the plan and exit 0 without any auth/browser."""
+
+    def _run_main(self, argv):
+        """Run main(argv); return (stdout, exited, code). Auth/server are mocked
+        to BLOW UP if touched, proving the short-circuit happens before auth."""
+        buf = io.StringIO()
+        with (
+            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_insights, "_capture_cli_token") as mock_cap,
+            patch.object(_insights, "_wait_for_auth_tokens") as mock_wait,
+            patch("gnomon.upload.progress_server.ProgressServer") as mock_server_cls,
+            contextlib.redirect_stdout(buf),
+        ):
+            # No browser available, like headless/CI.
+            mock_wb.open.return_value = False
+            mock_cap.side_effect = AssertionError("auth must not run in force/backfill dry-run")
+            mock_wait.side_effect = AssertionError("auth must not run in force/backfill dry-run")
+            mock_server_cls.side_effect = AssertionError("no ProgressServer in force/backfill dry-run")
+            try:
+                _insights.main(argv)
+                exited, code = False, None
+            except SystemExit as e:
+                exited, code = True, e.code
+        return buf.getvalue(), exited, code, mock_wb, mock_cap, mock_wait
+
+    def test_dry_run_force_prints_plan_and_exits_0(self):
+        out, exited, code, mock_wb, mock_cap, mock_wait = self._run_main(["--dry-run", "--force"])
+        self.assertTrue(exited)
+        self.assertEqual(code, 0)
+        self.assertIn("Dry run", out)
+        self.assertIn("Mode: force", out)
+        self.assertIn("force re-upload", out)
+        self.assertIn("12 month(s)", out)
+        mock_wb.open.assert_not_called()
+        mock_cap.assert_not_called()
+        mock_wait.assert_not_called()
+
+    def test_dry_run_backfill_prints_plan_and_exits_0(self):
+        out, exited, code, mock_wb, mock_cap, mock_wait = self._run_main(["--dry-run", "--backfill=3"])
+        self.assertTrue(exited)
+        self.assertEqual(code, 0)
+        self.assertIn("Dry run", out)
+        self.assertIn("Mode: backfill", out)
+        self.assertIn("backfill", out)
+        self.assertIn("3 month(s)", out)
+        mock_wb.open.assert_not_called()
+        mock_cap.assert_not_called()
+        mock_wait.assert_not_called()
+
+    def test_dry_run_force_with_console_also_short_circuits(self):
+        """The short-circuit lives in main(), so --console takes the same path."""
+        out, exited, code, mock_wb, mock_cap, mock_wait = self._run_main(
+            ["--dry-run", "--force", "--console"])
+        self.assertTrue(exited)
+        self.assertEqual(code, 0)
+        self.assertIn("Mode: force", out)
+        mock_cap.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
