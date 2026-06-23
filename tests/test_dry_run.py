@@ -501,6 +501,12 @@ class TestMainWebOSErrorFallbackDryRun(unittest.TestCase):
         mock_date.today.return_value = self.TODAY
 
         with (
+            # Patch the source the local `from ... import ProgressServer` actually
+            # resolves, so the OSError genuinely fires and _main_web falls back to
+            # console mode. Patching only gnomon.cli.insights.ProgressServer is a
+            # no-op (it's a function-local import), which left a real server bound
+            # and blocked on wait_for_auth under `unittest discover`.
+            patch("gnomon.upload.progress_server.ProgressServer", side_effect=OSError("address already in use")),
             patch("gnomon.cli.insights.ProgressServer", side_effect=OSError("address already in use"), create=True),
             patch.object(_insights, "_capture_cli_token",
                          return_value=(["tok"] * token_count, uploaded)),
