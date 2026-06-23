@@ -35,7 +35,11 @@ from gnomon.analysis.quotes import _POLITE_RE, _safe_quote, _cryptic_score, _cra
 from gnomon.scoring.gstack import compute_scores
 from gnomon.scoring.aq import compute_aq
 from gnomon.scoring.archetype import pick_archetype
-from gnomon.output.summary import build_summary, _build_monthly_noticed_stats
+from gnomon.scoring.inputs import SCORING_INPUTS_VERSION, build_monthly_scoring_stats
+from gnomon.cli.scoring_inputs import build_scoring_inputs_by_source
+from gnomon.output.summary import (
+    build_summary, _build_monthly_noticed_stats,
+)
 from gnomon.output.report import write_report
 from gnomon.output.narrative import write_narrative_input
 from gnomon.output.profile_html import write_profile_html
@@ -108,6 +112,118 @@ def main(argv=None, output_dir=None):
         print("  Nothing to analyze -- run this where you've actually used a coding agent.")
         return
 
+    # Whole-corpus accumulation (all sources pooled, capabilities = union) — this is
+    # the legacy/primary stats dict that drives the report, HTML and `profile`.
+    stats, narrative = _accumulate(
+        sources, since_dt, until_dt, cursor_twins, antigravity,
+        total_file_count=len(sources), verbose=True)
+    opening_prompts = narrative["opening_prompts"]
+    longest_prompts = narrative["longest_prompts"]
+    phrase_counts = narrative["phrase_counts"]
+    phrase_repr = narrative["phrase_repr"]
+    phrase_sess = narrative["phrase_sess"]
+    cryptic_cands = narrative["cryptic_cands"]
+    crashout_cands = narrative["crashout_cands"]
+    total_sessions = stats["volume"]["total_sessions"]
+    prompts_count = stats["volume"]["total_prompts"]
+    tool_use_total = stats["volume"]["tool_calls_total"]
+    gc = narrative["gc"]
+    total_churn = stats["velocity"]["tool_churn_edit_write"]
+    git_velocity = stats["velocity"]["git_velocity_lines_per_hour"]
+    iteration_mean = stats["behavior"]["iteration_depth_mean"]
+    iteration_max = stats["behavior"]["iteration_depth_max"]
+    heavy_files = stats["behavior"]["files_hammered_over_15x"]
+    error_rate_per_100_tools = stats["behavior"]["error_rate_per_100_tools"]
+    tool_errors = stats["behavior"]["tool_errors"]
+    autonomy_score = stats["autonomy"]["autonomy_score_0_100"]
+    planning_ratio = stats["behavior"]["planning_ratio_explore_to_doing"]
+    source_files = narrative["source_files"]
+    source_sessions = narrative["source_sessions"]
+
+    # ---- per-source scoring inputs (recomputable per-source AND combined) ----
+    # Partition the event stream by source and run the SAME _accumulate per source,
+    # so each source's stats slice carries only that source's events (and only that
+    # source's caps, cwds for git churn, cursor dedup partition, etc.). The window +
+    # per-month raw inputs for every source feed scoring_inputs_by_source.
+    stats["scoring_inputs_version"] = SCORING_INPUTS_VERSION
+    stats["scoring_inputs_by_source"] = build_scoring_inputs_by_source(
+        sources, since_dt, until_dt, cursor_twins, antigravity,
+        accumulate_fn=_accumulate,
+        corpus_stats=stats)
+    # internal-only working field (per-month full stats slices); not part of the payload
+    stats.pop("_scoring_monthly_full", None)
+
+    with open(os.path.join(_out_dir, "stats.json"), "w", encoding="utf-8") as f:
+        json.dump(stats, f, indent=2, default=str)
+
+    if "--summary" in argv:
+        with open(os.path.join(_out_dir, "summary.json"), "w", encoding="utf-8") as f:
+            json.dump(build_summary(stats), f, indent=2, default=str)
+        print("  wrote summary.json (shareable subset -- measured metrics + monthly progression)")
+
+    write_report(stats, output_dir=_out_dir)
+    write_narrative_input(stats, opening_prompts, longest_prompts, output_dir=_out_dir)
+    scores = compute_scores(stats)
+    archetype, quote = pick_archetype(stats, scores)
+    # "In your own words" — pick the go-to phrase (most-repeated short prompt seen in >=2
+    # sessions), most cryptic, biggest crash-out. VERBATIM, never stored in stats.json.
+    goto = None
+    for ph, cnt in phrase_counts.most_common(25):
+        if cnt >= 3 and len(phrase_sess.get(ph, ())) >= 2:
+            goto = (phrase_repr[ph], cnt, len(phrase_sess[ph]))
+            break
+    def _dedup_rank(cands):   # keep highest score per unique prompt, ranked (deterministic)
+        best = {}
+        for sc, tx in cands:
+            k = tx.lower()
+            if k not in best or sc > best[k][0]:
+                best[k] = (sc, tx)
+        return sorted(best.values(), key=lambda x: (-x[0], x[1]))   # tie-break on text -> reproducible
+    cryptic_cands = _dedup_rank(cryptic_cands)
+    crashout_cands = _dedup_rank(crashout_cands)
+    # Each card shows the SINGLE best quote; a reroll button rerolls through this small pool
+    # (top few within striking distance of #1 — quality only, no weak tail).
+    def _quote_pool(cands, n=6, floor=0.5):
+        if not cands:
+            return []
+        top = cands[0][0]
+        return [tx for sc, tx in cands if sc >= top * floor][:n]
+    rage_pool = _quote_pool([(sc, tx) for sc, tx in crashout_cands if len(tx.split()) <= 9])
+    cuff_pool = _quote_pool(cryptic_cands)
+    voice = {"goto": goto, "crashouts": rage_pool, "cryptics": cuff_pool}
+    write_profile_html(stats, archetype, quote, scores, voice, output_dir=_out_dir)
+    print("\nWrote stats.json, report.md, narrative_input.md, profile.html to", _out_dir)
+    if "--no-open" not in argv:
+        _open_in_browser(os.path.join(_out_dir, "profile.html"))
+    print(f"  archetype: {archetype}  scores: {scores}")
+    print(f"  sources: " + ", ".join(f"{s}({source_files[s]}f/{len(source_sessions[s])}s)"
+                                      for s in sorted(source_files)))
+    print(f"  sessions={total_sessions}  prompts={prompts_count}  tool_calls={tool_use_total}")
+    print(f"  git churn={gc['churn']:,} lines (gold std, {gc['repos_with_commits']}/{gc['repos_seen']} repos)  "
+          f"vs tool-only={total_churn:,}  git velocity={git_velocity:.0f} ln/hr")
+    _idm_str = f"{iteration_mean:.1f}" if iteration_mean is not None else "-"
+    _erp_str = f"{error_rate_per_100_tools:.1f}" if error_rate_per_100_tools is not None else "-"
+    print(f"  iteration depth: mean {_idm_str} / max {iteration_max} ({heavy_files} files >15x)  "
+          f"errors={tool_errors} ({_erp_str}/100 tools)")
+    print(f"  autonomy={autonomy_score}/100  planning_ratio={planning_ratio:.2f}")
+
+
+def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
+                total_file_count=None, verbose=True):
+    """Accumulate every per-event signal over `sources` and return (stats, narrative).
+
+    This is the single aggregation engine. main() calls it once over ALL sources
+    (legacy whole-corpus stats), and build_scoring_inputs_by_source calls it once per
+    source partition. Because the SAME function runs for both, a per-source slice uses
+    identical aggregation rules (no drift) and naturally scopes git churn (to that
+    source's cwds), cursor dedup (within the cursor partition), and the post-processed
+    active_hours / fanout_median / iteration_depth (derived from that slice's session_ts
+    / edits_per_file / fanouts).
+
+    `narrative` carries the verbatim-quote candidates and opening/longest prompts that
+    main() needs for the local HTML page (never serialized into stats.json)."""
+    if total_file_count is None:
+        total_file_count = len(sources)
     # ---- accumulators --------------------------------------------------------
     files_parsed = 0
     lines_total = 0
@@ -201,6 +317,16 @@ def main(argv=None, output_dir=None):
     month_tool_counter = defaultdict(Counter)  # month -> tool name -> calls
     month_session_ts = defaultdict(lambda: defaultdict(list))  # month -> session -> [epoch s]
 
+    # Per-month stack/tool accumulators — needed so per-source × month scoring inputs
+    # (_build_scoring_inputs) carry the full grading field set, not just noticed_stats.
+    month_skill_counter = defaultdict(Counter)     # month -> skill name -> uses
+    month_subagent_counter = defaultdict(Counter)  # month -> subagent type -> dispatches
+    month_mcp_server_counter = defaultdict(Counter)  # month -> mcp server -> calls
+    month_cli_counter = defaultdict(Counter)       # month -> CLI head -> calls
+    month_compounding = Counter()                  # month -> compounding writes
+    month_shell_test_runs = Counter()              # month -> CLI test runs
+    month_api_errors = Counter()                   # month -> API error/retry events
+
     # token usage accumulators (keyed by raw model id)
     _zero_tok = lambda: {"input": 0, "output": 0, "cache_read": 0, "cache_creation": 0}
     model_tokens = defaultdict(_zero_tok)        # raw model id -> {input, output, cache_read, cache_creation}
@@ -230,8 +356,8 @@ def main(argv=None, output_dir=None):
                 pass
         files_parsed += 1
         source_files[cur_src] += 1
-        if files_parsed % 300 == 0:
-            print(f"  ...{files_parsed}/{len(sources)}")
+        if verbose and files_parsed % 300 == 0:
+            print(f"  ...{files_parsed}/{total_file_count}")
         # per-session, per-file ordered state for error-recovery + iteration depth
         pending_error = defaultdict(bool)        # sessionId -> unrecovered error flag
         file_edit_run = defaultdict(lambda: defaultdict(int))  # session -> file -> edits since commit
@@ -308,8 +434,12 @@ def main(argv=None, output_dir=None):
                 # ---- API error / retry events (system + assistant) ----------
                 if ev.get("isApiErrorMessage") or ev.get("apiErrorStatus"):
                     api_errors += 1
+                    if mkey:
+                        month_api_errors[mkey] += 1
                 if etype == "system" and ev.get("retryAttempt"):
                     api_errors += 1
+                    if mkey:
+                        month_api_errors[mkey] += 1
 
                 # ---- genuine user prompts -----------------------------------
                 if etype == "user" and msg is not None:
@@ -430,6 +560,8 @@ def main(argv=None, output_dir=None):
                             month_model_tokens[mkey][mdl]["cache_creation"] += _tcc
                     if ev.get("attributionSkill"):
                         skill_counter[ev["attributionSkill"]] += 1
+                        if mkey:
+                            month_skill_counter[mkey][ev["attributionSkill"]] += 1
                     content = msg.get("content")
                     if isinstance(content, list):
                         for b in content:
@@ -460,6 +592,8 @@ def main(argv=None, output_dir=None):
                                     parts = name.split("__")
                                     if len(parts) > 1 and parts[1]:
                                         mcp_server_counter[parts[1]] += 1
+                                        if mkey:
+                                            month_mcp_server_counter[mkey][parts[1]] += 1
                                 else:
                                     native_calls += 1
 
@@ -474,9 +608,13 @@ def main(argv=None, output_dir=None):
                                     s = inp.get("skill")
                                     if s:
                                         skill_counter[s] += 1
+                                        if mkey:
+                                            month_skill_counter[mkey][s] += 1
                                 if name == "Agent":
                                     st = inp.get("subagent_type", "general-purpose")
                                     subagent_counter[st] += 1
+                                    if mkey:
+                                        month_subagent_counter[mkey][st] += 1
                                     if sid:
                                         agents_per_session[sid] += 1
                                         if mkey:
@@ -509,6 +647,8 @@ def main(argv=None, output_dir=None):
                                             file_edit_month[sid][fpth] = mkey
                                     if _is_compounding_path(fpth):
                                         compounding_counter += 1
+                                        if mkey:
+                                            month_compounding[mkey] += 1
                                 elif name == "Write":
                                     a = line_count(inp.get("content", ""))
                                     lines_added += a
@@ -521,6 +661,8 @@ def main(argv=None, output_dir=None):
                                             file_edit_month[sid][fpth] = mkey
                                     if _is_compounding_path(fpth):
                                         compounding_counter += 1
+                                        if mkey:
+                                            month_compounding[mkey] += 1
                                 elif name == "MultiEdit":
                                     for e in inp.get("edits", []) or []:
                                         if isinstance(e, dict):
@@ -537,6 +679,8 @@ def main(argv=None, output_dir=None):
                                             file_edit_month[sid][fpth] = mkey
                                     if _is_compounding_path(fpth):
                                         compounding_counter += 1
+                                        if mkey:
+                                            month_compounding[mkey] += 1
                                 elif name == "NotebookEdit":
                                     lines_added += line_count(inp.get("new_source", ""))
                                     fpth = inp.get("notebook_path")
@@ -546,17 +690,23 @@ def main(argv=None, output_dir=None):
                                             file_edit_month[sid][fpth] = mkey
                                     if _is_compounding_path(fpth):
                                         compounding_counter += 1
+                                        if mkey:
+                                            month_compounding[mkey] += 1
                                 elif name == "Bash":
                                     cmd = inp.get("command", "") or ""
                                     if isinstance(cmd, list):
                                         cmd = " && ".join(str(c) for c in cmd)
                                     for _cli in _extract_clis(cmd):
                                         cli_counter[_cli] += 1
+                                        if mkey:
+                                            month_cli_counter[mkey][_cli] += 1
                                     if cur_src != "claude":
                                         # Claude invokes skills via the Skill tool (counted
                                         # above); other CLIs read SKILL.md through the shell
                                         for _sm in _SKILL_MD_RX.finditer(cmd):
                                             skill_counter[_sm.group(1)] += 1
+                                            if mkey:
+                                                month_skill_counter[mkey][_sm.group(1)] += 1
                                     if bash_writes_file(cmd):
                                         bash_write_calls += 1
                                         bash_authored_lines += cmd.count("\n")
@@ -565,6 +715,8 @@ def main(argv=None, output_dir=None):
                                             month_bash_authored_lines[mkey] += cmd.count("\n")
                                     if bash_runs_tests(cmd):
                                         shell_test_runs += 1
+                                        if mkey:
+                                            month_shell_test_runs[mkey] += 1
                                     if "git commit" in cmd:
                                         git_commits += 1
                                         # flush iteration-depth run for this session
@@ -751,7 +903,7 @@ def main(argv=None, output_dir=None):
             "mcp_calls": mcp_calls,
             "native_calls": native_calls,
             "mcp_share": round(mcp_calls / (mcp_calls + native_calls), 3) if (mcp_calls + native_calls) else 0,
-            "top_tools": tool_counter.most_common(40),
+            "top_tools": tool_counter.most_common(20),
             "category_breakdown": dict(cat_counter),
             "mcp_servers": mcp_server_counter.most_common(),
             "mcp_servers_distinct": len(mcp_server_counter),
@@ -820,7 +972,11 @@ def main(argv=None, output_dir=None):
             "skills_distinct": len(skill_counter),
             "skills_total": sum(skill_counter.values()),
             "subagent_types_distinct": len(subagent_counter),
-            "skills_all": skill_counter.most_common(),
+            # Cap high (not 50): compute_aq reads skills_all, so a low cap could drop a
+            # needle skill (brainstorm/code-review/…) ranked past the cap and silently shift
+            # the AQ vs the pre-cap score. 200 covers any real user; the scoring inputs emit
+            # the same capped list, so feeding them back reproduces the score (parity holds).
+            "skills_all": skill_counter.most_common(200),
             "compounding_writes": compounding_counter,
             "subagent_types": subagent_counter.most_common(10),
             "top_projects": [(os.path.basename(p), c, len(project_sessions[p]))
@@ -882,59 +1038,48 @@ def main(argv=None, output_dir=None):
         dow=DOW,
     )
 
-    with open(os.path.join(_out_dir, "stats.json"), "w", encoding="utf-8") as f:
-        json.dump(stats, f, indent=2, default=str)
+    # ---- per-month FULL stats slices (for scoring_inputs_by_source monthly) --
+    # Same months as monthly_noticed_stats; each entry's stats_full is a full
+    # stats-shaped dict (corpus/volume/behavior/velocity/stack/tools) so the SAME
+    # _build_scoring_inputs shaper runs over window AND each month (no drift).
+    # NOT serialized into stats.json — consumed only by build_scoring_inputs_by_source.
+    stats["_scoring_monthly_full"] = build_monthly_scoring_stats(
+        months=sorted(set(month_dates) | set(month_prompts) | set(month_tools)
+                      | set(month_tokens) | set(month_sessions)),
+        sources_present=sorted(source_files),
+        month_prompts=month_prompts, month_tools_count=month_tools,
+        month_churn=month_churn, month_models=month_models,
+        month_sessions=month_sessions, month_assistant_turns=month_assistant_turns,
+        month_thinking_blocks=month_thinking_blocks,
+        month_bash_authored_lines=month_bash_authored_lines,
+        month_tool_errors=month_tool_errors, month_recovered_errors=month_recovered_errors,
+        month_edits_per_file=month_edits_per_file, month_questions=month_questions,
+        month_delegate=month_delegate, month_background=month_background,
+        month_scheduled=month_scheduled, month_fanouts=month_fanouts,
+        month_tool_counter=month_tool_counter, month_session_ts=month_session_ts,
+        month_skill_counter=month_skill_counter, month_subagent_counter=month_subagent_counter,
+        month_mcp_server_counter=month_mcp_server_counter, month_cli_counter=month_cli_counter,
+        month_compounding=month_compounding, month_shell_test_runs=month_shell_test_runs,
+        month_api_errors=month_api_errors,
+        planning_ratio_window=planning_ratio,
+        cwds=list(project_activity.keys()),
+        gap_cap_s=GAP_CAP_S, burst_gap_s=BURST_GAP_S,
+        no_tool_activity=_no_tool_activity, all_sources_no_agent=_all_sources_no_agent,
+    )
 
-    if "--summary" in argv:
-        with open(os.path.join(_out_dir, "summary.json"), "w", encoding="utf-8") as f:
-            json.dump(build_summary(stats), f, indent=2, default=str)
-        print("  wrote summary.json (shareable subset -- measured metrics + monthly progression)")
-
-    write_report(stats, output_dir=_out_dir)
-    write_narrative_input(stats, opening_prompts, longest_prompts, output_dir=_out_dir)
-    scores = compute_scores(stats)
-    archetype, quote = pick_archetype(stats, scores)
-    # "In your own words" — pick the go-to phrase (most-repeated short prompt seen in >=2
-    # sessions), most cryptic, biggest crash-out. VERBATIM, never stored in stats.json.
-    goto = None
-    for ph, cnt in phrase_counts.most_common(25):
-        if cnt >= 3 and len(phrase_sess.get(ph, ())) >= 2:
-            goto = (phrase_repr[ph], cnt, len(phrase_sess[ph]))
-            break
-    def _dedup_rank(cands):   # keep highest score per unique prompt, ranked (deterministic)
-        best = {}
-        for sc, tx in cands:
-            k = tx.lower()
-            if k not in best or sc > best[k][0]:
-                best[k] = (sc, tx)
-        return sorted(best.values(), key=lambda x: (-x[0], x[1]))   # tie-break on text -> reproducible
-    cryptic_cands = _dedup_rank(cryptic_cands)
-    crashout_cands = _dedup_rank(crashout_cands)
-    # Each card shows the SINGLE best quote; a reroll button rerolls through this small pool
-    # (top few within striking distance of #1 — quality only, no weak tail).
-    def _quote_pool(cands, n=6, floor=0.5):
-        if not cands:
-            return []
-        top = cands[0][0]
-        return [tx for sc, tx in cands if sc >= top * floor][:n]
-    rage_pool = _quote_pool([(sc, tx) for sc, tx in crashout_cands if len(tx.split()) <= 9])
-    cuff_pool = _quote_pool(cryptic_cands)
-    voice = {"goto": goto, "crashouts": rage_pool, "cryptics": cuff_pool}
-    write_profile_html(stats, archetype, quote, scores, voice, output_dir=_out_dir)
-    print("\nWrote stats.json, report.md, narrative_input.md, profile.html to", _out_dir)
-    if "--no-open" not in argv:
-        _open_in_browser(os.path.join(_out_dir, "profile.html"))
-    print(f"  archetype: {archetype}  scores: {scores}")
-    print(f"  sources: " + ", ".join(f"{s}({source_files[s]}f/{len(source_sessions[s])}s)"
-                                      for s in sorted(source_files)))
-    print(f"  sessions={total_sessions}  prompts={prompts_count}  tool_calls={tool_use_total}")
-    print(f"  git churn={gc['churn']:,} lines (gold std, {gc['repos_with_commits']}/{gc['repos_seen']} repos)  "
-          f"vs tool-only={total_churn:,}  git velocity={git_velocity:.0f} ln/hr")
-    _idm_str = f"{iteration_mean:.1f}" if iteration_mean is not None else "-"
-    _erp_str = f"{error_rate_per_100_tools:.1f}" if error_rate_per_100_tools is not None else "-"
-    print(f"  iteration depth: mean {_idm_str} / max {iteration_max} ({heavy_files} files >15x)  "
-          f"errors={tool_errors} ({_erp_str}/100 tools)")
-    print(f"  autonomy={autonomy_score}/100  planning_ratio={planning_ratio:.2f}")
+    narrative = {
+        "opening_prompts": opening_prompts,
+        "longest_prompts": longest_prompts,
+        "phrase_counts": phrase_counts,
+        "phrase_repr": phrase_repr,
+        "phrase_sess": phrase_sess,
+        "cryptic_cands": cryptic_cands,
+        "crashout_cands": crashout_cands,
+        "gc": gc,
+        "source_files": source_files,
+        "source_sessions": source_sessions,
+    }
+    return stats, narrative
 
 
 # Re-export public API for backwards compatibility

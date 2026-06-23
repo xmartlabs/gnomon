@@ -9,56 +9,20 @@ from gnomon.analysis.metrics import (
     _fanout_median, _peak_hours, _preferred_days, _active_hours_and_longest_run,
     _token_usage_block,
 )
-from gnomon.scoring.gstack import score_breakdown
-from gnomon.scoring.archetype import pick_archetype
-from gnomon.scoring.insights import steering_reading, growth_edges_structured, signature_moves_structured
-
-
-def _build_profile(stats):
-    """Assemble the `profile` sub-dict for build_summary: level, per-axis scores with
-    explainable drill-down, archetype, and steering style. All values are computed or
-    count-based — no prompts, no verbatim quotes, no skill/project names beyond what
-    compute_aq already exposes. Defensive: if stats lacks the grading keys (e.g. a
-    zero-activity corpus) it still returns a well-formed dict."""
-    aq = stats.get("agentic", {})
-    sb = score_breakdown(stats)
-    arch_scores = {
-        "Execution": sb["execution"]["value"],
-        "Planning": sb["planning"]["value"],
-        "Engineering": sb["engineering"]["value"],
-    }
-    arch_title, arch_quote = pick_archetype(stats, arch_scores)
-    all_models = (stats.get("stack") or {}).get("models") or []
-    # pct is a GLOBAL share: total counts ALL models, then we cap the list to the
-    # top 12 for payload size. So if >12 models exist the shown pcts sum to <1
-    # (the dropped tail is honestly missing), never an inflated 100%.
-    total = sum(n for _, n in all_models)
-    _tok_by_model = {e["model_id"]: e for e in (stats.get("token_usage") or {}).get("by_model") or []}
-    model_usage = (
-        [
-            {
-                "model_id": m,
-                "model": _pretty_model(m),
-                "count": int(n),
-                "pct": round(n / total, 3),
-                "tokens_input":          (_tok_by_model.get(m) or {}).get("input", 0),
-                "tokens_output":         (_tok_by_model.get(m) or {}).get("output", 0),
-                "tokens_cache_read":     (_tok_by_model.get(m) or {}).get("cache_read", 0),
-                "tokens_cache_creation": (_tok_by_model.get(m) or {}).get("cache_creation", 0),
-            }
-            for m, n in all_models[:12]  # most_common() already desc
-        ]
-        if total > 0 else []
-    )
-    return {
-        "aq": aq,
-        "archetype": {"title": arch_title, "quote": arch_quote},
-        "scores": sb,
-        "steering": steering_reading(stats),
-        "growth_edges": growth_edges_structured(stats, arch_scores),
-        "signature_moves": signature_moves_structured(stats),
-        "model_usage": model_usage,
-    }
+from gnomon.scoring.inputs import (
+    SCORING_INPUTS_VERSION,
+    build_scoring_inputs as _build_scoring_inputs,
+    build_monthly_scoring_stats as _build_monthly_scoring_stats,
+)
+from gnomon.scoring.profiles import (
+    build_profile as _build_profile,
+    model_usage_from_models as _model_usage_from_models,
+)
+from gnomon.scoring.aggregate import score_by_source
+from gnomon.output.source_usage import (
+    build_source_usage as _build_source_usage,
+    build_source_usage_monthly as _build_source_usage_monthly,
+)
 
 
 def _build_monthly_noticed_stats(
@@ -157,7 +121,7 @@ def _build_monthly_noticed_stats(
                 "preferred_days": _preferred_days(month_weekday_hist.get(mk, Counter()), dow),
             },
             "tools": {
-                "top_tools": month_tool_counter.get(mk, Counter()).most_common(40),
+                "top_tools": month_tool_counter.get(mk, Counter()).most_common(20),
             },
         }
         out.append({
@@ -261,6 +225,20 @@ def _build_noticed_stats(stats):
         },
     }
 
+def _profiles_by_source(scoring_inputs_by_source):
+    """Precompute per-source + aggregate profiles (so mirdash just displays them — no
+    recompute). Each per-source profile's model_usage is populated from that source's own
+    stack.models (score_by_source leaves it empty); tokens are 0 there (token usage is only
+    tracked corpus-wide). The aggregate keeps model_usage empty (it's a score blend)."""
+    sbs = score_by_source(scoring_inputs_by_source or {})
+    for src, profile in (sbs.get("by_source") or {}).items():
+        window = (scoring_inputs_by_source.get(src) or {}).get("window") or {}
+        models = (window.get("stack") or {}).get("models") or []
+        tok_by_model = {e["model_id"]: e
+                        for e in ((window.get("token_usage") or {}).get("by_model") or [])}
+        profile["model_usage"] = _model_usage_from_models(models, tok_by_model)
+    return sbs
+
 
 def build_summary(stats):
     """The shareable subset for the low-cost feedback loop (docs/metrics-evaluation.md):
@@ -305,9 +283,26 @@ def build_summary(stats):
             "mcp_servers_distinct": t["mcp_servers_distinct"],
         },
         "progression_monthly": (stats.get("progression") or {}).get("monthly", []),
+        # Per-calendar-month evidence slice. KEEP: mirdash's ingest route unpacks this into
+        # the buildMetricMonthlyStats table (its monthly/team views depend on it). The
+        # window-level noticed_stats block stays dropped (nothing consumes it).
         "noticed_stats_monthly": stats.get("monthly_noticed_stats", []),
         "profile": _build_profile(stats),
-        "noticed_stats": _build_noticed_stats(stats),
+        # Raw scoring inputs per source × (window + month) — the cross-language parity
+        # contract (mirdash re-scores from these). Superset of the window-level
+        # noticed_stats block, which is dropped (the per-source window slice for the
+        # lone source equals the old whole-corpus noticed_stats here).
+        "scoring_inputs_version": stats.get("scoring_inputs_version", SCORING_INPUTS_VERSION),
+        "scoring_inputs_by_source": stats.get("scoring_inputs_by_source", {}),
+        # Precomputed per-agent + aggregate profiles (mirdash displays these directly; the
+        # pooled `profile` above stays the headline "Combined"). Raw inputs above let a
+        # future phase recompute these server-side, but for now gnomon ships them.
+        "profiles_by_source": _profiles_by_source(stats.get("scoring_inputs_by_source") or {}),
+        # Per-tool usage share (primary metric: prompts) for the "which tool did you use
+        # most" chart. Window-level + per-calendar-month (so the monthly view shows the
+        # month's share, not the whole-window share).
+        "source_usage": _build_source_usage(stats.get("scoring_inputs_by_source") or {}),
+        "source_usage_monthly": _build_source_usage_monthly(stats.get("scoring_inputs_by_source") or {}),
         "token_usage": stats.get("token_usage") or {
             "total_input": 0, "total_output": 0,
             "total_cache_read": 0, "total_cache_creation": 0,

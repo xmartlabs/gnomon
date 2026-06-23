@@ -80,10 +80,10 @@ class TestFailedState(unittest.TestCase):
         self.assertIn("Partial upload", page)
         self.assertIn("Upload failed", page)
 
-    def test_active_pill_icon_matches_single_month_spinner(self):
+    def test_active_pill_refresh_icon_spins(self):
         page = progress_server._PROGRESS_PAGE
-        self.assertIn(".pill.active .pi{animation:spin 1.2s linear infinite}", page)
-        # batch mode reuses same animated refresh glyph as single-month mode.
+        self.assertIn("@keyframes spin", page)
+        self.assertIn(".pill.active .pi{animation:spin", page)
         self.assertIn("if (state === 'active') icon = '\\u21BB';", page)
 
 

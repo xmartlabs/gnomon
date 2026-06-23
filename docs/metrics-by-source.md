@@ -49,16 +49,23 @@ Quick session reference. Keep only current coverage, current caveats, upload con
 - `context.client_version`
 - `churn.active_hours`
 - `churn.actions_per_prompt`
-- `noticed_stats`
 - `noticed_stats_monthly`
+- `scoring_inputs_version`
+- `scoring_inputs_by_source`
+- `profiles_by_source`
+- `source_usage`
+- `source_usage_monthly`
 
 Mirdash reads `actions_per_prompt` from `churn`, with legacy fallback to `context.actions_per_prompt`.
 
 ### Three time scales in the payload
 
-- `noticed_stats` — **window** (up to 6-month) aggregate evidence.
-- `noticed_stats_monthly` — **per calendar month**, same shape as `noticed_stats`, one entry per month with its own `git_churn`, tokens, errors, etc.
-- scores / profile / AQ — **window** only.
+- `scoring_inputs_by_source[*].window` — **window** (up to 6-month) raw scoring input per source.
+- `noticed_stats_monthly` — **per calendar month** evidence, one entry per month with its own `git_churn`, tokens, errors, etc.
+- `scoring_inputs_by_source[*].monthly` — **per source per calendar month** raw scoring inputs.
+- `profiles_by_source` / `profile` / AQ — **window** only.
+- `source_usage` — **window** usage share by source.
+- `source_usage_monthly` — **per calendar month** usage share by source.
 
 Per-month session counts can sum above the window's unique session count when a session crosses a month boundary (accepted).
 

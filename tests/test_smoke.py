@@ -128,15 +128,22 @@ class TestPipeline(unittest.TestCase):
             "context", "planning_ratio_explore_to_doing", "errors", "iteration_depth",
             "churn", "orchestration", "compounding_writes", "ecosystem",
             "progression_monthly", "noticed_stats_monthly", "profile",
-            "noticed_stats", "token_usage"})
+            "scoring_inputs_version", "scoring_inputs_by_source",
+            "profiles_by_source", "source_usage", "source_usage_monthly", "token_usage"})
         # profile must have the expected sub-keys
         prof = summary["profile"]
         self.assertEqual(set(prof), {"aq", "archetype", "scores", "steering",
                                      "growth_edges", "signature_moves", "model_usage"})
-        # no raw prompt/verbatim text in the shareable summary
+        # no raw prompt/verbatim text in the shareable summary. NOTE: raw skill names
+        # ARE now intentionally present (scoring_inputs_by_source carries top_skills /
+        # skills_all as the cross-language parity contract), so "top_skills" is no longer
+        # banned — only verbatim PROMPT text is.
         raw = json.dumps(summary).lower()
-        for banned in ("top_skills", "prompt_text"):
+        for banned in ("prompt_text",):
             self.assertNotIn(banned, raw, f"verbatim field leaked: {banned}")
+        # scoring inputs are present and re-scorable
+        self.assertEqual(summary["scoring_inputs_version"], 1)
+        self.assertIsInstance(summary["scoring_inputs_by_source"], dict)
 
     def test_no_summary_without_flag(self):
         _, out = _run(self, [])
@@ -1428,25 +1435,29 @@ class TestGA2BuildSummaryMonthly(unittest.TestCase):
     # noticed_stats_monthly present in build_summary() output
     # ------------------------------------------------------------------
 
-    def test_noticed_stats_monthly_in_build_summary(self):
-        """build_summary() must include noticed_stats_monthly."""
+    # NOTE: noticed_stats_monthly is KEPT in the build_summary() payload — mirdash's
+    # ingest route unpacks it into the buildMetricMonthlyStats table. The per-month data
+    # lives on stats["monthly_noticed_stats"] and is mirrored verbatim into the summary.
+
+    def test_noticed_stats_monthly_in_summary(self):
+        """summary must carry noticed_stats_monthly, mirroring stats['monthly_noticed_stats']."""
         stats = self._run(self._two_month_rows())
         summary = paxel.build_summary(stats)
+        self.assertIn("monthly_noticed_stats", stats)
         self.assertIn("noticed_stats_monthly", summary)
+        self.assertEqual(summary["noticed_stats_monthly"], stats["monthly_noticed_stats"])
 
     def test_noticed_stats_monthly_non_empty_for_multi_month(self):
-        """noticed_stats_monthly is a non-empty list when window spans >=1 month."""
+        """monthly_noticed_stats is a non-empty list when window spans >=1 month."""
         stats = self._run(self._two_month_rows())
-        summary = paxel.build_summary(stats)
-        nsm = summary["noticed_stats_monthly"]
+        nsm = stats["monthly_noticed_stats"]
         self.assertIsInstance(nsm, list)
         self.assertGreater(len(nsm), 0)
 
     def test_noticed_stats_monthly_entry_shape(self):
         """Each entry must carry month, range_start, range_end, stats, token_usage."""
         stats = self._run(self._two_month_rows())
-        summary = paxel.build_summary(stats)
-        for entry in summary["noticed_stats_monthly"]:
+        for entry in stats["monthly_noticed_stats"]:
             self.assertIn("month", entry)
             self.assertIn("range_start", entry)
             self.assertIn("range_end", entry)
@@ -1456,30 +1467,23 @@ class TestGA2BuildSummaryMonthly(unittest.TestCase):
     def test_noticed_stats_monthly_stats_shape_matches_window(self):
         """Each entry's stats must have the same top-level keys as window noticed_stats."""
         stats = self._run(self._two_month_rows())
-        summary = paxel.build_summary(stats)
-        window_keys = set(summary["noticed_stats"])
-        for entry in summary["noticed_stats_monthly"]:
+        window_keys = set(paxel._build_noticed_stats(stats))
+        for entry in stats["monthly_noticed_stats"]:
             self.assertEqual(set(entry["stats"]), window_keys,
-                             "noticed_stats_monthly entry shape diverged from window noticed_stats")
-
-    def test_noticed_stats_monthly_matches_stats_field(self):
-        """summary['noticed_stats_monthly'] must equal stats['monthly_noticed_stats']."""
-        stats = self._run(self._two_month_rows())
-        summary = paxel.build_summary(stats)
-        self.assertEqual(summary["noticed_stats_monthly"], stats["monthly_noticed_stats"])
+                             "monthly_noticed_stats entry shape diverged from window noticed_stats")
 
     # ------------------------------------------------------------------
-    # progression_monthly reconciliation with noticed_stats_monthly
+    # progression_monthly reconciliation with monthly_noticed_stats
     # ------------------------------------------------------------------
 
     def test_progression_monthly_prompts_match_noticed(self):
-        """progression_monthly[i].prompts == noticed_stats_monthly[i].stats.volume.total_prompts."""
+        """progression_monthly[i].prompts == monthly_noticed_stats[i].stats.volume.total_prompts."""
         stats = self._run(self._two_month_rows())
         summary = paxel.build_summary(stats)
         pm = {e["month"]: e for e in summary["progression_monthly"]}
-        nm = {e["month"]: e for e in summary["noticed_stats_monthly"]}
+        nm = {e["month"]: e for e in stats["monthly_noticed_stats"]}
         self.assertEqual(set(pm), set(nm),
-                         "progression_monthly and noticed_stats_monthly must cover the same months")
+                         "progression_monthly and monthly_noticed_stats must cover the same months")
         for month, p in pm.items():
             n = nm[month]
             self.assertEqual(p["prompts"], n["stats"]["volume"]["total_prompts"],
@@ -1487,11 +1491,11 @@ class TestGA2BuildSummaryMonthly(unittest.TestCase):
                              f"progression={p['prompts']} noticed={n['stats']['volume']['total_prompts']}")
 
     def test_progression_monthly_tool_calls_match_noticed(self):
-        """progression_monthly[i].tool_calls == noticed_stats_monthly[i].stats.volume.tool_calls_total."""
+        """progression_monthly[i].tool_calls == monthly_noticed_stats[i].stats.volume.tool_calls_total."""
         stats = self._run(self._two_month_rows())
         summary = paxel.build_summary(stats)
         pm = {e["month"]: e for e in summary["progression_monthly"]}
-        nm = {e["month"]: e for e in summary["noticed_stats_monthly"]}
+        nm = {e["month"]: e for e in stats["monthly_noticed_stats"]}
         for month, p in pm.items():
             n = nm[month]
             self.assertEqual(p["tool_calls"], n["stats"]["volume"]["tool_calls_total"],
@@ -1499,11 +1503,11 @@ class TestGA2BuildSummaryMonthly(unittest.TestCase):
                              f"progression={p['tool_calls']} noticed={n['stats']['volume']['tool_calls_total']}")
 
     def test_progression_monthly_tokens_total_match_noticed(self):
-        """progression_monthly[i].tokens_total == sum of noticed_stats_monthly[i].token_usage totals."""
+        """progression_monthly[i].tokens_total == sum of monthly_noticed_stats[i].token_usage totals."""
         stats = self._run(self._two_month_rows())
         summary = paxel.build_summary(stats)
         pm = {e["month"]: e for e in summary["progression_monthly"]}
-        nm = {e["month"]: e for e in summary["noticed_stats_monthly"]}
+        nm = {e["month"]: e for e in stats["monthly_noticed_stats"]}
         for month, p in pm.items():
             n = nm[month]
             tu = n["token_usage"]
@@ -1518,7 +1522,7 @@ class TestGA2BuildSummaryMonthly(unittest.TestCase):
         stats = self._run(self._two_month_rows())
         summary = paxel.build_summary(stats)
         pm_months = [e["month"] for e in summary["progression_monthly"]]
-        nm_months = [e["month"] for e in summary["noticed_stats_monthly"]]
+        nm_months = [e["month"] for e in stats["monthly_noticed_stats"]]
         self.assertEqual(pm_months, sorted(pm_months), "progression_monthly not chronological")
         self.assertEqual(nm_months, sorted(nm_months), "noticed_stats_monthly not chronological")
         # same set of months in same order

@@ -169,7 +169,7 @@ class TestPaxelArtifacts(unittest.TestCase):
             )
         return path
 
-    def test_default_preserves_artifact_directory_and_prints_path(self):
+    def test_default_preserves_artifact_directory_without_printing_path(self):
         with tempfile.TemporaryDirectory() as src_dir:
             paxel_src = self._write_fake_paxel(src_dir)
             buf = io.StringIO()
@@ -183,8 +183,7 @@ class TestPaxelArtifacts(unittest.TestCase):
         self.assertTrue(os.path.isdir(artifact_dir))
         self.assertTrue(os.path.isfile(os.path.join(artifact_dir, "summary.json")))
         self.assertTrue(os.path.isfile(os.path.join(artifact_dir, "narrative_input.md")))
-        printed_path = buf.getvalue().split("Artifacts kept at:", 1)[1].strip()
-        self.assertEqual(os.path.realpath(printed_path), os.path.realpath(artifact_dir))
+        self.assertNotIn("Artifacts kept at:", buf.getvalue())
 
     def test_quiet_suppresses_default_artifact_path(self):
         with tempfile.TemporaryDirectory() as src_dir:
