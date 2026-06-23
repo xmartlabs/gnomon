@@ -19,10 +19,10 @@ Releases are tagged `v0.2.0`, `v0.3.0`, etc. Use `@latest` to always get the mos
 
 ```bash
 # Recommended: install the latest release (no clone needed)
-uvx --reinstall --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights --local
+uvx --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights --local
 
 # Or pin a specific version
-uvx --reinstall --from git+https://github.com/xmartlabs/gnomon@v0.3.0 xl-ai-insights --local
+uvx --from git+https://github.com/xmartlabs/gnomon@v0.3.0 xl-ai-insights --local
 
 # Or clone the repo and run directly
 git clone https://github.com/xmartlabs/gnomon
@@ -31,6 +31,8 @@ python3 paxel.py
 ```
 
 All read detected local transcripts (Claude, Codex, Gemini, Cursor, …) and open your profile.
+
+> **Cache note:** `uvx` caches packages. After a new release, run `uv cache prune` first to pick up the new version.
 
 Restrict to one or more sources:
 
@@ -52,7 +54,7 @@ To upload `summary.json` and view your evolution over time, run `xl-ai-insights`
 
 ```bash
 # Run via uvx (latest release)
-uvx --reinstall --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights
+uvx --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights
 
 # Once published to PyPI
 uvx xl-ai-insights
@@ -64,11 +66,11 @@ pipx run xl-ai-insights
 It accepts the same source arguments:
 
 ```bash
-uvx --reinstall --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights claude
-uvx --reinstall --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights --no-open
-uvx --reinstall --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights --output-dir=.
-uvx --reinstall --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights --window=3
-uvx --reinstall --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights --help
+uvx --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights claude
+uvx --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights --no-open
+uvx --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights --output-dir=.
+uvx --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights --window=3
+uvx --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights --help
 ```
 
 Each scored point is computed over a **trailing window of `--window=N` calendar
@@ -126,7 +128,7 @@ The config file is optional and only needed to override the default. It lives ou
 
 ```bash
 # Dev / self-hosted override
-uvx --reinstall --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights --mirdash-base=http://localhost:3000
+uvx --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights --mirdash-base=http://localhost:3000
 ```
 
 Scope to a time window (for monthly / quarterly check-ins):
