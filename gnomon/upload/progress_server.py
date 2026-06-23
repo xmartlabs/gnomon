@@ -155,8 +155,10 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
 .redir .blink{animation:blink 1.2s step-end infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
 
-.privacy{margin-top:18px;font-size:11px;color:var(--text-muted)}
+.privacy{margin-top:18px;font-size:11px;line-height:1.5;color:var(--text-muted);
+  max-width:380px;margin-left:auto;margin-right:auto}
 .privacy b{color:var(--text-secondary);font-weight:600}
+.privacy code{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-secondary)}
 
 .hidden{display:none!important}
 </style>
@@ -177,11 +179,11 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     <svg id="icon-check" class="hidden" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
   </div>
 
-  <h1 id="title">Esperando inicio de sesi&oacute;n&hellip;</h1>
+  <h1 id="title">Waiting for sign-in&hellip;</h1>
   <p class="sub" id="subtitle"></p>
 
   <!-- Sign-in fallback (revealed if auth hasn't arrived) -->
-  <a id="signin" class="signin hidden" href="__AUTH_URL__">Iniciar sesi&oacute;n con mirdash</a>
+  <a id="signin" class="signin hidden" href="__AUTH_URL__">Sign in with mirdash</a>
 
   <!-- Single-month steps (hidden until authenticated — no fake progress pre-login) -->
   <div id="single" class="steps hidden">
@@ -210,7 +212,7 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     <span class="blink">&hellip;</span>
   </div>
 
-  <div class="privacy">Only summary.json is uploaded &middot; <b>your transcripts never leave your machine</b></div>
+  <div class="privacy"><b>Your transcripts never leave your machine.</b> Only aggregated usage statistics (<code>summary.json</code>) are uploaded &mdash; mirdash uses them to generate your recommendations.</div>
 </div>
 
 <script>
@@ -231,7 +233,7 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     if (!authed) {
       var btn = document.getElementById('signin');
       if (btn && btn.getAttribute('href') && btn.getAttribute('href') !== '__AUTH_URL__') {
-        document.getElementById('subtitle').textContent = '\\u00BFNo se abri\\u00F3 el login? Inici\\u00E1 sesi\\u00F3n para continuar.';
+        document.getElementById('subtitle').textContent = 'Login didn\\u2019t open? Sign in to continue.';
         btn.classList.remove('hidden');
       }
     }
@@ -327,19 +329,19 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
       icon.style.background = 'rgba(251,191,36,.12)';
       icon.style.borderColor = 'rgba(251,191,36,.3)';
       document.getElementById('icon-check').style.stroke = 'var(--warn)';
-      h1.textContent = 'Subida parcial';
+      h1.textContent = 'Partial upload';
       h1.style.color = 'var(--warn)';
-      sub.textContent = uploaded + (uploaded === 1 ? ' mes subido' : ' meses subidos') + ', ' +
-        failedCount + (failedCount === 1 ? ' fall\\u00F3' : ' fallaron') + ' \\u2014 revis\\u00E1 la terminal.';
+      sub.textContent = uploaded + (uploaded === 1 ? ' month uploaded' : ' months uploaded') + ', ' +
+        failedCount + (failedCount === 1 ? ' failed' : ' failed') + ' \\u2014 check your terminal.';
     } else if (failedCount > 0) {
       // Total failure.
       icon.className = 'icon-wrap icon-progress';
       icon.style.background = 'rgba(248,113,113,.12)';
       icon.style.borderColor = 'rgba(248,113,113,.3)';
       document.getElementById('icon-check').style.stroke = 'var(--danger)';
-      h1.textContent = 'Fall\\u00F3 la subida';
+      h1.textContent = 'Upload failed';
       h1.style.color = 'var(--danger)';
-      sub.textContent = 'No se pudo subir \\u2014 revis\\u00E1 la terminal.';
+      sub.textContent = 'Upload failed \\u2014 check your terminal.';
       if (!isBatch) setStep('step-upload', 'failed');
     } else if (uploaded > 0) {
       icon.className = 'icon-wrap icon-done';
@@ -378,7 +380,7 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     mirdashBase = data.mirdashBase || '';
     var btn = document.getElementById('signin');
     if (btn) btn.classList.add('hidden');
-    document.getElementById('title').textContent = 'Procesando\\u2026';
+    document.getElementById('title').textContent = 'Processing\\u2026';
     document.getElementById('subtitle').textContent = '';
     if (data.months && data.months.length > 1) {
       initBatch(data.months);
@@ -442,7 +444,7 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
       setStep('step-analyze', 'done');
       setStep('step-upload', 'failed');
       var lbl = document.querySelector('#step-upload .label');
-      if (lbl) lbl.textContent = 'Fall\\u00F3 la subida';
+      if (lbl) lbl.textContent = 'Upload failed';
     }
   });
 
@@ -459,10 +461,10 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     if (tickId) { clearInterval(tickId); tickId = null; }
     setStep('step-auth', 'failed');
     var lbl = document.querySelector('#step-auth .label');
-    if (lbl) lbl.textContent = 'Inicio de sesi\\u00F3n expirado';
-    document.getElementById('title').textContent = 'Inicio de sesi\\u00F3n expirado';
+    if (lbl) lbl.textContent = 'Sign-in expired';
+    document.getElementById('title').textContent = 'Sign-in expired';
     document.getElementById('title').style.color = 'var(--text-muted)';
-    document.getElementById('subtitle').textContent = 'Volv\\u00E9 a correr el comando o inici\\u00E1 sesi\\u00F3n arriba.';
+    document.getElementById('subtitle').textContent = 'Re-run the command or sign in above.';
     var btn = document.getElementById('signin');
     if (btn && btn.getAttribute('href') && btn.getAttribute('href') !== '__AUTH_URL__') {
       btn.classList.remove('hidden');

@@ -41,7 +41,7 @@ class TestHonestInitialState(unittest.TestCase):
 
     def test_waiting_title_is_honest(self):
         page = progress_server._PROGRESS_PAGE
-        self.assertIn('<h1 id="title">Esperando inicio de sesi&oacute;n&hellip;</h1>', page)
+        self.assertIn('<h1 id="title">Waiting for sign-in&hellip;</h1>', page)
 
     def test_signin_button_has_auth_url_placeholder(self):
         page = progress_server._PROGRESS_PAGE
@@ -75,8 +75,8 @@ class TestFailedState(unittest.TestCase):
     def test_showdone_uses_failed_count(self):
         page = progress_server._PROGRESS_PAGE
         self.assertIn("data.failed", page)
-        self.assertIn("Subida parcial", page)
-        self.assertIn("Fall", page)  # "Falló la subida"
+        self.assertIn("Partial upload", page)
+        self.assertIn("Upload failed", page)
 
     def test_active_pill_icon_is_uparrow_animated(self):
         page = progress_server._PROGRESS_PAGE
