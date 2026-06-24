@@ -248,7 +248,7 @@ def build_summary(stats):
     Safe to share as-is."""
     v, b, vel, st, t, c = (stats["volume"], stats["behavior"], stats["velocity"],
                            stats["stack"], stats["tools"], stats["corpus"])
-    return {
+    result = {
         "context": {
             "date_range": c.get("date_range"),
             "window": c.get("window"),
@@ -283,24 +283,11 @@ def build_summary(stats):
             "mcp_servers_distinct": t["mcp_servers_distinct"],
         },
         "progression_monthly": (stats.get("progression") or {}).get("monthly", []),
-        # Per-calendar-month evidence slice. KEEP: mirdash's ingest route unpacks this into
-        # the buildMetricMonthlyStats table (its monthly/team views depend on it). The
-        # window-level noticed_stats block stays dropped (nothing consumes it).
         "noticed_stats_monthly": stats.get("monthly_noticed_stats", []),
         "profile": _build_profile(stats),
-        # Raw scoring inputs per source × (window + month) — the cross-language parity
-        # contract (mirdash re-scores from these). Superset of the window-level
-        # noticed_stats block, which is dropped (the per-source window slice for the
-        # lone source equals the old whole-corpus noticed_stats here).
         "scoring_inputs_version": stats.get("scoring_inputs_version", SCORING_INPUTS_VERSION),
         "scoring_inputs_by_source": stats.get("scoring_inputs_by_source", {}),
-        # Precomputed per-agent + aggregate profiles (mirdash displays these directly; the
-        # pooled `profile` above stays the headline "Combined"). Raw inputs above let a
-        # future phase recompute these server-side, but for now gnomon ships them.
         "profiles_by_source": _profiles_by_source(stats.get("scoring_inputs_by_source") or {}),
-        # Per-tool usage share (primary metric: prompts) for the "which tool did you use
-        # most" chart. Window-level + per-calendar-month (so the monthly view shows the
-        # month's share, not the whole-window share).
         "source_usage": _build_source_usage(stats.get("scoring_inputs_by_source") or {}),
         "source_usage_monthly": _build_source_usage_monthly(stats.get("scoring_inputs_by_source") or {}),
         "token_usage": stats.get("token_usage") or {
@@ -309,3 +296,7 @@ def build_summary(stats):
             "by_model": [],
         },
     }
+    timing = stats.get("timing")
+    if timing:
+        result["timing"] = timing
+    return result

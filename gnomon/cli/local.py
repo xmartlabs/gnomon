@@ -8,6 +8,7 @@ import os
 import re
 import statistics
 import sys
+import time
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 
@@ -59,6 +60,8 @@ def main(argv=None, output_dir=None):
     else:
         _out_dir = OUT_DIR
 
+    _t_main_start = time.monotonic()
+
     # Sources to analyze: pass names as args (e.g. `python3 paxel.py claude`) to
     # restrict; default is every detected source. ("claude" keeps it to your own
     # Claude Code work; omit args to fold in Codex + Gemini too.)
@@ -87,6 +90,7 @@ def main(argv=None, output_dir=None):
             setattr(_cfg, 'BASE', resolved)
         if not os.path.isdir(resolved):
             print(f"  warning: --{src}-dir path not found: {resolved}")
+    _t0_disc = time.monotonic()
     sources = discover_sources(selected)
     # Optional time window (--since/--until/--last): events outside it are skipped, so
     # every downstream metric — INCLUDING git churn, whose since/until follow the kept
@@ -120,6 +124,7 @@ def main(argv=None, output_dir=None):
     print(f"Found {len(sources)} transcript files across "
           f"{', '.join(f'{k}:{v}' for k, v in by_src.items()) or 'no sources'}")
     sources, cursor_twins = _cursor_dedup(sources)
+    _t_discovery = time.monotonic() - _t0_disc
     if not sources:
         print("\n  No transcripts found in ~/.claude/projects, ~/.codex/sessions, "
               "~/.gemini/tmp, ~/.pi/agent/sessions, ~/.local/share/opencode/storage, "
@@ -129,9 +134,11 @@ def main(argv=None, output_dir=None):
 
     # Whole-corpus accumulation (all sources pooled, capabilities = union) — this is
     # the legacy/primary stats dict that drives the report, HTML and `profile`.
+    _t0_acc = time.monotonic()
     stats, narrative = _accumulate(
         sources, since_dt, until_dt, cursor_twins, antigravity,
         total_file_count=len(sources), verbose=True)
+    _t_accumulate_corpus = time.monotonic() - _t0_acc
     opening_prompts = narrative["opening_prompts"]
     longest_prompts = narrative["longest_prompts"]
     phrase_counts = narrative["phrase_counts"]
@@ -161,25 +168,46 @@ def main(argv=None, output_dir=None):
     # source's caps, cwds for git churn, cursor dedup partition, etc.). The window +
     # per-month raw inputs for every source feed scoring_inputs_by_source.
     stats["scoring_inputs_version"] = SCORING_INPUTS_VERSION
+    _t0_si = time.monotonic()
     stats["scoring_inputs_by_source"] = build_scoring_inputs_by_source(
         sources, since_dt, until_dt, cursor_twins, antigravity,
         accumulate_fn=_accumulate,
         corpus_stats=stats)
+    _t_scoring_inputs = time.monotonic() - _t0_si
     # internal-only working field (per-month full stats slices); not part of the payload
     stats.pop("_scoring_monthly_full", None)
+
+    write_report(stats, output_dir=_out_dir)
+    write_narrative_input(stats, opening_prompts, longest_prompts, output_dir=_out_dir)
+    _t0_scores = time.monotonic()
+    scores = compute_scores(stats)
+    _t_compute_scores = time.monotonic() - _t0_scores
+    archetype, quote = pick_archetype(stats, scores)
+
+    # ---- assemble timing metadata ------------------------------------------
+    _t_compute_aq = stats.pop("_timing_compute_aq_s", 0)
+    _timing_per_source = stats.pop("_timing_per_source", {})
+    stats["timing"] = {
+        "wall_clock_total_s": round(time.monotonic() - _t_main_start, 3),
+        "discovery_s": round(_t_discovery, 3),
+        "accumulate_corpus_s": round(_t_accumulate_corpus, 3),
+        "accumulate_per_source_s": {k: round(v, 3) for k, v in _timing_per_source.items()},
+        "scoring_inputs_by_source_s": round(_t_scoring_inputs, 3),
+        "compute_aq_s": round(_t_compute_aq, 3),
+        "compute_scores_s": round(_t_compute_scores, 3),
+    }
 
     with open(os.path.join(_out_dir, "stats.json"), "w", encoding="utf-8") as f:
         json.dump(stats, f, indent=2, default=str)
 
     if "--summary" in argv:
+        _t0_summ = time.monotonic()
+        summary = build_summary(stats)
+        stats["timing"]["build_summary_s"] = round(time.monotonic() - _t0_summ, 3)
+        summary["timing"] = stats["timing"]
         with open(os.path.join(_out_dir, "summary.json"), "w", encoding="utf-8") as f:
-            json.dump(build_summary(stats), f, indent=2, default=str)
+            json.dump(summary, f, indent=2, default=str)
         print("  wrote summary.json (shareable subset -- measured metrics + monthly progression)")
-
-    write_report(stats, output_dir=_out_dir)
-    write_narrative_input(stats, opening_prompts, longest_prompts, output_dir=_out_dir)
-    scores = compute_scores(stats)
-    archetype, quote = pick_archetype(stats, scores)
     # "In your own words" — pick the go-to phrase (most-repeated short prompt seen in >=2
     # sessions), most cryptic, biggest crash-out. VERBATIM, never stored in stats.json.
     goto = None
@@ -1011,7 +1039,9 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
     # ---- aggregate token_usage block ----------------------------------------
     # order by total tokens desc (consistent with model_usage ordering in _build_profile)
     stats["token_usage"] = _token_usage_block(model_tokens)
+    _t0_aq = time.monotonic()
     stats["agentic"] = compute_aq(stats)
+    stats["_timing_compute_aq_s"] = time.monotonic() - _t0_aq
 
     # ---- per-calendar-month noticed_stats (GA1) -----------------------------
     # One entry per month present in the window, chronological. Each entry's

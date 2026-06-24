@@ -131,7 +131,8 @@ class TestPipeline(unittest.TestCase):
             "churn", "orchestration", "compounding_writes", "ecosystem",
             "progression_monthly", "noticed_stats_monthly", "profile",
             "scoring_inputs_version", "scoring_inputs_by_source",
-            "profiles_by_source", "source_usage", "source_usage_monthly", "token_usage"})
+            "profiles_by_source", "source_usage", "source_usage_monthly", "token_usage",
+            "timing"})
         # profile must have the expected sub-keys
         prof = summary["profile"]
         self.assertEqual(set(prof), {"aq", "archetype", "scores", "steering",
