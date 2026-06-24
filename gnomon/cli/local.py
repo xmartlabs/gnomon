@@ -358,18 +358,19 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
     stats = corpus.to_corpus_stats(since_dt, until_dt, antigravity)
 
     # ---- per-source stats (single-pass scoring inputs) -------------------------
-    # When there's only a single active source, main() uses the full corpus stats
-    # directly, so we just register the source name (skip the extra git_churn calls).
+    # When there's only a single source, main() uses the full corpus stats directly,
+    # so we just register the source name (skip the extra git_churn calls). The fast
+    # path keys off the DISCOVERED source count so it stays consistent with main()'s
+    # `len(_per_source_stats) == 1` decision — keying off the *active* count would let
+    # main() take the multi-source path while every entry is None (→ build_scoring_inputs(None)).
+    # Each source is shaped fully from its own accumulator (mirrors a per-slice _accumulate).
     _per_source_stats = {}
-    _active_srcs = [s for s, a in src_accums.items()
-                    if a.prompts_count > 0 or a.tool_use_total > 0]
-    _single_source = len(_active_srcs) == 1
+    _single_source = len(src_accums) == 1
     for _src_name, _sa in src_accums.items():
         if _single_source:
             _per_source_stats[_src_name] = None
             continue
-        _per_source_stats[_src_name] = _sa.to_source_stats(
-            _src_name, corpus.no_tool_activity, corpus.gc_since, corpus.gc_until)
+        _per_source_stats[_src_name] = _sa.to_source_stats(_src_name, since_dt, until_dt)
 
     narrative = {
         "opening_prompts": opening_prompts,

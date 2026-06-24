@@ -166,12 +166,8 @@ class Accumulator:
         self._file_edit_run = defaultdict(lambda: defaultdict(int))
         self._file_edit_month = defaultdict(dict)
 
-        # set by to_corpus_stats so the orchestrator can reuse the corpus-level
-        # git window + null-honesty flag when shaping per-source stats, and surface
-        # the raw git_churn dict in the narrative payload main() consumes.
-        self.gc_since = None
-        self.gc_until = None
-        self.no_tool_activity = False
+        # set by to_corpus_stats to surface the raw git_churn dict in the narrative
+        # payload main() consumes.
         self.gc = None
 
     # ---- file lifecycle ----------------------------------------------------
@@ -535,8 +531,8 @@ class Accumulator:
 
     # ---- shaping: whole-corpus stats ---------------------------------------
     def to_corpus_stats(self, since_dt, until_dt, antigravity):
-        """Build the full corpus stats dict. Also stashes self.gc_since /
-        self.gc_until / self.no_tool_activity for the per-source pass."""
+        """Build the full corpus stats dict. Also stashes self.gc (the raw git_churn
+        dict) for the narrative payload main() consumes."""
         # ---- derive ----------------------------------------------------------
         total_sessions = len(self.session_ts) or len(self.session_files)
         # Active time = sum of consecutive inter-event gaps, each capped at GAP_CAP_S,
@@ -567,8 +563,6 @@ class Accumulator:
         else:
             gc_since = self.all_min_dt.isoformat() if self.all_min_dt else "1970-01-01"
             gc_until = self.all_max_dt.isoformat() if self.all_max_dt else "2100-01-01"
-        self.gc_since = gc_since
-        self.gc_until = gc_until
         gc = git_churn(list(self.project_activity.keys()), gc_since, gc_until)
         self.gc = gc
         git_velocity = (gc["churn"] / active_hours) if active_hours > 0 else 0
@@ -589,7 +583,6 @@ class Accumulator:
         # sources never produced any tool calls. Real 0 stays 0; "never saw a tool"
         # becomes None.
         no_tool_activity = (self.tool_use_total == 0 and bool(self.source_sessions))
-        self.no_tool_activity = no_tool_activity
 
         error_recovery_ratio = _error_recovery_ratio(self.recovered_errors, self.tool_errors, no_tool_activity)
         error_rate_per_100_tools = _error_rate_per_100(self.tool_errors, self.tool_use_total, no_tool_activity)
@@ -846,20 +839,25 @@ class Accumulator:
         )
 
     # ---- shaping: per-source stats (reduced shape for build_scoring_inputs) -----
-    def to_source_stats(self, src_name, no_tool_activity, gc_since, gc_until):
+    def to_source_stats(self, src_name, since_dt, until_dt):
         """Build the reduced per-source stats dict consumed by build_scoring_inputs.
 
-        `no_tool_activity` and the git window (gc_since/gc_until) are the CORPUS
-        values — per-source scoring inputs inherit the corpus null-honesty flag and
-        the corpus-requested git window, matching the original per-source path."""
+        Everything is derived from THIS source's accumulator — null-honesty, the git
+        window, and the session-count fallback are all computed source-locally, so the
+        result matches what running _accumulate over this source's file slice produces
+        (the pre-single-pass per-source path). Inheriting corpus-level flags here would
+        flip a prompt-only source's null metrics from None to 0 and mis-bound its churn."""
         _s_tool_total = self.tool_use_total
         _s_all_no_agent = src_name in _AGENT_UNSUPPORTED_SOURCES
+        # Null-honesty per source: a source slice with sessions but zero tool calls
+        # cannot measure tool-level metrics → None (not a real 0).
+        _s_no_tool = (_s_tool_total == 0 and bool(self.source_sessions))
 
-        _s_ids = _iteration_depth_stats(self.edits_per_file_events, no_tool_activity)
-        _s_err_rate = _error_rate_per_100(self.tool_errors, _s_tool_total, no_tool_activity)
-        _s_recov = _error_recovery_ratio(self.recovered_errors, self.tool_errors, no_tool_activity)
+        _s_ids = _iteration_depth_stats(self.edits_per_file_events, _s_no_tool)
+        _s_err_rate = _error_rate_per_100(self.tool_errors, _s_tool_total, _s_no_tool)
+        _s_recov = _error_recovery_ratio(self.recovered_errors, self.tool_errors, _s_no_tool)
         _s_fanouts_list = [n for n in self.agents_per_session.values() if n > 0]
-        _s_fan_med = _fanout_median(_s_fanouts_list, no_tool_activity, _s_all_no_agent)
+        _s_fan_med = _fanout_median(_s_fanouts_list, _s_no_tool, _s_all_no_agent)
         _s_active_hours, _ = _active_hours_and_longest_run(
             self.session_ts, GAP_CAP_S, BURST_GAP_S)
 
@@ -881,8 +879,17 @@ class Accumulator:
         _s_doing = _s_produce + _s_execute + _s_cats.get("delegate", 0)
         _s_planning_ratio = round((_s_explore / _s_doing) if _s_doing else 0, 2)
 
-        _s_gc = git_churn(list(self.project_activity.keys()), gc_since, gc_until)
-        _s_sessions = len(self.session_ts)
+        # Source-local git window: requested --since/--until, else this source's own
+        # event span (same formula to_corpus_stats uses for the corpus span).
+        if since_dt is not None or until_dt is not None:
+            _s_gc_since = since_dt.strftime("%Y-%m-%d") if since_dt is not None else (self.all_min_dt.isoformat() if self.all_min_dt else "1970-01-01")
+            _s_gc_until = (until_dt.strftime("%Y-%m-%d")
+                           if until_dt is not None else (self.all_max_dt.isoformat() if self.all_max_dt else "2100-01-01"))
+        else:
+            _s_gc_since = self.all_min_dt.isoformat() if self.all_min_dt else "1970-01-01"
+            _s_gc_until = self.all_max_dt.isoformat() if self.all_max_dt else "2100-01-01"
+        _s_gc = git_churn(list(self.project_activity.keys()), _s_gc_since, _s_gc_until)
+        _s_sessions = len(self.session_ts) or len(self.session_files)
 
         s_stats = {
             "corpus": {"sources": {src_name: {
@@ -957,5 +964,5 @@ class Accumulator:
             "agentic": {},
         }
         s_stats["_scoring_monthly_full"] = self.to_monthly(
-            _s_planning_ratio, no_tool_activity, _s_all_no_agent)
+            _s_planning_ratio, _s_no_tool, _s_all_no_agent)
         return s_stats
