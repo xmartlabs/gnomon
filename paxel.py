@@ -49,6 +49,12 @@ _ATTR_TARGETS = {
                      ("gnomon.cli.local", "CODEX_DIR")],
     "GEMINI_DIR":   [("gnomon.sources.discovery", "GEMINI_DIR"),
                      ("gnomon.cli.local", "GEMINI_DIR")],
+    "ANTIGRAVITY_CLI_DIR": [("gnomon.sources.discovery", "ANTIGRAVITY_CLI_DIR"),
+                            ("gnomon.cli.local", "ANTIGRAVITY_CLI_DIR")],
+    # antigravity.py binds ANTIGRAVITY_DB by value (from ... import), so the live IDE-export
+    # gate (antigravity_summary) reads it there — patch BOTH so tests can neutralize it.
+    "ANTIGRAVITY_DB": [("gnomon.sources.discovery", "ANTIGRAVITY_DB"),
+                       ("gnomon.sources.antigravity", "ANTIGRAVITY_DB")],
     "PI_DIR":       [("gnomon.sources.discovery", "PI_DIR"),
                      ("gnomon.cli.local", "PI_DIR")],
     "OPENCODE_DIR": [("gnomon.sources.discovery", "OPENCODE_DIR"),

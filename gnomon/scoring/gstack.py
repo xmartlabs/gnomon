@@ -58,6 +58,36 @@ def _clamp(x):
     return max(0.0, min(1.0, x))
 
 
+def _caps_of(stats):
+    from gnomon.config import available_caps
+    return available_caps((stats.get("corpus") or {}).get("sources", {}) or {})
+
+
+def _apply_sub_caps(subs, caps):
+    """Drop score_breakdown subs whose `_cap` no present source can emit, renormalize the kept
+    subs' display weights to sum 1.0 (mirrors _axis_value so the breakdown matches the score),
+    and strip the internal `_cap` key. Subs without a `_cap` are always kept."""
+    kept = []
+    for s in subs:
+        cap = s.pop("_cap", None)
+        if cap is None or cap in caps:
+            kept.append(s)
+    tot = sum(s["weight"] for s in kept) or 1.0
+    for s in kept:
+        s["weight"] = round(s["weight"] / tot, 4)
+    return kept
+
+
+def _axis_value(terms, caps):
+    """terms: [(weight, pct, required_cap_or_None)]. Drop terms whose cap no present source can
+    emit and renormalize the remaining weights to sum 1.0 (so a source isn't scored 0 on a signal
+    its backend can't record), then return the 0..10 axis score. With full caps (default / pooled
+    corpus) nothing drops and this equals the plain weighted sum."""
+    live = [(w, v) for (w, v, cap) in terms if cap is None or cap in caps]
+    tot = sum(w for w, _ in live) or 1.0
+    return round(10 * sum(w * v for w, v in live) / tot, 1)
+
+
 def _d10(x):
     """First 10 chars of an ISO date, or '—' when missing (empty/timestampless corpus)."""
     return (x or "")[:10] or "—"
@@ -199,6 +229,7 @@ def compute_scores(stats):
     hours = max(vel["active_hours"], 0.1)
     ev = _evidence(stats)   # 0..1 confidence; gates the inverse terms so a thin corpus
                             # can't read as flawless (no-op at ev=1.0 for any real user).
+    caps = _caps_of(stats)  # capability-aware: drop signals a source can't emit (vs scoring 0)
 
     # EXECUTION — shipped output at AI leverage. Two signals, no overlap with other axes:
     #   (a) TOOL OUTPUT RATE: tool_churn_edit_write (tool-authored lines) per active
@@ -211,9 +242,9 @@ def compute_scores(stats):
     _EXECUTION_OUTPUT_TARGET = 1000  # tool-authored lines per active hour
     out_rate   = vel["tool_churn_edit_write"] / hours
     out_pct    = _clamp(out_rate / _EXECUTION_OUTPUT_TARGET)
-    execution = 10 * (
-        0.60 * out_pct                                                     # tool output rate
-        + 0.40 * _clamp((b["delegate_actions"] + b["background_tasks"]) / max(prompts * 0.3, 1)))  # delegation/parallelism
+    deleg_pct  = _clamp((b["delegate_actions"] + b["background_tasks"]) / max(prompts * 0.3, 1))
+    # delegation needs a source that CAN delegate; output rate is source-agnostic (no cap).
+    execution = _axis_value([(0.60, out_pct, None), (0.40, deleg_pct, "delegate")], caps)
 
     # PLANNING — think before you build. Behavior-led.
     # DROPPED the avg_prompt_length term (was 0.25): it is experience-INVERTING — expertise
@@ -223,10 +254,13 @@ def compute_scores(stats):
     plan_skills = _skill_uses_any(stats, ("brainstorm", "writing-plan", "plan", "spec",
                                           "office-hours", "autoplan", "grill", "ceo-review",
                                           "eng-review", "design-review"))
-    planning = 10 * (
-        0.45 * _clamp(b["planning_ratio_explore_to_doing"] / 0.65)        # explore-before-build (behavioral)
-        + 0.30 * _clamp((v["thinking_blocks"] / sess) / 12.0)           # reasoning depth per session
-        + 0.25 * _clamp((plan_skills / sess) / 0.8))                     # plan/spec ceremony (toolchain-biased → kept lowest)
+    # reasoning depth needs a source that emits thinking blocks (Antigravity CLI doesn't);
+    # explore-ratio is behavioral/source-agnostic; plan ceremony is skill-detected.
+    planning = _axis_value([
+        (0.45, _clamp(b["planning_ratio_explore_to_doing"] / 0.65), None),
+        (0.30, _clamp((v["thinking_blocks"] / sess) / 12.0), "thinking"),
+        (0.25, _clamp((plan_skills / sess) / 0.8), None),
+    ], caps)
 
     # STEERING IS NOT SCORED — it's DESCRIBED (see steering_reading). Hands-on cadence
     # (actions/prompt + how often the agent checks in) is real and measurable, but it has no
@@ -306,6 +340,7 @@ def score_breakdown(stats):
     prompts = max(v["total_prompts"], 1)
     hours = max(vel.get("active_hours", 0.1), 0.1)
     ev = _evidence(stats)
+    caps = _caps_of(stats)
 
     # --- EXECUTION ---
     _EXECUTION_OUTPUT_TARGET = 1000  # tool-authored lines per active hour
@@ -313,11 +348,11 @@ def score_breakdown(stats):
     out_pct        = _clamp(out_rate / _EXECUTION_OUTPUT_TARGET)
     deleg_raw      = (b.get("delegate_actions", 0) + b.get("background_tasks", 0)) / max(prompts * 0.3, 1)
     deleg_pct      = _clamp(deleg_raw)
-    execution_val  = round(10 * (0.60 * out_pct + 0.40 * deleg_pct), 1)
+    execution_val  = _axis_value([(0.60, out_pct, None), (0.40, deleg_pct, "delegate")], caps)
     exec_subs = [
         {"label": "Tool output rate", "your_value": out_rate,
          "target": _EXECUTION_OUTPUT_TARGET, "unit": "tool-authored lines/hr", "weight": 0.60,
-         "pct": out_pct, "direction": "higher", "is_drag": False},
+         "pct": out_pct, "direction": "higher", "is_drag": False, "_cap": None},
         # your_value is the raw measured agent-runs/prompt (denominator: actual prompts).
         # pct matches compute_scores' clamp (denominator: prompts*0.3) and equals
         # your_value/target in the normal regime (prompts ≥ 4).  For tiny corpora
@@ -328,9 +363,9 @@ def score_breakdown(stats):
         {"label": "Delegation & parallelism",
          "your_value": (b.get("delegate_actions", 0) + b.get("background_tasks", 0)) / max(prompts, 1),
          "target": 0.30, "unit": "agent-runs/prompt", "weight": 0.40, "pct": deleg_pct,
-         "direction": "higher", "is_drag": False},
+         "direction": "higher", "is_drag": False, "_cap": "delegate"},
     ]
-    exec_subs = [_enrich_sub(s) for s in exec_subs]
+    exec_subs = [_enrich_sub(s) for s in _apply_sub_caps(exec_subs, caps)]
 
     # --- PLANNING ---
     plan_skills = _skill_uses_any(stats, ("brainstorm", "writing-plan", "plan", "spec",
@@ -341,20 +376,21 @@ def score_breakdown(stats):
     thinking_pct      = _clamp(thinking_raw / 12.0)
     plan_skill_raw    = plan_skills / sess
     plan_skill_pct    = _clamp(plan_skill_raw / 0.8)
-    planning_val      = round(10 * (0.45 * explore_pct + 0.30 * thinking_pct + 0.25 * plan_skill_pct), 1)
+    planning_val      = _axis_value([(0.45, explore_pct, None), (0.30, thinking_pct, "thinking"),
+                                     (0.25, plan_skill_pct, None)], caps)
     plan_subs = [
         {"label": "Explore-before-build",
          "your_value": b.get("planning_ratio_explore_to_doing", 0),
          "target": 0.65, "unit": "explore/doing ratio", "weight": 0.45, "pct": explore_pct,
-         "direction": "higher", "is_drag": False},
+         "direction": "higher", "is_drag": False, "_cap": None},
         {"label": "Reasoning depth", "your_value": thinking_raw,
          "target": 12.0, "unit": "thinking blocks/session", "weight": 0.30, "pct": thinking_pct,
-         "direction": "higher", "is_drag": False},
+         "direction": "higher", "is_drag": False, "_cap": "thinking"},
         {"label": "Plan ceremony", "your_value": plan_skill_raw,
          "target": 0.8, "unit": "plan-skills/session", "weight": 0.25, "pct": plan_skill_pct,
-         "direction": "higher", "is_drag": False},
+         "direction": "higher", "is_drag": False, "_cap": None},
     ]
-    plan_subs = [_enrich_sub(s) for s in plan_subs]
+    plan_subs = [_enrich_sub(s) for s in _apply_sub_caps(plan_subs, caps)]
 
     # --- ENGINEERING ---
     eng_skills = _skill_uses_any(stats, ("code-review", "test", "tdd", "qa", "investigate",

@@ -865,7 +865,9 @@ class TestBuildSummaryPayloadFields(unittest.TestCase):
         self.addCleanup(shutil.rmtree, out, ignore_errors=True)
         overrides = dict(
             OUT_DIR=out, BASE=proj, CODEX_DIR=empty, GEMINI_DIR=empty, PI_DIR=empty,
-            OPENCODE_DIR=empty, CURSOR_DIR=empty, CURSOR_DB=os.path.join(empty, "nope.vscdb"),
+            ANTIGRAVITY_CLI_DIR=empty, ANTIGRAVITY_DB=os.path.join(empty, "nope.vscdb"),
+            OPENCODE_DIR=empty, CURSOR_DIR=empty,
+            CURSOR_DB=os.path.join(empty, "nope.vscdb"),
         )
         with mock.patch.multiple(paxel, **overrides), \
                 mock.patch.object(sys, "argv", ["paxel.py", "claude", "--no-open"]), \
@@ -878,6 +880,303 @@ class TestBuildSummaryPayloadFields(unittest.TestCase):
         self.assertEqual(len(stats["tools"]["top_tools"]), 20)
         monthly = stats["monthly_noticed_stats"][0]["stats"]["tools"]["top_tools"]
         self.assertEqual(len(monthly), 20)
+
+
+class TestAntigravityCli(unittest.TestCase):
+    """Parse a synthetic Antigravity CLI conversation DB (protobuf step payloads) built
+    with a tiny stdlib encoder, mirroring the real on-disk field layout."""
+
+    @staticmethod
+    def _varint(n):
+        out = bytearray()
+        while True:
+            b = n & 0x7F
+            n >>= 7
+            out.append(b | 0x80 if n else b)
+            if not n:
+                return bytes(out)
+
+    @classmethod
+    def _vfield(cls, f, n):
+        return cls._varint((f << 3) | 0) + cls._varint(n)
+
+    @classmethod
+    def _bfield(cls, f, b):
+        if isinstance(b, str):
+            b = b.encode("utf-8")
+        return cls._varint((f << 3) | 2) + cls._varint(len(b)) + b
+
+    def _meta(self, sec, usage=None):
+        blob = self._bfield(1, self._vfield(1, sec) + self._vfield(2, 0))
+        if usage:
+            inp, out, cache = usage
+            blob += self._bfield(9, self._vfield(2, inp) + self._vfield(3, out) + self._vfield(5, cache))
+        return self._bfield(5, blob)
+
+    def _step(self, step_type, body=b""):
+        return self._vfield(1, step_type) + self._vfield(4, 3) + body
+
+    def setUp(self):
+        import sqlite3 as _sq
+        import shutil, tempfile
+        self.dir = tempfile.mkdtemp()
+        self.db = os.path.join(self.dir, "abc12345-0000-0000-0000-000000000000.db")
+        con = _sq.connect(self.db)
+        con.execute("CREATE TABLE steps (idx INTEGER PRIMARY KEY, step_type INTEGER, step_payload BLOB)")
+        con.execute("CREATE TABLE gen_metadata (idx INTEGER, data BLOB)")
+        con.execute("CREATE TABLE trajectory_metadata_blob (id TEXT, data BLOB)")
+        # cwd: trajectory_metadata_blob -> field 1 -> field 1 = file:// URI
+        traj = self._bfield(1, self._bfield(1, "file:///Users/me/proj"))
+        con.execute("INSERT INTO trajectory_metadata_blob VALUES (?,?)", ("main", traj))
+        # user prompt (step_type 14): field 19 -> field 2 = text
+        user = self._step(14, self._meta(1000) + self._bfield(19, self._bfield(2, "fix the build")))
+        # assistant turn (step_type 15): meta with usage; field 20 -> {1: text, 7:{2:name,3:args}}
+        tool = self._bfield(2, "run_command") + self._bfield(3, '{"CommandLine":"make","Cwd":"/x"}')
+        asst = self._step(15, self._meta(1001, usage=(500, 40, 1200))
+                          + self._bfield(20, self._bfield(1, "Running the build.") + self._bfield(7, tool)))
+        err = self._step(17, self._meta(1002))
+        con.execute("INSERT INTO steps VALUES (?,?,?)", (0, 14, user))
+        con.execute("INSERT INTO steps VALUES (?,?,?)", (1, 15, asst))
+        con.execute("INSERT INTO steps VALUES (?,?,?)", (2, 17, err))
+        con.execute("INSERT INTO gen_metadata VALUES (?,?)", (1, b"...model gemini-3-pro stuff..."))
+        con.commit()
+        con.close()
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+
+    def test_events(self):
+        from gnomon.sources.antigravity import _antigravity_cli_events
+        evs = list(_antigravity_cli_events(self.db))
+        self.assertFalse(any(e.get("__bad__") for e in evs))
+        self.assertEqual(evs[0]["cwd"], "/Users/me/proj")
+        users = [e for e in evs if e["type"] == "user" and isinstance(e["message"]["content"], str)]
+        self.assertEqual(users[0]["message"]["content"], "fix the build")
+        asst = [e for e in evs if e["type"] == "assistant"][0]
+        blocks = asst["message"]["content"]
+        self.assertEqual(blocks[0], {"type": "text", "text": "Running the build."})
+        tool = blocks[1]
+        self.assertEqual(tool["type"], "tool_use")
+        self.assertEqual(tool["name"], "Bash")               # run_command -> Bash
+        self.assertEqual(tool["input"]["command"], "make")   # CommandLine -> command
+        self.assertEqual(asst["message"]["usage"],
+                         {"input_tokens": 500, "output_tokens": 40,
+                          "cache_read_input_tokens": 1200, "cache_creation_input_tokens": 0})
+        self.assertEqual(asst["message"]["model"], "gemini-3-pro")
+        errs = [e for e in evs if e["type"] == "user" and isinstance(e["message"]["content"], list)
+                and e["message"]["content"][0].get("is_error")]
+        self.assertEqual(len(errs), 1)
+
+    def test_arg_aliasing(self):
+        from gnomon.sources.antigravity import _ag_args, _AG_TOOL
+        self.assertEqual(_ag_args('{"AbsolutePath":"/a/b.py"}')["file_path"], "/a/b.py")
+        self.assertEqual(_ag_args('{"CodeContent":"x"}')["content"], "x")
+        self.assertEqual(_ag_args("not json"), {})
+        self.assertEqual(_AG_TOOL["grep_search"], "Grep")
+        self.assertEqual(_AG_TOOL["write_to_file"], "Write")
+
+    def test_mcp_and_skill_cli(self):
+        import sqlite3 as _sq
+        import shutil, tempfile
+        from gnomon.sources.antigravity import _antigravity_cli_events
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        db = os.path.join(d, "cli.db")
+        con = _sq.connect(db)
+        con.execute("CREATE TABLE steps (idx INTEGER PRIMARY KEY, step_type INTEGER, step_payload BLOB)")
+        con.execute("CREATE TABLE gen_metadata (idx INTEGER, data BLOB)")
+        con.execute("CREATE TABLE trajectory_metadata_blob (id TEXT, data BLOB)")
+        # MCP call: tool name `supabase::execute_sql`
+        mcp = self._bfield(2, "supabase::execute_sql") + self._bfield(3, "{}")
+        s_mcp = self._step(15, self._meta(1000) + self._bfield(20, self._bfield(1, "q") + self._bfield(7, mcp)))
+        # skill load: view_file of a skills/<name>/SKILL.md
+        sk = self._bfield(2, "view_file") + self._bfield(3, '{"AbsolutePath":"/x/.agents/skills/data-scientist/SKILL.md"}')
+        s_sk = self._step(15, self._meta(1001) + self._bfield(20, self._bfield(1, "look") + self._bfield(7, sk)))
+        con.execute("INSERT INTO steps VALUES (?,?,?)", (0, 15, s_mcp))
+        con.execute("INSERT INTO steps VALUES (?,?,?)", (1, 15, s_sk))
+        con.commit(); con.close()
+        evs = list(_antigravity_cli_events(db))
+        tools = [b for e in evs if e["type"] == "assistant"
+                 for b in e["message"]["content"] if b.get("type") == "tool_use"]
+        self.assertIn("mcp__supabase__execute_sql", [t["name"] for t in tools])  # MCP server::tool
+        self.assertEqual([e["attributionSkill"] for e in evs if e.get("attributionSkill")], ["data-scientist"])
+
+
+class TestAntigravityIdeExport(unittest.TestCase):
+    """Parse the combined IDE step export (CORTEX JSON from the language server)."""
+
+    def _events(self, convs):
+        import json, tempfile
+        from gnomon.sources.antigravity import _antigravity_ide_export_events
+        d = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, d, ignore_errors=True)
+        p = os.path.join(d, "ide_steps_export.json")
+        with open(p, "w") as fh:
+            json.dump(convs, fh)
+        return list(_antigravity_ide_export_events(p))
+
+    def _step(self, t, **kw):
+        return {"type": t, "metadata": {"createdAt": "2026-05-01T10:00:00Z"}, **kw}
+
+    def test_step_mapping(self):
+        convs = [{"cascade_id": "c1", "steps": [
+            self._step("CORTEX_STEP_TYPE_USER_INPUT", userInput={"items": [{"text": "fix the build"}]}),
+            self._step("CORTEX_STEP_TYPE_PLANNER_RESPONSE", plannerResponse={"thinking": "Let me look."}),
+            self._step("CORTEX_STEP_TYPE_CODE_ACTION",
+                       codeAction={"actionSpec": {"createFile": {"absolutePathUri": "file:///Users/me/proj/app.py",
+                                                                 "instruction": "x=1\ny=2\n"}}}),
+            self._step("CORTEX_STEP_TYPE_RUN_COMMAND", runCommand={"commandLine": "pnpm lint", "exitCode": 1}),
+            self._step("CORTEX_STEP_TYPE_VIEW_FILE", viewFile={"absolutePathUri": "file:///Users/me/proj/app.py"}),
+            self._step("CORTEX_STEP_TYPE_COMMAND_STATUS", commandStatus={"exitCode": 0}),  # skipped
+        ]}]
+        evs = self._events(convs)
+        users = [e for e in evs if e["type"] == "user" and isinstance(e["message"]["content"], str)]
+        self.assertEqual(users[0]["message"]["content"], "fix the build")
+        think = [b for e in evs if e["type"] == "assistant"
+                 for b in e["message"]["content"] if b.get("type") == "thinking"]
+        self.assertEqual(think[0]["thinking"], "Let me look.")
+        tools = [b for e in evs if e["type"] == "assistant"
+                 for b in e["message"]["content"] if b.get("type") == "tool_use"]
+        names = [t["name"] for t in tools]
+        self.assertEqual(names, ["Write", "Bash", "Read"])     # code_action create, run, view
+        bash = next(t for t in tools if t["name"] == "Bash")
+        self.assertEqual(bash["input"]["command"], "pnpm lint")  # command text survives
+        # run_command exitCode 1 -> errored tool_result
+        errs = [e for e in evs if e["type"] == "user" and isinstance(e["message"]["content"], list)
+                and e["message"]["content"][0].get("is_error")]
+        self.assertEqual(len(errs), 1)
+        # real per-step timestamp (not mtime); cwd from a real workspace path
+        self.assertTrue(all(e["timestamp"] == "2026-05-01T10:00:00Z" for e in evs))
+        self.assertEqual(evs[0]["cwd"], "/Users/me/proj")
+
+    def test_mcp_and_skill(self):
+        convs = [{"cascade_id": "c1", "steps": [
+            # planner toolCalls are NOT emitted as tools — the execution steps are (no double count)
+            self._step("CORTEX_STEP_TYPE_PLANNER_RESPONSE",
+                       plannerResponse={"thinking": "search",
+                                        "toolCalls": [{"name": "airbnb::airbnb_search"}]}),
+            # MCP is counted from the dedicated MCP_TOOL step only
+            self._step("CORTEX_STEP_TYPE_MCP_TOOL",
+                       mcpTool={"serverName": "airbnb",
+                                "toolCall": {"name": "airbnb_search", "argumentsJson": '{"q":"mvd"}'}}),
+            self._step("CORTEX_STEP_TYPE_VIEW_FILE",
+                       viewFile={"absolutePathUri": "file:///Users/me/.gemini/config/skills/data-engineer/SKILL.md"}),
+        ]}]
+        evs = self._events(convs)
+        tools = [b for e in evs if e["type"] == "assistant"
+                 for b in e["message"]["content"] if b.get("type") == "tool_use"]
+        names = [t["name"] for t in tools]
+        self.assertEqual(names.count("mcp__airbnb__airbnb_search"), 1)  # counted once (MCP_TOOL step)
+        skill_evs = [e for e in evs if e.get("attributionSkill")]
+        self.assertEqual(skill_evs[0]["attributionSkill"], "data-engineer")  # SKILL.md read
+
+    def test_empty_and_malformed(self):
+        self.assertEqual(self._events([]), [])
+        self.assertEqual(self._events([{"cascade_id": "c", "steps": []}]), [])
+
+
+class TestAntigravityIdeWindowGate(unittest.TestCase):
+    """ide_window_overlaps decides whether to bother launching the IDE for a given window."""
+
+    def setUp(self):
+        from datetime import datetime
+        from gnomon.sources.antigravity import ide_window_overlaps
+        self.f = ide_window_overlaps
+        self.dt = lambda s: datetime.fromisoformat(s).astimezone()
+        self.summary = {"conversations": 5, "first": "2026-03-01T00:00:00+00:00",
+                        "last": "2026-03-31T00:00:00+00:00"}
+
+    def test_no_summary_is_false(self):
+        self.assertFalse(self.f(None, None, None))
+
+    def test_no_window_always_overlaps(self):
+        self.assertTrue(self.f(self.summary, None, None))
+
+    def test_window_after_range_skips(self):
+        # window starts in April; IDE history ends in March -> no overlap
+        self.assertFalse(self.f(self.summary, self.dt("2026-04-01"), None))
+
+    def test_window_before_range_skips(self):
+        # window ends (exclusive) in Feb; IDE history starts in March -> no overlap
+        self.assertFalse(self.f(self.summary, None, self.dt("2026-02-01")))
+
+    def test_overlapping_window_passes(self):
+        self.assertTrue(self.f(self.summary, self.dt("2026-03-15"), self.dt("2026-04-15")))
+
+    def test_missing_bounds_treated_open(self):
+        self.assertTrue(self.f({"conversations": 1}, self.dt("2026-03-15"), self.dt("2026-03-20")))
+
+
+class TestAntigravityExportStale(unittest.TestCase):
+    """A failed aghistory refresh must NOT leave a previous export to be re-scored."""
+
+    def test_failed_refresh_removes_stale(self):
+        import shutil, tempfile
+        from unittest import mock
+        from gnomon.sources import antigravity as A
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        stale = os.path.join(d, "ide_steps_export.json")
+        with open(stale, "w") as fh:
+            fh.write('[{"cascade_id": "old", "steps": [{"type": "x"}]}]')
+        with mock.patch.object(A, "_ANTIGRAVITY_APP", d), \
+                mock.patch.object(A, "_discover_language_servers", return_value=[(1234, "csrf")]), \
+                mock.patch.object(A, "_ide_cascade_ids", return_value=["x"]), \
+                mock.patch.object(A, "_ls_post", return_value=None):   # server unreachable / no steps
+            res = A.export_antigravity_ide(d, launch=False, log=lambda *a: None)
+        self.assertIsNone(res)                      # no fresh steps -> no path
+        self.assertFalse(os.path.exists(stale))     # stale export removed, not folded in
+
+
+class TestAntigravityDirOverride(unittest.TestCase):
+    """--antigravity-dir must accept the tool root, not only the leaf conversations dir."""
+
+    def test_root_resolves_to_conversations(self):
+        import shutil, tempfile
+        from gnomon.sources.discovery import _DIR_FLAGS, _resolve_source_dir
+        self.assertEqual(_DIR_FLAGS["antigravity"][1], "conversations")
+        root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        leaf = os.path.join(root, "conversations")
+        os.makedirs(leaf)
+        self.assertEqual(_resolve_source_dir(root, "conversations"), leaf)   # root -> subdir
+        self.assertEqual(_resolve_source_dir(leaf, "conversations"), leaf)    # leaf -> no double-nest
+
+
+class TestScoringDoesNotPenalizeMissingCaps(unittest.TestCase):
+    """A source must not be scored 0 on a signal its backend cannot emit — the axis/term is
+    dropped and the rest renormalized (AQ build_pillar/wsum + gstack _axis_value)."""
+
+    def _gstack(self, source):
+        from gnomon.scoring.gstack import compute_scores
+        st = {"volume": {"total_sessions": 5, "total_prompts": 10, "tool_calls_total": 3000,
+                         "thinking_blocks": 0},
+              "behavior": {"planning_ratio_explore_to_doing": 0.5, "delegate_actions": 0,
+                           "background_tasks": 0, "iteration_depth_mean": 2, "iteration_depth_p90": 3,
+                           "files_hammered_over_15x": 0, "error_rate_per_100_tools": 0, "shell_test_runs": 0},
+              "velocity": {"tool_churn_edit_write": 2000, "active_hours": 2},
+              "stack": {"top_skills": []}, "corpus": {"sources": {source: {}}}}
+        return compute_scores(st)
+
+    def test_gstack_thinking_dropped_for_cli(self):
+        # antigravity CLI emits no thinking -> reasoning-depth term drops -> Planning renormalizes
+        # UP (not the 0-drag a full-caps source eats with thinking_blocks=0).
+        self.assertGreater(self._gstack("antigravity")["Planning"], self._gstack("claude")["Planning"])
+
+    def test_aq_drops_unsupported_axes_for_ide(self):
+        from gnomon.scoring.aq import compute_aq
+        r = compute_aq({"corpus": {"sources": {"antigravity-ide": {}}},
+                        "tools": {}, "stack": {"models": []}, "behavior": {}})
+        na = {a for p in r["pillars"] for a in (p.get("not_applicable") or [])}
+        self.assertIn("Orchestration", na)   # no delegate cap -> dropped, not scored 0
+        self.assertIn("Model mix", na)        # masked model -> dropped, not scored 0
+
+    def test_full_caps_source_unchanged(self):
+        # a source that emits everything keeps every axis (no silent renormalization)
+        from gnomon.scoring.aq import compute_aq
+        r = compute_aq({"corpus": {"sources": {"claude": {}}},
+                        "tools": {}, "stack": {"models": []}, "behavior": {}})
+        na = {a for p in r["pillars"] for a in (p.get("not_applicable") or [])}
+        self.assertNotIn("Orchestration", na)
+        self.assertNotIn("Model mix", na)
 
 
 if __name__ == "__main__":

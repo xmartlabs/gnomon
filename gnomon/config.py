@@ -17,15 +17,24 @@ OUT_DIR = os.getcwd()
 #   skills     - first-class Skill tool usage (attributionSkill / SKILL.md reads)
 #   toolsearch - ToolSearch tool calls (Claude Code only)
 #   tasktool   - TaskCreate/TaskUpdate task-tracking tools (Claude Code only)
+#   delegate   - subagent delegation (the source can spawn agents at all). Without it the
+#                Orchestration axis is DROPPED (not scored 0) so a no-fan-out source isn't penalized.
+#   model      - persists a real per-turn model id (gates Savvy "Model mix"). Antigravity IDE
+#                masks it (MODEL_PLACEHOLDER_*), so the axis drops there.
+#   thinking   - emits reasoning/thinking blocks (gates Planning "reasoning depth"). Antigravity
+#                CLI doesn't, so that term drops there.
+# (errors are emitted by every source, so error_rate/recovery need no cap.)
 SOURCE_CAPS = {
-    "claude":   {"skills", "toolsearch", "tasktool"},
-    "codex":    {"skills"},   # no first-class Skill tool, but SKILL.md shell-reads are counted
-    "gemini":   set(),
-    "pi":       set(),
-    "opencode": set(),
-    "cursor":   set(),        # no Skill tool, no ToolSearch, no Task tool
+    "claude":   {"skills", "toolsearch", "tasktool", "delegate", "model", "thinking"},
+    "codex":    {"skills", "delegate", "model", "thinking"},   # SKILL.md shell-reads; thread_spawn = delegate
+    "gemini":   {"model", "thinking"},
+    "antigravity": {"delegate", "skills", "model"},   # CLI: real model; no separate thinking block
+    "antigravity-ide": {"skills", "thinking"},                 # IDE: masks model; no subagent/token
+    "pi":       {"model", "thinking"},
+    "opencode": {"model", "thinking"},
+    "cursor":   {"delegate", "model", "thinking"},   # subagent sidechains; no Skill/ToolSearch/Task tool
 }
-_ALL_CAPS = {"skills", "toolsearch", "tasktool"}
+_ALL_CAPS = {"skills", "toolsearch", "tasktool", "delegate", "model", "thinking"}
 
 
 def available_caps(sources):

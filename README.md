@@ -147,7 +147,7 @@ or remote box:
 ```bash
 xl-ai-insights --local --claude-dir=/mnt/sandbox-home/.claude     # root or .../projects both work
 xl-ai-insights --local --codex-dir=~/backups/codex                # root or .../sessions both work
-# also: --gemini-dir, --pi-dir, --opencode-dir
+# also: --gemini-dir, --antigravity-dir, --pi-dir, --opencode-dir
 ```
 
 ### Outputs (written to the current directory by default, git-ignored)
@@ -175,7 +175,8 @@ Auto-detected from their default local locations:
 | Gemini CLI | `~/.gemini/**/*.json` | |
 | Others (PI, opencode) | per-tool dirs | parsed where present |
 | Cursor | `state.vscdb` + `~/.cursor/projects/.../agent-transcripts` | full (SQLite-first + JSONL, deduped) |
-| Google Antigravity | `state.vscdb` (protobuf) | detected; conversation count + date range surfaced as metadata. Transcripts live **server-side**, so it can't be scored honestly |
+| Google Antigravity CLI (`antigravity`) | `~/.gemini/antigravity-cli/conversations/*.db` (SQLite + protobuf) | Fully scored offline — prompts, tool calls (incl. MCP `server::tool`), tokens, models+switches, skills (`SKILL.md` reads), errors — decoded from the protobuf step payloads (stdlib decoder, no deps). `--antigravity-dir=PATH` to point at copied history (disables the live IDE read). |
+| Google Antigravity IDE (`antigravity-ide`) | encrypted `*.pb` → live language-server API | Scored as a **separate source**. Transcripts are encrypted, so gnomon reads the unencrypted usage index and, when the IDE was used in-window, pulls conversations from **every** running workspace language server (launches the app if needed; stdlib only, no extra dependency). Gives prompts, tool calls (incl. MCP), skills, thinking, real timestamps, errors. The server **masks model id and tokens**, so those axes are dropped (not scored 0). |
 
 ---
 
