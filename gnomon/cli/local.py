@@ -36,7 +36,7 @@ from gnomon.analysis.quotes import _POLITE_RE, _safe_quote, _cryptic_score, _cra
 from gnomon.scoring.gstack import compute_scores
 from gnomon.scoring.aq import compute_aq
 from gnomon.scoring.archetype import pick_archetype
-from gnomon.scoring.inputs import SCORING_INPUTS_VERSION, build_monthly_scoring_stats
+from gnomon.scoring.inputs import SCORING_INPUTS_VERSION, build_monthly_scoring_stats, build_scoring_inputs
 from gnomon.cli.scoring_inputs import build_scoring_inputs_by_source
 from gnomon.output.summary import (
     build_summary, _build_monthly_noticed_stats,
@@ -162,17 +162,27 @@ def main(argv=None, output_dir=None):
     source_files = narrative["source_files"]
     source_sessions = narrative["source_sessions"]
 
-    # ---- per-source scoring inputs (recomputable per-source AND combined) ----
-    # Partition the event stream by source and run the SAME _accumulate per source,
-    # so each source's stats slice carries only that source's events (and only that
-    # source's caps, cwds for git churn, cursor dedup partition, etc.). The window +
-    # per-month raw inputs for every source feed scoring_inputs_by_source.
+    # ---- per-source scoring inputs (single-pass, from _accumulate) ----------
+    # The per-source accumulators were tracked during the corpus _accumulate() run,
+    # so we can build scoring_inputs without re-running _accumulate per source.
     stats["scoring_inputs_version"] = SCORING_INPUTS_VERSION
     _t0_si = time.monotonic()
-    stats["scoring_inputs_by_source"] = build_scoring_inputs_by_source(
-        sources, since_dt, until_dt, cursor_twins, antigravity,
-        accumulate_fn=_accumulate,
-        corpus_stats=stats)
+    _per_source_stats = narrative.get("_per_source_stats", {})
+    scoring_by_source = {}
+    srcs_present = sorted(_per_source_stats.keys())
+    single_source = len(srcs_present) == 1
+    for src in srcs_present:
+        if single_source:
+            s_stats = stats  # same as legacy single_source optimization
+        else:
+            s_stats = _per_source_stats[src]
+        window = build_scoring_inputs(s_stats)
+        monthly = [
+            dict(build_scoring_inputs(entry["stats_full"]), month=entry["month"])
+            for entry in s_stats.get("_scoring_monthly_full", [])
+        ]
+        scoring_by_source[src] = {"window": window, "monthly": monthly}
+    stats["scoring_inputs_by_source"] = scoring_by_source
     _t_scoring_inputs = time.monotonic() - _t0_si
     # internal-only working field (per-month full stats slices); not part of the payload
     stats.pop("_scoring_monthly_full", None)
@@ -256,12 +266,9 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
     """Accumulate every per-event signal over `sources` and return (stats, narrative).
 
     This is the single aggregation engine. main() calls it once over ALL sources
-    (legacy whole-corpus stats), and build_scoring_inputs_by_source calls it once per
-    source partition. Because the SAME function runs for both, a per-source slice uses
-    identical aggregation rules (no drift) and naturally scopes git churn (to that
-    source's cwds), cursor dedup (within the cursor partition), and the post-processed
-    active_hours / fanout_median / iteration_depth (derived from that slice's session_ts
-    / edits_per_file / fanouts).
+    (whole-corpus stats). Per-source accumulators are tracked in parallel during the
+    same pass so that per-source scoring inputs can be built without re-running
+    _accumulate per source partition.
 
     `narrative` carries the verbatim-quote candidates and opening/longest prompts that
     main() needs for the local HTML page (never serialized into stats.json)."""
@@ -387,6 +394,53 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
     source_sessions = defaultdict(set)   # source -> sessionIds
     source_prompts = Counter()           # source -> genuine prompts
 
+    # ---- per-source tracking (single-pass scoring inputs) --------------------
+    # Mirror the corpus accumulators for each source present, so we can build
+    # per-source stats without re-running _accumulate.
+    _srcs_present = sorted({s for s, _, _ in sources})
+    _ps = {}
+    for _src_name in _srcs_present:
+        _ps[_src_name] = {
+            "prompts": 0, "tools": 0, "assist": 0, "thinking": 0,
+            "questions": 0, "delegate": 0, "background": 0, "scheduled": 0,
+            "tool_errors": 0, "recovered": 0, "api_errors": 0,
+            "bash_writes": 0, "bash_lines": 0, "shell_tests": 0,
+            "compounding": 0, "mcp_calls": 0, "native_calls": 0,
+            "lines_added": 0, "lines_removed": 0,
+            "explore": 0, "produce": 0, "execute": 0,
+            "tool_counter": Counter(),
+            "cat_counter": Counter(),
+            "model_counter": Counter(),
+            "skill_counter": Counter(),
+            "subagent_counter": Counter(),
+            "mcp_server_counter": Counter(),
+            "cli_counter": Counter(),
+            "session_ts": defaultdict(list),
+            "project_activity": Counter(),
+            "project_sessions": defaultdict(set),
+            "edits_per_file": [],
+            "fanouts": defaultdict(int),
+            "model_tokens": defaultdict(_zero_tok),
+            # month-keyed
+            "m_prompts": Counter(), "m_tools": Counter(), "m_churn": Counter(),
+            "m_sessions": defaultdict(set), "m_models": defaultdict(Counter),
+            "m_assist": Counter(), "m_thinking": Counter(),
+            "m_tool_errors": Counter(), "m_recovered": Counter(),
+            "m_edits": defaultdict(list),
+            "m_questions": Counter(), "m_delegate": Counter(),
+            "m_background": Counter(), "m_scheduled": Counter(),
+            "m_fanouts": defaultdict(lambda: defaultdict(int)),
+            "m_tool_counter": defaultdict(Counter),
+            "m_session_ts": defaultdict(lambda: defaultdict(list)),
+            "m_skill_counter": defaultdict(Counter),
+            "m_subagent_counter": defaultdict(Counter),
+            "m_mcp_server_counter": defaultdict(Counter),
+            "m_cli_counter": defaultdict(Counter),
+            "m_compounding": Counter(), "m_shell_tests": Counter(),
+            "m_api_errors": Counter(), "m_bash_lines": Counter(),
+            "m_model_tokens": defaultdict(lambda: defaultdict(_zero_tok)),
+        }
+
     for cur_src, fp, fmt in sources:
         # mtime pre-filter: a file last written before the window start can't contain
         # in-window events — skip the parse entirely (big win on ~38k codex seeds).
@@ -399,6 +453,7 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
                 pass
         files_parsed += 1
         source_files[cur_src] += 1
+        sa = _ps[cur_src]
         if verbose and files_parsed % 300 == 0:
             print(f"  ...{files_parsed}/{total_file_count}")
         # per-session, per-file ordered state for error-recovery + iteration depth
@@ -462,27 +517,36 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
                     if sid:
                         if not _synth_ts:
                             session_ts[sid].append(dt.timestamp())
+                            sa["session_ts"][sid].append(dt.timestamp())
                             month_session_ts[mkey][sid].append(dt.timestamp())
+                            sa["m_session_ts"][mkey][sid].append(dt.timestamp())
                         month_sessions[mkey].add(sid)
+                        sa["m_sessions"][mkey].add(sid)
                 if sid:
                     session_files[sid].add(fp)
                     source_sessions[cur_src].add(sid)
                 if cwd:
                     project_activity[cwd] += 1
+                    sa["project_activity"][cwd] += 1
                     if sid:
                         project_sessions[cwd].add(sid)
+                        sa["project_sessions"][cwd].add(sid)
 
                 msg = ev.get("message") if isinstance(ev.get("message"), dict) else None
 
                 # ---- API error / retry events (system + assistant) ----------
                 if ev.get("isApiErrorMessage") or ev.get("apiErrorStatus"):
                     api_errors += 1
+                    sa["api_errors"] += 1
                     if mkey:
                         month_api_errors[mkey] += 1
+                        sa["m_api_errors"][mkey] += 1
                 if etype == "system" and ev.get("retryAttempt"):
                     api_errors += 1
+                    sa["api_errors"] += 1
                     if mkey:
                         month_api_errors[mkey] += 1
+                        sa["m_api_errors"][mkey] += 1
 
                 # ---- genuine user prompts -----------------------------------
                 if etype == "user" and msg is not None:
@@ -507,9 +571,11 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
                                 command_invocations += 1
                             elif cleaned:
                                 prompts_count += 1
+                                sa["prompts"] += 1
                                 source_prompts[cur_src] += 1
                                 if mkey:
                                     month_prompts[mkey] += 1
+                                    sa["m_prompts"][mkey] += 1
                                     month_prompt_lengths[mkey].append(len(cleaned))
                                 prompt_lengths.append(len(cleaned))
                                 if _POLITE_RE.search(cleaned):
@@ -560,8 +626,10 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
                             if isinstance(b, dict) and b.get("type") == "tool_result":
                                 if b.get("is_error"):
                                     tool_errors += 1
+                                    sa["tool_errors"] += 1
                                     if mkey:
                                         month_tool_errors[mkey] += 1
+                                        sa["m_tool_errors"][mkey] += 1
                                     if sid:
                                         pending_error[sid] = True
 
@@ -574,14 +642,18 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
                     _is_codex_usage = bool(ev.get("__codex_usage__"))
                     if not _is_codex_usage:
                         assistant_turns += 1
+                        sa["assist"] += 1
                         if mkey:
                             month_assistant_turns[mkey] += 1
+                            sa["m_assist"][mkey] += 1
                     mdl = msg.get("model")
                     if mdl:
                         if not _is_codex_usage:
                             model_counter[mdl] += 1
+                            sa["model_counter"][mdl] += 1
                             if mkey:
                                 month_models[mkey][mdl] += 1
+                                sa["m_models"][mkey][mdl] += 1
                         # ---- token usage extraction (fully defensive) -------
                         _u = msg.get("usage") or {}
                         _ti  = _usage_int(_u, "input_tokens")
@@ -592,6 +664,10 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
                         model_tokens[mdl]["output"]         += _to
                         model_tokens[mdl]["cache_read"]     += _tcr
                         model_tokens[mdl]["cache_creation"] += _tcc
+                        sa["model_tokens"][mdl]["input"]          += _ti
+                        sa["model_tokens"][mdl]["output"]         += _to
+                        sa["model_tokens"][mdl]["cache_read"]     += _tcr
+                        sa["model_tokens"][mdl]["cache_creation"] += _tcc
                         if mkey:
                             month_tokens[mkey]["input"]          += _ti
                             month_tokens[mkey]["output"]         += _to
@@ -601,10 +677,16 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
                             month_model_tokens[mkey][mdl]["output"]         += _to
                             month_model_tokens[mkey][mdl]["cache_read"]     += _tcr
                             month_model_tokens[mkey][mdl]["cache_creation"] += _tcc
+                            sa["m_model_tokens"][mkey][mdl]["input"]          += _ti
+                            sa["m_model_tokens"][mkey][mdl]["output"]         += _to
+                            sa["m_model_tokens"][mkey][mdl]["cache_read"]     += _tcr
+                            sa["m_model_tokens"][mkey][mdl]["cache_creation"] += _tcc
                     if ev.get("attributionSkill"):
                         skill_counter[ev["attributionSkill"]] += 1
+                        sa["skill_counter"][ev["attributionSkill"]] += 1
                         if mkey:
                             month_skill_counter[mkey][ev["attributionSkill"]] += 1
+                            sa["m_skill_counter"][mkey][ev["attributionSkill"]] += 1
                     content = msg.get("content")
                     if isinstance(content, list):
                         for b in content:
@@ -615,65 +697,91 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
                                 text_blocks += 1
                             elif bt == "thinking":
                                 thinking_blocks += 1
+                                sa["thinking"] += 1
                                 if mkey:
                                     month_thinking_blocks[mkey] += 1
+                                    sa["m_thinking"][mkey] += 1
                                 thinking_chars += len(b.get("thinking", "") or "")
                             elif bt == "tool_use":
                                 name = b.get("name", "?")
                                 inp = b.get("input", {}) if isinstance(b.get("input"), dict) else {}
                                 tool_use_total += 1
+                                sa["tools"] += 1
                                 tool_counter[name] += 1
+                                sa["tool_counter"][name] += 1
                                 _cat = classify_tool(name)
                                 if mkey:
                                     month_tools[mkey] += 1
+                                    sa["m_tools"][mkey] += 1
                                     month_tool_counter[mkey][name] += 1
+                                    sa["m_tool_counter"][mkey][name] += 1
                                     if _cat == "delegate":
                                         month_delegate[mkey] += 1
+                                        sa["m_delegate"][mkey] += 1
                                 cat_counter[_cat] += 1
+                                sa["cat_counter"][_cat] += 1
                                 if name.startswith("mcp__"):
                                     mcp_calls += 1
+                                    sa["mcp_calls"] += 1
                                     parts = name.split("__")
                                     if len(parts) > 1 and parts[1]:
                                         mcp_server_counter[parts[1]] += 1
+                                        sa["mcp_server_counter"][parts[1]] += 1
                                         if mkey:
                                             month_mcp_server_counter[mkey][parts[1]] += 1
+                                            sa["m_mcp_server_counter"][mkey][parts[1]] += 1
                                 else:
                                     native_calls += 1
+                                    sa["native_calls"] += 1
 
                                 # a tool use after a pending error = recovery
                                 if sid and pending_error.get(sid):
                                     recovered_errors += 1
+                                    sa["recovered"] += 1
                                     if mkey:
                                         month_recovered_errors[mkey] += 1
+                                        sa["m_recovered"][mkey] += 1
                                     pending_error[sid] = False
 
                                 if name == "Skill":
                                     s = inp.get("skill")
                                     if s:
                                         skill_counter[s] += 1
+                                        sa["skill_counter"][s] += 1
                                         if mkey:
                                             month_skill_counter[mkey][s] += 1
+                                            sa["m_skill_counter"][mkey][s] += 1
                                 if name == "Agent":
                                     st = inp.get("subagent_type", "general-purpose")
                                     subagent_counter[st] += 1
+                                    sa["subagent_counter"][st] += 1
                                     if mkey:
                                         month_subagent_counter[mkey][st] += 1
+                                        sa["m_subagent_counter"][mkey][st] += 1
                                     if sid:
                                         agents_per_session[sid] += 1
+                                        sa["fanouts"][sid] += 1
                                         if mkey:
                                             month_fanouts[mkey][sid] += 1
+                                            sa["m_fanouts"][mkey][sid] += 1
                                 if name in ASK_TOOLS:
                                     questions_asked += 1
+                                    sa["questions"] += 1
                                     if mkey:
                                         month_questions[mkey] += 1
+                                        sa["m_questions"][mkey] += 1
                                 if inp.get("run_in_background"):
                                     background_tasks += 1
+                                    sa["background"] += 1
                                     if mkey:
                                         month_background[mkey] += 1
+                                        sa["m_background"][mkey] += 1
                                 if name in SCHEDULE_TOOLS:
                                     scheduled_actions += 1
+                                    sa["scheduled"] += 1
                                     if mkey:
                                         month_scheduled[mkey] += 1
+                                        sa["m_scheduled"][mkey] += 1
 
                                 # ---- code churn + iteration depth ----------
                                 if name == "Edit":
@@ -681,8 +789,11 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
                                     r = line_count(inp.get("old_string", ""))
                                     lines_added += a
                                     lines_removed += r
+                                    sa["lines_added"] += a
+                                    sa["lines_removed"] += r
                                     if mkey:
                                         month_churn[mkey] += a + r
+                                        sa["m_churn"][mkey] += a + r
                                     fpth = inp.get("file_path")
                                     if sid and fpth:
                                         file_edit_run[sid][fpth] += 1
@@ -690,13 +801,17 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
                                             file_edit_month[sid][fpth] = mkey
                                     if _is_compounding_path(fpth):
                                         compounding_counter += 1
+                                        sa["compounding"] += 1
                                         if mkey:
                                             month_compounding[mkey] += 1
+                                            sa["m_compounding"][mkey] += 1
                                 elif name == "Write":
                                     a = line_count(inp.get("content", ""))
                                     lines_added += a
+                                    sa["lines_added"] += a
                                     if mkey:
                                         month_churn[mkey] += a
+                                        sa["m_churn"][mkey] += a
                                     fpth = inp.get("file_path")
                                     if sid and fpth:
                                         file_edit_run[sid][fpth] += 1
@@ -704,17 +819,27 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
                                             file_edit_month[sid][fpth] = mkey
                                     if _is_compounding_path(fpth):
                                         compounding_counter += 1
+                                        sa["compounding"] += 1
                                         if mkey:
                                             month_compounding[mkey] += 1
+                                            sa["m_compounding"][mkey] += 1
                                 elif name == "MultiEdit":
+                                    _me_added = 0
+                                    _me_removed = 0
                                     for e in inp.get("edits", []) or []:
                                         if isinstance(e, dict):
                                             _ea = line_count(e.get("new_string", ""))
                                             _er = line_count(e.get("old_string", ""))
                                             lines_added += _ea
                                             lines_removed += _er
+                                            _me_added += _ea
+                                            _me_removed += _er
                                             if mkey:
                                                 month_churn[mkey] += _ea + _er
+                                    sa["lines_added"] += _me_added
+                                    sa["lines_removed"] += _me_removed
+                                    if mkey:
+                                        sa["m_churn"][mkey] += _me_added + _me_removed
                                     fpth = inp.get("file_path")
                                     if sid and fpth:
                                         file_edit_run[sid][fpth] += 1
@@ -722,10 +847,14 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
                                             file_edit_month[sid][fpth] = mkey
                                     if _is_compounding_path(fpth):
                                         compounding_counter += 1
+                                        sa["compounding"] += 1
                                         if mkey:
                                             month_compounding[mkey] += 1
+                                            sa["m_compounding"][mkey] += 1
                                 elif name == "NotebookEdit":
-                                    lines_added += line_count(inp.get("new_source", ""))
+                                    _nb_a = line_count(inp.get("new_source", ""))
+                                    lines_added += _nb_a
+                                    sa["lines_added"] += _nb_a
                                     fpth = inp.get("notebook_path")
                                     if sid and fpth:
                                         file_edit_run[sid][fpth] += 1
@@ -733,33 +862,45 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
                                             file_edit_month[sid][fpth] = mkey
                                     if _is_compounding_path(fpth):
                                         compounding_counter += 1
+                                        sa["compounding"] += 1
                                         if mkey:
                                             month_compounding[mkey] += 1
+                                            sa["m_compounding"][mkey] += 1
                                 elif name == "Bash":
                                     cmd = inp.get("command", "") or ""
                                     if isinstance(cmd, list):
                                         cmd = " && ".join(str(c) for c in cmd)
                                     for _cli in _extract_clis(cmd):
                                         cli_counter[_cli] += 1
+                                        sa["cli_counter"][_cli] += 1
                                         if mkey:
                                             month_cli_counter[mkey][_cli] += 1
+                                            sa["m_cli_counter"][mkey][_cli] += 1
                                     if cur_src != "claude":
                                         # Claude invokes skills via the Skill tool (counted
                                         # above); other CLIs read SKILL.md through the shell
                                         for _sm in _SKILL_MD_RX.finditer(cmd):
                                             skill_counter[_sm.group(1)] += 1
+                                            sa["skill_counter"][_sm.group(1)] += 1
                                             if mkey:
                                                 month_skill_counter[mkey][_sm.group(1)] += 1
+                                                sa["m_skill_counter"][mkey][_sm.group(1)] += 1
                                     if bash_writes_file(cmd):
                                         bash_write_calls += 1
-                                        bash_authored_lines += cmd.count("\n")
+                                        sa["bash_writes"] += 1
+                                        _bash_nl = cmd.count("\n")
+                                        bash_authored_lines += _bash_nl
+                                        sa["bash_lines"] += _bash_nl
                                         if mkey:
                                             month_bash_write_calls[mkey] += 1
-                                            month_bash_authored_lines[mkey] += cmd.count("\n")
+                                            month_bash_authored_lines[mkey] += _bash_nl
+                                            sa["m_bash_lines"][mkey] += _bash_nl
                                     if bash_runs_tests(cmd):
                                         shell_test_runs += 1
+                                        sa["shell_tests"] += 1
                                         if mkey:
                                             month_shell_test_runs[mkey] += 1
+                                            sa["m_shell_tests"][mkey] += 1
                                     if "git commit" in cmd:
                                         git_commits += 1
                                         # flush iteration-depth run for this session
@@ -767,9 +908,11 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
                                             for _f, cnt in file_edit_run[sid].items():
                                                 if cnt > 0:
                                                     edits_per_file_events.append(cnt)
+                                                    sa["edits_per_file"].append(cnt)
                                                     _fm = file_edit_month.get(sid, {}).get(_f)
                                                     if _fm:
                                                         month_edits_per_file[_fm].append(cnt)
+                                                        sa["m_edits"][_fm].append(cnt)
                                             file_edit_run[sid].clear()
                                             file_edit_month.get(sid, {}).clear()
 
@@ -778,9 +921,11 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
             for _f, cnt in sdict.items():
                 if cnt > 0:
                     edits_per_file_events.append(cnt)
+                    sa["edits_per_file"].append(cnt)
                     _fm = file_edit_month.get(_s, {}).get(_f)
                     if _fm:
                         month_edits_per_file[_fm].append(cnt)
+                        sa["m_edits"][_fm].append(cnt)
 
     # ---- derive ----------------------------------------------------------------
     total_sessions = len(session_ts) or len(session_files)
@@ -1088,7 +1233,7 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
     # Same months as monthly_noticed_stats; each entry's stats_full is a full
     # stats-shaped dict (corpus/volume/behavior/velocity/stack/tools) so the SAME
     # _build_scoring_inputs shaper runs over window AND each month (no drift).
-    # NOT serialized into stats.json — consumed only by build_scoring_inputs_by_source.
+    # NOT serialized into stats.json — consumed only by main()'s scoring inputs loop.
     stats["_scoring_monthly_full"] = build_monthly_scoring_stats(
         months=sorted(set(month_dates) | set(month_prompts) | set(month_tools)
                       | set(month_tokens) | set(month_sessions)),
@@ -1113,6 +1258,173 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
         no_tool_activity=_no_tool_activity, all_sources_no_agent=_all_sources_no_agent,
     )
 
+    # ---- per-source stats (single-pass scoring inputs) -------------------------
+    # Build stats-shaped dicts from the per-source accumulators collected during
+    # the event loop above, so main() can build scoring_inputs without re-running
+    # _accumulate per source. When there's only a single source, main() uses the
+    # corpus stats directly, so skip the extra derivation + git_churn calls.
+    _per_source_stats = {}
+    _active_srcs = [s for s, sa in _ps.items()
+                    if sa["prompts"] > 0 or sa["tools"] > 0]
+    _single_source = len(_active_srcs) == 1
+    for _src_name, _sa in _ps.items():
+        if _single_source:
+            # main() uses the full corpus stats for single-source, so just
+            # register the source name and move on (avoids extra git_churn calls).
+            _per_source_stats[_src_name] = None
+            continue
+
+        _s_tool_total = _sa["tools"]
+        _s_all_no_agent = _src_name in _AGENT_UNSUPPORTED_SOURCES
+
+        # Derived metrics — use corpus-level _no_tool_activity flag for parity
+        # with the legacy per-source _accumulate path (which inherits the corpus
+        # flag through its own _accumulate run over the source partition).
+        _s_ids = _iteration_depth_stats(_sa["edits_per_file"], _no_tool_activity)
+        _s_err_rate = _error_rate_per_100(_sa["tool_errors"], _s_tool_total, _no_tool_activity)
+        _s_recov = _error_recovery_ratio(_sa["recovered"], _sa["tool_errors"], _no_tool_activity)
+        _s_fanouts_list = [n for n in _sa["fanouts"].values() if n > 0]
+        _s_fan_med = _fanout_median(_s_fanouts_list, _no_tool_activity, _s_all_no_agent)
+        _s_active_hours, _ = _active_hours_and_longest_run(
+            _sa["session_ts"], GAP_CAP_S, BURST_GAP_S)
+
+        _s_total_churn = _sa["lines_added"] + _sa["lines_removed"]
+        _s_prompts = _sa["prompts"]
+        _s_actions_per_prompt = round(_s_tool_total / _s_prompts, 1) if _s_prompts else 0
+
+        _s_tc = _sa["tool_counter"]
+        _s_diversity = len(_s_tc)
+        _s_tot = sum(_s_tc.values()) or 1
+        _s_entropy = -sum((c / _s_tot) * math.log2(c / _s_tot)
+                          for c in _s_tc.values()) if _s_diversity > 1 else 0
+        _s_norm_entropy = _s_entropy / math.log2(_s_diversity) if _s_diversity > 1 else 0
+
+        _s_cats = _sa["cat_counter"]
+        _s_explore = _s_cats.get("explore", 0) + _sa["thinking"]
+        _s_produce = _s_cats.get("produce", 0)
+        _s_execute = _s_cats.get("execute", 0)
+        _s_doing = _s_produce + _s_execute + _s_cats.get("delegate", 0)
+        _s_planning_ratio = round((_s_explore / _s_doing) if _s_doing else 0, 2)
+
+        _s_gc = git_churn(
+            list(_sa["project_activity"].keys()),
+            gc_since, gc_until)
+
+        _s_sessions = len(_sa["session_ts"])
+
+        _per_source_stats[_src_name] = {
+            "corpus": {"sources": {_src_name: {
+                "files": source_files[_src_name],
+                "sessions": _s_sessions,
+                "prompts": _sa["prompts"],
+            }}},
+            "volume": {
+                "total_sessions": _s_sessions,
+                "total_prompts": _sa["prompts"],
+                "tool_calls_total": _s_tool_total,
+                "assistant_turns": _sa["assist"],
+                "thinking_blocks": _sa["thinking"],
+            },
+            "velocity": {
+                "git_churn_total": _s_gc["churn"],
+                "tool_churn_edit_write": _s_total_churn,
+                "shell_authored_lines_est": _sa["bash_lines"],
+                "active_hours": round(_s_active_hours, 1),
+                "git_repos_seen": _s_gc["repos_seen"],
+                "git_repos_with_commits": _s_gc["repos_with_commits"],
+            },
+            "behavior": {
+                "planning_ratio_explore_to_doing": _s_planning_ratio,
+                "actions_per_prompt": _s_actions_per_prompt,
+                "questions_asked": _sa["questions"],
+                "error_recovery_ratio": (round(_s_recov, 3)
+                                         if _s_recov is not None else None),
+                "error_rate_per_100_tools": (round(_s_err_rate, 1)
+                                             if _s_err_rate is not None else None),
+                "tool_errors": _sa["tool_errors"],
+                "recovered_errors": _sa["recovered"],
+                "api_errors_retries": _sa["api_errors"],
+                "fanout_median": _s_fan_med,
+                "shell_test_runs": _sa["shell_tests"],
+                "delegate_actions": _s_cats.get("delegate", 0),
+                "background_tasks": _sa["background"],
+                "scheduled_actions": _sa["scheduled"],
+                "iteration_depth_mean": (round(_s_ids["mean"], 2)
+                                         if _s_ids["mean"] is not None else None),
+                "iteration_depth_median": (round(_s_ids["median"], 2)
+                                           if _s_ids["median"] is not None else None),
+                "iteration_depth_p90": _s_ids["p90"],
+                "iteration_depth_max": _s_ids["max"],
+                "files_hammered_over_15x": _s_ids["heavy_files"],
+            },
+            "tools": {
+                "tool_diversity": _s_diversity,
+                "tool_entropy_normalized": round(_s_norm_entropy, 3),
+                "mcp_calls": _sa["mcp_calls"],
+                "native_calls": _sa["native_calls"],
+                "top_tools": _s_tc.most_common(20),
+                "mcp_servers_distinct": len(_sa["mcp_server_counter"]),
+                "clis_distinct": len(_sa["cli_counter"]),
+                "cli_calls": sum(_sa["cli_counter"].values()),
+                "toolsearch_calls": _s_tc.get("ToolSearch", 0),
+                "task_tool_calls": (_s_tc.get("TaskCreate", 0)
+                                    + _s_tc.get("TaskUpdate", 0)),
+                "agent_calls": _s_tc.get("Agent", 0),
+            },
+            "stack": {
+                "models": _sa["model_counter"].most_common(),
+                "top_skills": _sa["skill_counter"].most_common(15),
+                "skills_all": _sa["skill_counter"].most_common(200),
+                "skills_distinct": len(_sa["skill_counter"]),
+                "skills_total": sum(_sa["skill_counter"].values()),
+                "subagent_types_distinct": len(_sa["subagent_counter"]),
+                "subagent_types": _sa["subagent_counter"].most_common(10),
+                "compounding_writes": _sa["compounding"],
+            },
+            "token_usage": _token_usage_block(dict(_sa["model_tokens"])),
+            "agentic": {},
+        }
+
+        # Build _scoring_monthly_full for this source
+        _s_months = sorted(
+            set(_sa["m_prompts"]) | set(_sa["m_tools"])
+            | set(_sa["m_sessions"]))
+        _per_source_stats[_src_name]["_scoring_monthly_full"] = \
+            build_monthly_scoring_stats(
+                months=_s_months,
+                sources_present=[_src_name],
+                month_prompts=_sa["m_prompts"],
+                month_tools_count=_sa["m_tools"],
+                month_churn=_sa["m_churn"],
+                month_models=_sa["m_models"],
+                month_sessions=_sa["m_sessions"],
+                month_assistant_turns=_sa["m_assist"],
+                month_thinking_blocks=_sa["m_thinking"],
+                month_bash_authored_lines=_sa["m_bash_lines"],
+                month_tool_errors=_sa["m_tool_errors"],
+                month_recovered_errors=_sa["m_recovered"],
+                month_edits_per_file=_sa["m_edits"],
+                month_questions=_sa["m_questions"],
+                month_delegate=_sa["m_delegate"],
+                month_background=_sa["m_background"],
+                month_scheduled=_sa["m_scheduled"],
+                month_fanouts=_sa["m_fanouts"],
+                month_tool_counter=_sa["m_tool_counter"],
+                month_session_ts=_sa["m_session_ts"],
+                month_skill_counter=_sa["m_skill_counter"],
+                month_subagent_counter=_sa["m_subagent_counter"],
+                month_mcp_server_counter=_sa["m_mcp_server_counter"],
+                month_cli_counter=_sa["m_cli_counter"],
+                month_compounding=_sa["m_compounding"],
+                month_shell_test_runs=_sa["m_shell_tests"],
+                month_api_errors=_sa["m_api_errors"],
+                planning_ratio_window=_s_planning_ratio,
+                cwds=list(_sa["project_activity"].keys()),
+                gap_cap_s=GAP_CAP_S, burst_gap_s=BURST_GAP_S,
+                no_tool_activity=_no_tool_activity,
+                all_sources_no_agent=_s_all_no_agent,
+            )
+
     narrative = {
         "opening_prompts": opening_prompts,
         "longest_prompts": longest_prompts,
@@ -1124,6 +1436,7 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
         "gc": gc,
         "source_files": source_files,
         "source_sessions": source_sessions,
+        "_per_source_stats": _per_source_stats,
     }
     return stats, narrative
 
