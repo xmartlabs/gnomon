@@ -67,6 +67,7 @@ _ATTR_TARGETS = {
                      ("gnomon.cli.local", "CURSOR_DB")],
     "git_churn":    [("gnomon.analysis.churn", "git_churn"),
                      ("gnomon.cli.local", "git_churn"),
+                     ("gnomon.cli.accumulator", "git_churn"),
                      ("gnomon.output.summary", "git_churn")],
 }
 

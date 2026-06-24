@@ -9,7 +9,17 @@ import unittest
 from unittest import mock
 
 import paxel
+from gnomon.cli.accumulator import Accumulator
 from tests.test_smoke import _claude_turn, _run_claude_transcript
+
+
+def _user_prompt_event(sid, ts, text="hello there refactor", cwd="/repo"):
+    """A genuine human prompt event in the Claude-shaped form Accumulator.observe expects."""
+    ev = {"type": "user", "sessionId": sid, "cwd": cwd,
+          "message": {"role": "user", "content": text}}
+    if ts is not None:
+        ev["timestamp"] = ts
+    return ev
 
 
 class TestPerSourceChurnIsolation(unittest.TestCase):
@@ -139,6 +149,82 @@ class TestScoringInputsBySource(unittest.TestCase):
         block = paxel.build_summary(stats)["scoring_inputs_by_source"]["claude"]["window"]
         names = [k for k, _ in block["stack"]["skills_all"]]
         self.assertIn("writing-plans", names)
+
+
+class TestPerSourceParityRegressions(unittest.TestCase):
+    """Per-source stats must match a per-slice _accumulate (the pre-single-pass path):
+    source-local null-honesty, source-local git window, and the session-count fallback."""
+
+    def test_single_active_source_among_many_does_not_crash(self):
+        """P1: ≥2 source types discovered but only 1 active in-window must not make
+        main() take the multi-source path with None entries (build_scoring_inputs(None))."""
+        claude_dir = tempfile.mkdtemp(prefix="paxel-p1-claude-")
+        gemini_dir = tempfile.mkdtemp(prefix="paxel-p1-gemini-")
+        out = tempfile.mkdtemp(prefix="paxel-p1-out-")
+        empty = tempfile.mkdtemp(prefix="paxel-p1-empty-")
+        for d in (claude_dir, gemini_dir, out, empty):
+            self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+
+        csess = os.path.join(claude_dir, "proj-a")
+        os.makedirs(csess, exist_ok=True)
+        with open(os.path.join(csess, "s.jsonl"), "w", encoding="utf-8") as fh:
+            for r in _claude_turn("c1", "2026-04-01T10:00:00.000Z", cwd="/repoA",
+                                  prompt="claude in window"):
+                fh.write(json.dumps(r) + "\n")
+
+        # Gemini is discovered (file mtime is now) but every event is far before the
+        # window, so its slice ends up with zero in-window prompts/tools/sessions.
+        gsess = os.path.join(gemini_dir, "hash1")
+        os.makedirs(gsess, exist_ok=True)
+        gem = {"sessionId": "g1", "projectHash": "hash1",
+               "messages": [{"id": "u1", "type": "user", "content": "old gemini work",
+                             "timestamp": "2020-01-01T10:00:00.000Z"}]}
+        with open(os.path.join(gsess, "session-x.json"), "w", encoding="utf-8") as fh:
+            json.dump(gem, fh)
+
+        dirs = dict(BASE=claude_dir, GEMINI_DIR=gemini_dir, CODEX_DIR=empty,
+                    ANTIGRAVITY_CLI_DIR=empty, ANTIGRAVITY_DB=os.path.join(empty, "nope.vscdb"),
+                    PI_DIR=empty, OPENCODE_DIR=empty, CURSOR_DIR=empty,
+                    CURSOR_DB=os.path.join(empty, "no.vscdb"))
+        with mock.patch.multiple(paxel, OUT_DIR=out, **dirs), \
+                mock.patch.object(sys, "argv",
+                                  ["paxel.py", "claude", "gemini", "--no-open", "--since=2026-01-01"]), \
+                contextlib.redirect_stdout(io.StringIO()):
+            paxel.main()  # must not raise
+
+        with open(os.path.join(out, "stats.json"), encoding="utf-8") as fh:
+            stats = json.load(fh)
+        # Both source types discovered → multi-source path, real entry for the active one.
+        self.assertIn("claude", stats["scoring_inputs_by_source"])
+
+    def test_prompt_only_source_reports_none_for_tool_metrics(self):
+        """P2: a source with sessions but zero tool calls is null-honest source-locally
+        (None), not numeric 0 inherited from a tool-active corpus."""
+        acc = Accumulator()
+        acc.begin_file("gemini", "/g/s.json")
+        for ev in (_user_prompt_event("g1", "2026-03-01T10:00:00.000Z"),
+                   _user_prompt_event("g1", "2026-03-01T10:05:00.000Z", "another note")):
+            acc.observe(ev, None, None)
+        acc.end_file()
+        s = acc.to_source_stats("gemini", None, None)
+
+        self.assertEqual(s["volume"]["tool_calls_total"], 0)
+        self.assertGreater(s["volume"]["total_prompts"], 0)
+        b = s["behavior"]
+        self.assertIsNone(b["error_rate_per_100_tools"])
+        self.assertIsNone(b["error_recovery_ratio"])
+        self.assertIsNone(b["iteration_depth_mean"])
+        self.assertIsNone(b["fanout_median"])
+
+    def test_undated_session_counted_via_session_files_fallback(self):
+        """P3: a slice whose events are undated (no parseable timestamp) still counts
+        the session via the len(session_files) fallback."""
+        acc = Accumulator()
+        acc.begin_file("gemini", "/g/s.json")
+        acc.observe(_user_prompt_event("u1", None, "undated work"), None, None)
+        acc.end_file()
+        s = acc.to_source_stats("gemini", None, None)
+        self.assertEqual(s["volume"]["total_sessions"], 1)
 
 
 if __name__ == "__main__":
