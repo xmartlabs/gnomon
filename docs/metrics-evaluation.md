@@ -54,7 +54,7 @@ Sí sirve como feedback a bajo costo, con tres condiciones:
 | Codex no suma skills/tools | **Arreglado**: lecturas shell de `SKILL.md` cuentan como skill use; `update_plan`→TodoWrite; `write_stdin`→BashOutput |
 | Toma toda la historia, sin progresión | **Arreglado**: bucketing mensual en stats/report/profile |
 | No funciona en sandbox/self-hosted | **Arreglado**: `CLAUDE_CONFIG_DIR`/`CODEX_HOME` + flags `--<source>-dir=PATH` |
-| No detecta Google Antigravity | **Parcial**: detectado + count de conversaciones y rango de fechas. Los transcripts viven server-side — no hay data local para puntuar honestamente |
+| No detecta Google Antigravity | **Arreglado**: el **CLI** se puntúa offline (prompts/tools/tokens/modelo, decoder protobuf stdlib). El **IDE** está encriptado → se lee llamando la API local del language server (sin dependencia externa) cuando hay uso en la ventana; aporta prompts/tools/thinking/timestamps reales/errores, pero el server enmascara modelo y tokens |
 | Skill fluency sigue mejor leída en Claude | Abierto: `attributionSkill` es más preciso que el heurístico de shell-reads |
 
 ## Propuesta de uso como feedback a bajo costo

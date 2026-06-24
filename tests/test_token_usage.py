@@ -69,6 +69,8 @@ SRC_DIRS = dict(
     BASE=os.path.join(FIX, "claude"),
     CODEX_DIR=os.path.join(FIX, "codex"),
     GEMINI_DIR=os.path.join(FIX, "gemini"),
+    ANTIGRAVITY_CLI_DIR=os.path.join(FIX, "antigravity"),
+    ANTIGRAVITY_DB=os.path.join(FIX, "nope.vscdb"),
     PI_DIR=os.path.join(FIX, "pi"),
     OPENCODE_DIR=os.path.join(FIX, "opencode"),
     CURSOR_DIR=os.path.join(FIX, "cursor", "projects"),
@@ -92,6 +94,8 @@ def _run_with_events(testcase, events, extra_src_dirs=None):
     # Point other sources at empty/non-existent dirs so only our events fire
     src_overrides["CODEX_DIR"] = os.path.join(claude_dir, "_nope_codex")
     src_overrides["GEMINI_DIR"] = os.path.join(claude_dir, "_nope_gemini")
+    src_overrides["ANTIGRAVITY_CLI_DIR"] = os.path.join(claude_dir, "_nope_ag")
+    src_overrides["ANTIGRAVITY_DB"] = os.path.join(claude_dir, "_nope.vscdb")
     src_overrides["PI_DIR"] = os.path.join(claude_dir, "_nope_pi")
     src_overrides["OPENCODE_DIR"] = os.path.join(claude_dir, "_nope_oc")
     src_overrides["CURSOR_DIR"] = os.path.join(claude_dir, "_nope_cursor")
@@ -548,6 +552,7 @@ class TestGeminiTokenMapping(unittest.TestCase):
             BASE=empty,
             CODEX_DIR=empty,
             GEMINI_DIR=gemini_dir,
+            ANTIGRAVITY_CLI_DIR=empty, ANTIGRAVITY_DB=os.path.join(empty, "nope.vscdb"),
             PI_DIR=empty,
             OPENCODE_DIR=empty,
             CURSOR_DIR=empty,
@@ -625,6 +630,7 @@ class TestCodexTokenMapping(unittest.TestCase):
             BASE=empty,
             CODEX_DIR=codex_dir,
             GEMINI_DIR=empty,
+            ANTIGRAVITY_CLI_DIR=empty, ANTIGRAVITY_DB=os.path.join(empty, "nope.vscdb"),
             PI_DIR=empty,
             OPENCODE_DIR=empty,
             CURSOR_DIR=empty,
@@ -721,6 +727,7 @@ class TestCursorTokenExtraction(unittest.TestCase):
             BASE=empty,
             CODEX_DIR=empty,
             GEMINI_DIR=empty,
+            ANTIGRAVITY_CLI_DIR=empty, ANTIGRAVITY_DB=os.path.join(empty, "nope.vscdb"),
             PI_DIR=empty,
             OPENCODE_DIR=empty,
             CURSOR_DIR=cursor_dir,
@@ -753,6 +760,7 @@ class TestCursorTokenExtraction(unittest.TestCase):
             BASE=empty,
             CODEX_DIR=empty,
             GEMINI_DIR=empty,
+            ANTIGRAVITY_CLI_DIR=empty, ANTIGRAVITY_DB=os.path.join(empty, "nope.vscdb"),
             PI_DIR=empty,
             OPENCODE_DIR=empty,
             CURSOR_DIR=cursor_dir,
@@ -844,6 +852,7 @@ class TestCodexMonthlyTokenAttribution(unittest.TestCase):
             BASE=empty,
             CODEX_DIR=codex_dir,
             GEMINI_DIR=empty,
+            ANTIGRAVITY_CLI_DIR=empty, ANTIGRAVITY_DB=os.path.join(empty, "nope.vscdb"),
             PI_DIR=empty,
             OPENCODE_DIR=empty,
             CURSOR_DIR=empty,

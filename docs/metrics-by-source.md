@@ -14,32 +14,49 @@ Quick session reference. Keep only current coverage, current caveats, upload con
 
 ## Metric × source
 
-| Metric | Claude | Codex | Cursor | Gemini | Antigravity |
-|---|---|---|---|---|---|
-| total_sessions / total_prompts / tool_calls | ✅ | ✅ | ✅ | ✅ | ⛔ metadata-only |
-| git_churn | ➖ ✅ | ➖ ✅ | ➖ ✅ | ✅ | ⛔ |
-| tool_churn | ✅ | ✅ | ⚠️ twin-message dedup | ✅ | ⛔ |
-| deletions | ✅ | ✅ | ✅ | ⚠️ write-only coverage | ⛔ |
-| iteration_depth | ✅ | ✅ | ✅ | ✅ | ⛔ |
-| error_rate / error_recovery | ✅ | ✅ | ✅ | ✅ | ⛔ |
-| thinking_blocks | ✅ | ✅ | ✅ | ✅ | ⛔ |
-| fanout / delegate_actions | ✅ | ✅ | ✅ | ⛔ | ⛔ |
-| planning_ratio | ✅ | ✅ | ✅ | ✅ | ⛔ |
-| model tokens | ✅ | ✅ | ✅ | ✅ | ⛔ |
-| skills | ✅ | ✅ | ✅ | ✅ | ⛔ |
-| mcp_calls | ✅ | ✅ | ✅ | ❌ | ⛔ |
-| compounding_writes | ✅ | ✅ | ✅ | ✅ | ⛔ |
-| active_hours | ✅ | ✅ | ✅ | ✅ | ⛔ |
-| actions_per_prompt | ✅ | ✅ | ✅ | ✅ | ⛔ |
+Antigravity has two surfaces: **CLI** (`agy`, read offline from the SQLite+protobuf conversation
+DBs) and **IDE** (encrypted `*.pb`, read by driving the running language server's local API
+directly — no external dependency). Both decode to the same normalized events.
+
+| Metric | Claude | Codex | Cursor | Gemini | Antigravity CLI | Antigravity IDE |
+|---|---|---|---|---|---|---|
+| total_sessions / total_prompts / tool_calls | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| git_churn | ➖ ✅ | ➖ ✅ | ➖ ✅ | ✅ | ✅ | ⚠️ best-effort cwd |
+| tool_churn | ✅ | ✅ | ⚠️ twin-message dedup | ✅ | ✅ | ⚠️ create-file content only |
+| deletions | ✅ | ✅ | ✅ | ⚠️ write-only coverage | ⚠️ write-only | ❌ |
+| iteration_depth | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| error_rate / error_recovery | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (run-command exit codes) |
+| thinking_blocks | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ (planner thinking) |
+| fanout / delegate_actions | ✅ | ✅ | ✅ | ⛔ | ⚠️ invoke_subagent only | ❌ |
+| planning_ratio | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| model tokens | ✅ | ✅ | ✅ | ✅ | ✅ | ⛔ masked by server |
+| skills | ✅ | ✅ | ✅ | ✅ | ⚠️ via SKILL.md read | ⚠️ via SKILL.md read |
+| mcp_calls | ✅ | ✅ | ✅ | ❌ | ✅ (`server::tool`) | ✅ (`server::tool`) |
+| compounding_writes | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| active_hours | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (real per-step ts) |
+| actions_per_prompt | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ## Session caveats
 
-- `git_churn` is parser-independent once source yields a real `cwd`. Antigravity never does.
+- `git_churn` is parser-independent once source yields a real `cwd`. Antigravity CLI yields a real
+  `cwd` (from `trajectory_metadata_blob`); the IDE derives it best-effort from edit/command paths.
 - Codex now counts `apply_patch` churn per file, so churn, deletions, and iteration depth are meaningful there.
 - Gemini captures tool activity, thinking, tokens, and errors, but deletions stay partial because `write_file` has no old-string diff.
-- Gemini has no subagent support, so `fanout` and `delegate_actions` are unavailable by design.
+- Gemini/Pi/opencode have no subagent support, so the **Orchestration** AQ axis is dropped (caps
+  lack `delegate`), not scored 0 — they aren't penalized for fan-out they can't do.
 - Gemini MCP usage is not captured because tool names do not use `mcp__` naming.
-- Antigravity remains metadata-only. No tool-level metrics should be interpreted there.
+- **Antigravity CLI** is fully scored offline: prompts, tool calls, tokens, and model are decoded
+  from the protobuf step payloads (stdlib decoder, no deps).
+- **Antigravity IDE** transcripts are encrypted; gnomon reads them by calling **every** running
+  language server's local API (one per open workspace; auto-launched when the unencrypted usage
+  index shows in-window history; no external dependency). It yields prompts, tool calls (with
+  commands), thinking, real per-step timestamps, and run-command error codes — but the server
+  **masks the model id** (`MODEL_PLACEHOLDER_*`) and does not expose token counts.
+- **MCP** is detected on both surfaces: the CLI names MCP tools `server::tool` (→ `mcp__server__tool`),
+  the IDE emits a dedicated `MCP_TOOL` step (`mcpTool.serverName` + `toolCall.name`). Counted as
+  `mcp_calls` + distinct servers.
+- **Skills** are detected when a skill file is read (`skills/<name>/SKILL.md` → `attributionSkill`),
+  on both surfaces — so only file-loaded/`/slash`-invoked skills are counted, not context-injected ones.
 
 ## Uploaded summary contract
 

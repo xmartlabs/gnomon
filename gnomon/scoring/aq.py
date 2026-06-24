@@ -61,8 +61,11 @@ def compute_aq(stats):
     discipline = wsum((.60, sat(t.get("task_tool_calls", 0), 1500), "tasktool"),
                       (.40, (1.0 if has_skill(["writing-plans", "autoplan", "plan"]) else 0.6), "skills"))
     breadth_axes = [
+        # Orchestration needs subagent delegation; a source that can't fan out by design
+        # (Gemini/Pi/opencode) drops this axis (renormalized) instead of scoring ~0.
         ("Orchestration", 33, orchestration, {"agent_runs": agent_runs,
-         "subagent_types": st.get("subagent_types_distinct", 0), "fanout_median": fanout}),
+         "subagent_types": st.get("subagent_types_distinct", 0), "fanout_median": fanout},
+         "delegate"),
         ("Skill fluency", 22, skill_fluency, {"skills_distinct": st.get("skills_distinct", 0),
          "skills_total": st.get("skills_total", 0)}, "skills"),
         ("Tool command (MCP + CLI)", 28, tool_command, {"mcp_servers": t.get("mcp_servers_distinct", 0),
@@ -116,7 +119,10 @@ def compute_aq(stats):
     token_economy = wsum((.5, sat(t.get("toolsearch_calls", 0), 300), "toolsearch"),
                          (.5, sat(cli_share, 0.70), None))
     savvy_axes = [
-        ("Model mix", 50, model_mix, {"distinct_models": len(models), "offload_share": round(offload_share, 2)}),
+        # Model mix needs a real per-turn model id; a source that masks it (Antigravity IDE)
+        # drops this axis (renormalized) instead of scoring 0.
+        ("Model mix", 50, model_mix, {"distinct_models": len(models), "offload_share": round(offload_share, 2)},
+         "model"),
         ("Token economy", 50, token_economy, {"toolsearch": t.get("toolsearch_calls", 0), "cli_share": round(cli_share, 2)}),
     ]
 

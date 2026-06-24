@@ -24,7 +24,7 @@ from gnomon.sources.discovery import (
     discover_sources, parse_window, _resolve_source_dir,
 )
 from gnomon.sources.cursor import _cursor_dedup
-from gnomon.sources.antigravity import antigravity_summary
+from gnomon.sources.antigravity import antigravity_summary, export_antigravity_ide, ide_window_overlaps
 from gnomon.analysis.churn import git_churn
 from gnomon.analysis.metrics import (
     _error_rate_per_100, _error_recovery_ratio, _iteration_depth_stats,
@@ -88,23 +88,38 @@ def main(argv=None, output_dir=None):
         if not os.path.isdir(resolved):
             print(f"  warning: --{src}-dir path not found: {resolved}")
     sources = discover_sources(selected)
-    by_src = Counter(s for s, _, _ in sources)
-    print(f"Found {len(sources)} transcript files across "
-          f"{', '.join(f'{k}:{v}' for k, v in by_src.items()) or 'no sources'}")
     # Optional time window (--since/--until/--last): events outside it are skipped, so
     # every downstream metric — INCLUDING git churn, whose since/until follow the kept
     # events' date range — reads the same window. Timestampless events are DROPPED when
     # a window is active (they can't honor "this period only"); Cursor JSONL-only
-    # sessions ride their single file-mtime timestamp.
+    # sessions ride their single file-mtime timestamp. Parsed BEFORE the Antigravity IDE
+    # step so we can skip launching the IDE when its history can't fall in the window.
     since_dt, until_dt = parse_window(argv)
     if since_dt or until_dt:
         print(f"  window: {since_dt.date() if since_dt else '...'} -> "
               f"{(until_dt - timedelta(days=1)).date() if until_dt else 'now'}")
+    # Antigravity IDE: transcripts are encrypted on disk; the only way to read them is to query
+    # the running language server's local API. We first read the unencrypted usage index
+    # (antigravity_summary); if the IDE was used AND its date range overlaps the window, we pull
+    # the conversations (launching the IDE if needed) and fold them in. (The CLI half is already
+    # covered offline by discover_sources.)
+    # Don't touch the live local IDE when the user is analyzing CLI history copied from another
+    # machine (--antigravity-dir) -- that would merge unrelated local IDE usage into the result.
+    _ide_dir_override = any(a.startswith("--antigravity-dir=") for a in argv)
+    antigravity = None if _ide_dir_override else antigravity_summary()
+    if ("antigravity-ide" in selected and antigravity
+            and ide_window_overlaps(antigravity, since_dt, until_dt)):
+        export_path = export_antigravity_ide(os.path.join(_out_dir, "_antigravity_ide"))
+        if export_path:
+            sources.append(("antigravity-ide", export_path, "antigravity-ide-export"))
+            print(f"  Antigravity IDE history folded in ({antigravity['conversations']} conversations)")
+    elif antigravity and "antigravity-ide" in selected:
+        print(f"  note: Antigravity IDE detected ({antigravity['conversations']} conversations) "
+              f"but outside the selected window -- skipped")
+    by_src = Counter(s for s, _, _ in sources)
+    print(f"Found {len(sources)} transcript files across "
+          f"{', '.join(f'{k}:{v}' for k, v in by_src.items()) or 'no sources'}")
     sources, cursor_twins = _cursor_dedup(sources)
-    antigravity = antigravity_summary()
-    if antigravity:
-        print(f"  note: Google Antigravity detected -- {antigravity['conversations']} conversations "
-              f"(metadata only; transcripts live server-side, so it can't be scored)")
     if not sources:
         print("\n  No transcripts found in ~/.claude/projects, ~/.codex/sessions, "
               "~/.gemini/tmp, ~/.pi/agent/sessions, ~/.local/share/opencode/storage, "
@@ -883,8 +898,9 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
             "span_days": span_days,
             "active_days": active_days,
             "timezone": f"{tzname} (UTC{tzoffset[:3]}:{tzoffset[3:]})",
-            # metadata only — Antigravity transcripts are server-side, so this is
-            # detected + counted but never folded into scores
+            # Antigravity IDE usage index (unencrypted conversation count + date range). The
+            # CLI and (when exported) IDE transcripts ARE scored as the `antigravity` source;
+            # this field just surfaces the IDE summary for context.
             "antigravity_experimental": antigravity,
         },
         "volume": {

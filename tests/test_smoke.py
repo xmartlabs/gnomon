@@ -31,6 +31,8 @@ SRC_DIRS = dict(
     BASE=os.path.join(FIX, "claude"),
     CODEX_DIR=os.path.join(FIX, "codex"),
     GEMINI_DIR=os.path.join(FIX, "gemini"),
+    ANTIGRAVITY_CLI_DIR=os.path.join(FIX, "antigravity"),
+    ANTIGRAVITY_DB=os.path.join(FIX, "nope.vscdb"),
     PI_DIR=os.path.join(FIX, "pi"),
     OPENCODE_DIR=os.path.join(FIX, "opencode"),
     CURSOR_DIR=os.path.join(FIX, "cursor", "projects"),
@@ -1112,6 +1114,8 @@ def _run_single_source(testcase, source_name, gemini_dir=None, claude_dir=None):
         BASE=claude_dir or _empty,
         CODEX_DIR=_empty,
         GEMINI_DIR=gemini_dir or _empty,
+        ANTIGRAVITY_CLI_DIR=_empty,
+        ANTIGRAVITY_DB=os.path.join(_empty, "nope.vscdb"),
         PI_DIR=_empty,
         OPENCODE_DIR=_empty,
         CURSOR_DIR=_empty,
@@ -1224,6 +1228,7 @@ def _run_claude_transcript(testcase, rows, extra_argv=None, spy_git_churn=None):
     testcase.addCleanup(shutil.rmtree, _empty, ignore_errors=True)
     dirs = dict(
         BASE=proj, CODEX_DIR=_empty, GEMINI_DIR=_empty, PI_DIR=_empty,
+        ANTIGRAVITY_CLI_DIR=_empty, ANTIGRAVITY_DB=os.path.join(_empty, "nope.vscdb"),
         OPENCODE_DIR=_empty, CURSOR_DIR=_empty,
         CURSOR_DB=os.path.join(_empty, "nonexistent.vscdb"),
     )

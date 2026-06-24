@@ -8,6 +8,10 @@ from gnomon.config import BASE
 
 CODEX_DIR = os.path.join(os.path.expanduser(os.environ.get("CODEX_HOME", "~/.codex")), "sessions")
 GEMINI_DIR = os.path.expanduser("~/.gemini/tmp")
+# CLI: one SQLite file per conversation, protobuf step payloads (fully decodable).
+ANTIGRAVITY_CLI_DIR = os.path.expanduser("~/.gemini/antigravity-cli/conversations")
+# IDE: full per-step transcripts are encrypted *.pb; this state DB holds the unencrypted
+# trajectory index used for a volume/time-only summary (see antigravity_summary).
 ANTIGRAVITY_DB = os.path.expanduser(
     "~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb")
 PI_DIR = os.path.expanduser("~/.pi/agent/sessions")
@@ -28,12 +32,14 @@ def _cursor_db_path():
 
 
 CURSOR_DB = _cursor_db_path()
-ALL_SOURCES = ("claude", "codex", "gemini", "pi", "opencode", "cursor")
+ALL_SOURCES = ("claude", "codex", "gemini", "antigravity", "antigravity-ide", "pi", "opencode", "cursor")
 
-_AGENT_UNSUPPORTED_SOURCES = frozenset({"gemini"})
+# antigravity-ide masks the model and exposes no subagent/token signal -> agent-mode unsupported.
+_AGENT_UNSUPPORTED_SOURCES = frozenset({"gemini", "antigravity-ide"})
 
 _DIR_FLAGS = {"claude": ("BASE", "projects"), "codex": ("CODEX_DIR", "sessions"),
-              "gemini": ("GEMINI_DIR", None), "pi": ("PI_DIR", None),
+              "gemini": ("GEMINI_DIR", None), "antigravity": ("ANTIGRAVITY_CLI_DIR", "conversations"),
+              "pi": ("PI_DIR", None),
               "opencode": ("OPENCODE_DIR", None), "cursor": ("CURSOR_DIR", "projects")}
 
 
@@ -102,6 +108,9 @@ def discover_sources(selected):
     if "gemini" in selected and os.path.isdir(GEMINI_DIR):
         for fp in sorted(glob.glob(os.path.join(GEMINI_DIR, "**", "*.json"), recursive=True)):
             out.append(("gemini", fp, "gemini"))
+    if "antigravity" in selected and os.path.isdir(ANTIGRAVITY_CLI_DIR):
+        for fp in sorted(glob.glob(os.path.join(ANTIGRAVITY_CLI_DIR, "*.db"))):
+            out.append(("antigravity", fp, "antigravity-cli"))
     if "pi" in selected and os.path.isdir(PI_DIR):
         for fp in sorted(glob.glob(os.path.join(PI_DIR, "**", "*.jsonl"), recursive=True)):
             out.append(("pi", fp, "pi"))
