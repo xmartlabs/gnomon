@@ -89,30 +89,62 @@ def _resolve_source_dir(path, inner):
     return p
 
 
+def _walk_ext(root, ext):
+    """Yield sorted file paths matching *<ext> under root.
+
+    Uses os.walk (scandir-backed on Python 3.5+) instead of glob.glob with
+    recursive=True, avoiding fnmatch overhead on every directory entry.
+    Hidden directories (starting with '.') are pruned early.
+    """
+    if not os.path.isdir(root):
+        return []
+    result = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not d.startswith('.')]
+        for fn in filenames:
+            if fn.endswith(ext):
+                result.append(os.path.join(dirpath, fn))
+    return sorted(result)
+
+
 def _cursor_jsonl_files():
     """All agent-transcripts JSONL files: main sessions AND subagent sidechains
     (.../<session>/subagents/<id>.jsonl -- one glob level deeper)."""
-    main_pat = os.path.join(CURSOR_DIR, "**", "agent-transcripts", "*", "*.jsonl")
-    sub_pat = os.path.join(CURSOR_DIR, "**", "agent-transcripts", "*", "subagents", "*.jsonl")
-    return glob.glob(main_pat, recursive=True) + glob.glob(sub_pat, recursive=True)
+    if not os.path.isdir(CURSOR_DIR):
+        return []
+    result = []
+    for dirpath, dirnames, filenames in os.walk(CURSOR_DIR):
+        dirnames[:] = [d for d in dirnames if not d.startswith('.')]
+        base = os.path.basename(dirpath)
+        if base in ("agent-transcripts",):
+            continue
+        parent = os.path.basename(os.path.dirname(dirpath))
+        grandparent = os.path.basename(os.path.dirname(os.path.dirname(dirpath)))
+        in_transcripts = (parent == "agent-transcripts"
+                          or grandparent == "agent-transcripts")
+        if in_transcripts:
+            for fn in filenames:
+                if fn.endswith(".jsonl"):
+                    result.append(os.path.join(dirpath, fn))
+    return sorted(result)
 
 
 def discover_sources(selected):
     out = []
     if "claude" in selected and os.path.isdir(BASE):
-        for fp in sorted(glob.glob(os.path.join(BASE, "**", "*.jsonl"), recursive=True)):
+        for fp in _walk_ext(BASE, ".jsonl"):
             out.append(("claude", fp, "claude"))
     if "codex" in selected and os.path.isdir(CODEX_DIR):
-        for fp in sorted(glob.glob(os.path.join(CODEX_DIR, "**", "*.jsonl"), recursive=True)):
+        for fp in _walk_ext(CODEX_DIR, ".jsonl"):
             out.append(("codex", fp, "codex"))
     if "gemini" in selected and os.path.isdir(GEMINI_DIR):
-        for fp in sorted(glob.glob(os.path.join(GEMINI_DIR, "**", "*.json"), recursive=True)):
+        for fp in _walk_ext(GEMINI_DIR, ".json"):
             out.append(("gemini", fp, "gemini"))
     if "antigravity" in selected and os.path.isdir(ANTIGRAVITY_CLI_DIR):
         for fp in sorted(glob.glob(os.path.join(ANTIGRAVITY_CLI_DIR, "*.db"))):
             out.append(("antigravity", fp, "antigravity-cli"))
     if "pi" in selected and os.path.isdir(PI_DIR):
-        for fp in sorted(glob.glob(os.path.join(PI_DIR, "**", "*.jsonl"), recursive=True)):
+        for fp in _walk_ext(PI_DIR, ".jsonl"):
             out.append(("pi", fp, "pi"))
     if "opencode" in selected and os.path.isdir(OPENCODE_DIR):
         session_glob = os.path.join(OPENCODE_DIR, "storage", "session", "*", "*.json")
