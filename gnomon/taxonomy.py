@@ -66,17 +66,34 @@ def bash_writes_file(cmd):
 
 _SHELL_TEST_RE = re.compile(
     r'(?:^|[\s;&|(/])('          # start / separator / '/' → so ./venv/bin/pytest, node_modules/.bin/jest match
+    # Python
     r'pytest|py\.test|tox|nox|nosetests?|unittest|coverage\s+run|hypothesis'
+    r'|hatch\s+(?:run\s+)?test|pdm\s+run\s+test|manage\.py\s+test'   # hatch test, pdm scripts, Django
+    # JS/TS
     r'|jest|vitest|mocha|jasmine|ava|cypress|playwright\s+test|wtr|web-test-runner|karma'
+    r'|(?:node|tsx)\s+(?:[^\s;&|)]+\s+)*?--test'                     # node/tsx built-in runner
+    # Go / Rust
     r'|go\s+test|gotestsum|cargo\s+test|cargo\s+nextest'
-    r'|rspec|minitest|rails\s+test|phpunit|pest'
-    r'|ctest|gtest|catch2'
-    r'|\./gradlew\s+(?:test|check)|gradle\s+(?:test|check)|mvn\s+(?:test|verify)'
+    # Ruby
+    r'|rspec|minitest|rails\s+test|rake\s+(?:test|spec)'
+    # PHP
+    r'|phpunit|pest|paratest|behat|php\s+artisan\s+test|composer\s+(?:run\s+)?test|codecept\s+run'
+    # C/C++
+    r'|ctest|gtest|catch2|make\s+(?:test|check)'
+    # JVM: gradle (lazy args + optional ':module:' path + test-task token, camelCase only with
+    # capital Test/Tests so testClasses/processTestResources/compileTestJava are rejected; bare
+    # 'check' only as a full word so spotlessCheck is rejected), maven (wrapper + intermediate
+    # args), sbt (optional 'it:' qualifier), scala-cli, lein.
+    r'|(?:\./)?gradlew?\s+(?:[^\s;&|)]+\s+)*?(?::?[\w.-]+:)*(?:test|check|\w*Tests?)'
+    r'|(?:\./)?mvnw?\s+(?:[^\s;&|)]+\s+)*?(?:test|verify|integration-test)'
+    r'|sbt\s+(?:[^\s;&|)]+\s+)*?(?:[\w.:-]*:)?(?:test|testOnly)'
+    r'|lein\s+(?:[^\s;&|)]+\s+)*?test|scala-cli\s+test'
+    # .NET
     r'|dotnet\s+test|xunit|nunit'
-    r'|(?:npm|yarn|pnpm|bun)\s+(?:run\s+)?test'
-    r'|rake\s+(?:test|spec)|make\s+(?:test|check)'
-    r'|bazel\s+test|elixir\s+test|mix\s+test|swift\s+test|flutter\s+test|deno\s+test'
-    r'|hatch\s+run\s+test'
+    # package-manager script aliases (incl. 'npm t' / 'yarn t' shorthand)
+    r'|(?:npm|yarn|pnpm|bun)\s+(?:run\s+)?(?:test|t)'
+    # misc
+    r'|bazel\s+test|elixir\s+test|mix\s+test|swift\s+test|flutter\s+test|deno\s+test|dart\s+test'
     r')(?=$|[\s;&|):])', re.I)   # trailing guard kills ava.json / nox/ / tox.ini / *cache; ':' keeps npm test:unit
 
 

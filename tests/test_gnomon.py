@@ -188,6 +188,50 @@ class TestComputeAqV2(unittest.TestCase):
         self.assertEqual(verification["signals"]["review_skills"], 70)
         self.assertGreater(verification["score"], 0.0)
 
+class TestBashRunsTests(unittest.TestCase):
+    POSITIVE = [
+        # JVM gradle (multi-module path, Android/integration task names, intermediate args)
+        "./gradlew :maps-server:test", './gradlew :maps-server:test --tests "X"',
+        "./gradlew :app:testDebugUnitTest", "./gradlew integrationTest",
+        "./gradlew connectedAndroidTest", "./gradlew jvmTest", "./gradlew clean test",
+        "gradle :a:b:check", "./gradlew test", "./gradlew check",
+        # JVM maven (wrapper + intermediate args)
+        "mvn test", "mvn verify", "./mvnw test", "mvn clean test", "mvn -pl mod test",
+        "mvnw verify",
+        # Scala / Clojure
+        "sbt test", "sbt clean test", "sbt testOnly *Foo", "sbt it:test", "scala-cli test .",
+        "lein test",
+        # PHP
+        "phpunit", "./vendor/bin/phpunit", "pest", "./vendor/bin/paratest", "behat",
+        "php artisan test", "composer test", "composer run test", "codecept run",
+        # Python
+        "pytest", "python -m pytest", "python -m unittest", "tox", "uv run pytest",
+        "hatch test", "hatch run test", "pdm run test", "python manage.py test",
+        "./manage.py test",
+        # Node / JS / TS
+        "npm test", "npm t", "yarn t", "npm run test:unit", "node --test", "tsx --test",
+        "npx jest", "vitest run", "npx playwright test",
+        # Go / Rust / .NET / Dart / Elixir / Ruby
+        "go test ./...", "cargo test", "cargo nextest run", "dotnet test", "flutter test",
+        "dart test", "mix test", "bundle exec rspec", "rake spec",
+    ]
+    NEGATIVE = [
+        "./gradlew build", "./gradlew :app:compileJava", "./gradlew :app:testClasses",
+        "./gradlew spotlessCheck", "./gradlew processTestResources",
+        "mvn -DskipTests package", "composer install", "composer update", "composer require x",
+        "php artisan migrate", "php artisan serve", "php artisan make:test Foo",
+        "python manage.py migrate", "git checkout test", "cat ava.json", "vim tox.ini",
+        "find . -name test", "cd nox/ && ls", "npm install", "yarn add foo",
+    ]
+
+    def test_positive_cases(self):
+        for cmd in self.POSITIVE:
+            self.assertTrue(paxel.bash_runs_tests(cmd), f"should detect test run: {cmd!r}")
+
+    def test_negative_cases(self):
+        for cmd in self.NEGATIVE:
+            self.assertFalse(paxel.bash_runs_tests(cmd), f"should NOT detect test run: {cmd!r}")
+
 
 class TestParseWindow(unittest.TestCase):
     def test_no_flags(self):
