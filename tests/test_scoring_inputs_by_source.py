@@ -110,7 +110,7 @@ class TestScoringInputsBySource(unittest.TestCase):
     def test_payload_has_version_and_by_source(self):
         stats = self._stats()
         summary = paxel.build_summary(stats)
-        self.assertEqual(summary["scoring_inputs_version"], 1)
+        self.assertEqual(summary["scoring_inputs_version"], 2)
         self.assertIn("claude", summary["scoring_inputs_by_source"])
 
     def test_block_field_set_window_and_monthly(self):
@@ -285,6 +285,25 @@ class TestPlanCeremonyToolCounting(unittest.TestCase):
         self.assertNotIn("plan", dict(st["top_skills"]))
         self.assertNotIn("plan", dict(st["skills_all"]))
         self.assertEqual(st["skills_total"], 0)
+
+    def test_plan_sessions_never_exceeds_total_sessions(self):
+        # Invariant: plan_sessions (numerator) must never exceed total_sessions
+        # (denominator). An UNDATED planning session never enters session_ts, so it
+        # is not in the denominator — it must not leak into the numerator either.
+        acc = Accumulator()
+        acc.begin_file("claude", "/c/s.jsonl")
+        # One DATED non-plan session (enters session_ts).
+        for row in _claude_turn("dated-1", "2026-05-01T10:00:00.000Z",
+                                tool="Read", prompt="just read"):
+            acc.observe(row, None, None)
+        # One UNDATED plan session (ts=None → no timestamp → not in session_ts).
+        for row in _claude_turn("undated-1", None,
+                                tool="ExitPlanMode", prompt="plan it"):
+            acc.observe(row, None, None)
+        acc.end_file()
+        s = acc.to_source_stats("claude", None, None)
+        self.assertLessEqual(
+            s["behavior"]["plan_sessions"], s["volume"]["total_sessions"])
 
     def test_exit_plan_mode_counts_in_monthly_slice(self):
         # The monthly scoring path must also credit the plan session: a dated ExitPlanMode

@@ -535,9 +535,20 @@ class TestSignatureMovesStructured(unittest.TestCase):
 
     def test_amp_unescaped_in_evidence(self):
         # Structured evidence is plain text — HTML entities must be unescaped, never
-        # leaked raw. (The Plan badge dropped its literal '&' when it moved to a
-        # per-session phrasing; the invariant still holds for every item.)
-        for item in self.structured:
+        # leaked raw. Exercise the unescape path on a fired badge whose evidence
+        # literally contains "&amp;": the "Build" signature move ("delegated &amp;
+        # backgrounded agent runs"). Its gate needs delegate_actions + background_tasks
+        # >= 100 AND >= prompts * 0.3, so bump delegate_actions on a fresh copy (don't
+        # mutate module-level _rich_stats — other golden tests need Build NOT firing).
+        stats = _rich_stats()
+        stats["behavior"]["delegate_actions"] = 120
+        structured = paxel.signature_moves_structured(stats)
+        build = next((i for i in structured if i["tag"] == "Build"), None)
+        self.assertIsNotNone(build, f"Expected 'Build' move to fire; got {structured}")
+        self.assertIn("&", build["evidence"])
+        self.assertNotIn("&amp;", build["evidence"])
+        # And the invariant holds for every item, not just Build.
+        for item in structured:
             self.assertNotIn("&amp;", item["evidence"])
 
     def test_tag_and_title_are_strings(self):

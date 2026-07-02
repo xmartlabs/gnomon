@@ -24,7 +24,7 @@ CLAUDE_BLOCK = {
         "error_rate_per_100_tools": 3.0, "api_errors_retries": 4, "fanout_median": 3,
         "shell_test_runs": 120, "delegate_actions": 200, "background_tasks": 30,
         "iteration_depth_mean": 2.5, "iteration_depth_p90": 4, "iteration_depth_max": 20,
-        "files_hammered_over_15x": 2, "plan_sessions": 32,
+        "files_hammered_over_15x": 2, "plan_sessions": 16,
     },
     "stack": {
         "skills_distinct": 25, "skills_total": 900, "compounding_writes": 20,

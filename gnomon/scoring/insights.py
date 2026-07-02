@@ -79,7 +79,7 @@ def _signature_moves_pool(stats):
 
     # plan_sessions already folds in both signals per session (plan-mode/todo tools AND
     # planning skills), so use it directly — don't re-add sk() or we'd double-count.
-    plan = b.get("plan_sessions", 0)
+    plan = min(b.get("plan_sessions", 0), sess)
     if plan >= 3 and plan >= sess * 0.35:
         raw.append((_clamp(plan / float(sess)), "Plan",
             "You write the plan before the code",

@@ -181,12 +181,12 @@
             "value": 7.8
           },
           "planning": {
-            "axis_narrative": "Planning scores 10.0/10 (excellent). Strongest: Explore-before-build (100%); weakest: Plan ceremony (100%).",
+            "axis_narrative": "Planning scores 9.5/10 (excellent). Strongest: Explore-before-build (100%); weakest: Plan ceremony (80%).",
             "axis_verdict": "excellent",
-            "drag_narrative": "Plan ceremony is the weakest contributor, scoring 100%. Your value: 0.8 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
-            "drag_note": "Plan ceremony is dragging this down \u2014 0.8 planning sessions/session, target ~0.5.",
+            "drag_narrative": "Plan ceremony is the weakest contributor, scoring 80%. Your value: 0.4 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
+            "drag_note": "Plan ceremony is dragging this down \u2014 0.4 planning sessions/session, target ~0.5.",
             "gloss": "Think before you build",
-            "score_out_of_10": "10.0 / 10",
+            "score_out_of_10": "9.5 / 10",
             "subs": [
               {
                 "direction": "higher",
@@ -221,20 +221,20 @@
               {
                 "direction": "higher",
                 "display_target": "0.5 planning sessions/session",
-                "display_value": "0.8 planning sessions/session",
+                "display_value": "0.4 planning sessions/session",
                 "is_drag": true,
                 "label": "Plan ceremony",
-                "narrative": "Plan ceremony is excellent (0.8 planning sessions/session, target 0.5 planning sessions/session \u2014 well above target, scoring 100%).",
-                "pct": 1.0,
-                "score_pct": 100,
+                "narrative": "Plan ceremony is good (0.4 planning sessions/session, target 0.5 planning sessions/session \u2014 approaching target, scoring 80%).",
+                "pct": 0.8,
+                "score_pct": 80,
                 "target": 0.5,
                 "unit": "planning sessions/session",
-                "verdict": "excellent",
+                "verdict": "good",
                 "weight": 0.25,
-                "your_value": 0.8
+                "your_value": 0.4
               }
             ],
-            "value": 10.0
+            "value": 9.5
           }
         },
         "signature_moves": [
@@ -249,11 +249,6 @@
             "title": "You run a team, not a tool"
           },
           {
-            "evidence": "You opened 32 of 40 sessions with a plan \u2014 you scaffold the decision before the implementation, gstack-style.",
-            "tag": "Plan",
-            "title": "You write the plan before the code"
-          },
-          {
             "evidence": "600 reasoning blocks (~15/session) before edits land \u2014 you deliberate hard, then commit.",
             "tag": "Think",
             "title": "You think before you touch the diff"
@@ -262,6 +257,11 @@
             "evidence": "The agent stopped to ask you on just 2% of 300 prompts \u2014 you point it and let it run, rather than getting pulled into a back-and-forth.",
             "tag": "User Sovereignty",
             "title": "You direct, you don't deliberate"
+          },
+          {
+            "evidence": "You opened 16 of 40 sessions with a plan \u2014 you scaffold the decision before the implementation, gstack-style.",
+            "tag": "Plan",
+            "title": "You write the plan before the code"
           }
         ],
         "steering": {
@@ -560,12 +560,12 @@
               "value": 7.8
             },
             "planning": {
-              "axis_narrative": "Planning scores 10.0/10 (excellent). Strongest: Explore-before-build (100%); weakest: Plan ceremony (100%).",
+              "axis_narrative": "Planning scores 9.5/10 (excellent). Strongest: Explore-before-build (100%); weakest: Plan ceremony (80%).",
               "axis_verdict": "excellent",
-              "drag_narrative": "Plan ceremony is the weakest contributor, scoring 100%. Your value: 0.8 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
-              "drag_note": "Plan ceremony is dragging this down \u2014 0.8 planning sessions/session, target ~0.5.",
+              "drag_narrative": "Plan ceremony is the weakest contributor, scoring 80%. Your value: 0.4 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
+              "drag_note": "Plan ceremony is dragging this down \u2014 0.4 planning sessions/session, target ~0.5.",
               "gloss": "Think before you build",
-              "score_out_of_10": "10.0 / 10",
+              "score_out_of_10": "9.5 / 10",
               "subs": [
                 {
                   "direction": "higher",
@@ -600,20 +600,20 @@
                 {
                   "direction": "higher",
                   "display_target": "0.5 planning sessions/session",
-                  "display_value": "0.8 planning sessions/session",
+                  "display_value": "0.4 planning sessions/session",
                   "is_drag": true,
                   "label": "Plan ceremony",
-                  "narrative": "Plan ceremony is excellent (0.8 planning sessions/session, target 0.5 planning sessions/session \u2014 well above target, scoring 100%).",
-                  "pct": 1.0,
-                  "score_pct": 100,
+                  "narrative": "Plan ceremony is good (0.4 planning sessions/session, target 0.5 planning sessions/session \u2014 approaching target, scoring 80%).",
+                  "pct": 0.8,
+                  "score_pct": 80,
                   "target": 0.5,
                   "unit": "planning sessions/session",
-                  "verdict": "excellent",
+                  "verdict": "good",
                   "weight": 0.25,
-                  "your_value": 0.8
+                  "your_value": 0.4
                 }
               ],
-              "value": 10.0
+              "value": 9.5
             }
           },
           "signature_moves": [
@@ -628,11 +628,6 @@
               "title": "You run a team, not a tool"
             },
             {
-              "evidence": "You opened 32 of 40 sessions with a plan \u2014 you scaffold the decision before the implementation, gstack-style.",
-              "tag": "Plan",
-              "title": "You write the plan before the code"
-            },
-            {
               "evidence": "600 reasoning blocks (~15/session) before edits land \u2014 you deliberate hard, then commit.",
               "tag": "Think",
               "title": "You think before you touch the diff"
@@ -641,6 +636,11 @@
               "evidence": "The agent stopped to ask you on just 2% of 300 prompts \u2014 you point it and let it run, rather than getting pulled into a back-and-forth.",
               "tag": "User Sovereignty",
               "title": "You direct, you don't deliberate"
+            },
+            {
+              "evidence": "You opened 16 of 40 sessions with a plan \u2014 you scaffold the decision before the implementation, gstack-style.",
+              "tag": "Plan",
+              "title": "You write the plan before the code"
             }
           ],
           "steering": {
@@ -668,7 +668,7 @@
             "iteration_depth_max": 20,
             "iteration_depth_mean": 2.5,
             "iteration_depth_p90": 4,
-            "plan_sessions": 32,
+            "plan_sessions": 16,
             "planning_ratio_explore_to_doing": 0.7,
             "questions_asked": 5,
             "shell_test_runs": 120
@@ -763,7 +763,7 @@
         }
       }
     },
-    "scoring_inputs_version": 1
+    "scoring_inputs_version": 2
   },
   {
     "expected": {
@@ -1464,7 +1464,7 @@
         }
       }
     },
-    "scoring_inputs_version": 1
+    "scoring_inputs_version": 2
   },
   {
     "expected": {
@@ -1649,12 +1649,12 @@
             "value": 7.1
           },
           "planning": {
-            "axis_narrative": "Planning scores 9.2/10 (excellent). Strongest: Explore-before-build (100%); weakest: Plan ceremony (100%).",
+            "axis_narrative": "Planning scores 8.8/10 (excellent). Strongest: Explore-before-build (100%); weakest: Plan ceremony (72%).",
             "axis_verdict": "excellent",
-            "drag_narrative": "Plan ceremony is the weakest contributor, scoring 100%. Your value: 0.68 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
-            "drag_note": "Plan ceremony is dragging this down \u2014 0.68 planning sessions/session, target ~0.5.",
+            "drag_narrative": "Plan ceremony is the weakest contributor, scoring 72%. Your value: 0.36 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
+            "drag_note": "Plan ceremony is dragging this down \u2014 0.36 planning sessions/session, target ~0.5.",
             "gloss": "Think before you build",
-            "score_out_of_10": "9.2 / 10",
+            "score_out_of_10": "8.8 / 10",
             "subs": [
               {
                 "direction": "higher",
@@ -1689,20 +1689,20 @@
               {
                 "direction": "higher",
                 "display_target": "0.5 planning sessions/session",
-                "display_value": "0.68 planning sessions/session",
+                "display_value": "0.36 planning sessions/session",
                 "is_drag": true,
                 "label": "Plan ceremony",
-                "narrative": "Plan ceremony is excellent (0.68 planning sessions/session, target 0.5 planning sessions/session \u2014 well above target, scoring 100%).",
-                "pct": 1.0,
-                "score_pct": 100,
+                "narrative": "Plan ceremony is good (0.36 planning sessions/session, target 0.5 planning sessions/session \u2014 approaching target, scoring 72%).",
+                "pct": 0.72,
+                "score_pct": 72,
                 "target": 0.5,
                 "unit": "planning sessions/session",
-                "verdict": "excellent",
+                "verdict": "good",
                 "weight": 0.25,
-                "your_value": 0.68
+                "your_value": 0.36
               }
             ],
-            "value": 9.2
+            "value": 8.8
           }
         },
         "signature_moves": [
@@ -1717,11 +1717,6 @@
             "title": "You run a team, not a tool"
           },
           {
-            "evidence": "You opened 34 of 50 sessions with a plan \u2014 you scaffold the decision before the implementation, gstack-style.",
-            "tag": "Plan",
-            "title": "You write the plan before the code"
-          },
-          {
             "evidence": "The agent stopped to ask you on just 2% of 380 prompts \u2014 you point it and let it run, rather than getting pulled into a back-and-forth.",
             "tag": "User Sovereignty",
             "title": "You direct, you don't deliberate"
@@ -1730,6 +1725,11 @@
             "evidence": "A 0.66 explore-to-build ratio \u2014 you read and search far more than you type \u2014 yet you'll hammer one file 40\u00d7 rather than re-architect. Blueprint, then bulldozer.",
             "tag": "Think \u2192 Build",
             "title": "Plan wide, then grind narrow"
+          },
+          {
+            "evidence": "600 reasoning blocks (~12/session) before edits land \u2014 you deliberate hard, then commit.",
+            "tag": "Think",
+            "title": "You think before you touch the diff"
           }
         ],
         "steering": {
@@ -2028,12 +2028,12 @@
               "value": 7.8
             },
             "planning": {
-              "axis_narrative": "Planning scores 10.0/10 (excellent). Strongest: Explore-before-build (100%); weakest: Plan ceremony (100%).",
+              "axis_narrative": "Planning scores 9.5/10 (excellent). Strongest: Explore-before-build (100%); weakest: Plan ceremony (80%).",
               "axis_verdict": "excellent",
-              "drag_narrative": "Plan ceremony is the weakest contributor, scoring 100%. Your value: 0.8 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
-              "drag_note": "Plan ceremony is dragging this down \u2014 0.8 planning sessions/session, target ~0.5.",
+              "drag_narrative": "Plan ceremony is the weakest contributor, scoring 80%. Your value: 0.4 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
+              "drag_note": "Plan ceremony is dragging this down \u2014 0.4 planning sessions/session, target ~0.5.",
               "gloss": "Think before you build",
-              "score_out_of_10": "10.0 / 10",
+              "score_out_of_10": "9.5 / 10",
               "subs": [
                 {
                   "direction": "higher",
@@ -2068,20 +2068,20 @@
                 {
                   "direction": "higher",
                   "display_target": "0.5 planning sessions/session",
-                  "display_value": "0.8 planning sessions/session",
+                  "display_value": "0.4 planning sessions/session",
                   "is_drag": true,
                   "label": "Plan ceremony",
-                  "narrative": "Plan ceremony is excellent (0.8 planning sessions/session, target 0.5 planning sessions/session \u2014 well above target, scoring 100%).",
-                  "pct": 1.0,
-                  "score_pct": 100,
+                  "narrative": "Plan ceremony is good (0.4 planning sessions/session, target 0.5 planning sessions/session \u2014 approaching target, scoring 80%).",
+                  "pct": 0.8,
+                  "score_pct": 80,
                   "target": 0.5,
                   "unit": "planning sessions/session",
-                  "verdict": "excellent",
+                  "verdict": "good",
                   "weight": 0.25,
-                  "your_value": 0.8
+                  "your_value": 0.4
                 }
               ],
-              "value": 10.0
+              "value": 9.5
             }
           },
           "signature_moves": [
@@ -2096,11 +2096,6 @@
               "title": "You run a team, not a tool"
             },
             {
-              "evidence": "You opened 32 of 40 sessions with a plan \u2014 you scaffold the decision before the implementation, gstack-style.",
-              "tag": "Plan",
-              "title": "You write the plan before the code"
-            },
-            {
               "evidence": "600 reasoning blocks (~15/session) before edits land \u2014 you deliberate hard, then commit.",
               "tag": "Think",
               "title": "You think before you touch the diff"
@@ -2109,6 +2104,11 @@
               "evidence": "The agent stopped to ask you on just 2% of 300 prompts \u2014 you point it and let it run, rather than getting pulled into a back-and-forth.",
               "tag": "User Sovereignty",
               "title": "You direct, you don't deliberate"
+            },
+            {
+              "evidence": "You opened 16 of 40 sessions with a plan \u2014 you scaffold the decision before the implementation, gstack-style.",
+              "tag": "Plan",
+              "title": "You write the plan before the code"
             }
           ],
           "steering": {
@@ -2494,7 +2494,7 @@
             "iteration_depth_max": 20,
             "iteration_depth_mean": 2.5,
             "iteration_depth_p90": 4,
-            "plan_sessions": 32,
+            "plan_sessions": 16,
             "planning_ratio_explore_to_doing": 0.7,
             "questions_asked": 5,
             "shell_test_runs": 120
@@ -2655,6 +2655,6 @@
         }
       }
     },
-    "scoring_inputs_version": 1
+    "scoring_inputs_version": 2
   }
 ]

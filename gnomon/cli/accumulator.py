@@ -208,6 +208,14 @@ class Accumulator:
         if mkey:
             self.month_plan_sessions[mkey].add(sid)
 
+    def _counted_plan_sessions(self):
+        """Plan sessions restricted to the same universe as total_sessions, so the
+        plan_sessions / total_sessions fraction can never exceed 1 (a session that
+        never entered session_ts is not in the denominator either)."""
+        if self.session_ts:
+            return len(self.plan_sessions & set(self.session_ts))
+        return min(len(self.plan_sessions), len(self.session_files))
+
     def end_file(self):
         # flush any remaining edit runs as iteration-depth samples
         for _s, sdict in self._file_edit_run.items():
@@ -771,7 +779,7 @@ class Accumulator:
                 "background_tasks": self.background_tasks,
                 "scheduled_actions": self.scheduled_actions,
                 "shell_test_runs": self.shell_test_runs,
-                "plan_sessions": len(self.plan_sessions),
+                "plan_sessions": self._counted_plan_sessions(),
             },
             "rhythm": {
                 "hour_histogram_local": {str(h): self.hour_hist.get(h, 0) for h in range(24)},
@@ -964,7 +972,7 @@ class Accumulator:
                 "api_errors_retries": self.api_errors,
                 "fanout_median": _s_fan_med,
                 "shell_test_runs": self.shell_test_runs,
-                "plan_sessions": len(self.plan_sessions),
+                "plan_sessions": self._counted_plan_sessions(),
                 "delegate_actions": _s_cats.get("delegate", 0),
                 "background_tasks": self.background_tasks,
                 "scheduled_actions": self.scheduled_actions,
