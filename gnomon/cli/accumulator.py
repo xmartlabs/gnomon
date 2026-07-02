@@ -26,7 +26,7 @@ from datetime import datetime, timedelta
 
 from gnomon.config import parse_ts, line_count, strip_injections
 from gnomon.taxonomy import (
-    SCHEDULE_TOOLS, ASK_TOOLS,
+    SCHEDULE_TOOLS, ASK_TOOLS, PLAN_SIGNAL_TOOLS, PLAN_SKILL_NEEDLES,
     classify_tool, bash_writes_file, bash_runs_tests, _extract_clis,
     _is_compounding_path, _SKILL_MD_RX,
 )
@@ -110,7 +110,11 @@ class Accumulator:
         self.bash_write_calls = 0
         self.bash_authored_lines = 0
         self.shell_test_runs = 0
-        self.plan_tool_uses = 0
+        # Plan ceremony is a per-SESSION signal (not a raw tool count): the set of
+        # sessions that contained any planning signal — a plan-mode/todo tool OR a
+        # planning Skill. Counting distinct sessions (not tool calls) stops TodoWrite,
+        # which fires many times per session, from inflating the metric.
+        self.plan_sessions = set()
 
         self.hour_hist = Counter()
         self.weekday_hist = Counter()
@@ -150,7 +154,7 @@ class Accumulator:
         self.month_cli_counter = defaultdict(Counter)
         self.month_compounding = Counter()
         self.month_shell_test_runs = Counter()
-        self.month_plan_tool_uses = Counter()
+        self.month_plan_sessions = defaultdict(set)   # "YYYY-MM" -> {sessionId with planning}
         self.month_api_errors = Counter()
 
         self.model_tokens = defaultdict(_zero_tok)
@@ -188,6 +192,21 @@ class Accumulator:
         (codex empty-seed sessions)."""
         self.source_files[self._cur_src] -= 1
         self.files_parsed -= 1
+
+    # ---- plan-ceremony (per-session) helpers -------------------------------
+    @staticmethod
+    def _is_plan_skill(name):
+        sl = str(name).lower()
+        return any(nd in sl for nd in PLAN_SKILL_NEEDLES)
+
+    def _mark_plan_session(self, sid, mkey):
+        """Record that session `sid` (in month `mkey`) contained a planning signal.
+        Idempotent per session — repeated signals in one session count once."""
+        if not sid:
+            return
+        self.plan_sessions.add(sid)
+        if mkey:
+            self.month_plan_sessions[mkey].add(sid)
 
     def end_file(self):
         # flush any remaining edit runs as iteration-depth samples
@@ -355,6 +374,8 @@ class Accumulator:
                 self.skill_counter[ev["attributionSkill"]] += 1
                 if mkey:
                     self.month_skill_counter[mkey][ev["attributionSkill"]] += 1
+                if self._is_plan_skill(ev["attributionSkill"]):
+                    self._mark_plan_session(sid, mkey)
             content = msg.get("content")
             if isinstance(content, list):
                 for b in content:
@@ -403,23 +424,18 @@ class Accumulator:
                                 self.skill_counter[s] += 1
                                 if mkey:
                                     self.month_skill_counter[mkey][s] += 1
-                        # Canonical planning-tool signals, normalized across sources:
-                        # EnterPlanMode = Cursor create_plan; ExitPlanMode = Claude Code native
-                        # plan mode (shift+tab -> present plan); TodoWrite = Codex update_plan /
-                        # Antigravity manage_task / Cursor todos. This counter measures planning
-                        # ACTIVITY, not distinct plans: a single Cursor session can emit both
-                        # create_plan (-> EnterPlanMode) and update_todos (-> TodoWrite), and
-                        # TodoWrite in particular fires once per todo-list mutation (many times
-                        # per session), so multiple increments per plan/session are expected.
-                        # Intentionally a subset of taxonomy.PLAN_TOOLS: TodoRead/TaskList/TaskGet
-                        # are reads, not planning acts, and must NOT inflate the metric.
-                        # Kept in a dedicated behavior counter (mirrors shell_test_runs), NOT
-                        # injected into skill_counter — that would fabricate a "plan" skill in
-                        # the raw top_skills/skills_all exports that no Skill call ever produced.
-                        if name in ("EnterPlanMode", "ExitPlanMode", "TodoWrite"):
-                            self.plan_tool_uses += 1
-                            if mkey:
-                                self.month_plan_tool_uses[mkey] += 1
+                                # a planning Skill also marks this a planning session
+                                if self._is_plan_skill(s):
+                                    self._mark_plan_session(sid, mkey)
+                        # Plan-ceremony signal: mark this SESSION as a planning session.
+                        # PLAN_SIGNAL_TOOLS normalizes across sources (EnterPlanMode = Cursor
+                        # create_plan; ExitPlanMode = Claude Code native plan mode, shift+tab ->
+                        # present plan; TodoWrite = Codex update_plan / Antigravity manage_task /
+                        # Cursor todos). We count DISTINCT SESSIONS, not tool calls, so TodoWrite
+                        # firing many times per session (todo bookkeeping) can't inflate the metric.
+                        # Subset of taxonomy.PLAN_TOOLS: TodoRead/TaskList/TaskGet are reads.
+                        if name in PLAN_SIGNAL_TOOLS:
+                            self._mark_plan_session(sid, mkey)
                         if name == "Agent":
                             st = inp.get("subagent_type", "general-purpose")
                             self.subagent_counter[st] += 1
@@ -522,6 +538,8 @@ class Accumulator:
                                     self.skill_counter[_sm.group(1)] += 1
                                     if mkey:
                                         self.month_skill_counter[mkey][_sm.group(1)] += 1
+                                    if self._is_plan_skill(_sm.group(1)):
+                                        self._mark_plan_session(sid, mkey)
                             if bash_writes_file(cmd):
                                 self.bash_write_calls += 1
                                 _bash_nl = cmd.count("\n")
@@ -753,7 +771,7 @@ class Accumulator:
                 "background_tasks": self.background_tasks,
                 "scheduled_actions": self.scheduled_actions,
                 "shell_test_runs": self.shell_test_runs,
-                "plan_tool_uses": self.plan_tool_uses,
+                "plan_sessions": len(self.plan_sessions),
             },
             "rhythm": {
                 "hour_histogram_local": {str(h): self.hour_hist.get(h, 0) for h in range(24)},
@@ -851,7 +869,7 @@ class Accumulator:
             month_skill_counter=self.month_skill_counter, month_subagent_counter=self.month_subagent_counter,
             month_mcp_server_counter=self.month_mcp_server_counter, month_cli_counter=self.month_cli_counter,
             month_compounding=self.month_compounding, month_shell_test_runs=self.month_shell_test_runs,
-            month_plan_tool_uses=self.month_plan_tool_uses,
+            month_plan_sessions=self.month_plan_sessions,
             month_api_errors=self.month_api_errors,
             planning_ratio_window=planning_ratio,
             cwds=list(self.project_activity.keys()),
@@ -946,7 +964,7 @@ class Accumulator:
                 "api_errors_retries": self.api_errors,
                 "fanout_median": _s_fan_med,
                 "shell_test_runs": self.shell_test_runs,
-                "plan_tool_uses": self.plan_tool_uses,
+                "plan_sessions": len(self.plan_sessions),
                 "delegate_actions": _s_cats.get("delegate", 0),
                 "background_tasks": self.background_tasks,
                 "scheduled_actions": self.scheduled_actions,

@@ -45,7 +45,7 @@ def build_scoring_inputs(stats):
             "api_errors_retries": b.get("api_errors_retries", 0),
             "fanout_median": b.get("fanout_median"),
             "shell_test_runs": b.get("shell_test_runs", 0),
-            "plan_tool_uses": b.get("plan_tool_uses", 0),
+            "plan_sessions": b.get("plan_sessions", 0),
             "delegate_actions": b.get("delegate_actions", 0),
             "background_tasks": b.get("background_tasks", 0),
             "iteration_depth_mean": b.get("iteration_depth_mean"),
@@ -88,7 +88,7 @@ def build_monthly_scoring_stats(
     month_skill_counter, month_subagent_counter, month_mcp_server_counter,
     month_cli_counter, month_compounding, month_shell_test_runs, month_api_errors,
     planning_ratio_window, cwds, gap_cap_s, burst_gap_s,
-    no_tool_activity, all_sources_no_agent, month_plan_tool_uses=None,
+    no_tool_activity, all_sources_no_agent, month_plan_sessions=None,
 ):
     out = []
     for mk in months:
@@ -150,7 +150,7 @@ def build_monthly_scoring_stats(
                 "api_errors_retries": month_api_errors.get(mk, 0),
                 "fanout_median": fan_med,
                 "shell_test_runs": month_shell_test_runs.get(mk, 0),
-                "plan_tool_uses": (month_plan_tool_uses or {}).get(mk, 0),
+                "plan_sessions": len((month_plan_sessions or {}).get(mk, ())),
                 "delegate_actions": delegate_m,
                 "background_tasks": background_m,
                 "scheduled_actions": scheduled_m,

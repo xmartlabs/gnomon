@@ -77,12 +77,14 @@ def _signature_moves_pool(stats):
             f'<b>{tb:,}</b> reasoning blocks (~{tb // sess}/session) before edits land — '
             f'you deliberate hard, then commit.'))
 
-    plan = sk("brainstorm", "writing-plan", "autoplan", "spec") + b.get("plan_tool_uses", 0)
-    if plan >= 30 and plan >= sess * 0.35:
+    # plan_sessions already folds in both signals per session (plan-mode/todo tools AND
+    # planning skills), so use it directly — don't re-add sk() or we'd double-count.
+    plan = b.get("plan_sessions", 0)
+    if plan >= 3 and plan >= sess * 0.35:
         raw.append((_clamp(plan / float(sess)), "Plan",
             "You write the plan before the code",
-            f'<b>{plan:,}</b> planning &amp; brainstorming runs — you scaffold the decision '
-            f'before the implementation, gstack-style.'))
+            f'You opened <b>{plan:,}</b> of {sess:,} sessions with a plan — you scaffold '
+            f'the decision before the implementation, gstack-style.'))
 
     qrate = b["questions_asked"] / prompts
     if qrate < 0.03 and prompts > 200:

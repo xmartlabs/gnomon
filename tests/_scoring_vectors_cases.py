@@ -24,7 +24,7 @@ CLAUDE_BLOCK = {
         "error_rate_per_100_tools": 3.0, "api_errors_retries": 4, "fanout_median": 3,
         "shell_test_runs": 120, "delegate_actions": 200, "background_tasks": 30,
         "iteration_depth_mean": 2.5, "iteration_depth_p90": 4, "iteration_depth_max": 20,
-        "files_hammered_over_15x": 2,
+        "files_hammered_over_15x": 2, "plan_sessions": 32,
     },
     "stack": {
         "skills_distinct": 25, "skills_total": 900, "compounding_writes": 20,
@@ -56,7 +56,7 @@ CURSOR_BLOCK = {
         "error_rate_per_100_tools": 5.0, "api_errors_retries": 2, "fanout_median": 1,
         "shell_test_runs": 5, "delegate_actions": 2, "background_tasks": 0,
         "iteration_depth_mean": 6.0, "iteration_depth_p90": 12, "iteration_depth_max": 40,
-        "files_hammered_over_15x": 5,
+        "files_hammered_over_15x": 5, "plan_sessions": 2,
     },
     "stack": {
         "skills_distinct": 0, "skills_total": 0, "compounding_writes": 1,

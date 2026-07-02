@@ -255,16 +255,17 @@ def compute_scores(stats):
     # produces TERSER, more precise prompts, so the term paid for verbosity. It's the main reason a
     # 4-month vibe-coder maxed Planning over a 30-year engineer (an expert-elicitation validity
     # review caught this). Weight redistributed to the construct-relevant terms.
-    plan_skills = _skill_uses_any(stats, ("brainstorm", "writing-plan", "plan", "spec",
-                                          "office-hours", "autoplan", "grill", "ceo-review",
-                                          "eng-review", "design-review")) \
-        + b.get("plan_tool_uses", 0)   # native plan-mode tools (ExitPlanMode/EnterPlanMode/TodoWrite)
+    # Plan ceremony = fraction of sessions with a planning signal (plan-mode/todo tool OR
+    # a planning Skill), NOT a raw plan-tool count. Counting distinct sessions stops
+    # TodoWrite (fires many times/session) from saturating the term; target 0.5 = plan in
+    # ~half your sessions. See accumulator.plan_sessions.
+    plan_ceremony = _clamp((b.get("plan_sessions", 0) / sess) / 0.5)
     # reasoning depth needs a source that emits thinking blocks (Antigravity CLI doesn't);
-    # explore-ratio is behavioral/source-agnostic; plan ceremony is skill-detected.
+    # explore-ratio is behavioral/source-agnostic; plan ceremony is per-session.
     planning = _axis_value([
         (0.45, _clamp(b["planning_ratio_explore_to_doing"] / 0.65), None),
         (0.30, _clamp((v["thinking_blocks"] / sess) / 12.0), "thinking"),
-        (0.25, _clamp((plan_skills / sess) / 0.8), None),
+        (0.25, plan_ceremony, None),
     ], caps)
 
     # STEERING IS NOT SCORED — it's DESCRIBED (see steering_reading). Hands-on cadence
@@ -373,17 +374,15 @@ def score_breakdown(stats):
     exec_subs = [_enrich_sub(s) for s in _apply_sub_caps(exec_subs, caps)]
 
     # --- PLANNING ---
-    plan_skills = _skill_uses_any(stats, ("brainstorm", "writing-plan", "plan", "spec",
-                                          "office-hours", "autoplan", "grill", "ceo-review",
-                                          "eng-review", "design-review")) \
-        + b.get("plan_tool_uses", 0)   # native plan-mode tools (ExitPlanMode/EnterPlanMode/TodoWrite)
     explore_pct       = _clamp(b.get("planning_ratio_explore_to_doing", 0) / 0.65)
     thinking_raw      = v.get("thinking_blocks", 0) / sess
     thinking_pct      = _clamp(thinking_raw / 12.0)
-    plan_skill_raw    = plan_skills / sess
-    plan_skill_pct    = _clamp(plan_skill_raw / 0.8)
+    # Plan ceremony = fraction of sessions with a planning signal (see compute_scores);
+    # per-session, so TodoWrite volume can't saturate it. Target 0.5.
+    plan_sess_raw     = b.get("plan_sessions", 0) / sess
+    plan_ceremony_pct = _clamp(plan_sess_raw / 0.5)
     planning_val      = _axis_value([(0.45, explore_pct, None), (0.30, thinking_pct, "thinking"),
-                                     (0.25, plan_skill_pct, None)], caps)
+                                     (0.25, plan_ceremony_pct, None)], caps)
     plan_subs = [
         {"label": "Explore-before-build",
          "your_value": b.get("planning_ratio_explore_to_doing", 0),
@@ -392,8 +391,8 @@ def score_breakdown(stats):
         {"label": "Reasoning depth", "your_value": thinking_raw,
          "target": 12.0, "unit": "thinking blocks/session", "weight": 0.30, "pct": thinking_pct,
          "direction": "higher", "is_drag": False, "_cap": "thinking"},
-        {"label": "Plan ceremony", "your_value": plan_skill_raw,
-         "target": 0.8, "unit": "plan-skills/session", "weight": 0.25, "pct": plan_skill_pct,
+        {"label": "Plan ceremony", "your_value": plan_sess_raw,
+         "target": 0.5, "unit": "planning sessions/session", "weight": 0.25, "pct": plan_ceremony_pct,
          "direction": "higher", "is_drag": False, "_cap": None},
     ]
     plan_subs = [_enrich_sub(s) for s in _apply_sub_caps(plan_subs, caps)]

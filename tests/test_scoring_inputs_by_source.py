@@ -88,7 +88,7 @@ class TestScoringInputsBySource(unittest.TestCase):
     _VELOCITY = {"active_hours", "tool_churn_edit_write", "shell_authored_lines_est"}
     _BEHAVIOR = {"planning_ratio_explore_to_doing", "actions_per_prompt", "questions_asked",
                  "error_recovery_ratio", "error_rate_per_100_tools", "api_errors_retries",
-                 "fanout_median", "shell_test_runs", "plan_tool_uses", "delegate_actions",
+                 "fanout_median", "shell_test_runs", "plan_sessions", "delegate_actions",
                  "background_tasks", "iteration_depth_mean", "iteration_depth_p90",
                  "iteration_depth_max", "files_hammered_over_15x"}
     _STACK = {"skills_distinct", "skills_total", "compounding_writes",
@@ -228,24 +228,24 @@ class TestPerSourceParityRegressions(unittest.TestCase):
 
 
 class TestPlanCeremonyToolCounting(unittest.TestCase):
-    """Plan-ceremony metric: every canonical plan tool must increment behavior.plan_tool_uses
-    exactly once, read-only plan tools must NOT inflate it, and the count must NOT leak a
-    fabricated 'plan' skill into the raw skill exports.
+    """Plan-ceremony metric: a session with any plan-signal tool must mark exactly one
+    planning session (behavior.plan_sessions), read-only plan tools must NOT, and the
+    count must NOT leak a fabricated 'plan' skill into the raw skill exports.
 
     Regression: commit #22 counted only EnterPlanMode/TodoWrite, so Claude Code's native
     plan mode — which emits ExitPlanMode (shift+tab -> present plan) — scored 0."""
 
-    def _source_stats(self, tool):
+    def _source_stats(self, tool, sid="s1"):
         acc = Accumulator()
         acc.begin_file("claude", "/c/s.jsonl")
-        for row in _claude_turn("s1", "2026-05-01T10:00:00.000Z",
+        for row in _claude_turn(sid, "2026-05-01T10:00:00.000Z",
                                 tool=tool, prompt="plan it"):
             acc.observe(row, None, None)
         acc.end_file()
         return acc.to_source_stats("claude", None, None)
 
     def _plan_count(self, tool):
-        return self._source_stats(tool)["behavior"]["plan_tool_uses"]
+        return self._source_stats(tool)["behavior"]["plan_sessions"]
 
     def test_exit_plan_mode_counts(self):
         # The bug: Claude Code native plan mode emits ExitPlanMode, not EnterPlanMode.
@@ -266,6 +266,18 @@ class TestPlanCeremonyToolCounting(unittest.TestCase):
     def test_non_plan_tool_does_not_count(self):
         self.assertEqual(self._plan_count("Read"), 0)
 
+    def test_repeated_plan_tool_in_one_session_counts_once(self):
+        # The whole point of Option B: TodoWrite fires many times per session but must
+        # count the session ONCE, not per call.
+        acc = Accumulator()
+        acc.begin_file("claude", "/c/s.jsonl")
+        for _ in range(5):
+            for row in _claude_turn("s1", "2026-05-01T10:00:00.000Z",
+                                    tool="TodoWrite", prompt="track"):
+                acc.observe(row, None, None)
+        acc.end_file()
+        self.assertEqual(acc.to_source_stats("claude", None, None)["behavior"]["plan_sessions"], 1)
+
     def test_plan_tools_do_not_pollute_raw_skill_exports(self):
         # Issue 1: plan-tool counting must NOT fabricate a 'plan' skill in top_skills/
         # skills_all — those exports are for real Skill invocations only.
@@ -275,22 +287,23 @@ class TestPlanCeremonyToolCounting(unittest.TestCase):
         self.assertEqual(st["skills_total"], 0)
 
     def test_exit_plan_mode_counts_in_monthly_slice(self):
-        # The monthly scoring path must also credit the plan tool: a dated ExitPlanMode
-        # turn must yield behavior.plan_tool_uses == 1 for that month's slice, mirroring
+        # The monthly scoring path must also credit the plan session: a dated ExitPlanMode
+        # turn must yield behavior.plan_sessions == 1 for that month's slice, mirroring
         # month_shell_test_runs. Regression guard for the monthly aggregation.
         rows = _claude_turn("m1", "2026-05-01T10:00:00.000Z",
                             tool="ExitPlanMode", prompt="plan it")
         stats = _run_claude_transcript(self, rows)
         block = paxel.build_summary(stats)["scoring_inputs_by_source"]["claude"]
         may = next(m for m in block["monthly"] if m["month"] == "2026-05")
-        self.assertEqual(may["behavior"]["plan_tool_uses"], 1)
+        self.assertEqual(may["behavior"]["plan_sessions"], 1)
 
 
 class TestCrossSourcePlanToolNormalization(unittest.TestCase):
     """FU-3: close the chain — each source's NATIVE plan tool must normalize to a name
     the plan-ceremony counter recognizes ("EnterPlanMode"/"ExitPlanMode"/"TodoWrite").
-    The accumulator tests above prove canonical names increment plan_tool_uses; these
-    prove the source readers actually produce those canonical names before counting."""
+    The accumulator tests above prove canonical names mark a planning session; these
+    prove the source readers actually produce those canonical names before the session
+    is marked as a planning session."""
 
     _COUNTED = {"EnterPlanMode", "ExitPlanMode", "TodoWrite"}
 
