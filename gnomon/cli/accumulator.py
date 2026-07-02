@@ -401,7 +401,7 @@ class Accumulator:
                                 self.skill_counter[s] += 1
                                 if mkey:
                                     self.month_skill_counter[mkey][s] += 1
-                        if name == "EnterPlanMode":
+                        if name in ("EnterPlanMode", "TodoWrite"):
                             self.skill_counter["plan"] += 1
                             if mkey:
                                 self.month_skill_counter[mkey]["plan"] += 1
