@@ -88,9 +88,9 @@ class TestScoringInputsBySource(unittest.TestCase):
     _VELOCITY = {"active_hours", "tool_churn_edit_write", "shell_authored_lines_est"}
     _BEHAVIOR = {"planning_ratio_explore_to_doing", "actions_per_prompt", "questions_asked",
                  "error_recovery_ratio", "error_rate_per_100_tools", "api_errors_retries",
-                 "fanout_median", "shell_test_runs", "delegate_actions", "background_tasks",
-                 "iteration_depth_mean", "iteration_depth_p90", "iteration_depth_max",
-                 "files_hammered_over_15x"}
+                 "fanout_median", "shell_test_runs", "plan_tool_uses", "delegate_actions",
+                 "background_tasks", "iteration_depth_mean", "iteration_depth_p90",
+                 "iteration_depth_max", "files_hammered_over_15x"}
     _STACK = {"skills_distinct", "skills_total", "compounding_writes",
               "subagent_types_distinct", "subagent_types", "top_skills", "skills_all", "models"}
     _TOOLS = {"agent_calls", "mcp_servers_distinct", "clis_distinct", "toolsearch_calls",
@@ -225,6 +225,83 @@ class TestPerSourceParityRegressions(unittest.TestCase):
         acc.end_file()
         s = acc.to_source_stats("gemini", None, None)
         self.assertEqual(s["volume"]["total_sessions"], 1)
+
+
+class TestPlanCeremonyToolCounting(unittest.TestCase):
+    """Plan-ceremony metric: every canonical plan tool must increment behavior.plan_tool_uses
+    exactly once, read-only plan tools must NOT inflate it, and the count must NOT leak a
+    fabricated 'plan' skill into the raw skill exports.
+
+    Regression: commit #22 counted only EnterPlanMode/TodoWrite, so Claude Code's native
+    plan mode — which emits ExitPlanMode (shift+tab -> present plan) — scored 0."""
+
+    def _source_stats(self, tool):
+        acc = Accumulator()
+        acc.begin_file("claude", "/c/s.jsonl")
+        for row in _claude_turn("s1", "2026-05-01T10:00:00.000Z",
+                                tool=tool, prompt="plan it"):
+            acc.observe(row, None, None)
+        acc.end_file()
+        return acc.to_source_stats("claude", None, None)
+
+    def _plan_count(self, tool):
+        return self._source_stats(tool)["behavior"]["plan_tool_uses"]
+
+    def test_exit_plan_mode_counts(self):
+        # The bug: Claude Code native plan mode emits ExitPlanMode, not EnterPlanMode.
+        self.assertEqual(self._plan_count("ExitPlanMode"), 1)
+
+    def test_enter_plan_mode_counts(self):
+        # Cursor's create_plan normalizes to EnterPlanMode — must stay counted.
+        self.assertEqual(self._plan_count("EnterPlanMode"), 1)
+
+    def test_todo_write_counts(self):
+        # Codex update_plan / Antigravity manage_task / Cursor todos normalize here.
+        self.assertEqual(self._plan_count("TodoWrite"), 1)
+
+    def test_todo_read_does_not_count(self):
+        # TodoRead is a read, not a planning act — must not inflate the metric.
+        self.assertEqual(self._plan_count("TodoRead"), 0)
+
+    def test_non_plan_tool_does_not_count(self):
+        self.assertEqual(self._plan_count("Read"), 0)
+
+    def test_plan_tools_do_not_pollute_raw_skill_exports(self):
+        # Issue 1: plan-tool counting must NOT fabricate a 'plan' skill in top_skills/
+        # skills_all — those exports are for real Skill invocations only.
+        st = self._source_stats("ExitPlanMode")["stack"]
+        self.assertNotIn("plan", dict(st["top_skills"]))
+        self.assertNotIn("plan", dict(st["skills_all"]))
+        self.assertEqual(st["skills_total"], 0)
+
+    def test_exit_plan_mode_counts_in_monthly_slice(self):
+        # The monthly scoring path must also credit the plan tool: a dated ExitPlanMode
+        # turn must yield behavior.plan_tool_uses == 1 for that month's slice, mirroring
+        # month_shell_test_runs. Regression guard for the monthly aggregation.
+        rows = _claude_turn("m1", "2026-05-01T10:00:00.000Z",
+                            tool="ExitPlanMode", prompt="plan it")
+        stats = _run_claude_transcript(self, rows)
+        block = paxel.build_summary(stats)["scoring_inputs_by_source"]["claude"]
+        may = next(m for m in block["monthly"] if m["month"] == "2026-05")
+        self.assertEqual(may["behavior"]["plan_tool_uses"], 1)
+
+
+class TestSkillUsesAnyReadsFullList(unittest.TestCase):
+    """Issue 2: _skill_uses_any must scan skills_all (up to 200), not just top_skills (15).
+    A planning/quality skill ranked past the 15th slot must still count."""
+
+    def test_counts_skill_beyond_top_15(self):
+        from gnomon.scoring.gstack import _skill_uses_any
+        # 15 unrelated high-use skills crowd out top_skills; the plan skill ranks 16th.
+        filler = [[f"skill-{i}", 100 - i] for i in range(15)]
+        skills_all = filler + [["writing-plan", 3]]
+        stats = {"stack": {"top_skills": filler, "skills_all": skills_all}}
+        self.assertEqual(_skill_uses_any(stats, ("writing-plan",)), 3)
+
+    def test_falls_back_to_top_skills_when_no_skills_all(self):
+        from gnomon.scoring.gstack import _skill_uses_any
+        stats = {"stack": {"top_skills": [["writing-plan", 2]]}}
+        self.assertEqual(_skill_uses_any(stats, ("writing-plan",)), 2)
 
 
 if __name__ == "__main__":

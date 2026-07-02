@@ -110,6 +110,7 @@ class Accumulator:
         self.bash_write_calls = 0
         self.bash_authored_lines = 0
         self.shell_test_runs = 0
+        self.plan_tool_uses = 0
 
         self.hour_hist = Counter()
         self.weekday_hist = Counter()
@@ -149,6 +150,7 @@ class Accumulator:
         self.month_cli_counter = defaultdict(Counter)
         self.month_compounding = Counter()
         self.month_shell_test_runs = Counter()
+        self.month_plan_tool_uses = Counter()
         self.month_api_errors = Counter()
 
         self.model_tokens = defaultdict(_zero_tok)
@@ -401,10 +403,23 @@ class Accumulator:
                                 self.skill_counter[s] += 1
                                 if mkey:
                                     self.month_skill_counter[mkey][s] += 1
-                        if name in ("EnterPlanMode", "TodoWrite"):
-                            self.skill_counter["plan"] += 1
+                        # Canonical planning-tool signals, normalized across sources:
+                        # EnterPlanMode = Cursor create_plan; ExitPlanMode = Claude Code native
+                        # plan mode (shift+tab -> present plan); TodoWrite = Codex update_plan /
+                        # Antigravity manage_task / Cursor todos. This counter measures planning
+                        # ACTIVITY, not distinct plans: a single Cursor session can emit both
+                        # create_plan (-> EnterPlanMode) and update_todos (-> TodoWrite), and
+                        # TodoWrite in particular fires once per todo-list mutation (many times
+                        # per session), so multiple increments per plan/session are expected.
+                        # Intentionally a subset of taxonomy.PLAN_TOOLS: TodoRead/TaskList/TaskGet
+                        # are reads, not planning acts, and must NOT inflate the metric.
+                        # Kept in a dedicated behavior counter (mirrors shell_test_runs), NOT
+                        # injected into skill_counter — that would fabricate a "plan" skill in
+                        # the raw top_skills/skills_all exports that no Skill call ever produced.
+                        if name in ("EnterPlanMode", "ExitPlanMode", "TodoWrite"):
+                            self.plan_tool_uses += 1
                             if mkey:
-                                self.month_skill_counter[mkey]["plan"] += 1
+                                self.month_plan_tool_uses[mkey] += 1
                         if name == "Agent":
                             st = inp.get("subagent_type", "general-purpose")
                             self.subagent_counter[st] += 1
@@ -738,6 +753,7 @@ class Accumulator:
                 "background_tasks": self.background_tasks,
                 "scheduled_actions": self.scheduled_actions,
                 "shell_test_runs": self.shell_test_runs,
+                "plan_tool_uses": self.plan_tool_uses,
             },
             "rhythm": {
                 "hour_histogram_local": {str(h): self.hour_hist.get(h, 0) for h in range(24)},
@@ -835,6 +851,7 @@ class Accumulator:
             month_skill_counter=self.month_skill_counter, month_subagent_counter=self.month_subagent_counter,
             month_mcp_server_counter=self.month_mcp_server_counter, month_cli_counter=self.month_cli_counter,
             month_compounding=self.month_compounding, month_shell_test_runs=self.month_shell_test_runs,
+            month_plan_tool_uses=self.month_plan_tool_uses,
             month_api_errors=self.month_api_errors,
             planning_ratio_window=planning_ratio,
             cwds=list(self.project_activity.keys()),
@@ -929,6 +946,7 @@ class Accumulator:
                 "api_errors_retries": self.api_errors,
                 "fanout_median": _s_fan_med,
                 "shell_test_runs": self.shell_test_runs,
+                "plan_tool_uses": self.plan_tool_uses,
                 "delegate_actions": _s_cats.get("delegate", 0),
                 "background_tasks": self.background_tasks,
                 "scheduled_actions": self.scheduled_actions,

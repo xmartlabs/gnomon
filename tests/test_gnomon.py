@@ -459,6 +459,7 @@ def _full_stats(sessions=10, tool_calls=5000):
                   "models": [("claude-opus-4-7", 5000), ("claude-haiku-4-5", 1000)]},
         "behavior": {"fanout_median": 3, "shell_test_runs": 50, "actions_per_prompt": 10,
                      "error_recovery_ratio": 0.9, "api_errors_retries": 5,
+                     "plan_tool_uses": 40,
                      "planning_ratio_explore_to_doing": 0.7},
     })
     return {
@@ -493,7 +494,8 @@ def _full_stats(sessions=10, tool_calls=5000):
                      "iteration_depth_median": 3.0, "iteration_depth_p90": 7,
                      "iteration_depth_max": 20, "files_hammered_over_15x": 1,
                      "actions_per_prompt": 10.0, "questions_asked": 15,
-                     "background_tasks": 10, "scheduled_actions": 2, "shell_test_runs": 50},
+                     "background_tasks": 10, "scheduled_actions": 2, "shell_test_runs": 50,
+                     "plan_tool_uses": 40},
         "rhythm": {"hour_histogram_local": {str(h): 0 for h in range(24)},
                    "weekday_histogram": {}, "peak_hours_local": [], "preferred_days": []},
         "progression": {"monthly": []},
@@ -543,6 +545,38 @@ class TestScoreBreakdown(unittest.TestCase):
 
     def test_planning_has_three_subs(self):
         self.assertEqual(len(self.bd["planning"]["subs"]), 3)
+
+    def test_plan_ceremony_counts_plan_tool_uses(self):
+        """Plan ceremony must reflect native plan-mode tools (behavior.plan_tool_uses),
+        not just plan-named Skill invocations — the fix for Claude Code's ExitPlanMode."""
+        def _pc(stats):
+            subs = paxel.score_breakdown(stats)["planning"]["subs"]
+            return next(s for s in subs if s["label"] == "Plan ceremony")["your_value"]
+        cold = _full_stats()
+        cold["behavior"]["plan_tool_uses"] = 0
+        hot = _full_stats()
+        hot["behavior"]["plan_tool_uses"] = hot["volume"]["total_sessions"]
+        self.assertGreater(_pc(hot), _pc(cold))
+
+    def test_aq_discipline_credits_plan_tool_uses(self):
+        """AQ Discipline's plan term must be satisfied by native plan-mode tools
+        (behavior.plan_tool_uses), not only by a plan-named Skill — mirrors the
+        gstack Planning fix. Strip any plan-named skill from the stack so the only
+        difference between cold and hot is plan_tool_uses."""
+        def _discipline(stats):
+            aq = paxel.compute_aq(stats)
+            breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
+            return next(a for a in breadth["axes"] if a["name"] == "Discipline")["score"]
+        neutral_skills = [("read-file", 10)]
+        cold = _full_stats()
+        cold["stack"]["top_skills"] = list(neutral_skills)
+        cold["stack"]["skills_all"] = list(neutral_skills)
+        cold["behavior"]["plan_tool_uses"] = 0
+        hot = _full_stats()
+        hot["stack"]["top_skills"] = list(neutral_skills)
+        hot["stack"]["skills_all"] = list(neutral_skills)
+        hot["behavior"]["plan_tool_uses"] = 5
+        self.assertGreater(_discipline(hot), _discipline(cold))
 
     def test_engineering_has_five_subs(self):
         self.assertEqual(len(self.bd["engineering"]["subs"]), 5)

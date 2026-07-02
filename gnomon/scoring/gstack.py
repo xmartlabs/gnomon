@@ -123,8 +123,12 @@ def _skill_uses(stats, needle):
 
 
 def _skill_uses_any(stats, needles):
-    return sum(n for k, n in stats["stack"].get("top_skills", [])
-               if any(nd in k.lower() for nd in needles))
+    # Read skills_all (up to 200), not top_skills (15): a planning/quality skill
+    # ranked below the 15th most-used skill would otherwise be invisible to the
+    # metric and score 0 for someone who genuinely used it.
+    skills = stats["stack"].get("skills_all") or stats["stack"].get("top_skills", [])
+    return sum(n for k, n in skills
+               if any(nd in str(k).lower() for nd in needles))
 
 
 def _evidence(stats):
@@ -253,7 +257,8 @@ def compute_scores(stats):
     # review caught this). Weight redistributed to the construct-relevant terms.
     plan_skills = _skill_uses_any(stats, ("brainstorm", "writing-plan", "plan", "spec",
                                           "office-hours", "autoplan", "grill", "ceo-review",
-                                          "eng-review", "design-review"))
+                                          "eng-review", "design-review")) \
+        + b.get("plan_tool_uses", 0)   # native plan-mode tools (ExitPlanMode/EnterPlanMode/TodoWrite)
     # reasoning depth needs a source that emits thinking blocks (Antigravity CLI doesn't);
     # explore-ratio is behavioral/source-agnostic; plan ceremony is skill-detected.
     planning = _axis_value([
@@ -370,7 +375,8 @@ def score_breakdown(stats):
     # --- PLANNING ---
     plan_skills = _skill_uses_any(stats, ("brainstorm", "writing-plan", "plan", "spec",
                                           "office-hours", "autoplan", "grill", "ceo-review",
-                                          "eng-review", "design-review"))
+                                          "eng-review", "design-review")) \
+        + b.get("plan_tool_uses", 0)   # native plan-mode tools (ExitPlanMode/EnterPlanMode/TodoWrite)
     explore_pct       = _clamp(b.get("planning_ratio_explore_to_doing", 0) / 0.65)
     thinking_raw      = v.get("thinking_blocks", 0) / sess
     thinking_pct      = _clamp(thinking_raw / 12.0)
