@@ -19,3 +19,7 @@ docs/superpowers/
 
 # macOS
 .DS_Store
+
+# Local agent/index artifacts
+.atl/
+.codegraph/
