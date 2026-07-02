@@ -459,6 +459,7 @@ def _full_stats(sessions=10, tool_calls=5000):
                   "models": [("claude-opus-4-7", 5000), ("claude-haiku-4-5", 1000)]},
         "behavior": {"fanout_median": 3, "shell_test_runs": 50, "actions_per_prompt": 10,
                      "error_recovery_ratio": 0.9, "api_errors_retries": 5,
+                     "plan_sessions": 8,
                      "planning_ratio_explore_to_doing": 0.7},
     })
     return {
@@ -493,7 +494,8 @@ def _full_stats(sessions=10, tool_calls=5000):
                      "iteration_depth_median": 3.0, "iteration_depth_p90": 7,
                      "iteration_depth_max": 20, "files_hammered_over_15x": 1,
                      "actions_per_prompt": 10.0, "questions_asked": 15,
-                     "background_tasks": 10, "scheduled_actions": 2, "shell_test_runs": 50},
+                     "background_tasks": 10, "scheduled_actions": 2, "shell_test_runs": 50,
+                     "plan_sessions": 8},
         "rhythm": {"hour_histogram_local": {str(h): 0 for h in range(24)},
                    "weekday_histogram": {}, "peak_hours_local": [], "preferred_days": []},
         "progression": {"monthly": []},
@@ -543,6 +545,49 @@ class TestScoreBreakdown(unittest.TestCase):
 
     def test_planning_has_three_subs(self):
         self.assertEqual(len(self.bd["planning"]["subs"]), 3)
+
+    def test_zero_axis_plan_ceremony_matches_live_target_and_unit(self):
+        """The empty-corpus breakdown must show the SAME Plan ceremony target/unit as an
+        active corpus — the zero-axis fallback drifted stale in a prior round."""
+        def _pc(bd):
+            return next(s for s in bd["planning"]["subs"] if s["label"] == "Plan ceremony")
+        live = _pc(paxel.score_breakdown(_full_stats()))
+        zero = _pc(paxel.score_breakdown(_zero_stats()))
+        self.assertEqual(zero["target"], live["target"])
+        self.assertEqual(zero["unit"], live["unit"])
+
+    def test_plan_ceremony_counts_plan_sessions(self):
+        """Plan ceremony must reflect the fraction of sessions with a planning signal
+        (behavior.plan_sessions), not just plan-named Skill invocations — the fix for
+        Claude Code's ExitPlanMode."""
+        def _pc(stats):
+            subs = paxel.score_breakdown(stats)["planning"]["subs"]
+            return next(s for s in subs if s["label"] == "Plan ceremony")["your_value"]
+        cold = _full_stats()
+        cold["behavior"]["plan_sessions"] = 0
+        hot = _full_stats()
+        hot["behavior"]["plan_sessions"] = hot["volume"]["total_sessions"]
+        self.assertGreater(_pc(hot), _pc(cold))
+
+    def test_aq_discipline_credits_plan_sessions(self):
+        """AQ Discipline's plan term must be satisfied by a planning session
+        (behavior.plan_sessions), not only by a plan-named Skill — mirrors the
+        gstack Planning fix. Strip any plan-named skill from the stack so the only
+        difference between cold and hot is plan_sessions."""
+        def _discipline(stats):
+            aq = paxel.compute_aq(stats)
+            breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
+            return next(a for a in breadth["axes"] if a["name"] == "Discipline")["score"]
+        neutral_skills = [("read-file", 10)]
+        cold = _full_stats()
+        cold["stack"]["top_skills"] = list(neutral_skills)
+        cold["stack"]["skills_all"] = list(neutral_skills)
+        cold["behavior"]["plan_sessions"] = 0
+        hot = _full_stats()
+        hot["stack"]["top_skills"] = list(neutral_skills)
+        hot["stack"]["skills_all"] = list(neutral_skills)
+        hot["behavior"]["plan_sessions"] = 5
+        self.assertGreater(_discipline(hot), _discipline(cold))
 
     def test_engineering_has_five_subs(self):
         self.assertEqual(len(self.bd["engineering"]["subs"]), 5)
@@ -1221,6 +1266,35 @@ class TestScoringDoesNotPenalizeMissingCaps(unittest.TestCase):
         na = {a for p in r["pillars"] for a in (p.get("not_applicable") or [])}
         self.assertNotIn("Orchestration", na)
         self.assertNotIn("Model mix", na)
+
+
+class TestPlanBadgeCreditsPlanSessions(unittest.TestCase):
+    """FU-1: the narrative 'Plan' signature move must fire on planning sessions
+    (behavior.plan_sessions), not only plan-named Skill invocations — consistent with
+    gstack Plan ceremony after the ExitPlanMode fix."""
+
+    def _strip_plan_skills(self, stats):
+        # Remove plan-named real skills so plan credit comes ONLY from plan_sessions.
+        neutral = [("read-file", 10)]
+        stats["stack"]["top_skills"] = neutral
+        stats["stack"]["skills_all"] = neutral
+        return stats
+
+    def _has_plan_badge(self, stats):
+        from gnomon.scoring.insights import signature_moves
+        return any(title == "You write the plan before the code"
+                   for _tag, title, _ev in signature_moves(stats))
+
+    def test_plan_badge_absent_without_plan_signal(self):
+        stats = self._strip_plan_skills(_full_stats())
+        stats["behavior"]["plan_sessions"] = 0
+        self.assertFalse(self._has_plan_badge(stats))
+
+    def test_plan_badge_present_from_plan_sessions(self):
+        # _full_stats has 10 sessions; 8 planning sessions clears the >=3 and >=35% gate.
+        stats = self._strip_plan_skills(_full_stats())
+        stats["behavior"]["plan_sessions"] = 8
+        self.assertTrue(self._has_plan_badge(stats))
 
 
 if __name__ == "__main__":

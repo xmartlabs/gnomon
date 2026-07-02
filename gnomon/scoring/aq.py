@@ -59,7 +59,8 @@ def compute_aq(stats):
                         (.20, sat(t.get("toolsearch_calls", 0), 300), "toolsearch"))
     # plan-skill term needs the Skill capability; falls back to task-tool usage alone
     discipline = wsum((.60, sat(t.get("task_tool_calls", 0), 1500), "tasktool"),
-                      (.40, (1.0 if has_skill(["writing-plans", "autoplan", "plan"]) else 0.6), "skills"))
+                      (.40, (1.0 if (has_skill(["writing-plans", "autoplan", "plan"])
+                                     or b.get("plan_sessions", 0) > 0) else 0.6), "skills"))
     breadth_axes = [
         # Orchestration needs subagent delegation; a source that can't fan out by design
         # (Gemini/Pi/opencode) drops this axis (renormalized) instead of scoring ~0.

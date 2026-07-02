@@ -103,6 +103,7 @@ def _rich_stats():
             "iteration_depth_max": 50, "files_hammered_over_15x": 15,
             "actions_per_prompt": 10.0, "questions_asked": 15,
             "background_tasks": 10, "scheduled_actions": 2, "shell_test_runs": 50,
+            "plan_sessions": 8,
         },
         "rhythm": {
             "hour_histogram_local": {str(h): 0 for h in range(24)},
@@ -170,7 +171,7 @@ class TestGoldenHtmlOutput(unittest.TestCase):
         tag2, title2, ev2 = moves[1]
         self.assertEqual(tag2, "Plan")
         self.assertEqual(title2, "You write the plan before the code")
-        self.assertIn("planning &amp; brainstorming runs", ev2)
+        self.assertIn("sessions with a plan", ev2)
         # Third move: Think
         tag3, title3, ev3 = moves[2]
         self.assertEqual(tag3, "Think")
@@ -191,7 +192,7 @@ class TestGoldenHtmlOutput(unittest.TestCase):
             (
                 "Plan",
                 "You write the plan before the code",
-                "<b>90</b> planning &amp; brainstorming runs — you scaffold the"
+                "You opened <b>8</b> of 10 sessions with a plan — you scaffold the"
                 " decision before the implementation, gstack-style.",
             ),
             (
@@ -533,10 +534,22 @@ class TestSignatureMovesStructured(unittest.TestCase):
                                 f"HTML tag found in evidence: {item['evidence']!r}")
 
     def test_amp_unescaped_in_evidence(self):
-        plan = next((i for i in self.structured if i["tag"] == "Plan"), None)
-        if plan:
-            self.assertNotIn("&amp;", plan["evidence"])
-            self.assertIn("&", plan["evidence"])
+        # Structured evidence is plain text — HTML entities must be unescaped, never
+        # leaked raw. Exercise the unescape path on a fired badge whose evidence
+        # literally contains "&amp;": the "Build" signature move ("delegated &amp;
+        # backgrounded agent runs"). Its gate needs delegate_actions + background_tasks
+        # >= 100 AND >= prompts * 0.3, so bump delegate_actions on a fresh copy (don't
+        # mutate module-level _rich_stats — other golden tests need Build NOT firing).
+        stats = _rich_stats()
+        stats["behavior"]["delegate_actions"] = 120
+        structured = paxel.signature_moves_structured(stats)
+        build = next((i for i in structured if i["tag"] == "Build"), None)
+        self.assertIsNotNone(build, f"Expected 'Build' move to fire; got {structured}")
+        self.assertIn("&", build["evidence"])
+        self.assertNotIn("&amp;", build["evidence"])
+        # And the invariant holds for every item, not just Build.
+        for item in structured:
+            self.assertNotIn("&amp;", item["evidence"])
 
     def test_tag_and_title_are_strings(self):
         for item in self.structured:
