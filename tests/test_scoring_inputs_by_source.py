@@ -286,6 +286,36 @@ class TestPlanCeremonyToolCounting(unittest.TestCase):
         self.assertEqual(may["behavior"]["plan_tool_uses"], 1)
 
 
+class TestCrossSourcePlanToolNormalization(unittest.TestCase):
+    """FU-3: close the chain — each source's NATIVE plan tool must normalize to a name
+    the plan-ceremony counter recognizes ("EnterPlanMode"/"ExitPlanMode"/"TodoWrite").
+    The accumulator tests above prove canonical names increment plan_tool_uses; these
+    prove the source readers actually produce those canonical names before counting."""
+
+    _COUNTED = {"EnterPlanMode", "ExitPlanMode", "TodoWrite"}
+
+    def test_cursor_create_plan_normalizes_to_counted_name(self):
+        from gnomon.sources.cursor import _cursor_tool_name
+        self.assertEqual(_cursor_tool_name("create_plan"), "EnterPlanMode")
+        self.assertIn(_cursor_tool_name("create_plan"), self._COUNTED)
+
+    def test_cursor_todo_tools_normalize_to_counted_name(self):
+        from gnomon.sources.cursor import _cursor_tool_name
+        for native in ("update_todo", "update_todos", "update_current_step"):
+            self.assertEqual(_cursor_tool_name(native), "TodoWrite", native)
+
+    def test_codex_update_plan_normalizes_to_counted_name(self):
+        from gnomon.sources.codex import _codex_tool
+        name, _ = _codex_tool({"name": "update_plan", "arguments": "{}"})
+        self.assertEqual(name, "TodoWrite")
+        self.assertIn(name, self._COUNTED)
+
+    def test_antigravity_manage_task_normalizes_to_counted_name(self):
+        from gnomon.sources.antigravity import _AG_TOOL
+        self.assertEqual(_AG_TOOL["manage_task"], "TodoWrite")
+        self.assertIn(_AG_TOOL["manage_task"], self._COUNTED)
+
+
 class TestSkillUsesAnyReadsFullList(unittest.TestCase):
     """Issue 2: _skill_uses_any must scan skills_all (up to 200), not just top_skills (15).
     A planning/quality skill ranked past the 15th slot must still count."""

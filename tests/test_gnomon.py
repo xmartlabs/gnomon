@@ -1257,5 +1257,33 @@ class TestScoringDoesNotPenalizeMissingCaps(unittest.TestCase):
         self.assertNotIn("Model mix", na)
 
 
+class TestPlanBadgeCreditsPlanToolUses(unittest.TestCase):
+    """FU-1: the narrative 'Plan' signature move must fire on native plan-mode tools
+    (behavior.plan_tool_uses), not only plan-named Skill invocations — consistent with
+    gstack Plan ceremony after the ExitPlanMode fix."""
+
+    def _strip_plan_skills(self, stats):
+        # Remove plan-named real skills so plan credit comes ONLY from plan_tool_uses.
+        neutral = [("read-file", 10)]
+        stats["stack"]["top_skills"] = neutral
+        stats["stack"]["skills_all"] = neutral
+        return stats
+
+    def _has_plan_badge(self, stats):
+        from gnomon.scoring.insights import signature_moves
+        return any(title == "You write the plan before the code"
+                   for _tag, title, _ev in signature_moves(stats))
+
+    def test_plan_badge_absent_without_plan_signal(self):
+        stats = self._strip_plan_skills(_full_stats())
+        stats["behavior"]["plan_tool_uses"] = 0
+        self.assertFalse(self._has_plan_badge(stats))
+
+    def test_plan_badge_present_from_plan_tool_uses(self):
+        stats = self._strip_plan_skills(_full_stats())
+        stats["behavior"]["plan_tool_uses"] = 100
+        self.assertTrue(self._has_plan_badge(stats))
+
+
 if __name__ == "__main__":
     unittest.main()
