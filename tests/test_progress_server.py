@@ -84,7 +84,6 @@ class TestFailedState(unittest.TestCase):
         page = progress_server._PROGRESS_PAGE
         self.assertIn("@keyframes spin", page)
         self.assertIn(".pill.active .pi{animation:spin", page)
-        # active pill icon keeps animated refresh glyph, not upload arrow.
         self.assertIn("if (state === 'active') icon = '\\u21BB';", page)
 
 
