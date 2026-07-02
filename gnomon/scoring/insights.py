@@ -177,7 +177,7 @@ def _growth_edges_pool(stats, scores):
             f'(gstack front-loads this with <code>/office-hours</code> + <code>/autoplan</code>.)',
             None))
 
-    eng_skills = _review_skill_uses(st.get("top_skills", [])) + sk("qa", "investigate", "retro")
+    eng_skills = _review_skill_uses(st.get("skills_all") or st.get("top_skills", [])) + sk("qa", "investigate", "retro")
     if scores.get("Engineering", 10) < 6 and eng_skills < sess * 0.3:
         raw.append((scores.get("Engineering", 10) + 0.1, "Boil the lake",
             "Run a quality pass before you ship",

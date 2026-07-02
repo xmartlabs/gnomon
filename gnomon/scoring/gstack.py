@@ -283,7 +283,7 @@ def compute_scores(stats):
     # committed. Replaced by iteration_depth_mean ("did you get the file right early"), the
     # honest rework signal. p90 + file-hammering stay here (their only home). Ceremony de-weighted.
     # "code-review" (not bare "review") so this doesn't greedily match Planning's
-    # plan-eng-review / plan-design-review / ceo-review ceremonies (which live in plan_skills).
+    # plan-eng-review / plan-design-review / ceo-review ceremonies (which mark plan_sessions).
     eng_skills = _skill_uses_any(stats, ("code-review", "test", "tdd", "qa", "investigate",
                                          "retro", "learn", "cso", "karpathy", "debug")) \
         + b.get("shell_test_runs", 0)   # CLI tests (pytest/go test/…) count as quality work too
@@ -331,7 +331,7 @@ def score_breakdown(stats):
             "planning": _zero_axis("Think before you build", [
                 ("Explore-before-build", 0.65, "explore/doing ratio", 0.45, "higher"),
                 ("Reasoning depth",     12.0, "thinking blocks/session", 0.30, "higher"),
-                ("Plan ceremony",        0.8, "plan-skills/session", 0.25, "higher"),
+                ("Plan ceremony",        0.5, "planning sessions/session", 0.25, "higher"),
             ]),
             "engineering": _zero_axis("Craft and low rework", [
                 ("Low rework",       2.0, "mean file-edit depth", 0.30, "lower"),

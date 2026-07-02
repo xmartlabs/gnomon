@@ -546,6 +546,16 @@ class TestScoreBreakdown(unittest.TestCase):
     def test_planning_has_three_subs(self):
         self.assertEqual(len(self.bd["planning"]["subs"]), 3)
 
+    def test_zero_axis_plan_ceremony_matches_live_target_and_unit(self):
+        """The empty-corpus breakdown must show the SAME Plan ceremony target/unit as an
+        active corpus — the zero-axis fallback drifted stale in a prior round."""
+        def _pc(bd):
+            return next(s for s in bd["planning"]["subs"] if s["label"] == "Plan ceremony")
+        live = _pc(paxel.score_breakdown(_full_stats()))
+        zero = _pc(paxel.score_breakdown(_zero_stats()))
+        self.assertEqual(zero["target"], live["target"])
+        self.assertEqual(zero["unit"], live["unit"])
+
     def test_plan_ceremony_counts_plan_sessions(self):
         """Plan ceremony must reflect the fraction of sessions with a planning signal
         (behavior.plan_sessions), not just plan-named Skill invocations — the fix for
