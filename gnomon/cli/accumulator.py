@@ -401,6 +401,10 @@ class Accumulator:
                                 self.skill_counter[s] += 1
                                 if mkey:
                                     self.month_skill_counter[mkey][s] += 1
+                        if name == "EnterPlanMode":
+                            self.skill_counter["plan"] += 1
+                            if mkey:
+                                self.month_skill_counter[mkey]["plan"] += 1
                         if name == "Agent":
                             st = inp.get("subagent_type", "general-purpose")
                             self.subagent_counter[st] += 1
