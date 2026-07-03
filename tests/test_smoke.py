@@ -145,7 +145,7 @@ class TestPipeline(unittest.TestCase):
         for banned in ("prompt_text",):
             self.assertNotIn(banned, raw, f"verbatim field leaked: {banned}")
         # scoring inputs are present and re-scorable
-        self.assertEqual(summary["scoring_inputs_version"], 1)
+        self.assertEqual(summary["scoring_inputs_version"], 2)
         self.assertIsInstance(summary["scoring_inputs_by_source"], dict)
 
     def test_no_summary_without_flag(self):

@@ -212,6 +212,7 @@ def _synth_stats_for_aggregate(items, agg_aq):
             "delegate_actions": wsum(lambda blk: b(blk).get("delegate_actions")),
             "background_tasks": wsum(lambda blk: b(blk).get("background_tasks")),
             "shell_test_runs": wsum(lambda blk: b(blk).get("shell_test_runs")),
+            "plan_sessions": wsum(lambda blk: b(blk).get("plan_sessions")),
             "fanout_median": wmean(lambda blk: b(blk).get("fanout_median")),
             "iteration_depth_mean": wmean(lambda blk: b(blk).get("iteration_depth_mean")),
             "iteration_depth_p90": wmean(lambda blk: b(blk).get("iteration_depth_p90")),

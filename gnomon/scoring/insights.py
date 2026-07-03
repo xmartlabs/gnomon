@@ -42,13 +42,14 @@ def _signature_moves_pool(stats):
     prompts = max(v["total_prompts"], 1)
 
     def sk(*needles):
-        return sum(n for k, n in st.get("top_skills", []) if any(nd in k.lower() for nd in needles))
+        skills = st.get("skills_all") or st.get("top_skills", [])
+        return sum(n for k, n in skills if any(nd in str(k).lower() for nd in needles))
 
     top_tool = (str(t["top_tools"][0][0]) if t["top_tools"] else "")
     deleg = b["delegate_actions"] + b["background_tasks"]
     raw = []   # (strength 0..1, tag, title, evidence_html)
 
-    rev = _review_skill_uses(st.get("top_skills", []))
+    rev = _review_skill_uses(st.get("skills_all") or st.get("top_skills", []))
     if rev >= 50 and rev >= sess * 0.5:
         raw.append((_clamp(rev / (sess * 2)), "Review",
             "You review more than you write",
@@ -76,12 +77,14 @@ def _signature_moves_pool(stats):
             f'<b>{tb:,}</b> reasoning blocks (~{tb // sess}/session) before edits land — '
             f'you deliberate hard, then commit.'))
 
-    plan = sk("brainstorm", "writing-plan", "autoplan", "spec")
-    if plan >= 30 and plan >= sess * 0.35:
+    # plan_sessions already folds in both signals per session (plan-mode/todo tools AND
+    # planning skills), so use it directly — don't re-add sk() or we'd double-count.
+    plan = min(b.get("plan_sessions", 0), sess)
+    if plan >= 3 and plan >= sess * 0.35:
         raw.append((_clamp(plan / float(sess)), "Plan",
             "You write the plan before the code",
-            f'<b>{plan:,}</b> planning &amp; brainstorming runs — you scaffold the decision '
-            f'before the implementation, gstack-style.'))
+            f'You opened <b>{plan:,}</b> of {sess:,} sessions with a plan — you scaffold '
+            f'the decision before the implementation, gstack-style.'))
 
     qrate = b["questions_asked"] / prompts
     if qrate < 0.03 and prompts > 200:
@@ -130,9 +133,10 @@ def _growth_edges_pool(stats, scores):
     prompts = max(v["total_prompts"], 1)
 
     def sk(*needles):
-        return sum(n for k, n in st.get("top_skills", []) if any(nd in k.lower() for nd in needles))
+        skills = st.get("skills_all") or st.get("top_skills", [])
+        return sum(n for k, n in skills if any(nd in str(k).lower() for nd in needles))
 
-    rev = _review_skill_uses(st.get("top_skills", []))
+    rev = _review_skill_uses(st.get("skills_all") or st.get("top_skills", []))
     tdd = sk("test", "tdd", "qa") + b.get("shell_test_runs", 0)   # named test skills + CLI test runs
     err = b.get("error_rate_per_100_tools") or 0  # None (unmeasured) treated as 0 for edge thresholds
     raw = []   # (priority, eyebrow, title, advice_html, axis)
@@ -173,7 +177,7 @@ def _growth_edges_pool(stats, scores):
             f'(gstack front-loads this with <code>/office-hours</code> + <code>/autoplan</code>.)',
             None))
 
-    eng_skills = _review_skill_uses(st.get("top_skills", [])) + sk("qa", "investigate", "retro")
+    eng_skills = _review_skill_uses(st.get("skills_all") or st.get("top_skills", [])) + sk("qa", "investigate", "retro")
     if scores.get("Engineering", 10) < 6 and eng_skills < sess * 0.3:
         raw.append((scores.get("Engineering", 10) + 0.1, "Boil the lake",
             "Run a quality pass before you ship",

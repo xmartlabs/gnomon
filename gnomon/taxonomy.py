@@ -7,6 +7,15 @@ EXEC_TOOLS = {"Bash", "BashOutput", "KillShell"}
 DELEGATE_TOOLS = {"Agent", "Task"}
 PLAN_TOOLS = {"TodoWrite", "TodoRead", "ExitPlanMode", "EnterPlanMode", "EnterWorktree",
               "ExitWorktree", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet"}
+# Plan-ceremony signal tools (a subset of PLAN_TOOLS): a plan was produced/tracked.
+# EnterPlanMode = Cursor create_plan; ExitPlanMode = Claude Code native plan mode;
+# TodoWrite = Codex update_plan / Antigravity manage_task / Cursor todos. TodoRead and
+# the Task*/Worktree tools are reads/bookkeeping, not planning acts.
+PLAN_SIGNAL_TOOLS = {"EnterPlanMode", "ExitPlanMode", "TodoWrite"}
+# Substrings that mark a Skill invocation as a planning skill (shared by the accumulator's
+# per-session plan detection and scoring). Keep in sync with the planning intent.
+PLAN_SKILL_NEEDLES = ("brainstorm", "writing-plan", "plan", "spec", "office-hours",
+                      "autoplan", "grill", "ceo-review", "eng-review", "design-review")
 SCHEDULE_TOOLS = {"ScheduleWakeup", "CronCreate", "CronDelete", "CronList",
                   "RemoteTrigger", "PushNotification", "Monitor"}
 SKILL_TOOLS = {"Skill"}

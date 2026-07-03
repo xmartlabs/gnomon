@@ -122,8 +122,8 @@ def _usage_int(usage, k):
 
 
 # Skills whose terminal name ends in "-review" but are PLANNING ceremonies, not
-# verification -- they live in plan_skills for the Planning pillar. Counting them as
-# review would inflate Verification and fire the review-reflex edge for planners.
+# verification -- they mark a planning session (plan_sessions) for the Planning pillar.
+# Counting them as review would inflate Verification and fire the review-reflex edge for planners.
 _PLANNING_REVIEW_TAILS = frozenset((
     "ceo-review", "eng-review", "design-review",
     "plan-eng-review", "plan-ceo-review", "plan-design-review",
