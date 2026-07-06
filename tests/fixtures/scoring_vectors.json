@@ -17,7 +17,7 @@
             },
             {
               "name": "Efficiency",
-              "score": 90.9,
+              "score": 91.1,
               "weight": 20
             },
             {
@@ -370,8 +370,9 @@
                   },
                   {
                     "name": "Recovery",
-                    "score": 40.9,
+                    "score": 41.1,
                     "signals": {
+                      "api_per_100_tools": 0.1,
                       "api_retries": 4,
                       "recovery_ratio": 0.8
                     },
@@ -379,7 +380,7 @@
                   }
                 ],
                 "name": "Efficiency",
-                "score": 90.9,
+                "score": 91.1,
                 "weight": 20
               },
               {
@@ -783,7 +784,7 @@
             },
             {
               "name": "Efficiency",
-              "score": 78.4,
+              "score": 77.2,
               "weight": 20
             },
             {
@@ -1121,8 +1122,9 @@
                   },
                   {
                     "name": "Recovery",
-                    "score": 28.4,
+                    "score": 27.2,
                     "signals": {
+                      "api_per_100_tools": 0.4,
                       "api_retries": 2,
                       "recovery_ratio": 0.5
                     },
@@ -1130,7 +1132,7 @@
                   }
                 ],
                 "name": "Efficiency",
-                "score": 78.4,
+                "score": 77.2,
                 "weight": 20
               },
               {
@@ -1484,7 +1486,7 @@
             },
             {
               "name": "Efficiency",
-              "score": 89.5,
+              "score": 89.6,
               "weight": 20
             },
             {
@@ -1838,8 +1840,9 @@
                   },
                   {
                     "name": "Recovery",
-                    "score": 40.9,
+                    "score": 41.1,
                     "signals": {
+                      "api_per_100_tools": 0.1,
                       "api_retries": 4,
                       "recovery_ratio": 0.8
                     },
@@ -1847,7 +1850,7 @@
                   }
                 ],
                 "name": "Efficiency",
-                "score": 90.9,
+                "score": 91.1,
                 "weight": 20
               },
               {
@@ -2203,8 +2206,9 @@
                   },
                   {
                     "name": "Recovery",
-                    "score": 28.4,
+                    "score": 27.2,
                     "signals": {
+                      "api_per_100_tools": 0.4,
                       "api_retries": 2,
                       "recovery_ratio": 0.5
                     },
@@ -2212,7 +2216,7 @@
                   }
                 ],
                 "name": "Efficiency",
-                "score": 78.4,
+                "score": 77.2,
                 "weight": 20
               },
               {
