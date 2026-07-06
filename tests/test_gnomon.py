@@ -24,6 +24,13 @@ class TestExtractClis(unittest.TestCase):
         self.assertEqual(paxel._extract_clis(""), [])
 
 
+class TestShellVerificationDetection(unittest.TestCase):
+    def test_gradle_detekt_counts_as_verification(self):
+        from gnomon.taxonomy import bash_runs_tests
+
+        self.assertTrue(bash_runs_tests("./gradlew detekt"))
+
+
 class TestCodexInjected(unittest.TestCase):
     def test_environment_context(self):
         self.assertTrue(paxel._codex_is_injected(
