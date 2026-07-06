@@ -447,6 +447,10 @@ class Accumulator:
                         if name == "Agent":
                             st = inp.get("subagent_type", "general-purpose")
                             self.subagent_counter[st] += 1
+                            # A planning subagent (SDD planning phases, the built-in Plan
+                            # agent, *-planner types) also marks this a planning session.
+                            if self._is_plan_skill(st):
+                                self._mark_plan_session(sid, mkey)
                             if mkey:
                                 self.month_subagent_counter[mkey][st] += 1
                             if sid:
