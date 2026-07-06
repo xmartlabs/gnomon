@@ -98,11 +98,16 @@ def compute_aq(stats):
         lever = 1.0
     else:
         lever = max(0.0, 1 - (app - 20) / 40)
-    recovery = .85 * sat(b.get("error_recovery_ratio") or 0, 1.0) + .15 * (1 - sat(b.get("api_errors_retries", 0), 50))
+    # API-error hygiene is scored as a RATE (per 100 tool calls), not an absolute count:
+    # an absolute threshold penalizes volume and is window-size dependent. Target 2/100 =
+    # full penalty (healthy env < 0.5/100; retry-storm / broken setup > 2/100).
+    tool_calls = stats.get("volume", {}).get("tool_calls_total", 0)
+    api_per_100 = 100 * b.get("api_errors_retries", 0) / tool_calls if tool_calls else 0
+    recovery = .85 * sat(b.get("error_recovery_ratio") or 0, 1.0) + .15 * (1 - sat(api_per_100, 2.0))
     eff_axes = [
         ("Steering leverage", 50, lever, {"actions_per_prompt": app}),
         ("Recovery", 50, recovery, {"recovery_ratio": b.get("error_recovery_ratio") or 0,
-         "api_retries": b.get("api_errors_retries", 0)}),
+         "api_retries": b.get("api_errors_retries", 0), "api_per_100_tools": round(api_per_100, 3)}),
     ]
 
     # ---- Pillar 4: Savvy ----

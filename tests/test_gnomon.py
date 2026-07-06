@@ -1297,5 +1297,100 @@ class TestPlanBadgeCreditsPlanSessions(unittest.TestCase):
         self.assertTrue(self._has_plan_badge(stats))
 
 
+class TestRecoveryApiErrorRate(unittest.TestCase):
+    """Recovery's API-error term is a RATE (per 100 tool calls), not an absolute count.
+    Fixes the window-dependence and volume-penalty bugs of the old sat(api_errors, 50)."""
+
+    def _recovery_score(self, api_retries, tool_calls, recovery_ratio=1.0):
+        s = _sample_stats()
+        s["behavior"]["error_recovery_ratio"] = recovery_ratio
+        s["behavior"]["api_errors_retries"] = api_retries
+        s["volume"] = {"tool_calls_total": tool_calls}
+        aq = paxel.compute_aq(s)
+        eff = next(p for p in aq["pillars"] if p["name"] == "Efficiency")
+        return next(a for a in eff["axes"] if a["name"] == "Recovery")["score"]
+
+    def test_rate_invariant_to_volume(self):
+        # Identical rate (2 per 100), 100x different volume -> identical Recovery.
+        self.assertAlmostEqual(self._recovery_score(20, 1000),
+                               self._recovery_score(2000, 100000))
+
+    def test_high_volume_low_rate_scores_near_max(self):
+        # 200 retries over 100k tool calls = 0.2/100 -> near-full reward (volume bug gone).
+        self.assertGreater(self._recovery_score(200, 100000), 49.0)
+
+    def test_higher_rate_lowers_recovery(self):
+        low = self._recovery_score(50, 100000)    # 0.05/100
+        high = self._recovery_score(4000, 100000)  # 4/100, over target -> term zeroed
+        self.assertGreater(low, high)
+
+    def test_zero_tool_calls_full_reward(self):
+        # No tools -> no errors possible -> the api term must not penalize.
+        self.assertGreater(self._recovery_score(0, 0), 49.0)
+
+    def test_signals_expose_rate(self):
+        s = _sample_stats()
+        s["behavior"]["api_errors_retries"] = 20
+        s["volume"] = {"tool_calls_total": 10000}
+        aq = paxel.compute_aq(s)
+        eff = next(p for p in aq["pillars"] if p["name"] == "Efficiency")
+        rec = next(a for a in eff["axes"] if a["name"] == "Recovery")
+        self.assertEqual(rec["signals"]["api_per_100_tools"], 0.2)
+
+
+class TestPlanCeremonySubagents(unittest.TestCase):
+    """SDD planning phases run as Agent(subagent_type=...), not as typed Skills. They must
+    still mark a plan session. sdd-explore (grounding, not planning) must not."""
+
+    @staticmethod
+    def _agent_ev(sid, subagent_type):
+        return {"type": "assistant", "sessionId": sid, "timestamp": "2026-03-01T10:00:00Z",
+                "message": {"role": "assistant", "content": [
+                    {"type": "tool_use", "name": "Agent",
+                     "input": {"subagent_type": subagent_type}}]}}
+
+    @staticmethod
+    def _tool_ev(sid, tool_name):
+        return {"type": "assistant", "sessionId": sid, "timestamp": "2026-03-01T10:00:00Z",
+                "message": {"role": "assistant", "content": [
+                    {"type": "tool_use", "name": tool_name, "input": {}}]}}
+
+    def _acc(self, events):
+        from gnomon.cli.accumulator import Accumulator
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        for ev in events:
+            acc.observe(ev, None, None)
+        return acc
+
+    def test_sdd_planning_phases_mark_plan(self):
+        for st in ("sdd-propose", "sdd-spec", "sdd-design", "sdd-tasks"):
+            acc = self._acc([self._agent_ev("s-" + st, st)])
+            self.assertIn("s-" + st, acc.plan_sessions, st)
+
+    def test_builtin_plan_agent_marks_plan(self):
+        acc = self._acc([self._agent_ev("s1", "Plan")])
+        self.assertIn("s1", acc.plan_sessions)
+
+    def test_planner_agent_marks_plan(self):
+        acc = self._acc([self._agent_ev("s1", "orchestration-planner")])
+        self.assertIn("s1", acc.plan_sessions)
+
+    def test_sdd_explore_does_not_mark_plan(self):
+        acc = self._acc([self._agent_ev("s2", "sdd-explore")])
+        self.assertNotIn("s2", acc.plan_sessions)
+
+    def test_non_planning_agent_does_not_mark_plan(self):
+        acc = self._acc([self._agent_ev("s3", "general-purpose")])
+        self.assertNotIn("s3", acc.plan_sessions)
+
+    def test_idempotent_across_signals(self):
+        # TodoWrite + sdd-propose in the same session -> counted once.
+        acc = self._acc([self._tool_ev("s4", "TodoWrite"),
+                         self._agent_ev("s4", "sdd-propose")])
+        self.assertEqual(len(acc.plan_sessions), 1)
+        self.assertIn("s4", acc.plan_sessions)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -15,7 +15,10 @@ PLAN_SIGNAL_TOOLS = {"EnterPlanMode", "ExitPlanMode", "TodoWrite"}
 # Substrings that mark a Skill invocation as a planning skill (shared by the accumulator's
 # per-session plan detection and scoring). Keep in sync with the planning intent.
 PLAN_SKILL_NEEDLES = ("brainstorm", "writing-plan", "plan", "spec", "office-hours",
-                      "autoplan", "grill", "ceo-review", "eng-review", "design-review")
+                      "autoplan", "grill", "ceo-review", "eng-review", "design-review",
+                      # SDD planning phases run as Agent subagent_types (sdd-spec already
+                      # matches "spec"); explore is grounding, not planning, so it's excluded.
+                      "sdd-propose", "sdd-design", "sdd-tasks")
 SCHEDULE_TOOLS = {"ScheduleWakeup", "CronCreate", "CronDelete", "CronList",
                   "RemoteTrigger", "PushNotification", "Monitor"}
 SKILL_TOOLS = {"Skill"}
