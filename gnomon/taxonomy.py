@@ -92,8 +92,8 @@ _SHELL_TEST_RE = re.compile(
     # JVM: gradle (lazy args + optional ':module:' path + test-task token, camelCase only with
     # capital Test/Tests so testClasses/processTestResources/compileTestJava are rejected; bare
     # 'check' only as a full word so spotlessCheck is rejected), maven (wrapper + intermediate
-    # args), sbt (optional 'it:' qualifier), scala-cli, lein.
-    r'|(?:\./)?gradlew?\s+(?:[^\s;&|)]+\s+)*?(?::?[\w.-]+:)*(?:test|check|\w*Tests?)'
+    # args), detekt as a JVM verification task, sbt (optional 'it:' qualifier), scala-cli, lein.
+    r'|(?:\./)?gradlew?\s+(?:[^\s;&|)]+\s+)*?(?::?[\w.-]+:)*(?:test|check|detekt|\w*Tests?)'
     r'|(?:\./)?mvnw?\s+(?:[^\s;&|)]+\s+)*?(?:test|verify|integration-test)'
     r'|sbt\s+(?:[^\s;&|)]+\s+)*?(?:[\w.:-]*:)?(?:test|testOnly)'
     r'|lein\s+(?:[^\s;&|)]+\s+)*?test|scala-cli\s+test'
