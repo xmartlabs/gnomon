@@ -1,3 +1,4 @@
+import os
 import re
 
 WRITE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
@@ -19,6 +20,13 @@ PLAN_SKILL_NEEDLES = ("brainstorm", "writing-plan", "plan", "spec", "office-hour
                       # SDD planning phases run as Agent subagent_types (sdd-spec already
                       # matches "spec"); explore is grounding, not planning, so it's excluded.
                       "sdd-propose", "sdd-design", "sdd-tasks")
+# Extend (never replace) the built-in needles from the environment, so custom planning-skill
+# names are detectable without a code change. Comma-separated, e.g.
+# GNOMON_PLAN_SKILL_NEEDLES="roadmap,my-planner". Mirrors config.py's env-var convention.
+_extra_plan_needles = os.environ.get("GNOMON_PLAN_SKILL_NEEDLES", "")
+if _extra_plan_needles:
+    PLAN_SKILL_NEEDLES = PLAN_SKILL_NEEDLES + tuple(
+        n.strip().lower() for n in _extra_plan_needles.split(",") if n.strip())
 SCHEDULE_TOOLS = {"ScheduleWakeup", "CronCreate", "CronDelete", "CronList",
                   "RemoteTrigger", "PushNotification", "Monitor"}
 SKILL_TOOLS = {"Skill"}

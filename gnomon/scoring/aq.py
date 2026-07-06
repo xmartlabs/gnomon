@@ -1,5 +1,3 @@
-import re
-
 from gnomon.analysis.metrics import _review_skill_uses
 from gnomon.config import available_caps
 
@@ -41,13 +39,19 @@ def compute_aq(stats):
     # ---- Pillar 1: Breadth (unchanged axes) ----
     agent_runs = t.get("agent_calls", 0)
     fanout = b.get("fanout_median") or 0  # None (unmeasured) treated as 0 for AQ
-    o_harn = 1.0 if (any(re.search(r"harness|trisel", str(k), re.I)
-                         for k, _ in st.get("subagent_types", [])) or has_skill(["trisel"])) else 0.6
+    # Harness use = coordinating a team of DISTINCT subagent roles (behavioral), not a skill
+    # or subagent NAMED "harness"/"trisel" (opaque, and a SKILL.md content grep just matches
+    # skills that mention the platform). >=3 distinct types => a real team, not ad-hoc single
+    # delegation. Name- and content-agnostic, so it works in the cross-source aggregate.
+    o_harn = 1.0 if st.get("subagent_types_distinct", 0) >= 3 else 0.6
     # Coordination over volume: fan-out (agents coordinated per orchestrating session)
     # is the orchestration tell — a serial grinder firing N agents one-per-session reads
     # fanout=1, a real orchestrator reads its team size. agent_runs stays only as a small
     # volume floor; the old (background + scheduled) COUNT term was cut (it double-counted
     # volume and rewarded firing-and-forgetting, not coordinating).
+    # fanout target 5: Anthropic's multi-agent research spawns ~3-5 subagents for typical work
+    # (1 simple / 2-4 comparison / 10+ complex), and span-of-control theory (Graicunas/Urwick,
+    # "rule of 7") lands at 5-7 — 5 sits in the overlap.
     orchestration = (.30 * sat(st.get("subagent_types_distinct", 0), 8) + .30 * sat(fanout, 5)
                      + .20 * o_harn + .20 * sat(agent_runs, 400))
     skill_fluency = (.40 * sat(st.get("skills_distinct", 0), 40) + .30 * sat(st.get("skills_total", 0), 1500)
@@ -65,7 +69,8 @@ def compute_aq(stats):
         # Orchestration needs subagent delegation; a source that can't fan out by design
         # (Gemini/Pi/opencode) drops this axis (renormalized) instead of scoring ~0.
         ("Orchestration", 33, orchestration, {"agent_runs": agent_runs,
-         "subagent_types": st.get("subagent_types_distinct", 0), "fanout_median": fanout},
+         "subagent_types": st.get("subagent_types_distinct", 0), "fanout_median": fanout,
+         "o_harn": o_harn},
          "delegate"),
         ("Skill fluency", 22, skill_fluency, {"skills_distinct": st.get("skills_distinct", 0),
          "skills_total": st.get("skills_total", 0)}, "skills"),

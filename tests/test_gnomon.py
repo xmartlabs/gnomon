@@ -1399,5 +1399,52 @@ class TestPlanCeremonySubagents(unittest.TestCase):
         self.assertIn("s4", acc.plan_sessions)
 
 
+class TestHarnessBehavioral(unittest.TestCase):
+    """o_harn credits real orchestration BEHAVIOR (coordinating >=3 distinct subagent roles),
+    not a subagent/skill NAME matching 'harness'/'trisel'."""
+
+    def _orch(self, distinct, types=None):
+        s = _sample_stats()
+        s["stack"]["subagent_types_distinct"] = distinct
+        if types is not None:
+            s["stack"]["subagent_types"] = types
+        aq = paxel.compute_aq(s)
+        breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
+        return next(a for a in breadth["axes"] if a["name"] == "Orchestration")
+
+    def test_three_distinct_types_credits_harness(self):
+        self.assertEqual(self._orch(3)["signals"]["o_harn"], 1.0)
+
+    def test_two_distinct_types_no_harness(self):
+        # Fewer than 3 distinct roles = ad-hoc delegation, not a coordinated team.
+        self.assertEqual(self._orch(2)["signals"]["o_harn"], 0.6)
+
+    def test_name_independent(self):
+        # Names contain no 'harness'/'trisel'; behavior alone (>=3 distinct) credits.
+        ax = self._orch(3, types=[("sdd-propose", 5), ("sdd-spec", 3), ("sdd-apply", 2)])
+        self.assertEqual(ax["signals"]["o_harn"], 1.0)
+
+
+class TestConfigurablePlanNeedles(unittest.TestCase):
+    """GNOMON_PLAN_SKILL_NEEDLES extends (never replaces) the built-in plan-skill needles."""
+
+    def test_env_extends_needles(self):
+        import importlib, gnomon.taxonomy as tax
+        os.environ["GNOMON_PLAN_SKILL_NEEDLES"] = "roadmap, my-planner"
+        try:
+            importlib.reload(tax)
+            self.assertIn("roadmap", tax.PLAN_SKILL_NEEDLES)
+            self.assertIn("my-planner", tax.PLAN_SKILL_NEEDLES)
+            self.assertIn("brainstorm", tax.PLAN_SKILL_NEEDLES)  # builtins remain
+        finally:
+            os.environ.pop("GNOMON_PLAN_SKILL_NEEDLES", None)
+            importlib.reload(tax)
+
+    def test_no_env_builtins_only(self):
+        import gnomon.taxonomy as tax
+        self.assertNotIn("roadmap", tax.PLAN_SKILL_NEEDLES)
+        self.assertIn("brainstorm", tax.PLAN_SKILL_NEEDLES)
+
+
 if __name__ == "__main__":
     unittest.main()
