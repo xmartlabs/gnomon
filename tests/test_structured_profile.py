@@ -213,14 +213,14 @@ class TestGoldenHtmlOutput(unittest.TestCase):
         self.assertIn("/investigate", adv0)
         # Remaining two are AQ-driven
         adv_texts = [adv for _, _, adv in edges[1:]]
-        aq_axes_mentioned = any("Model mix" in a or "Grounding" in a or "Context Intelligence" in a for a in adv_texts)
+        aq_axes_mentioned = any("Model mix" in a or "Grounding" in a for a in adv_texts)
         self.assertTrue(aq_axes_mentioned, adv_texts)
 
     def test_growth_edges_full_equality(self):
         """Full tuple equality guard — pins every character of each HTML string."""
         edges = paxel.growth_edges(self.stats, self.scores)
-        # Context Intelligence is gated (0 knowledge calls -> axis N/A), so the knowledge-tool
-        # edge no longer fires; Grounding is now the thinnest graded Craft axis.
+        # Craft has no knowledge-tool axis, so no knowledge-tool growth edge fires;
+        # Grounding is the thinnest graded Craft axis.
         expected = [
             (
                 "Stop the grind",

@@ -51,8 +51,6 @@ AQ_AXIS_NOTES = {
                  "match the model to the task.",
     "Token economy": "Token-lean habits: on-demand schema loading (ToolSearch) and a CLI-first "
                      "share of tool traffic.",
-    "Context Intelligence": "Structured knowledge tool usage: memory, code graph, and docs "
-                            "servers wired into your workflow, grounding edits in indexed context.",
 }
 
 

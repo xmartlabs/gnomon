@@ -3,7 +3,7 @@
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 84,
+          "aq_0_100": 87,
           "pillars": [
             {
               "name": "Breadth",
@@ -12,7 +12,7 @@
             },
             {
               "name": "Craft",
-              "score": 82.6,
+              "score": 91.0,
               "weight": 35
             },
             {
@@ -273,7 +273,7 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 84,
+            "aq_0_100": 87,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -331,41 +331,32 @@
                 "axes": [
                   {
                     "name": "Verification",
-                    "score": 35.0,
+                    "score": 40.0,
                     "signals": {
                       "review_skills": 80,
                       "test_runs": 120
                     },
-                    "weight": 35
+                    "weight": 40
                   },
                   {
                     "name": "Grounding",
-                    "score": 17.5,
+                    "score": 21.0,
                     "signals": {
                       "planning_ratio": 0.7
                     },
-                    "weight": 25
-                  },
-                  {
-                    "name": "Context Intelligence",
-                    "score": 10.1,
-                    "signals": {
-                      "knowledge_calls": 80,
-                      "knowledge_servers": 2
-                    },
-                    "weight": 20
+                    "weight": 30
                   },
                   {
                     "name": "Compounding",
-                    "score": 20.0,
+                    "score": 30.0,
                     "signals": {
                       "compounding_writes": 20
                     },
-                    "weight": 20
+                    "weight": 30
                   }
                 ],
                 "name": "Craft",
-                "score": 82.6,
+                "score": 91.0,
                 "weight": 35
               },
               {
@@ -801,7 +792,7 @@
             },
             {
               "name": "Craft",
-              "score": 34.0,
+              "score": 34.3,
               "weight": 35
             },
             {
@@ -1105,35 +1096,32 @@
                 "axes": [
                   {
                     "name": "Verification",
-                    "score": 14.6,
+                    "score": 13.3,
                     "signals": {
                       "review_skills": 0,
                       "test_runs": 5
                     },
-                    "weight": 44
+                    "weight": 40
                   },
                   {
                     "name": "Grounding",
-                    "score": 9.4,
+                    "score": 9.0,
                     "signals": {
                       "planning_ratio": 0.3
                     },
-                    "weight": 31
+                    "weight": 30
                   },
                   {
                     "name": "Compounding",
-                    "score": 10.0,
+                    "score": 12.0,
                     "signals": {
                       "compounding_writes": 1
                     },
-                    "weight": 25
+                    "weight": 30
                   }
                 ],
                 "name": "Craft",
-                "not_applicable": [
-                  "Context Intelligence"
-                ],
-                "score": 34.0,
+                "score": 34.3,
                 "weight": 35
               },
               {
@@ -1501,7 +1489,7 @@
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 79,
+          "aq_0_100": 82,
           "pillars": [
             {
               "name": "Breadth",
@@ -1510,7 +1498,7 @@
             },
             {
               "name": "Craft",
-              "score": 77.2,
+              "score": 84.7,
               "weight": 35
             },
             {
@@ -1772,7 +1760,7 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 84,
+            "aq_0_100": 87,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -1830,41 +1818,32 @@
                 "axes": [
                   {
                     "name": "Verification",
-                    "score": 35.0,
+                    "score": 40.0,
                     "signals": {
                       "review_skills": 80,
                       "test_runs": 120
                     },
-                    "weight": 35
+                    "weight": 40
                   },
                   {
                     "name": "Grounding",
-                    "score": 17.5,
+                    "score": 21.0,
                     "signals": {
                       "planning_ratio": 0.7
                     },
-                    "weight": 25
-                  },
-                  {
-                    "name": "Context Intelligence",
-                    "score": 10.1,
-                    "signals": {
-                      "knowledge_calls": 80,
-                      "knowledge_servers": 2
-                    },
-                    "weight": 20
+                    "weight": 30
                   },
                   {
                     "name": "Compounding",
-                    "score": 20.0,
+                    "score": 30.0,
                     "signals": {
                       "compounding_writes": 20
                     },
-                    "weight": 20
+                    "weight": 30
                   }
                 ],
                 "name": "Craft",
-                "score": 82.6,
+                "score": 91.0,
                 "weight": 35
               },
               {
@@ -2206,35 +2185,32 @@
                 "axes": [
                   {
                     "name": "Verification",
-                    "score": 14.6,
+                    "score": 13.3,
                     "signals": {
                       "review_skills": 0,
                       "test_runs": 5
                     },
-                    "weight": 44
+                    "weight": 40
                   },
                   {
                     "name": "Grounding",
-                    "score": 9.4,
+                    "score": 9.0,
                     "signals": {
                       "planning_ratio": 0.3
                     },
-                    "weight": 31
+                    "weight": 30
                   },
                   {
                     "name": "Compounding",
-                    "score": 10.0,
+                    "score": 12.0,
                     "signals": {
                       "compounding_writes": 1
                     },
-                    "weight": 25
+                    "weight": 30
                   }
                 ],
                 "name": "Craft",
-                "not_applicable": [
-                  "Context Intelligence"
-                ],
-                "score": 34.0,
+                "score": 34.3,
                 "weight": 35
               },
               {
