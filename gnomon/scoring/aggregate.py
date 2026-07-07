@@ -230,6 +230,7 @@ def _synth_stats_for_aggregate(items, agg_aq):
             "skills_distinct": wsum(lambda blk: st(blk).get("skills_distinct")),
             "skills_total": wsum(lambda blk: st(blk).get("skills_total")),
             "subagent_types_distinct": max((st(e["block"]).get("subagent_types_distinct") or 0) for _, e in items) if items else 0,
+            "max_session_subagent_types": max((st(e["block"]).get("max_session_subagent_types") or 0) for _, e in items) if items else 0,
             "subagent_types": [],
         },
         "tools": {
@@ -241,6 +242,9 @@ def _synth_stats_for_aggregate(items, agg_aq):
             "toolsearch_calls": wsum(lambda blk: t(blk).get("toolsearch_calls")),
             "tool_diversity": max((t(e["block"]).get("tool_diversity") or 0) for _, e in items) if items else 0,
             "tool_entropy_normalized": wmean(lambda blk: t(blk).get("tool_entropy_normalized")),
+            "mcp_knowledge_calls": wsum(lambda blk: t(blk).get("mcp_knowledge_calls")),
+            "mcp_knowledge_servers": max((t(e["block"]).get("mcp_knowledge_servers") or 0) for _, e in items) if items else 0,
+            "mcp_subcategory_breakdown": {},
         },
     }
     return synth

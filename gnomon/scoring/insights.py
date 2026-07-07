@@ -99,6 +99,15 @@ def _signature_moves_pool(stats):
             f'~<b>{vel["shell_authored_lines_est"]:,}</b> lines authored through Bash heredocs and '
             f'redirects — real work most profilers never even see.'))
 
+    knowledge_calls = t.get("mcp_knowledge_calls", 0)
+    knowledge_servers = t.get("mcp_knowledge_servers", 0)
+    if knowledge_calls >= 100 and knowledge_servers >= 2:
+        raw.append((_clamp(knowledge_calls / 500.0), "Research",
+            "You research before you write",
+            f'<b>{knowledge_calls:,}</b> knowledge-tool calls across '
+            f'<b>{knowledge_servers}</b> servers (codegraph, memory, docs) &mdash; '
+            f'you ground your edits in indexed context, not guesswork.'))
+
     raw.sort(key=lambda x: -x[0])
     return [{"tag": tag, "title": title, "evidence_html": ev}
             for _, tag, title, ev in raw[:5]]
@@ -220,6 +229,13 @@ def _growth_edges_pool(stats, scores):
             return ("Read before you write", "Make the agent explore before it edits",
                 lead + f'Your explore-to-doing ratio is <b>{sig.get("planning_ratio", 0)}</b> — edits '
                 f'outpace reading. Ask for a read-the-code pass before changes; grounded edits fail less.')
+        if axis == "Context Intelligence":
+            return ("Ground your work in knowledge tools",
+                    "Wire codegraph, memory, and docs into your workflow",
+                    lead + f'<b>{sig.get("knowledge_calls", 0)}</b> knowledge-tool calls across '
+                    f'<b>{sig.get("knowledge_servers", 0)}</b> server(s). Connect a code graph, a '
+                    f'memory layer, and a docs server so the agent reads indexed context instead of '
+                    f'grepping from scratch each session.')
         return None
 
     for p in (stats.get("agentic") or {}).get("pillars", []):

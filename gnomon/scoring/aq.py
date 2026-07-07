@@ -39,11 +39,12 @@ def compute_aq(stats):
     # ---- Pillar 1: Breadth (unchanged axes) ----
     agent_runs = t.get("agent_calls", 0)
     fanout = b.get("fanout_median") or 0  # None (unmeasured) treated as 0 for AQ
-    # Harness use = coordinating a team of DISTINCT subagent roles (behavioral), not a skill
-    # or subagent NAMED "harness"/"trisel" (opaque, and a SKILL.md content grep just matches
-    # skills that mention the platform). >=3 distinct types => a real team, not ad-hoc single
-    # delegation. Name- and content-agnostic, so it works in the cross-source aggregate.
-    o_harn = 1.0 if st.get("subagent_types_distinct", 0) >= 3 else 0.6
+    # Harness use = a SINGLE session coordinating a team of >=3 distinct subagent roles
+    # (behavioral), not a subagent/skill NAMED "harness"/"trisel" (opaque), and not window-wide
+    # role variety (subagent_types_distinct would credit 3 roles fired one-per-session, which
+    # never coordinated a team). max_session_subagent_types is the per-session distinct-role
+    # peak — name-/content-agnostic, so it works in the cross-source aggregate.
+    o_harn = 1.0 if st.get("max_session_subagent_types", 0) >= 3 else 0.6
     # Coordination over volume: fan-out (agents coordinated per orchestrating session)
     # is the orchestration tell — a serial grinder firing N agents one-per-session reads
     # fanout=1, a real orchestrator reads its team size. agent_runs stays only as a small
@@ -87,10 +88,15 @@ def compute_aq(stats):
     grounding = sat(b.get("planning_ratio_explore_to_doing", 0), 1.0)
     compounding = wsum((.6, sat(st.get("compounding_writes", 0), 30), None),
                        (.4, (1.0 if has_skill(["retro", "writing-plans", "brainstorm"]) else 0.6), "skills"))
+    knowledge_calls = t.get("mcp_knowledge_calls", 0)
+    knowledge_servers = t.get("mcp_knowledge_servers", 0)
+    context_intel = .60 * sat(knowledge_calls, 200) + .40 * sat(knowledge_servers, 3)
     craft_axes = [
-        ("Verification", 40, verification, {"test_runs": b.get("shell_test_runs", 0), "review_skills": review_n}),
-        ("Grounding", 30, grounding, {"planning_ratio": b.get("planning_ratio_explore_to_doing", 0)}),
-        ("Compounding", 30, compounding, {"compounding_writes": st.get("compounding_writes", 0)}),
+        ("Verification", 35, verification, {"test_runs": b.get("shell_test_runs", 0), "review_skills": review_n}),
+        ("Grounding", 25, grounding, {"planning_ratio": b.get("planning_ratio_explore_to_doing", 0)}),
+        ("Context Intelligence", 20, context_intel,
+         {"knowledge_calls": knowledge_calls, "knowledge_servers": knowledge_servers}),
+        ("Compounding", 20, compounding, {"compounding_writes": st.get("compounding_writes", 0)}),
     ]
 
     # ---- Pillar 3: Efficiency ----

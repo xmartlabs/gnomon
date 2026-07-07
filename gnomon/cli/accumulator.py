@@ -27,7 +27,8 @@ from datetime import datetime, timedelta
 from gnomon.config import parse_ts, line_count, strip_injections
 from gnomon.taxonomy import (
     SCHEDULE_TOOLS, ASK_TOOLS, PLAN_SIGNAL_TOOLS, PLAN_SKILL_NEEDLES,
-    classify_tool, bash_writes_file, bash_runs_tests, _extract_clis,
+    classify_tool, classify_mcp_subcategory,
+    bash_writes_file, bash_runs_tests, _extract_clis,
     _is_compounding_path, _SKILL_MD_RX,
 )
 from gnomon.sources.discovery import _AGENT_UNSUPPORTED_SOURCES
@@ -89,7 +90,10 @@ class Accumulator:
         self.skill_counter = Counter()
         self.subagent_counter = Counter()
         self.agents_per_session = defaultdict(int)
+        self.session_subagent_types = defaultdict(set)  # sessionId -> distinct subagent roles
         self.mcp_server_counter = Counter()
+        self.mcp_subcategory_counter = Counter()
+        self.mcp_subcategory_servers = defaultdict(set)
         self.cli_counter = Counter()
         self.compounding_counter = 0
         self.project_activity = Counter()
@@ -144,6 +148,7 @@ class Accumulator:
         self.month_background = Counter()
         self.month_scheduled = Counter()
         self.month_fanouts = defaultdict(lambda: defaultdict(int))
+        self.month_session_subagent_types = defaultdict(lambda: defaultdict(set))  # month -> sid -> roles
         self.month_hour_hist = defaultdict(Counter)
         self.month_weekday_hist = defaultdict(Counter)
         self.month_tool_counter = defaultdict(Counter)
@@ -151,6 +156,8 @@ class Accumulator:
         self.month_skill_counter = defaultdict(Counter)
         self.month_subagent_counter = defaultdict(Counter)
         self.month_mcp_server_counter = defaultdict(Counter)
+        self.month_mcp_subcategory_counter = defaultdict(Counter)
+        self.month_mcp_subcategory_servers = defaultdict(lambda: defaultdict(set))
         self.month_cli_counter = defaultdict(Counter)
         self.month_compounding = Counter()
         self.month_shell_test_runs = Counter()
@@ -413,9 +420,17 @@ class Accumulator:
                             self.mcp_calls += 1
                             parts = name.split("__")
                             if len(parts) > 1 and parts[1]:
-                                self.mcp_server_counter[parts[1]] += 1
+                                server = parts[1]
+                                self.mcp_server_counter[server] += 1
                                 if mkey:
-                                    self.month_mcp_server_counter[mkey][parts[1]] += 1
+                                    self.month_mcp_server_counter[mkey][server] += 1
+                                tool_part = parts[-1] if len(parts) > 2 else ""
+                                subcat = classify_mcp_subcategory(server, tool_part)
+                                self.mcp_subcategory_counter[subcat] += 1
+                                self.mcp_subcategory_servers[subcat].add(server)
+                                if mkey:
+                                    self.month_mcp_subcategory_counter[mkey][subcat] += 1
+                                    self.month_mcp_subcategory_servers[mkey][subcat].add(server)
                         else:
                             self.native_calls += 1
 
@@ -455,8 +470,10 @@ class Accumulator:
                                 self.month_subagent_counter[mkey][st] += 1
                             if sid:
                                 self.agents_per_session[sid] += 1
+                                self.session_subagent_types[sid].add(st)
                                 if mkey:
                                     self.month_fanouts[mkey][sid] += 1
+                                    self.month_session_subagent_types[mkey][sid].add(st)
                         if name in ASK_TOOLS:
                             self.questions_asked += 1
                             if mkey:
@@ -732,6 +749,13 @@ class Accumulator:
                 "category_breakdown": dict(self.cat_counter),
                 "mcp_servers": self.mcp_server_counter.most_common(),
                 "mcp_servers_distinct": len(self.mcp_server_counter),
+                "mcp_knowledge_calls": self.mcp_subcategory_counter.get("knowledge", 0),
+                "mcp_knowledge_servers": len(self.mcp_subcategory_servers.get("knowledge", set())),
+                "mcp_subcategory_breakdown": {
+                    cat: {"calls": self.mcp_subcategory_counter[cat],
+                          "servers": len(self.mcp_subcategory_servers[cat])}
+                    for cat in sorted(set(self.mcp_subcategory_counter))
+                },
                 "clis": self.cli_counter.most_common(),
                 "clis_distinct": len(self.cli_counter),
                 "cli_calls": sum(self.cli_counter.values()),
@@ -798,6 +822,8 @@ class Accumulator:
                 "skills_distinct": len(self.skill_counter),
                 "skills_total": sum(self.skill_counter.values()),
                 "subagent_types_distinct": len(self.subagent_counter),
+                "max_session_subagent_types": max(
+                    (len(v) for v in self.session_subagent_types.values()), default=0),
                 "skills_all": self.skill_counter.most_common(200),
                 "compounding_writes": self.compounding_counter,
                 "subagent_types": self.subagent_counter.most_common(10),
@@ -877,9 +903,12 @@ class Accumulator:
             month_edits_per_file=self.month_edits_per_file, month_questions=self.month_questions,
             month_delegate=self.month_delegate, month_background=self.month_background,
             month_scheduled=self.month_scheduled, month_fanouts=self.month_fanouts,
+            month_session_subagent_types=self.month_session_subagent_types,
             month_tool_counter=self.month_tool_counter, month_session_ts=self.month_session_ts,
             month_skill_counter=self.month_skill_counter, month_subagent_counter=self.month_subagent_counter,
             month_mcp_server_counter=self.month_mcp_server_counter, month_cli_counter=self.month_cli_counter,
+            month_mcp_subcategory_counter=self.month_mcp_subcategory_counter,
+            month_mcp_subcategory_servers=self.month_mcp_subcategory_servers,
             month_compounding=self.month_compounding, month_shell_test_runs=self.month_shell_test_runs,
             month_plan_sessions=self.month_plan_sessions,
             month_api_errors=self.month_api_errors,
@@ -995,6 +1024,13 @@ class Accumulator:
                 "native_calls": self.native_calls,
                 "top_tools": _s_tc.most_common(20),
                 "mcp_servers_distinct": len(self.mcp_server_counter),
+                "mcp_knowledge_calls": self.mcp_subcategory_counter.get("knowledge", 0),
+                "mcp_knowledge_servers": len(self.mcp_subcategory_servers.get("knowledge", set())),
+                "mcp_subcategory_breakdown": {
+                    cat: {"calls": self.mcp_subcategory_counter[cat],
+                          "servers": len(self.mcp_subcategory_servers[cat])}
+                    for cat in sorted(set(self.mcp_subcategory_counter))
+                },
                 "clis_distinct": len(self.cli_counter),
                 "cli_calls": sum(self.cli_counter.values()),
                 "toolsearch_calls": _s_tc.get("ToolSearch", 0),
@@ -1009,6 +1045,8 @@ class Accumulator:
                 "skills_distinct": len(self.skill_counter),
                 "skills_total": sum(self.skill_counter.values()),
                 "subagent_types_distinct": len(self.subagent_counter),
+                "max_session_subagent_types": max(
+                    (len(v) for v in self.session_subagent_types.values()), default=0),
                 "subagent_types": self.subagent_counter.most_common(10),
                 "compounding_writes": self.compounding_counter,
             },

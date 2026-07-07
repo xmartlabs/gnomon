@@ -48,7 +48,62 @@ _SKILL_MD_RX = re.compile(r"skills/([A-Za-z0-9_.-]+)/SKILL\.md")
 
 MCP_INSPECT_HINTS = ("read", "get", "list", "search", "find", "describe",
                      "snapshot", "screenshot", "query", "fetch", "whoami",
-                     "details", "status", "info", "show", "doc_")
+                     "details", "status", "info", "show", "doc_", "explore")
+
+# Two-layer MCP subcategory classification, grounded in awesome-mcp-servers ecosystem
+# data (500+ servers, 51 categories) and validated against 62-user production corpus
+# (neat-buzzard-863, 208 distinct servers, 87.5% classification rate).
+MCP_SERVER_HINTS = {
+    "knowledge": ("codegraph", "engram", "context7", "memory", "cortex",
+                  "knowledge", "rag", "embedding", "lightrag", "mem0", "exa"),
+    "browser": ("chrome", "browser", "playwright", "puppeteer", "selenium",
+                "safari", "scraper", "devtools", "mobile", "argent",
+                "computer_use", "computer-use"),
+    "communication": ("slack", "discord", "teams", "email", "gmail",
+                      "outlook", "telegram", "whatsapp", "calendar"),
+    "project": ("linear", "jira", "asana", "monday", "github", "gitlab",
+                "bitbucket", "trello", "shortcut", "atlassian", "confluence",
+                "gitkraken", "dart"),
+    "data": ("supabase", "postgres", "sqlite", "redis", "mongo", "notion",
+             "drive", "box", "dropbox", "s3", "airtable", "firebase",
+             "mysql", "convex", "lake", "toggl"),
+    "infra": ("vercel", "aws", "gcp", "azure", "docker", "kubernetes",
+              "sentry", "datadog", "grafana", "terraform", "heroku",
+              "netlify", "cloudflare", "coolify", "dynatrace", "bugsee"),
+    "design": ("figma", "canva", "penpot", "sketch", "storybook", "stitch",
+               "pencil"),
+    "automation": ("homeassistant", "automation", "cron", "zapier", "n8n",
+                   "appium"),
+}
+
+MCP_TOOL_HINTS = {
+    "knowledge": ("memory", "knowledge", "graph", "embedding", "rag",
+                  "recall", "context"),
+    "browser": ("browse", "navigate", "screenshot", "page", "click",
+                "tab"),
+    "communication": ("send_message", "post_message", "channel", "thread",
+                      "chat", "dm"),
+    "project": ("issue", "pull_request", "commit", "branch", "merge",
+                "ticket", "sprint"),
+    "data": ("query", "sql", "table", "migration", "schema", "collection",
+             "database", "record"),
+    "infra": ("deploy", "container", "log", "metric", "alert", "incident",
+              "build"),
+    "design": ("component", "design", "layout", "style", "asset", "frame"),
+}
+
+
+def classify_mcp_subcategory(server_name, tool_name=""):
+    low = server_name.lower()
+    for category, needles in MCP_SERVER_HINTS.items():
+        if any(needle in low for needle in needles):
+            return category
+    if tool_name:
+        tlow = tool_name.lower()
+        for category, needles in MCP_TOOL_HINTS.items():
+            if any(needle in tlow for needle in needles):
+                return category
+    return "other"
 
 
 def classify_tool(name: str) -> str:
@@ -103,7 +158,8 @@ _SHELL_TEST_RE = re.compile(
     # JVM: gradle (lazy args + optional ':module:' path + test-task token, camelCase only with
     # capital Test/Tests so testClasses/processTestResources/compileTestJava are rejected; bare
     # 'check' only as a full word so spotlessCheck is rejected), maven (wrapper + intermediate
-    # args), detekt as a JVM verification task, sbt (optional 'it:' qualifier), scala-cli, lein.
+    # args), detekt counted bare only (ideally it'd live under 'check', but Gradle users
+    # run it standalone), sbt (optional 'it:' qualifier), scala-cli, lein.
     r'|(?:\./)?gradlew?\s+(?:[^\s;&|)]+\s+)*?(?::?[\w.-]+:)*(?:test|check|detekt|\w*Tests?)'
     r'|(?:\./)?mvnw?\s+(?:[^\s;&|)]+\s+)*?(?:test|verify|integration-test)'
     r'|sbt\s+(?:[^\s;&|)]+\s+)*?(?:[\w.:-]*:)?(?:test|testOnly)'

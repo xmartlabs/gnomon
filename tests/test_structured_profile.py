@@ -213,7 +213,7 @@ class TestGoldenHtmlOutput(unittest.TestCase):
         self.assertIn("/investigate", adv0)
         # Remaining two are AQ-driven
         adv_texts = [adv for _, _, adv in edges[1:]]
-        aq_axes_mentioned = any("Model mix" in a or "Grounding" in a for a in adv_texts)
+        aq_axes_mentioned = any("Model mix" in a or "Grounding" in a or "Context Intelligence" in a for a in adv_texts)
         self.assertTrue(aq_axes_mentioned, adv_texts)
 
     def test_growth_edges_full_equality(self):
@@ -230,20 +230,21 @@ class TestGoldenHtmlOutput(unittest.TestCase):
                 " (gstack names this <code>/investigate</code>.)",
             ),
             (
+                "Ground your work in knowledge tools",
+                "Wire codegraph, memory, and docs into your workflow",
+                "<b>Craft · Context Intelligence</b> is your thinnest AQ signal."
+                " <b>0</b> knowledge-tool calls across <b>0</b> server(s)."
+                " Connect a code graph, a memory layer, and a docs server so the"
+                " agent reads indexed context instead of grepping from scratch"
+                " each session.",
+            ),
+            (
                 "Route the work",
                 "Match the model to the task",
                 "<b>Savvy · Model mix</b> is your thinnest AQ signal."
                 " <b>1</b> model(s), with only <b>0%</b> of turns routed off your"
                 " default. Send mechanical work — renames, bulk edits, summaries"
                 " — to a faster model and save the heavyweight for design and review.",
-            ),
-            (
-                "Read before you write",
-                "Make the agent explore before it edits",
-                "<b>Craft · Grounding</b> is your thinnest AQ signal."
-                " Your explore-to-doing ratio is <b>0.2</b> — edits outpace"
-                " reading. Ask for a read-the-code pass before changes; grounded"
-                " edits fail less.",
             ),
         ]
         self.assertEqual(edges, expected)

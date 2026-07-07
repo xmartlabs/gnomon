@@ -40,6 +40,8 @@ CLAUDE_BLOCK = {
         "agent_calls": 200, "mcp_servers_distinct": 10, "clis_distinct": 25,
         "toolsearch_calls": 150, "task_tool_calls": 300, "cli_calls": 1500,
         "mcp_calls": 400, "tool_diversity": 30, "tool_entropy_normalized": 0.8,
+        "mcp_knowledge_calls": 80, "mcp_knowledge_servers": 2,
+        "mcp_subcategory_breakdown": {"knowledge": {"calls": 80, "servers": 2}, "browser": {"calls": 50, "servers": 1}},
         "top_tools": [["Bash", 1500], ["Edit", 1000]],
     },
 }
@@ -67,6 +69,8 @@ CURSOR_BLOCK = {
         "agent_calls": 0, "mcp_servers_distinct": 2, "clis_distinct": 8,
         "toolsearch_calls": 0, "task_tool_calls": 0, "cli_calls": 100,
         "mcp_calls": 50, "tool_diversity": 12, "tool_entropy_normalized": 0.6,
+        "mcp_knowledge_calls": 0, "mcp_knowledge_servers": 0,
+        "mcp_subcategory_breakdown": {},
         "top_tools": [["Bash", 100]],
     },
 }

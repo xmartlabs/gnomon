@@ -92,10 +92,12 @@ class TestScoringInputsBySource(unittest.TestCase):
                  "background_tasks", "iteration_depth_mean", "iteration_depth_p90",
                  "iteration_depth_max", "files_hammered_over_15x"}
     _STACK = {"skills_distinct", "skills_total", "compounding_writes",
-              "subagent_types_distinct", "subagent_types", "top_skills", "skills_all", "models"}
+              "subagent_types_distinct", "subagent_types", "max_session_subagent_types",
+              "top_skills", "skills_all", "models"}
     _TOOLS = {"agent_calls", "mcp_servers_distinct", "clis_distinct", "toolsearch_calls",
               "task_tool_calls", "cli_calls", "mcp_calls", "tool_diversity",
-              "tool_entropy_normalized", "top_tools"}
+              "tool_entropy_normalized", "top_tools",
+              "mcp_knowledge_calls", "mcp_knowledge_servers", "mcp_subcategory_breakdown"}
 
     def _stats(self):
         rows = []
@@ -110,7 +112,7 @@ class TestScoringInputsBySource(unittest.TestCase):
     def test_payload_has_version_and_by_source(self):
         stats = self._stats()
         summary = paxel.build_summary(stats)
-        self.assertEqual(summary["scoring_inputs_version"], 2)
+        self.assertEqual(summary["scoring_inputs_version"], 3)
         self.assertIn("claude", summary["scoring_inputs_by_source"])
 
     def test_block_field_set_window_and_monthly(self):

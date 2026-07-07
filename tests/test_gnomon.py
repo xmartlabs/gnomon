@@ -68,7 +68,7 @@ def _sample_stats():
         },
         "stack": {
             "skills_distinct": 39, "skills_total": 8000,
-            "subagent_types_distinct": 9,
+            "subagent_types_distinct": 9, "max_session_subagent_types": 5,
             "subagent_types": [("general-purpose", 250), ("harness-generator", 29)],
             "top_skills": [("simplify", 1832), ("superpowers:writing-plans", 1752)],
             "skills_all": [("simplify", 1832), ("superpowers:writing-plans", 1752),
@@ -457,6 +457,7 @@ def _full_stats(sessions=10, tool_calls=5000):
                   "clis_distinct": 20, "cli_calls": 1000,
                   "toolsearch_calls": 100, "task_tool_calls": 400, "agent_calls": 80},
         "stack": {"skills_distinct": 15, "skills_total": 500, "subagent_types_distinct": 3,
+                  "max_session_subagent_types": 3,
                   "subagent_types": [("general-purpose", 50)],
                   "top_skills": [("code-review", 80), ("superpowers:writing-plans", 60),
                                  ("tdd", 40), ("brainstorm", 30)],
@@ -510,6 +511,7 @@ def _full_stats(sessions=10, tool_calls=5000):
                   "top_skills": [("code-review", 80), ("superpowers:writing-plans", 60),
                                  ("tdd", 40), ("brainstorm", 30)],
                   "skills_distinct": 15, "skills_total": 500, "subagent_types_distinct": 3,
+                  "max_session_subagent_types": 3,
                   "skills_all": [("code-review", 80), ("superpowers:writing-plans", 60),
                                  ("tdd", 40), ("brainstorm", 30)],
                   "compounding_writes": 12,
@@ -1400,29 +1402,82 @@ class TestPlanCeremonySubagents(unittest.TestCase):
 
 
 class TestHarnessBehavioral(unittest.TestCase):
-    """o_harn credits real orchestration BEHAVIOR (coordinating >=3 distinct subagent roles),
-    not a subagent/skill NAME matching 'harness'/'trisel'."""
+    """o_harn credits real orchestration BEHAVIOR: a SINGLE session coordinating >=3 distinct
+    subagent roles (max_session_subagent_types). Window-wide role variety alone
+    (subagent_types_distinct) does NOT count — that would credit serial single-agent sessions."""
 
-    def _orch(self, distinct, types=None):
+    def _orch(self, max_session_types):
         s = _sample_stats()
-        s["stack"]["subagent_types_distinct"] = distinct
-        if types is not None:
-            s["stack"]["subagent_types"] = types
+        s["stack"]["max_session_subagent_types"] = max_session_types
         aq = paxel.compute_aq(s)
         breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
         return next(a for a in breadth["axes"] if a["name"] == "Orchestration")
 
-    def test_three_distinct_types_credits_harness(self):
+    def test_session_with_three_roles_credits_harness(self):
         self.assertEqual(self._orch(3)["signals"]["o_harn"], 1.0)
 
-    def test_two_distinct_types_no_harness(self):
-        # Fewer than 3 distinct roles = ad-hoc delegation, not a coordinated team.
+    def test_fewer_than_three_roles_no_harness(self):
+        # A session coordinating <3 distinct roles = ad-hoc delegation, not a team.
         self.assertEqual(self._orch(2)["signals"]["o_harn"], 0.6)
 
-    def test_name_independent(self):
-        # Names contain no 'harness'/'trisel'; behavior alone (>=3 distinct) credits.
-        ax = self._orch(3, types=[("sdd-propose", 5), ("sdd-spec", 3), ("sdd-apply", 2)])
-        self.assertEqual(ax["signals"]["o_harn"], 1.0)
+    def test_window_variety_without_session_coordination_no_credit(self):
+        # Reviewer's scenario: 3 distinct types window-wide, but never >=3 in one session.
+        s = _sample_stats()
+        s["stack"]["subagent_types_distinct"] = 3     # window-wide variety
+        s["stack"]["max_session_subagent_types"] = 1  # each session used a single role
+        aq = paxel.compute_aq(s)
+        breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
+        ax = next(a for a in breadth["axes"] if a["name"] == "Orchestration")
+        self.assertEqual(ax["signals"]["o_harn"], 0.6)
+
+
+class TestSessionSubagentTypes(unittest.TestCase):
+    """max_session_subagent_types = the most distinct subagent roles coordinated in ONE session
+    (per-session), not window-wide distinct types."""
+
+    @staticmethod
+    def _agent_ev(sid, subagent_type):
+        return {"type": "assistant", "sessionId": sid, "timestamp": "2026-03-01T10:00:00Z",
+                "message": {"role": "assistant", "content": [
+                    {"type": "tool_use", "name": "Agent",
+                     "input": {"subagent_type": subagent_type}}]}}
+
+    def _acc(self, events):
+        from gnomon.cli.accumulator import Accumulator
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        for ev in events:
+            acc.observe(ev, None, None)
+        return acc
+
+    def test_three_roles_one_session(self):
+        acc = self._acc([self._agent_ev("s1", "sdd-propose"),
+                         self._agent_ev("s1", "sdd-spec"),
+                         self._agent_ev("s1", "sdd-apply")])
+        self.assertEqual(max((len(v) for v in acc.session_subagent_types.values()), default=0), 3)
+
+    def test_three_roles_across_separate_sessions(self):
+        # Same 3 roles but one per session -> max per-session is 1, not 3.
+        acc = self._acc([self._agent_ev("s1", "sdd-propose"),
+                         self._agent_ev("s2", "sdd-spec"),
+                         self._agent_ev("s3", "sdd-apply")])
+        self.assertEqual(max((len(v) for v in acc.session_subagent_types.values()), default=0), 1)
+
+
+class TestDetektVariantTasks(unittest.TestCase):
+    """Bare `detekt` counts as verification; variant tasks (detektMain,
+    detektGenerateConfig) don't — ideally they'd run via `check`."""
+
+    def test_detekt_bare_counts(self):
+        from gnomon.taxonomy import bash_runs_tests
+        self.assertTrue(bash_runs_tests("./gradlew detekt"))
+        self.assertTrue(bash_runs_tests("./gradlew :app:detekt"))
+
+    def test_detekt_variants_excluded(self):
+        from gnomon.taxonomy import bash_runs_tests
+        for cmd in ("./gradlew detektMain", "./gradlew detektGenerateConfig",
+                    "./gradlew detektBaselineMain"):
+            self.assertFalse(bash_runs_tests(cmd), cmd)
 
 
 class TestConfigurablePlanNeedles(unittest.TestCase):

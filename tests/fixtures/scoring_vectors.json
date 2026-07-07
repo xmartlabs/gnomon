@@ -3,7 +3,7 @@
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 75,
+          "aq_0_100": 73,
           "pillars": [
             {
               "name": "Breadth",
@@ -12,7 +12,7 @@
             },
             {
               "name": "Craft",
-              "score": 77.0,
+              "score": 71.6,
               "weight": 35
             },
             {
@@ -26,11 +26,11 @@
               "weight": 15
             }
           ],
-          "tier": "Advanced"
+          "tier": "Proficient"
         },
         "archetype": {
-          "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is breadth \u2014 that's where the next gain is.",
-          "title": "Advanced"
+          "quote": "Proficient and consistent, but not yet at the top tier. Your thinnest axis is breadth \u2014 that's where the next gain is.",
+          "title": "Proficient"
         },
         "combination": {
           "rule": "weighted_mean_of_per_source_scores",
@@ -273,7 +273,7 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 75,
+            "aq_0_100": 73,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -290,6 +290,7 @@
                     "signals": {
                       "agent_runs": 200,
                       "fanout_median": 3,
+                      "o_harn": 0.6,
                       "subagent_types": 6
                     },
                     "weight": 33
@@ -330,32 +331,41 @@
                 "axes": [
                   {
                     "name": "Verification",
-                    "score": 32.0,
+                    "score": 28.0,
                     "signals": {
                       "review_skills": 80,
                       "test_runs": 120
                     },
-                    "weight": 40
+                    "weight": 35
                   },
                   {
                     "name": "Grounding",
-                    "score": 21.0,
+                    "score": 17.5,
                     "signals": {
                       "planning_ratio": 0.7
                     },
-                    "weight": 30
+                    "weight": 25
+                  },
+                  {
+                    "name": "Context Intelligence",
+                    "score": 10.1,
+                    "signals": {
+                      "knowledge_calls": 80,
+                      "knowledge_servers": 2
+                    },
+                    "weight": 20
                   },
                   {
                     "name": "Compounding",
-                    "score": 24.0,
+                    "score": 16.0,
                     "signals": {
                       "compounding_writes": 20
                     },
-                    "weight": 30
+                    "weight": 20
                   }
                 ],
                 "name": "Craft",
-                "score": 77.0,
+                "score": 71.6,
                 "weight": 35
               },
               {
@@ -409,15 +419,15 @@
                 "weight": 15
               }
             ],
-            "tier": "Advanced",
+            "tier": "Proficient",
             "tool_diversity": {
               "distinct": 30,
               "entropy": 0.8
             }
           },
           "archetype": {
-            "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is breadth \u2014 that's where the next gain is.",
-            "title": "Advanced"
+            "quote": "Proficient and consistent, but not yet at the top tier. Your thinnest axis is breadth \u2014 that's where the next gain is.",
+            "title": "Proficient"
           },
           "growth_edges": [
             {
@@ -734,7 +744,19 @@
             "cli_calls": 1500,
             "clis_distinct": 25,
             "mcp_calls": 400,
+            "mcp_knowledge_calls": 80,
+            "mcp_knowledge_servers": 2,
             "mcp_servers_distinct": 10,
+            "mcp_subcategory_breakdown": {
+              "browser": {
+                "calls": 50,
+                "servers": 1
+              },
+              "knowledge": {
+                "calls": 80,
+                "servers": 2
+              }
+            },
             "task_tool_calls": 300,
             "tool_diversity": 30,
             "tool_entropy_normalized": 0.8,
@@ -764,13 +786,13 @@
         }
       }
     },
-    "scoring_inputs_version": 2
+    "scoring_inputs_version": 3
   },
   {
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 33,
+          "aq_0_100": 32,
           "pillars": [
             {
               "name": "Breadth",
@@ -779,7 +801,7 @@
             },
             {
               "name": "Craft",
-              "score": 11.3,
+              "score": 9.4,
               "weight": 35
             },
             {
@@ -1038,7 +1060,7 @@
       "by_source": {
         "cursor": {
           "aq": {
-            "aq_0_100": 33,
+            "aq_0_100": 32,
             "mcp_vs_cli": {
               "cli_calls": 100,
               "cli_distinct": 8,
@@ -1055,6 +1077,7 @@
                     "signals": {
                       "agent_runs": 0,
                       "fanout_median": 1,
+                      "o_harn": 0.6,
                       "subagent_types": 0
                     },
                     "weight": 54
@@ -1082,32 +1105,41 @@
                 "axes": [
                   {
                     "name": "Verification",
-                    "score": 1.3,
+                    "score": 1.2,
                     "signals": {
                       "review_skills": 0,
                       "test_runs": 5
                     },
-                    "weight": 40
+                    "weight": 35
                   },
                   {
                     "name": "Grounding",
-                    "score": 9.0,
+                    "score": 7.5,
                     "signals": {
                       "planning_ratio": 0.3
                     },
-                    "weight": 30
+                    "weight": 25
+                  },
+                  {
+                    "name": "Context Intelligence",
+                    "score": 0.0,
+                    "signals": {
+                      "knowledge_calls": 0,
+                      "knowledge_servers": 0
+                    },
+                    "weight": 20
                   },
                   {
                     "name": "Compounding",
-                    "score": 1.0,
+                    "score": 0.7,
                     "signals": {
                       "compounding_writes": 1
                     },
-                    "weight": 30
+                    "weight": 20
                   }
                 ],
                 "name": "Craft",
-                "score": 11.3,
+                "score": 9.4,
                 "weight": 35
               },
               {
@@ -1183,6 +1215,14 @@
               "title": "When a file fights back, root-cause it"
             },
             {
+              "advice": "Craft \u00b7 Context Intelligence is your thinnest AQ signal. 0 knowledge-tool calls across 0 server(s). Connect a code graph, a memory layer, and a docs server so the agent reads indexed context instead of grepping from scratch each session.",
+              "axis": "Context Intelligence",
+              "commands": [],
+              "eyebrow": "Ground your work in knowledge tools",
+              "severity": "medium",
+              "title": "Wire codegraph, memory, and docs into your workflow"
+            },
+            {
               "advice": "Planning is 3.1. Sketch the plan and reframe the ask before writing code \u2014 it's the cheapest place to catch a wrong turn. (gstack front-loads this with /office-hours + /autoplan.)",
               "axis": null,
               "commands": [
@@ -1192,14 +1232,6 @@
               "eyebrow": "Plan first",
               "severity": "medium",
               "title": "Spend more time in Think + Plan"
-            },
-            {
-              "advice": "Savvy \u00b7 Model mix is your thinnest AQ signal. 1 model(s), with only 0% of turns routed off your default. Send mechanical work \u2014 renames, bulk edits, summaries \u2014 to a faster model and save the heavyweight for design and review.",
-              "axis": "Model mix",
-              "commands": [],
-              "eyebrow": "Route the work",
-              "severity": "medium",
-              "title": "Match the model to the task"
             }
           ],
           "model_usage": [],
@@ -1440,7 +1472,10 @@
             "cli_calls": 100,
             "clis_distinct": 8,
             "mcp_calls": 50,
+            "mcp_knowledge_calls": 0,
+            "mcp_knowledge_servers": 0,
             "mcp_servers_distinct": 2,
+            "mcp_subcategory_breakdown": {},
             "task_tool_calls": 0,
             "tool_diversity": 12,
             "tool_entropy_normalized": 0.6,
@@ -1466,13 +1501,13 @@
         }
       }
     },
-    "scoring_inputs_version": 2
+    "scoring_inputs_version": 3
   },
   {
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 70,
+          "aq_0_100": 68,
           "pillars": [
             {
               "name": "Breadth",
@@ -1481,7 +1516,7 @@
             },
             {
               "name": "Craft",
-              "score": 69.7,
+              "score": 64.7,
               "weight": 35
             },
             {
@@ -1743,7 +1778,7 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 75,
+            "aq_0_100": 73,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -1760,6 +1795,7 @@
                     "signals": {
                       "agent_runs": 200,
                       "fanout_median": 3,
+                      "o_harn": 0.6,
                       "subagent_types": 6
                     },
                     "weight": 33
@@ -1800,32 +1836,41 @@
                 "axes": [
                   {
                     "name": "Verification",
-                    "score": 32.0,
+                    "score": 28.0,
                     "signals": {
                       "review_skills": 80,
                       "test_runs": 120
                     },
-                    "weight": 40
+                    "weight": 35
                   },
                   {
                     "name": "Grounding",
-                    "score": 21.0,
+                    "score": 17.5,
                     "signals": {
                       "planning_ratio": 0.7
                     },
-                    "weight": 30
+                    "weight": 25
+                  },
+                  {
+                    "name": "Context Intelligence",
+                    "score": 10.1,
+                    "signals": {
+                      "knowledge_calls": 80,
+                      "knowledge_servers": 2
+                    },
+                    "weight": 20
                   },
                   {
                     "name": "Compounding",
-                    "score": 24.0,
+                    "score": 16.0,
                     "signals": {
                       "compounding_writes": 20
                     },
-                    "weight": 30
+                    "weight": 20
                   }
                 ],
                 "name": "Craft",
-                "score": 77.0,
+                "score": 71.6,
                 "weight": 35
               },
               {
@@ -1879,15 +1924,15 @@
                 "weight": 15
               }
             ],
-            "tier": "Advanced",
+            "tier": "Proficient",
             "tool_diversity": {
               "distinct": 30,
               "entropy": 0.8
             }
           },
           "archetype": {
-            "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is breadth \u2014 that's where the next gain is.",
-            "title": "Advanced"
+            "quote": "Proficient and consistent, but not yet at the top tier. Your thinnest axis is breadth \u2014 that's where the next gain is.",
+            "title": "Proficient"
           },
           "growth_edges": [
             {
@@ -2122,7 +2167,7 @@
         },
         "cursor": {
           "aq": {
-            "aq_0_100": 33,
+            "aq_0_100": 32,
             "mcp_vs_cli": {
               "cli_calls": 100,
               "cli_distinct": 8,
@@ -2139,6 +2184,7 @@
                     "signals": {
                       "agent_runs": 0,
                       "fanout_median": 1,
+                      "o_harn": 0.6,
                       "subagent_types": 0
                     },
                     "weight": 54
@@ -2166,32 +2212,41 @@
                 "axes": [
                   {
                     "name": "Verification",
-                    "score": 1.3,
+                    "score": 1.2,
                     "signals": {
                       "review_skills": 0,
                       "test_runs": 5
                     },
-                    "weight": 40
+                    "weight": 35
                   },
                   {
                     "name": "Grounding",
-                    "score": 9.0,
+                    "score": 7.5,
                     "signals": {
                       "planning_ratio": 0.3
                     },
-                    "weight": 30
+                    "weight": 25
+                  },
+                  {
+                    "name": "Context Intelligence",
+                    "score": 0.0,
+                    "signals": {
+                      "knowledge_calls": 0,
+                      "knowledge_servers": 0
+                    },
+                    "weight": 20
                   },
                   {
                     "name": "Compounding",
-                    "score": 1.0,
+                    "score": 0.7,
                     "signals": {
                       "compounding_writes": 1
                     },
-                    "weight": 30
+                    "weight": 20
                   }
                 ],
                 "name": "Craft",
-                "score": 11.3,
+                "score": 9.4,
                 "weight": 35
               },
               {
@@ -2267,6 +2322,14 @@
               "title": "When a file fights back, root-cause it"
             },
             {
+              "advice": "Craft \u00b7 Context Intelligence is your thinnest AQ signal. 0 knowledge-tool calls across 0 server(s). Connect a code graph, a memory layer, and a docs server so the agent reads indexed context instead of grepping from scratch each session.",
+              "axis": "Context Intelligence",
+              "commands": [],
+              "eyebrow": "Ground your work in knowledge tools",
+              "severity": "medium",
+              "title": "Wire codegraph, memory, and docs into your workflow"
+            },
+            {
               "advice": "Planning is 3.1. Sketch the plan and reframe the ask before writing code \u2014 it's the cheapest place to catch a wrong turn. (gstack front-loads this with /office-hours + /autoplan.)",
               "axis": null,
               "commands": [
@@ -2276,14 +2339,6 @@
               "eyebrow": "Plan first",
               "severity": "medium",
               "title": "Spend more time in Think + Plan"
-            },
-            {
-              "advice": "Savvy \u00b7 Model mix is your thinnest AQ signal. 1 model(s), with only 0% of turns routed off your default. Send mechanical work \u2014 renames, bulk edits, summaries \u2014 to a faster model and save the heavyweight for design and review.",
-              "axis": "Model mix",
-              "commands": [],
-              "eyebrow": "Route the work",
-              "severity": "medium",
-              "title": "Match the model to the task"
             }
           ],
           "model_usage": [],
@@ -2563,7 +2618,19 @@
             "cli_calls": 1500,
             "clis_distinct": 25,
             "mcp_calls": 400,
+            "mcp_knowledge_calls": 80,
+            "mcp_knowledge_servers": 2,
             "mcp_servers_distinct": 10,
+            "mcp_subcategory_breakdown": {
+              "browser": {
+                "calls": 50,
+                "servers": 1
+              },
+              "knowledge": {
+                "calls": 80,
+                "servers": 2
+              }
+            },
             "task_tool_calls": 300,
             "tool_diversity": 30,
             "tool_entropy_normalized": 0.8,
@@ -2633,7 +2700,10 @@
             "cli_calls": 100,
             "clis_distinct": 8,
             "mcp_calls": 50,
+            "mcp_knowledge_calls": 0,
+            "mcp_knowledge_servers": 0,
             "mcp_servers_distinct": 2,
+            "mcp_subcategory_breakdown": {},
             "task_tool_calls": 0,
             "tool_diversity": 12,
             "tool_entropy_normalized": 0.6,
@@ -2659,6 +2729,6 @@
         }
       }
     },
-    "scoring_inputs_version": 2
+    "scoring_inputs_version": 3
   }
 ]

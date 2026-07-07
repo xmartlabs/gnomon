@@ -281,6 +281,8 @@ def build_summary(stats):
         "ecosystem": {
             "skills_distinct": st["skills_distinct"], "skills_total": st["skills_total"],
             "mcp_servers_distinct": t["mcp_servers_distinct"],
+            "mcp_knowledge_calls": t.get("mcp_knowledge_calls", 0),
+            "mcp_knowledge_servers": t.get("mcp_knowledge_servers", 0),
         },
         "progression_monthly": (stats.get("progression") or {}).get("monthly", []),
         "noticed_stats_monthly": stats.get("monthly_noticed_stats", []),

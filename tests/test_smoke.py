@@ -145,7 +145,7 @@ class TestPipeline(unittest.TestCase):
         for banned in ("prompt_text",):
             self.assertNotIn(banned, raw, f"verbatim field leaked: {banned}")
         # scoring inputs are present and re-scorable
-        self.assertEqual(summary["scoring_inputs_version"], 2)
+        self.assertEqual(summary["scoring_inputs_version"], 3)
         self.assertIsInstance(summary["scoring_inputs_by_source"], dict)
 
     def test_no_summary_without_flag(self):
@@ -312,6 +312,26 @@ class TestUnits(unittest.TestCase):
                                      "behavior": {}, "velocity": {}})
         self.assertEqual(set(zero), SCORED_AXES)
         self.assertNotIn("Steering", zero)
+
+    def test_classify_mcp_subcategory_knowledge(self):
+        from gnomon.taxonomy import classify_mcp_subcategory
+        self.assertEqual(classify_mcp_subcategory("codegraph", "codegraph_explore"), "knowledge")
+        self.assertEqual(classify_mcp_subcategory("plugin_engram_engram", "mem_save"), "knowledge")
+        self.assertEqual(classify_mcp_subcategory("mem0", "add_memory"), "knowledge")
+
+    def test_classify_mcp_subcategory_browser(self):
+        from gnomon.taxonomy import classify_mcp_subcategory
+        self.assertEqual(classify_mcp_subcategory("claude-in-chrome", "navigate"), "browser")
+        self.assertEqual(classify_mcp_subcategory("playwright", "browser_click"), "browser")
+
+    def test_classify_mcp_subcategory_layer2_fallback(self):
+        from gnomon.taxonomy import classify_mcp_subcategory
+        self.assertEqual(classify_mcp_subcategory("unknown_server", "search_knowledge_base"), "knowledge")
+        self.assertEqual(classify_mcp_subcategory("unknown_server", "execute_sql"), "data")
+        self.assertEqual(classify_mcp_subcategory("unknown_server", "unknown_tool"), "other")
+
+    def test_codegraph_explore_classifies_as_explore(self):
+        self.assertEqual(paxel.classify_tool("mcp__codegraph__codegraph_explore"), "explore")
 
 
 class TestCursorStatsFixes(unittest.TestCase):
