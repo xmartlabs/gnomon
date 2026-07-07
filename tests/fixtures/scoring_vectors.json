@@ -792,7 +792,7 @@
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 32,
+          "aq_0_100": 33,
           "pillars": [
             {
               "name": "Breadth",
@@ -801,7 +801,7 @@
             },
             {
               "name": "Craft",
-              "score": 9.4,
+              "score": 11.7,
               "weight": 35
             },
             {
@@ -1060,7 +1060,7 @@
       "by_source": {
         "cursor": {
           "aq": {
-            "aq_0_100": 32,
+            "aq_0_100": 33,
             "mcp_vs_cli": {
               "cli_calls": 100,
               "cli_distinct": 8,
@@ -1105,41 +1105,35 @@
                 "axes": [
                   {
                     "name": "Verification",
-                    "score": 1.2,
+                    "score": 1.5,
                     "signals": {
                       "review_skills": 0,
                       "test_runs": 5
                     },
-                    "weight": 35
+                    "weight": 44
                   },
                   {
                     "name": "Grounding",
-                    "score": 7.5,
+                    "score": 9.4,
                     "signals": {
                       "planning_ratio": 0.3
                     },
-                    "weight": 25
-                  },
-                  {
-                    "name": "Context Intelligence",
-                    "score": 0.0,
-                    "signals": {
-                      "knowledge_calls": 0,
-                      "knowledge_servers": 0
-                    },
-                    "weight": 20
+                    "weight": 31
                   },
                   {
                     "name": "Compounding",
-                    "score": 0.7,
+                    "score": 0.8,
                     "signals": {
                       "compounding_writes": 1
                     },
-                    "weight": 20
+                    "weight": 25
                   }
                 ],
                 "name": "Craft",
-                "score": 9.4,
+                "not_applicable": [
+                  "Context Intelligence"
+                ],
+                "score": 11.7,
                 "weight": 35
               },
               {
@@ -1215,14 +1209,6 @@
               "title": "When a file fights back, root-cause it"
             },
             {
-              "advice": "Craft \u00b7 Context Intelligence is your thinnest AQ signal. 0 knowledge-tool calls across 0 server(s). Connect a code graph, a memory layer, and a docs server so the agent reads indexed context instead of grepping from scratch each session.",
-              "axis": "Context Intelligence",
-              "commands": [],
-              "eyebrow": "Ground your work in knowledge tools",
-              "severity": "medium",
-              "title": "Wire codegraph, memory, and docs into your workflow"
-            },
-            {
               "advice": "Planning is 3.1. Sketch the plan and reframe the ask before writing code \u2014 it's the cheapest place to catch a wrong turn. (gstack front-loads this with /office-hours + /autoplan.)",
               "axis": null,
               "commands": [
@@ -1232,6 +1218,14 @@
               "eyebrow": "Plan first",
               "severity": "medium",
               "title": "Spend more time in Think + Plan"
+            },
+            {
+              "advice": "Savvy \u00b7 Model mix is your thinnest AQ signal. 1 model(s), with only 0% of turns routed off your default. Send mechanical work \u2014 renames, bulk edits, summaries \u2014 to a faster model and save the heavyweight for design and review.",
+              "axis": "Model mix",
+              "commands": [],
+              "eyebrow": "Route the work",
+              "severity": "medium",
+              "title": "Match the model to the task"
             }
           ],
           "model_usage": [],
@@ -1507,7 +1501,7 @@
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 68,
+          "aq_0_100": 69,
           "pillars": [
             {
               "name": "Breadth",
@@ -1516,7 +1510,7 @@
             },
             {
               "name": "Craft",
-              "score": 64.7,
+              "score": 64.9,
               "weight": 35
             },
             {
@@ -2167,7 +2161,7 @@
         },
         "cursor": {
           "aq": {
-            "aq_0_100": 32,
+            "aq_0_100": 33,
             "mcp_vs_cli": {
               "cli_calls": 100,
               "cli_distinct": 8,
@@ -2212,41 +2206,35 @@
                 "axes": [
                   {
                     "name": "Verification",
-                    "score": 1.2,
+                    "score": 1.5,
                     "signals": {
                       "review_skills": 0,
                       "test_runs": 5
                     },
-                    "weight": 35
+                    "weight": 44
                   },
                   {
                     "name": "Grounding",
-                    "score": 7.5,
+                    "score": 9.4,
                     "signals": {
                       "planning_ratio": 0.3
                     },
-                    "weight": 25
-                  },
-                  {
-                    "name": "Context Intelligence",
-                    "score": 0.0,
-                    "signals": {
-                      "knowledge_calls": 0,
-                      "knowledge_servers": 0
-                    },
-                    "weight": 20
+                    "weight": 31
                   },
                   {
                     "name": "Compounding",
-                    "score": 0.7,
+                    "score": 0.8,
                     "signals": {
                       "compounding_writes": 1
                     },
-                    "weight": 20
+                    "weight": 25
                   }
                 ],
                 "name": "Craft",
-                "score": 9.4,
+                "not_applicable": [
+                  "Context Intelligence"
+                ],
+                "score": 11.7,
                 "weight": 35
               },
               {
@@ -2322,14 +2310,6 @@
               "title": "When a file fights back, root-cause it"
             },
             {
-              "advice": "Craft \u00b7 Context Intelligence is your thinnest AQ signal. 0 knowledge-tool calls across 0 server(s). Connect a code graph, a memory layer, and a docs server so the agent reads indexed context instead of grepping from scratch each session.",
-              "axis": "Context Intelligence",
-              "commands": [],
-              "eyebrow": "Ground your work in knowledge tools",
-              "severity": "medium",
-              "title": "Wire codegraph, memory, and docs into your workflow"
-            },
-            {
               "advice": "Planning is 3.1. Sketch the plan and reframe the ask before writing code \u2014 it's the cheapest place to catch a wrong turn. (gstack front-loads this with /office-hours + /autoplan.)",
               "axis": null,
               "commands": [
@@ -2339,6 +2319,14 @@
               "eyebrow": "Plan first",
               "severity": "medium",
               "title": "Spend more time in Think + Plan"
+            },
+            {
+              "advice": "Savvy \u00b7 Model mix is your thinnest AQ signal. 1 model(s), with only 0% of turns routed off your default. Send mechanical work \u2014 renames, bulk edits, summaries \u2014 to a faster model and save the heavyweight for design and review.",
+              "axis": "Model mix",
+              "commands": [],
+              "eyebrow": "Route the work",
+              "severity": "medium",
+              "title": "Match the model to the task"
             }
           ],
           "model_usage": [],

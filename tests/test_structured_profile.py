@@ -219,32 +219,31 @@ class TestGoldenHtmlOutput(unittest.TestCase):
     def test_growth_edges_full_equality(self):
         """Full tuple equality guard — pins every character of each HTML string."""
         edges = paxel.growth_edges(self.stats, self.scores)
+        # Context Intelligence is gated (0 knowledge calls -> axis N/A), so the knowledge-tool
+        # edge no longer fires; Grounding is now the thinnest graded Craft axis.
         expected = [
             (
                 "Stop the grind",
                 "When a file fights back, root-cause it",
-                "<b>50×</b> on one file and <b>15</b> files past 15 edits,"
-                " next to ~<b>7.0</b> errors per 100 tool calls — that pairing"
-                " reads as retry-thrash more than deliberate iteration. When a file"
-                " resists past ~15 tries, find the root cause before the next edit."
-                " (gstack names this <code>/investigate</code>.)",
-            ),
-            (
-                "Ground your work in knowledge tools",
-                "Wire codegraph, memory, and docs into your workflow",
-                "<b>Craft · Context Intelligence</b> is your thinnest AQ signal."
-                " <b>0</b> knowledge-tool calls across <b>0</b> server(s)."
-                " Connect a code graph, a memory layer, and a docs server so the"
-                " agent reads indexed context instead of grepping from scratch"
-                " each session.",
+                "<b>50×</b> on one file and <b>15</b> files past 15 edits, next to ~<b>7.0</b>"
+                " errors per 100 tool calls — that pairing reads as retry-thrash more than"
+                " deliberate iteration. When a file resists past ~15 tries, find the root cause"
+                " before the next edit. (gstack names this <code>/investigate</code>.)",
             ),
             (
                 "Route the work",
                 "Match the model to the task",
-                "<b>Savvy · Model mix</b> is your thinnest AQ signal."
-                " <b>1</b> model(s), with only <b>0%</b> of turns routed off your"
-                " default. Send mechanical work — renames, bulk edits, summaries"
-                " — to a faster model and save the heavyweight for design and review.",
+                "<b>Savvy · Model mix</b> is your thinnest AQ signal. <b>1</b> model(s), with"
+                " only <b>0%</b> of turns routed off your default. Send mechanical work —"
+                " renames, bulk edits, summaries — to a faster model and save the heavyweight"
+                " for design and review.",
+            ),
+            (
+                "Read before you write",
+                "Make the agent explore before it edits",
+                "<b>Craft · Grounding</b> is your thinnest AQ signal. Your explore-to-doing"
+                " ratio is <b>0.2</b> — edits outpace reading. Ask for a read-the-code pass"
+                " before changes; grounded edits fail less.",
             ),
         ]
         self.assertEqual(edges, expected)
