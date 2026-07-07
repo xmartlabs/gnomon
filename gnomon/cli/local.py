@@ -36,10 +36,10 @@ from gnomon.output.profile_html import write_profile_html
 # so the % column matches what AQ actually scores. knowledge_calls is NOT rate-converted (it's
 # the gated Context Intelligence signal, scored on absolute count) -> is_rate=False.
 _TOOLS_DIAG = [
-    ("task_tool_calls", "task_tool_calls", 1.5, True),
+    ("task_tool_calls", "task_tool_calls", 1.0, True),
     ("toolsearch_calls", "toolsearch", 0.30, True),
-    ("skills_total", "skills_total", 15, True),
-    ("review_skills", "review_skills", 2.5, True),
+    ("skills_total", "skills_total", 10, True),
+    ("review_skills", "review_skills", 1.5, True),
     ("shell_test_runs", "test_runs", 1.5, True),
     ("compounding_writes", "compounding_writes", 0.25, True),
     ("agent_runs", "agent_runs", 1.0, True),

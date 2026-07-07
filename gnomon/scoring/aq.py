@@ -68,7 +68,7 @@ def compute_aq(stats):
     orchestration = (.30 * sat(st.get("subagent_types_distinct", 0), 8) + .30 * sat(fanout, 5)
                      + .20 * o_harn + .20 * rate(agent_runs, 1.0))
     # skills_total -> per-session rate; skills_distinct stays (diversity, correctly absolute)
-    skill_fluency = (.40 * sat(st.get("skills_distinct", 0), 40) + .30 * rate(st.get("skills_total", 0), 15)
+    skill_fluency = (.40 * sat(st.get("skills_distinct", 0), 40) + .30 * rate(st.get("skills_total", 0), 10)
                      + .30 * (1.0 if has_skill(["subagent-driven", "brainstorm", "writing-plans",
                                                 "cerberus", "systematic-debugging"]) else 0.6))
     # mcp_servers/clis are distinct-counts (kept absolute); toolsearch -> per-session rate.
@@ -77,7 +77,7 @@ def compute_aq(stats):
                         (.40, sat(t.get("clis_distinct", 0), 40), None),
                         (.20, rate(t.get("toolsearch_calls", 0), 0.30), "toolsearch"))
     # task-tool -> per-session rate; plan-skill term needs the Skill capability
-    discipline = wsum((.60, rate(t.get("task_tool_calls", 0), 1.5), "tasktool"),
+    discipline = wsum((.60, rate(t.get("task_tool_calls", 0), 1.0), "tasktool"),
                       (.40, (1.0 if (has_skill(["writing-plans", "autoplan", "plan"])
                                      or b.get("plan_sessions", 0) > 0) else 0.6), "skills"))
     breadth_axes = [
@@ -99,7 +99,7 @@ def compute_aq(stats):
     # review-skill term needs Skill capability; falls back to shell test runs alone
     # test runs + review skills -> per-session rates (matches gstack's per-session test handling)
     verification = wsum((.5, rate(b.get("shell_test_runs", 0), 1.5), None),
-                        (.5, rate(review_n, 2.5), "skills"))
+                        (.5, rate(review_n, 1.5), "skills"))
     grounding = sat(b.get("planning_ratio_explore_to_doing", 0), 1.0)
     # compounding writes -> per-session rate (rewards the habit, not raw volume)
     compounding = wsum((.6, rate(st.get("compounding_writes", 0), 0.25), None),

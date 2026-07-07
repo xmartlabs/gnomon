@@ -3,7 +3,7 @@
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 83,
+          "aq_0_100": 84,
           "pillars": [
             {
               "name": "Breadth",
@@ -12,7 +12,7 @@
             },
             {
               "name": "Craft",
-              "score": 79.1,
+              "score": 82.6,
               "weight": 35
             },
             {
@@ -29,7 +29,7 @@
           "tier": "Advanced"
         },
         "archetype": {
-          "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is craft \u2014 that's where the next gain is.",
+          "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is breadth \u2014 that's where the next gain is.",
           "title": "Advanced"
         },
         "combination": {
@@ -273,7 +273,7 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 83,
+            "aq_0_100": 84,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -331,7 +331,7 @@
                 "axes": [
                   {
                     "name": "Verification",
-                    "score": 31.5,
+                    "score": 35.0,
                     "signals": {
                       "review_skills": 80,
                       "test_runs": 120
@@ -365,7 +365,7 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 79.1,
+                "score": 82.6,
                 "weight": 35
               },
               {
@@ -426,7 +426,7 @@
             }
           },
           "archetype": {
-            "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is craft \u2014 that's where the next gain is.",
+            "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is breadth \u2014 that's where the next gain is.",
             "title": "Advanced"
           },
           "growth_edges": [
@@ -1501,7 +1501,7 @@
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 78,
+          "aq_0_100": 79,
           "pillars": [
             {
               "name": "Breadth",
@@ -1510,7 +1510,7 @@
             },
             {
               "name": "Craft",
-              "score": 74.1,
+              "score": 77.2,
               "weight": 35
             },
             {
@@ -1772,7 +1772,7 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 83,
+            "aq_0_100": 84,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -1830,7 +1830,7 @@
                 "axes": [
                   {
                     "name": "Verification",
-                    "score": 31.5,
+                    "score": 35.0,
                     "signals": {
                       "review_skills": 80,
                       "test_runs": 120
@@ -1864,7 +1864,7 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 79.1,
+                "score": 82.6,
                 "weight": 35
               },
               {
@@ -1925,7 +1925,7 @@
             }
           },
           "archetype": {
-            "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is craft \u2014 that's where the next gain is.",
+            "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is breadth \u2014 that's where the next gain is.",
             "title": "Advanced"
           },
           "growth_edges": [
