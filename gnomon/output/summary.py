@@ -265,8 +265,8 @@ def build_summary(stats):
     """The shareable subset for the low-cost feedback loop (docs/metrics-evaluation.md):
     the 8 high-signal MEASURED metrics + monthly progression + rubric profile block.
     The profile sub-dict carries scores/level/archetype/steering; all values are computed
-    or count-based — no prompts, no verbatim quotes, no raw skill/project names.
-    Safe to share as-is."""
+    or count-based — no prompts, no verbatim quotes, no project names.
+    Includes tool, skill, and MCP server names (ecosystem + monthly noticed stats)."""
     v, b, vel, st, t, c = (stats["volume"], stats["behavior"], stats["velocity"],
                            stats["stack"], stats["tools"], stats["corpus"])
     result = {
