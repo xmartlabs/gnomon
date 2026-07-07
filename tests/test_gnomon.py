@@ -68,7 +68,7 @@ def _sample_stats():
         },
         "stack": {
             "skills_distinct": 39, "skills_total": 8000,
-            "subagent_types_distinct": 9,
+            "subagent_types_distinct": 9, "max_session_subagent_types": 5,
             "subagent_types": [("general-purpose", 250), ("harness-generator", 29)],
             "top_skills": [("simplify", 1832), ("superpowers:writing-plans", 1752)],
             "skills_all": [("simplify", 1832), ("superpowers:writing-plans", 1752),
@@ -181,6 +181,35 @@ class TestComputeAqV2(unittest.TestCase):
         verification = next(a for a in craft["axes"] if a["name"] == "Verification")
         self.assertEqual(verification["signals"]["review_skills"], 0)
         self.assertEqual(verification["score"], 0.0)
+
+    def test_context_intel_gate_drops_axis_for_negligible_usage(self):
+        # nicolas-like: 24 knowledge calls -> axis N/A, Craft renormalized over the other 3.
+        s = _sample_stats()
+        s["tools"]["mcp_knowledge_calls"] = 24
+        s["tools"]["mcp_knowledge_servers"] = 2
+        aq = paxel.compute_aq(s)
+        craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
+        self.assertNotIn("Context Intelligence", [a["name"] for a in craft["axes"]])
+        self.assertEqual(sum(a["weight"] for a in craft["axes"]), 100)
+
+    def test_context_intel_gate_keeps_axis_for_real_usage(self):
+        # federico-like: 341 calls -> real knowledge grounding, axis stays and is scored.
+        s = _sample_stats()
+        s["tools"]["mcp_knowledge_calls"] = 341
+        s["tools"]["mcp_knowledge_servers"] = 3
+        aq = paxel.compute_aq(s)
+        craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
+        self.assertIn("Context Intelligence", [a["name"] for a in craft["axes"]])
+
+    def test_context_intel_gate_lifts_craft_vs_scored_low(self):
+        def craft(calls):
+            s = _sample_stats()
+            s["tools"]["mcp_knowledge_calls"] = calls
+            s["tools"]["mcp_knowledge_servers"] = 2
+            aq = paxel.compute_aq(s)
+            return next(p for p in aq["pillars"] if p["name"] == "Craft")["score"]
+        # gated (24, dropped+renormalized) beats scored-just-above-floor (60, low CI drags Craft)
+        self.assertGreater(craft(24), craft(60))
 
     def test_verification_counts_real_review_skills(self):
         # Genuine *-review verification skills (caveman-review, security-review) must
@@ -457,6 +486,7 @@ def _full_stats(sessions=10, tool_calls=5000):
                   "clis_distinct": 20, "cli_calls": 1000,
                   "toolsearch_calls": 100, "task_tool_calls": 400, "agent_calls": 80},
         "stack": {"skills_distinct": 15, "skills_total": 500, "subagent_types_distinct": 3,
+                  "max_session_subagent_types": 3,
                   "subagent_types": [("general-purpose", 50)],
                   "top_skills": [("code-review", 80), ("superpowers:writing-plans", 60),
                                  ("tdd", 40), ("brainstorm", 30)],
@@ -510,6 +540,7 @@ def _full_stats(sessions=10, tool_calls=5000):
                   "top_skills": [("code-review", 80), ("superpowers:writing-plans", 60),
                                  ("tdd", 40), ("brainstorm", 30)],
                   "skills_distinct": 15, "skills_total": 500, "subagent_types_distinct": 3,
+                  "max_session_subagent_types": 3,
                   "skills_all": [("code-review", 80), ("superpowers:writing-plans", 60),
                                  ("tdd", 40), ("brainstorm", 30)],
                   "compounding_writes": 12,
@@ -1398,6 +1429,200 @@ class TestPlanCeremonySubagents(unittest.TestCase):
                          self._agent_ev("s4", "sdd-propose")])
         self.assertEqual(len(acc.plan_sessions), 1)
         self.assertIn("s4", acc.plan_sessions)
+
+
+class TestHarnessBehavioral(unittest.TestCase):
+    """o_harn credits real orchestration BEHAVIOR: a SINGLE session coordinating >=3 distinct
+    subagent roles (max_session_subagent_types). Window-wide role variety alone
+    (subagent_types_distinct) does NOT count — that would credit serial single-agent sessions."""
+
+    def _orch(self, max_session_types):
+        s = _sample_stats()
+        s["stack"]["max_session_subagent_types"] = max_session_types
+        aq = paxel.compute_aq(s)
+        breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
+        return next(a for a in breadth["axes"] if a["name"] == "Orchestration")
+
+    def test_session_with_three_roles_credits_harness(self):
+        self.assertEqual(self._orch(3)["signals"]["o_harn"], 1.0)
+
+    def test_fewer_than_three_roles_no_harness(self):
+        # A session coordinating <3 distinct roles = ad-hoc delegation, not a team.
+        self.assertEqual(self._orch(2)["signals"]["o_harn"], 0.6)
+
+    def test_window_variety_without_session_coordination_no_credit(self):
+        # Reviewer's scenario: 3 distinct types window-wide, but never >=3 in one session.
+        s = _sample_stats()
+        s["stack"]["subagent_types_distinct"] = 3     # window-wide variety
+        s["stack"]["max_session_subagent_types"] = 1  # each session used a single role
+        aq = paxel.compute_aq(s)
+        breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
+        ax = next(a for a in breadth["axes"] if a["name"] == "Orchestration")
+        self.assertEqual(ax["signals"]["o_harn"], 0.6)
+
+
+class TestSessionSubagentTypes(unittest.TestCase):
+    """max_session_subagent_types = the most distinct subagent roles coordinated in ONE session
+    (per-session), not window-wide distinct types."""
+
+    @staticmethod
+    def _agent_ev(sid, subagent_type):
+        return {"type": "assistant", "sessionId": sid, "timestamp": "2026-03-01T10:00:00Z",
+                "message": {"role": "assistant", "content": [
+                    {"type": "tool_use", "name": "Agent",
+                     "input": {"subagent_type": subagent_type}}]}}
+
+    def _acc(self, events):
+        from gnomon.cli.accumulator import Accumulator
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        for ev in events:
+            acc.observe(ev, None, None)
+        return acc
+
+    def test_three_roles_one_session(self):
+        acc = self._acc([self._agent_ev("s1", "sdd-propose"),
+                         self._agent_ev("s1", "sdd-spec"),
+                         self._agent_ev("s1", "sdd-apply")])
+        self.assertEqual(max((len(v) for v in acc.session_subagent_types.values()), default=0), 3)
+
+    def test_three_roles_across_separate_sessions(self):
+        # Same 3 roles but one per session -> max per-session is 1, not 3.
+        acc = self._acc([self._agent_ev("s1", "sdd-propose"),
+                         self._agent_ev("s2", "sdd-spec"),
+                         self._agent_ev("s3", "sdd-apply")])
+        self.assertEqual(max((len(v) for v in acc.session_subagent_types.values()), default=0), 1)
+
+
+class TestDetektVariantTasks(unittest.TestCase):
+    """Bare `detekt` counts as verification; variant tasks (detektMain,
+    detektGenerateConfig) don't — ideally they'd run via `check`."""
+
+    def test_detekt_bare_counts(self):
+        from gnomon.taxonomy import bash_runs_tests
+        self.assertTrue(bash_runs_tests("./gradlew detekt"))
+        self.assertTrue(bash_runs_tests("./gradlew :app:detekt"))
+
+    def test_detekt_variants_excluded(self):
+        from gnomon.taxonomy import bash_runs_tests
+        for cmd in ("./gradlew detektMain", "./gradlew detektGenerateConfig",
+                    "./gradlew detektBaselineMain"):
+            self.assertFalse(bash_runs_tests(cmd), cmd)
+
+
+class TestConfigurablePlanNeedles(unittest.TestCase):
+    """GNOMON_PLAN_SKILL_NEEDLES extends (never replaces) the built-in plan-skill needles."""
+
+    def test_env_extends_needles(self):
+        import importlib, gnomon.taxonomy as tax
+        os.environ["GNOMON_PLAN_SKILL_NEEDLES"] = "roadmap, my-planner"
+        try:
+            importlib.reload(tax)
+            self.assertIn("roadmap", tax.PLAN_SKILL_NEEDLES)
+            self.assertIn("my-planner", tax.PLAN_SKILL_NEEDLES)
+            self.assertIn("brainstorm", tax.PLAN_SKILL_NEEDLES)  # builtins remain
+        finally:
+            os.environ.pop("GNOMON_PLAN_SKILL_NEEDLES", None)
+            importlib.reload(tax)
+
+    def test_no_env_builtins_only(self):
+        import gnomon.taxonomy as tax
+        self.assertNotIn("roadmap", tax.PLAN_SKILL_NEEDLES)
+        self.assertIn("brainstorm", tax.PLAN_SKILL_NEEDLES)
+
+
+class TestPerSessionRates(unittest.TestCase):
+    """The converted metrics score per-session RATE, not absolute volume: the same rate at
+    different session counts scores identically (kills the volume artifact), and a higher rate
+    scores higher regardless of total sessions."""
+
+    def _discipline(self, task_calls, sessions):
+        s = _sample_stats()
+        s["volume"] = {"total_sessions": sessions}
+        s["tools"]["task_tool_calls"] = task_calls
+        aq = paxel.compute_aq(s)
+        breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
+        return next(a for a in breadth["axes"] if a["name"] == "Discipline")["score"]
+
+    def test_same_rate_same_score(self):
+        # 0.5 task-tool/session either way -> identical Discipline (volume artifact gone)
+        self.assertEqual(self._discipline(50, 100), self._discipline(500, 1000))
+
+    def test_low_session_high_intensity_beats_high_session_low_intensity(self):
+        # fede-like (few sessions, dense) vs volume-heavy but sparse per session
+        dense = self._discipline(150, 100)   # 1.5/session
+        sparse = self._discipline(300, 1000)  # 0.3/session
+        self.assertGreater(dense, sparse)
+
+    def test_zero_sessions_guarded(self):
+        self._discipline(10, 0)  # must not divide by zero
+
+
+class TestToolsDiagnostic(unittest.TestCase):
+    """--tools diagnostic: per-session tool rates from the already-computed agentic signals."""
+
+    def _stats(self, sessions):
+        return {
+            "volume": {"total_sessions": sessions, "total_prompts": sessions * 4},
+            "velocity": {"active_hours": 50.0},
+            "agentic": {"pillars": [
+                {"name": "Breadth", "axes": [
+                    {"name": "Discipline", "signals": {"task_tool_calls": 50}},
+                    {"name": "Orchestration", "signals": {"agent_runs": 200}},
+                    {"name": "Tool command", "signals": {"toolsearch": 30}},
+                ]},
+                {"name": "Craft", "axes": [
+                    {"name": "Verification", "signals": {"test_runs": 150, "review_skills": 20}},
+                    {"name": "Context Intelligence", "signals": {"knowledge_calls": 10}},
+                ]},
+            ]},
+        }
+
+    def test_rates_and_record(self):
+        from gnomon.cli.local import tools_diagnostic
+        lines, rec = tools_diagnostic(self._stats(100))
+        self.assertEqual(rec["sessions"], 100)
+        self.assertEqual(rec["rates"]["task_tool_calls"], 0.5)   # 50/100
+        self.assertEqual(rec["rates"]["agent_runs"], 2.0)        # 200/100
+        self.assertEqual(rec["rates"]["toolsearch_calls"], 0.3)  # 30/100
+        self.assertEqual(rec["counts"]["review_skills"], 20)
+        self.assertTrue(any("task_tool_calls" in l for l in lines))
+
+    def test_zero_sessions_no_crash(self):
+        from gnomon.cli.local import tools_diagnostic
+        lines, rec = tools_diagnostic({"volume": {"total_sessions": 0}, "agentic": {"pillars": []}})
+        self.assertEqual(rec["sessions"], 0)
+        self.assertEqual(rec["rates"]["task_tool_calls"], 0.0)
+
+
+class TestAggregateKnowledgeServerUnion(unittest.TestCase):
+    """Aggregate knowledge_servers is the UNION of distinct server names across sources, not
+    max(count) (which undercounts) and not sum (which double-counts a shared server)."""
+
+    @staticmethod
+    def _synth(*name_lists):
+        from gnomon.scoring.aggregate import _synth_stats_for_aggregate
+        items = [(f"src{i}", {"weight": 100, "block": {"tools": {
+            "mcp_knowledge_server_names": names, "mcp_knowledge_servers": len(names)}}})
+            for i, names in enumerate(name_lists)]
+        return _synth_stats_for_aggregate(items, {})
+
+    def test_distinct_servers_across_sources_union(self):
+        # CodeGraph in one source, Context7 in another -> 2 distinct, not max(1,1)=1
+        synth = self._synth(["codegraph"], ["context7"])
+        self.assertEqual(synth["tools"]["mcp_knowledge_servers"], 2)
+
+    def test_same_server_across_sources_not_double_counted(self):
+        # same server in both sources -> 1, not sum=2
+        synth = self._synth(["codegraph"], ["codegraph"])
+        self.assertEqual(synth["tools"]["mcp_knowledge_servers"], 1)
+
+    def test_fallback_to_max_when_names_absent(self):
+        from gnomon.scoring.aggregate import _synth_stats_for_aggregate
+        items = [("a", {"weight": 100, "block": {"tools": {"mcp_knowledge_servers": 2}}}),
+                 ("b", {"weight": 100, "block": {"tools": {"mcp_knowledge_servers": 3}}})]
+        synth = _synth_stats_for_aggregate(items, {})
+        self.assertEqual(synth["tools"]["mcp_knowledge_servers"], 3)  # max fallback
 
 
 if __name__ == "__main__":

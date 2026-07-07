@@ -307,6 +307,8 @@ def build_summary(stats):
                 for name, calls in (st.get("top_skills") or [])
             ],
             "mcp_servers_distinct": t["mcp_servers_distinct"],
+            "mcp_knowledge_calls": t.get("mcp_knowledge_calls", 0),
+            "mcp_knowledge_servers": t.get("mcp_knowledge_servers", 0),
             "top_mcp_servers": [
                 {"server": str(server), "calls": int(calls)}
                 for server, calls in (t.get("top_mcp_servers") or [])

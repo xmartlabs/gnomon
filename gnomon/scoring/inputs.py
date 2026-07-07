@@ -8,7 +8,7 @@ from gnomon.analysis.metrics import (
 )
 
 
-SCORING_INPUTS_VERSION = 2
+SCORING_INPUTS_VERSION = 3
 
 
 def _pairs(seq):
@@ -58,6 +58,7 @@ def build_scoring_inputs(stats):
             "skills_total": st.get("skills_total", 0),
             "compounding_writes": st.get("compounding_writes", 0),
             "subagent_types_distinct": st.get("subagent_types_distinct", 0),
+            "max_session_subagent_types": st.get("max_session_subagent_types", 0),
             "subagent_types": _pairs(st.get("subagent_types")),
             "top_skills": _pairs(st.get("top_skills")),
             "skills_all": _pairs(st.get("skills_all")),
@@ -73,6 +74,12 @@ def build_scoring_inputs(stats):
             "mcp_calls": t.get("mcp_calls", 0),
             "tool_diversity": t.get("tool_diversity", 0),
             "tool_entropy_normalized": t.get("tool_entropy_normalized", 0),
+            "mcp_knowledge_calls": t.get("mcp_knowledge_calls", 0),
+            "mcp_knowledge_servers": t.get("mcp_knowledge_servers", 0),
+            # server NAMES (not just count) so the aggregate can union distinct servers
+            # across sources instead of max()-ing counts (which undercounts the union)
+            "mcp_knowledge_server_names": list(t.get("mcp_knowledge_server_names", []) or []),
+            "mcp_subcategory_breakdown": t.get("mcp_subcategory_breakdown", {}),
             "top_tools": _pairs(t.get("top_tools")),
         },
         "token_usage": stats.get("token_usage") or {"by_model": []},
@@ -89,6 +96,8 @@ def build_monthly_scoring_stats(
     month_cli_counter, month_compounding, month_shell_test_runs, month_api_errors,
     planning_ratio_window, cwds, gap_cap_s, burst_gap_s,
     no_tool_activity, all_sources_no_agent, month_plan_sessions=None,
+    month_session_subagent_types=None,
+    month_mcp_subcategory_counter=None, month_mcp_subcategory_servers=None,
 ):
     out = []
     for mk in months:
@@ -118,6 +127,8 @@ def build_monthly_scoring_stats(
         entropy = -sum((c / tot) * math.log2(c / tot) for c in tcounter.values())
         norm_entropy = entropy / math.log2(diversity) if diversity > 1 else 0
         mcp_calls = sum(mcp_c.values())
+        m_subcat_c = (month_mcp_subcategory_counter or {}).get(mk, {})
+        m_subcat_s = (month_mcp_subcategory_servers or {}).get(mk, {})
         actions_per_prompt = (m_tool_total / m_prompts) if m_prompts else 0
 
         cats = Counter()
@@ -166,6 +177,9 @@ def build_monthly_scoring_stats(
                 "skills_distinct": len(skill_c),
                 "skills_total": sum(skill_c.values()),
                 "subagent_types_distinct": len(sub_c),
+                "max_session_subagent_types": max(
+                    (len(v) for v in (month_session_subagent_types or {}).get(mk, {}).values()),
+                    default=0),
                 "subagent_types": sub_c.most_common(10),
                 "compounding_writes": month_compounding.get(mk, 0),
             },
@@ -175,6 +189,13 @@ def build_monthly_scoring_stats(
                 "mcp_calls": mcp_calls,
                 "top_tools": tcounter.most_common(20),
                 "mcp_servers_distinct": len(mcp_c),
+                "mcp_knowledge_calls": m_subcat_c.get("knowledge", 0) if isinstance(m_subcat_c, dict) else (m_subcat_c.get("knowledge", 0) if m_subcat_c else 0),
+                "mcp_knowledge_servers": len(m_subcat_s.get("knowledge", set())) if m_subcat_s else 0,
+                "mcp_knowledge_server_names": sorted(m_subcat_s.get("knowledge", set())) if m_subcat_s else [],
+                "mcp_subcategory_breakdown": {
+                    cat: {"calls": m_subcat_c[cat], "servers": len(m_subcat_s.get(cat, set()))}
+                    for cat in sorted(set(m_subcat_c))
+                } if m_subcat_c else {},
                 "clis_distinct": len(cli_c),
                 "cli_calls": sum(cli_c.values()),
                 "toolsearch_calls": tcounter.get("ToolSearch", 0),

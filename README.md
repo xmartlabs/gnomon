@@ -150,6 +150,13 @@ xl-ai-insights --local --codex-dir=~/backups/codex                # root or .../
 # also: --gemini-dir, --antigravity-dir, --pi-dir, --opencode-dir
 ```
 
+Custom planning skills (idiosyncratic names) can be added to the Plan-ceremony detector
+without a code change via a comma-separated env var — it extends the built-in needles:
+
+```bash
+GNOMON_PLAN_SKILL_NEEDLES="roadmap,my-planner" xl-ai-insights --local
+```
+
 ### Outputs (written to the current directory by default, git-ignored)
 
 | File | What |

@@ -31,6 +31,52 @@ from gnomon.output.narrative import write_narrative_input
 from gnomon.output.profile_html import write_profile_html
 
 
+# Tool metrics surfaced by --tools: (label, signal key in stats['agentic'], target, is_rate).
+# The 7 rate-scored metrics use PER-SESSION targets that mirror scoring/aq.py's rate() targets,
+# so the % column matches what AQ actually scores. knowledge_calls is NOT rate-converted (it's
+# the gated Context Intelligence signal, scored on absolute count) -> is_rate=False.
+_TOOLS_DIAG = [
+    ("task_tool_calls", "task_tool_calls", 1.0, True),
+    ("toolsearch_calls", "toolsearch", 0.30, True),
+    ("skills_total", "skills_total", 10, True),
+    ("review_skills", "review_skills", 1.5, True),
+    ("shell_test_runs", "test_runs", 1.5, True),
+    ("compounding_writes", "compounding_writes", 0.25, True),
+    ("agent_runs", "agent_runs", 1.0, True),
+    ("knowledge_calls", "knowledge_calls", 200, False),  # gated, absolute (not per-session)
+]
+
+
+def tools_diagnostic(stats):
+    """Return (table_lines, json_record) reporting per-session tool usage. The % column matches
+    AQ's scoring: rate metrics score count/session vs a per-session target; knowledge is absolute.
+    A self-check for the user and the calibration sample for per-session targets. Reads the
+    already-computed signals in stats['agentic']; no recomputation."""
+    vol = stats.get("volume", {}) or {}
+    sessions = vol.get("total_sessions", 0) or 0
+    denom = max(sessions, 1)
+    sig = {}
+    for p in (stats.get("agentic", {}) or {}).get("pillars", []):
+        for a in p.get("axes", []):
+            sig.update(a.get("signals", {}) or {})
+    rates, counts = {}, {}
+    lines = [f"{'metric':<20}{'count':>8}{'/session':>10}{'target':>9}{'%':>6}"]
+    for label, key, target, is_rate in _TOOLS_DIAG:
+        c = sig.get(key, 0) or 0
+        per_session = c / denom
+        rates[label] = round(per_session, 4)
+        counts[label] = c
+        # % against the SAME basis AQ uses: per-session rate for rate metrics, absolute otherwise
+        scored = per_session if is_rate else c
+        pct = min(100, round(100 * scored / target)) if target else 0
+        tgt = f"{target:g}/s" if is_rate else f"{target:g}"
+        lines.append(f"{label:<20}{c:>8}{per_session:>10.3f}{tgt:>9}{pct:>5}%")
+    record = {"sessions": sessions, "prompts": vol.get("total_prompts", 0),
+              "active_hours": (stats.get("velocity", {}) or {}).get("active_hours", 0),
+              "rates": rates, "counts": counts}
+    return lines, record
+
+
 def main(argv=None, output_dir=None):
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="replace")
@@ -244,6 +290,12 @@ def main(argv=None, output_dir=None):
     print(f"  iteration depth: mean {_idm_str} / max {iteration_max} ({heavy_files} files >15x)  "
           f"errors={tool_errors} ({_erp_str}/100 tools)")
     print(f"  autonomy={autonomy_score}/100  planning_ratio={planning_ratio:.2f}")
+    if "--tools" in argv:
+        _tlines, _trec = tools_diagnostic(stats)
+        print("\n  tool usage (per session — self-check + rate calibration):")
+        for _l in _tlines:
+            print("    " + _l)
+        print("  json: " + json.dumps(_trec))
 
 
 def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,

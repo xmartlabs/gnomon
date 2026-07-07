@@ -38,6 +38,7 @@ _HELP_TEXT = """Usage:
     --quiet       only print errors and the final report URL
     --verbose     also show paxel's full stdout/stderr
     --console     show progress in the terminal instead of the browser
+    --tools       print per-session tool usage (self-check + rate calibration)
     --output-dir=PATH
                   copy final artifacts into PATH (use . for current directory)
 
