@@ -100,7 +100,7 @@ class TestCapabilityContract(unittest.TestCase):
 
 
 class TestContextIntelligenceVectorCases(unittest.TestCase):
-    """Context Intelligence coverage on both sides of FLOOR, exercised through the
+    """Context Intelligence monotonic coverage (no floor), exercised through the
     golden-vector fixture cases (mirdash pulls these same cases for parity)."""
 
     def test_claude_only_above_target_scored_near_full(self):
@@ -110,15 +110,18 @@ class TestContextIntelligenceVectorCases(unittest.TestCase):
         ci = next(a for a in craft["axes"] if a["name"] == "Context Intelligence")
         self.assertEqual(ci["score"], ci["weight"])
 
-    def test_cursor_only_below_floor_dropped(self):
-        # 0/10 = 0.0 coverage, below FLOOR (0.05) -> dropped (None), Craft renormalizes.
+    def test_cursor_only_measured_zero_scored_not_dropped(self):
+        # 0/10 = 0.0 coverage, a REAL measured zero (field present + tool activity) ->
+        # present and scored 0 (monotonic, no floor), NOT dropped/renormalized.
         out = score_by_source({"cursor": {"window": CURSOR_BLOCK, "monthly": []}})
         craft = next(p for p in out["by_source"]["cursor"]["aq"]["pillars"] if p["name"] == "Craft")
-        self.assertIn("Context Intelligence", craft.get("not_applicable", []))
+        self.assertNotIn("Context Intelligence", craft.get("not_applicable", []))
+        ci = next(a for a in craft["axes"] if a["name"] == "Context Intelligence")
+        self.assertEqual(ci["score"], 0.0)
 
-    def test_boundary_just_above_floor_scored_near_zero(self):
-        # 3/40 = 0.075 coverage, just above FLOOR (0.05) -> present, scored near zero
-        # (documents the accepted floor->N/A boundary discontinuity from the design).
+    def test_low_coverage_scored_near_zero(self):
+        # 3/40 = 0.075 coverage -> present, scored monotonically near zero (no floor,
+        # well below TARGET 0.40). No boundary discontinuity remains.
         out = score_by_source({"claude-boundary": {"window": CLAUDE_BOUNDARY_BLOCK, "monthly": []}})
         craft = next(p for p in out["by_source"]["claude-boundary"]["aq"]["pillars"] if p["name"] == "Craft")
         ci = next(a for a in craft["axes"] if a["name"] == "Context Intelligence")

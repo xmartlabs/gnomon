@@ -193,11 +193,11 @@ class TestComputeAqV2(unittest.TestCase):
         self.assertEqual(verification["signals"]["review_skills"], 0)
         self.assertEqual(verification["score"], 0.0)
 
-    def test_craft_axes_drop_context_intelligence_when_coverage_below_floor(self):
-        # _sample_stats has no grounded sessions (mcp_grounded_sessions=0, sessions=1
-        # default) -> coverage 0 < FLOOR -> Context Intelligence is dropped and Craft
+    def test_craft_axes_drop_context_intelligence_when_field_absent(self):
+        # _sample_stats does NOT set mcp_grounded_sessions -> the grounding field is
+        # absent (legacy/external block) -> Context Intelligence is N/A and Craft
         # renormalizes to the remaining three axes summing to weight 100. Knowledge-MCP
-        # CALL volume alone (no grounded sessions) must NOT resurrect the axis.
+        # CALL volume alone (no grounded-session field) must NOT resurrect the axis.
         s = _sample_stats()
         s["tools"]["mcp_knowledge_calls"] = 341
         s["tools"]["mcp_knowledge_servers"] = 3
@@ -225,17 +225,35 @@ class TestComputeAqV2(unittest.TestCase):
         self.assertIn("Context Intelligence", craft.get("not_applicable", []))
         self.assertEqual(sum(a["weight"] for a in craft["axes"]), 100)
 
-    def test_context_intelligence_dropped_below_floor(self):
-        # coverage = 4/100 = 0.04 < FLOOR (0.05) -> dropped, Craft renormalized.
-        aq = self._craft_ci(grounded=4, sessions=100)
+    def test_context_intelligence_field_absent_is_na(self):
+        # No mcp_grounded_sessions field on the block (legacy/external export) -> the
+        # source can't reconstruct grounding -> axis is N/A (dropped, Craft renormalized),
+        # NOT scored 0. Backward-compat with blocks predating the field.
+        s = _sample_stats()
+        s["volume"] = {"total_sessions": 100}
+        # deliberately do NOT set s["tools"]["mcp_grounded_sessions"]
+        aq = paxel.compute_aq(s)
         craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
         names = [a["name"] for a in craft["axes"]]
         self.assertNotIn("Context Intelligence", names)
         self.assertIn("Context Intelligence", craft.get("not_applicable", []))
         self.assertEqual(sum(a["weight"] for a in craft["axes"]), 100)
 
-    def test_context_intelligence_scored_at_floor(self):
-        # coverage = 5/100 = 0.05 == FLOOR -> scored (present), not dropped.
+    def test_context_intelligence_scored_zero_when_measured_zero(self):
+        # Field present, coverage = 0/100 = 0.0 (a real measured zero with tool activity)
+        # -> axis is PRESENT and scored 0, NOT dropped. This removes the perverse
+        # reward-for-not-grounding: a real zero must drag Craft down, not renormalize up.
+        aq = self._craft_ci(grounded=0, sessions=100)
+        craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
+        names = [a["name"] for a in craft["axes"]]
+        self.assertIn("Context Intelligence", names)
+        self.assertNotIn("Context Intelligence", craft.get("not_applicable", []))
+        ci = next(a for a in craft["axes"] if a["name"] == "Context Intelligence")
+        self.assertEqual(ci["score"], 0.0)
+        self.assertEqual(sum(a["weight"] for a in craft["axes"]), 100)
+
+    def test_context_intelligence_scored_at_low_coverage(self):
+        # coverage = 5/100 = 0.05 -> scored (present), no floor gate.
         aq = self._craft_ci(grounded=5, sessions=100)
         craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
         names = [a["name"] for a in craft["axes"]]
@@ -269,18 +287,25 @@ class TestComputeAqV2(unittest.TestCase):
         ci = next(a for a in craft["axes"] if a["name"] == "Context Intelligence")
         self.assertEqual(ci["score"], ci["weight"])
 
-    def test_context_intelligence_boundary_discontinuity_documented(self):
-        # Just-below-FLOOR is dropped; just-above-FLOOR is scored near (but not at) zero.
-        # This documents the ACCEPTED trade-off from the design (small jump, not a cliff).
-        below = self._craft_ci(grounded=4, sessions=100)   # 0.04 < 0.05
-        above = self._craft_ci(grounded=6, sessions=100)   # 0.06 >= 0.05
-        craft_below = next(p for p in below["pillars"] if p["name"] == "Craft")
-        craft_above = next(p for p in above["pillars"] if p["name"] == "Craft")
-        self.assertNotIn("Context Intelligence",
-                         [a["name"] for a in craft_below["axes"]])
-        ci_above = next(a for a in craft_above["axes"] if a["name"] == "Context Intelligence")
-        self.assertGreater(ci_above["score"], 0.0)
-        self.assertLess(ci_above["score"], ci_above["weight"] * 0.5)
+    def test_context_intelligence_is_monotonic(self):
+        # No floor gate -> the axis is monotonic in coverage: more grounding never
+        # lowers overall AQ. Two otherwise-identical blocks differing only in grounded
+        # coverage (0.04 vs 0.30) -> the higher-coverage block scores overall AQ >= the
+        # lower one. This is the anti-cliff invariant: the old FLOOR inverted this by
+        # DROPPING the sub-floor user (renormalizing Craft UP) so less grounding paid more.
+        low = self._craft_ci(grounded=4, sessions=100)    # 0.04
+        high = self._craft_ci(grounded=30, sessions=100)  # 0.30
+        self.assertGreaterEqual(high["aq_0_100"], low["aq_0_100"])
+        # both blocks measure grounding (field present + tool activity) -> both present.
+        for aq in (low, high):
+            craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
+            self.assertIn("Context Intelligence", [a["name"] for a in craft["axes"]])
+        # and the per-axis score itself is monotonic.
+        ci_low = next(a for a in next(p for p in low["pillars"] if p["name"] == "Craft")["axes"]
+                      if a["name"] == "Context Intelligence")
+        ci_high = next(a for a in next(p for p in high["pillars"] if p["name"] == "Craft")["axes"]
+                       if a["name"] == "Context Intelligence")
+        self.assertGreaterEqual(ci_high["score"], ci_low["score"])
 
     def test_context_intelligence_signals_shape(self):
         aq = self._craft_ci(grounded=20, sessions=100)
@@ -1698,12 +1723,32 @@ class TestAggregateKnowledgeServerUnion(unittest.TestCase):
         synth = self._synth(["codegraph"], ["codegraph"])
         self.assertEqual(synth["tools"]["mcp_knowledge_servers"], 1)
 
-    def test_fallback_to_max_when_names_absent(self):
+    def test_mixed_names_and_legacy_count_combined_per_source(self):
+        # One source has NAMES (['codegraph','context7']=2), a sibling legacy block has
+        # only the COUNT (mcp_knowledge_servers=5, no names). Per-source combine: union
+        # the 2 named + add the 5 legacy count = 7. The old GLOBAL `any(names)` guard took
+        # the union branch and silently DROPPED the legacy block's 5 (contribution -> 0).
+        from gnomon.scoring.aggregate import _synth_stats_for_aggregate
+        items = [("a", {"weight": 100, "block": {"tools": {
+                    "mcp_knowledge_server_names": ["codegraph", "context7"],
+                    "mcp_knowledge_servers": 2}}}),
+                 ("b", {"weight": 100, "block": {"tools": {"mcp_knowledge_servers": 5}}})]
+        synth = _synth_stats_for_aggregate(items, {})
+        self.assertEqual(synth["tools"]["mcp_knowledge_servers"], 7)
+
+    def test_fallback_to_summed_counts_when_names_absent(self):
+        # No block has names -> best-effort sum of the raw counts (can't dedup a count).
         from gnomon.scoring.aggregate import _synth_stats_for_aggregate
         items = [("a", {"weight": 100, "block": {"tools": {"mcp_knowledge_servers": 2}}}),
                  ("b", {"weight": 100, "block": {"tools": {"mcp_knowledge_servers": 3}}})]
         synth = _synth_stats_for_aggregate(items, {})
-        self.assertEqual(synth["tools"]["mcp_knowledge_servers"], 3)  # max fallback
+        self.assertEqual(synth["tools"]["mcp_knowledge_servers"], 5)
+
+    def test_empty_items_no_crash(self):
+        from gnomon.scoring.aggregate import _synth_stats_for_aggregate
+        synth = _synth_stats_for_aggregate([], {})
+        self.assertEqual(synth["tools"]["mcp_knowledge_servers"], 0)
+        self.assertEqual(synth["tools"]["mcp_grounded_sessions"], 0)
 
 
 class TestAggregateGroundedSessionUnion(unittest.TestCase):
@@ -1741,7 +1786,23 @@ class TestAggregateGroundedSessionUnion(unittest.TestCase):
                  ("b", {"weight": 100, "block": {"tools": {"mcp_grounded_sessions": 3},
                                                  "volume": {"total_sessions": 10}}})]
         synth = _synth_stats_for_aggregate(items, {})
-        self.assertEqual(synth["tools"]["mcp_grounded_sessions"], 5)  # wsum fallback
+        self.assertEqual(synth["tools"]["mcp_grounded_sessions"], 5)  # summed counts fallback
+
+    def test_mixed_names_and_legacy_count_combined_per_source(self):
+        # One source has NAMES (['s1','s2']=2), a sibling legacy block has only the COUNT
+        # (mcp_grounded_sessions=5, no names). Per-source combine: union the 2 named + add
+        # the 5 legacy count = 7. The old GLOBAL `any(names)` guard took the union branch
+        # and silently DROPPED the legacy block's 5.
+        from gnomon.scoring.aggregate import _synth_stats_for_aggregate
+        items = [("a", {"weight": 100, "block": {
+                    "tools": {"mcp_grounded_session_names": ["s1", "s2"],
+                              "mcp_grounded_sessions": 2},
+                    "volume": {"total_sessions": 10}}}),
+                 ("b", {"weight": 100, "block": {
+                    "tools": {"mcp_grounded_sessions": 5},
+                    "volume": {"total_sessions": 10}}})]
+        synth = _synth_stats_for_aggregate(items, {})
+        self.assertEqual(synth["tools"]["mcp_grounded_sessions"], 7)
 
 
 if __name__ == "__main__":

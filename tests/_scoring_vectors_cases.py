@@ -10,8 +10,9 @@ Three cases, chosen to exercise the contract:
                    (18/40 = 0.45) is ABOVE Context Intelligence's TARGET (0.40) -> the axis
                    is present and near-full credit.
   * cursor_only  — no skills / toolsearch / tasktool caps; those terms DROP + renormalize.
-                   Grounded-session coverage (0/10 = 0.0) is BELOW the FLOOR (0.05) -> Context
-                   Intelligence is also dropped (None) and Craft renormalizes around it.
+                   Grounded-session coverage (0/10 = 0.0) is a REAL measured zero (the block
+                   HAS the field and HAS tool activity) -> Context Intelligence is present and
+                   scored 0 (monotonic, no floor), dragging Craft down rather than dropping.
   * mixed        — claude + cursor; proves the aggregate is the tool-volume WEIGHTED MEAN
                    of the per-source scores, NOT the pooled-union number.
 """
@@ -77,7 +78,8 @@ CURSOR_BLOCK = {
         "toolsearch_calls": 0, "task_tool_calls": 0, "cli_calls": 100,
         "mcp_calls": 50, "tool_diversity": 12, "tool_entropy_normalized": 0.6,
         "mcp_knowledge_calls": 0, "mcp_knowledge_servers": 0,
-        # 0/10 sessions = 0.0 coverage -> BELOW the FLOOR (0.05) -> axis dropped (None).
+        # 0/10 sessions = 0.0 coverage, a REAL measured zero (field present + tool activity)
+        # -> axis present and scored 0 (monotonic, no floor), NOT dropped.
         "mcp_grounded_sessions": 0,
         "mcp_grounded_session_names": [],
         "mcp_subcategory_breakdown": {},
@@ -86,14 +88,14 @@ CURSOR_BLOCK = {
 }
 
 
-# Context Intelligence boundary case: a claude-shaped block with grounded-session
-# coverage placed just ABOVE the FLOOR (0.05) so the axis is present and scored near
-# (but not at) zero — documents the accepted floor->N/A boundary discontinuity from the
-# design (CURSOR_BLOCK above sits just BELOW the floor at exactly 0.0 coverage).
+# Context Intelligence low-coverage case: a claude-shaped block with a small but non-zero
+# grounded-session coverage. With no floor, the axis is present and scored monotonically
+# near (but not at) zero — a light grounder scores a little, a real zero (CURSOR_BLOCK)
+# scores exactly zero, and neither is dropped. No boundary discontinuity remains.
 CLAUDE_BOUNDARY_BLOCK = dict(CLAUDE_BLOCK, source="claude-boundary")
 CLAUDE_BOUNDARY_BLOCK["volume"] = dict(CLAUDE_BLOCK["volume"])
 CLAUDE_BOUNDARY_BLOCK["tools"] = dict(CLAUDE_BLOCK["tools"])
-# 3/40 = 0.075 -> just above the 0.05 FLOOR.
+# 3/40 = 0.075 coverage -> low, scored monotonically (well below TARGET 0.40).
 CLAUDE_BOUNDARY_BLOCK["tools"]["mcp_grounded_sessions"] = 3
 CLAUDE_BOUNDARY_BLOCK["tools"]["mcp_grounded_session_names"] = ["b-s0", "b-s1", "b-s2"]
 

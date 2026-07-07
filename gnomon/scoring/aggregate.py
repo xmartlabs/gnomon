@@ -244,25 +244,32 @@ def _synth_stats_for_aggregate(items, agg_aq):
             "tool_entropy_normalized": wmean(lambda blk: t(blk).get("tool_entropy_normalized")),
             "mcp_knowledge_calls": wsum(lambda blk: t(blk).get("mcp_knowledge_calls")),
             # UNION of distinct knowledge-server NAMES across sources — CodeGraph in one source
-            # and Context7 in another is 2 distinct servers, not max(1,1)=1. Falls back to
-            # max(count) for blocks predating the names field. (sum() would over-count the same
-            # server used in two sources, which is why the count-based path can't be summed.)
+            # and Context7 in another is 2 distinct servers, not max(1,1)=1. Combined PER SOURCE:
+            # union the distinct names from blocks that HAVE them, PLUS add the raw counts from
+            # legacy blocks that only have the count (best-effort — a bare count can't be deduped
+            # against a named server). The old GLOBAL `any(names)` guard chose the union branch
+            # for ALL blocks, silently dropping a legacy sibling's count to 0.
             "mcp_knowledge_servers": (
                 len(set().union(*(set(t(e["block"]).get("mcp_knowledge_server_names") or [])
                                   for _, e in items)))
-                if any(t(e["block"]).get("mcp_knowledge_server_names") for _, e in items)
-                else (max((t(e["block"]).get("mcp_knowledge_servers") or 0) for _, e in items) if items else 0)),
+                + sum(int(t(e["block"]).get("mcp_knowledge_servers") or 0)
+                      for _, e in items
+                      if not t(e["block"]).get("mcp_knowledge_server_names"))),
             # UNION of grounded session IDs across sources — the same session appearing in
-            # two source exports (e.g. re-exported logs) must count once, not twice. Falls
-            # back to wsum(count) for blocks predating the names field (legacy fixtures/
-            # exports). total_sessions stays the existing SUMMED denominator (line 198) —
-            # sessions are source-scoped, so summing the denominator is correct; only the
-            # numerator needs de-duplication against a shared sid.
+            # two source exports (e.g. re-exported logs) must count once, not twice. Combined
+            # PER SOURCE: union the distinct session IDs from blocks that HAVE names, PLUS add
+            # the raw counts from legacy blocks that only have the count (best-effort — a bare
+            # count can't be deduped against a shared sid). The old GLOBAL `any(names)` guard
+            # chose the union branch for ALL blocks, silently dropping a legacy sibling's count.
+            # total_sessions stays the existing SUMMED denominator (line 198) — sessions are
+            # source-scoped, so summing the denominator is correct; only the numerator needs
+            # de-duplication against a shared sid.
             "mcp_grounded_sessions": (
                 len(set().union(*(set(t(e["block"]).get("mcp_grounded_session_names") or [])
                                   for _, e in items)))
-                if any(t(e["block"]).get("mcp_grounded_session_names") for _, e in items)
-                else wsum(lambda blk: t(blk).get("mcp_grounded_sessions"))),
+                + sum(int(t(e["block"]).get("mcp_grounded_sessions") or 0)
+                      for _, e in items
+                      if not t(e["block"]).get("mcp_grounded_session_names"))),
             "mcp_subcategory_breakdown": {},
         },
     }
