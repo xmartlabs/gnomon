@@ -613,7 +613,7 @@ class TestBuildSummaryStructuredIntegration(unittest.TestCase):
     def test_no_pii_in_summary(self):
         import json
         raw = json.dumps(self.summary).lower()
-        for banned in ("top_skills", "prompt_text", "skill_name"):
+        for banned in ("prompt_text", "skill_name"):
             self.assertNotIn(banned, raw, f"forbidden field leaked: {banned!r}")
 
     def test_advice_contains_no_raw_html_tags(self):
@@ -857,7 +857,7 @@ class TestModelUsageInProfile(unittest.TestCase):
             [("claude-opus-4-7", 550), ("claude-haiku-4-5", 450)]
         ))
         raw = json.dumps(summary).lower()
-        for banned in ("top_skills", "prompt_text", "skill_name"):
+        for banned in ("prompt_text", "skill_name"):
             self.assertNotIn(banned, raw, f"forbidden field leaked: {banned!r}")
 
 

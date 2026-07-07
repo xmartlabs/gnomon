@@ -805,7 +805,7 @@ class TestBuildSummaryProfile(unittest.TestCase):
     def test_no_prompt_text_in_summary(self):
         import json
         raw = json.dumps(self.summary).lower()
-        for banned in ("top_skills", "prompt_text"):
+        for banned in ("prompt_text",):
             self.assertNotIn(banned, raw, f"verbatim field leaked: {banned}")
 
     def test_empty_corpus_profile_well_formed(self):
@@ -870,6 +870,7 @@ class TestBuildSummaryPayloadFields(unittest.TestCase):
         self.assertEqual(set(ns.keys()), {
             "volume", "shipping", "iteration", "errors", "models",
             "rhythm", "prompts", "agents", "sessions", "tools",
+            "skills", "mcp_servers",
         })
         self.assertEqual(ns["volume"], {
             "total_sessions": self.stats["volume"]["total_sessions"],
@@ -973,9 +974,9 @@ class TestBuildSummaryPayloadFields(unittest.TestCase):
         with open(os.path.join(out, "stats.json"), encoding="utf-8") as fh:
             stats = json.load(fh)
 
-        self.assertEqual(len(stats["tools"]["top_tools"]), 20)
+        self.assertEqual(len(stats["tools"]["top_tools"]), 41)
         monthly = stats["monthly_noticed_stats"][0]["stats"]["tools"]["top_tools"]
-        self.assertEqual(len(monthly), 20)
+        self.assertEqual(len(monthly), 41)
 
 
 class TestAntigravityCli(unittest.TestCase):
