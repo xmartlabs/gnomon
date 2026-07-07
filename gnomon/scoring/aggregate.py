@@ -243,7 +243,15 @@ def _synth_stats_for_aggregate(items, agg_aq):
             "tool_diversity": max((t(e["block"]).get("tool_diversity") or 0) for _, e in items) if items else 0,
             "tool_entropy_normalized": wmean(lambda blk: t(blk).get("tool_entropy_normalized")),
             "mcp_knowledge_calls": wsum(lambda blk: t(blk).get("mcp_knowledge_calls")),
-            "mcp_knowledge_servers": max((t(e["block"]).get("mcp_knowledge_servers") or 0) for _, e in items) if items else 0,
+            # UNION of distinct knowledge-server NAMES across sources — CodeGraph in one source
+            # and Context7 in another is 2 distinct servers, not max(1,1)=1. Falls back to
+            # max(count) for blocks predating the names field. (sum() would over-count the same
+            # server used in two sources, which is why the count-based path can't be summed.)
+            "mcp_knowledge_servers": (
+                len(set().union(*(set(t(e["block"]).get("mcp_knowledge_server_names") or [])
+                                  for _, e in items)))
+                if any(t(e["block"]).get("mcp_knowledge_server_names") for _, e in items)
+                else (max((t(e["block"]).get("mcp_knowledge_servers") or 0) for _, e in items) if items else 0)),
             "mcp_subcategory_breakdown": {},
         },
     }

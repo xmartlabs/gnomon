@@ -76,6 +76,9 @@ def build_scoring_inputs(stats):
             "tool_entropy_normalized": t.get("tool_entropy_normalized", 0),
             "mcp_knowledge_calls": t.get("mcp_knowledge_calls", 0),
             "mcp_knowledge_servers": t.get("mcp_knowledge_servers", 0),
+            # server NAMES (not just count) so the aggregate can union distinct servers
+            # across sources instead of max()-ing counts (which undercounts the union)
+            "mcp_knowledge_server_names": list(t.get("mcp_knowledge_server_names", []) or []),
             "mcp_subcategory_breakdown": t.get("mcp_subcategory_breakdown", {}),
             "top_tools": _pairs(t.get("top_tools")),
         },
@@ -188,6 +191,7 @@ def build_monthly_scoring_stats(
                 "mcp_servers_distinct": len(mcp_c),
                 "mcp_knowledge_calls": m_subcat_c.get("knowledge", 0) if isinstance(m_subcat_c, dict) else (m_subcat_c.get("knowledge", 0) if m_subcat_c else 0),
                 "mcp_knowledge_servers": len(m_subcat_s.get("knowledge", set())) if m_subcat_s else 0,
+                "mcp_knowledge_server_names": sorted(m_subcat_s.get("knowledge", set())) if m_subcat_s else [],
                 "mcp_subcategory_breakdown": {
                     cat: {"calls": m_subcat_c[cat], "servers": len(m_subcat_s.get(cat, set()))}
                     for cat in sorted(set(m_subcat_c))

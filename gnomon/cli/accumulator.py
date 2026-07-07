@@ -751,6 +751,7 @@ class Accumulator:
                 "mcp_servers_distinct": len(self.mcp_server_counter),
                 "mcp_knowledge_calls": self.mcp_subcategory_counter.get("knowledge", 0),
                 "mcp_knowledge_servers": len(self.mcp_subcategory_servers.get("knowledge", set())),
+                "mcp_knowledge_server_names": sorted(self.mcp_subcategory_servers.get("knowledge", set())),
                 "mcp_subcategory_breakdown": {
                     cat: {"calls": self.mcp_subcategory_counter[cat],
                           "servers": len(self.mcp_subcategory_servers[cat])}
@@ -1026,6 +1027,7 @@ class Accumulator:
                 "mcp_servers_distinct": len(self.mcp_server_counter),
                 "mcp_knowledge_calls": self.mcp_subcategory_counter.get("knowledge", 0),
                 "mcp_knowledge_servers": len(self.mcp_subcategory_servers.get("knowledge", set())),
+                "mcp_knowledge_server_names": sorted(self.mcp_subcategory_servers.get("knowledge", set())),
                 "mcp_subcategory_breakdown": {
                     cat: {"calls": self.mcp_subcategory_counter[cat],
                           "servers": len(self.mcp_subcategory_servers[cat])}

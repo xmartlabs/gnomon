@@ -1594,5 +1594,35 @@ class TestToolsDiagnostic(unittest.TestCase):
         self.assertEqual(rec["rates"]["task_tool_calls"], 0.0)
 
 
+class TestAggregateKnowledgeServerUnion(unittest.TestCase):
+    """Aggregate knowledge_servers is the UNION of distinct server names across sources, not
+    max(count) (which undercounts) and not sum (which double-counts a shared server)."""
+
+    @staticmethod
+    def _synth(*name_lists):
+        from gnomon.scoring.aggregate import _synth_stats_for_aggregate
+        items = [(f"src{i}", {"weight": 100, "block": {"tools": {
+            "mcp_knowledge_server_names": names, "mcp_knowledge_servers": len(names)}}})
+            for i, names in enumerate(name_lists)]
+        return _synth_stats_for_aggregate(items, {})
+
+    def test_distinct_servers_across_sources_union(self):
+        # CodeGraph in one source, Context7 in another -> 2 distinct, not max(1,1)=1
+        synth = self._synth(["codegraph"], ["context7"])
+        self.assertEqual(synth["tools"]["mcp_knowledge_servers"], 2)
+
+    def test_same_server_across_sources_not_double_counted(self):
+        # same server in both sources -> 1, not sum=2
+        synth = self._synth(["codegraph"], ["codegraph"])
+        self.assertEqual(synth["tools"]["mcp_knowledge_servers"], 1)
+
+    def test_fallback_to_max_when_names_absent(self):
+        from gnomon.scoring.aggregate import _synth_stats_for_aggregate
+        items = [("a", {"weight": 100, "block": {"tools": {"mcp_knowledge_servers": 2}}}),
+                 ("b", {"weight": 100, "block": {"tools": {"mcp_knowledge_servers": 3}}})]
+        synth = _synth_stats_for_aggregate(items, {})
+        self.assertEqual(synth["tools"]["mcp_knowledge_servers"], 3)  # max fallback
+
+
 if __name__ == "__main__":
     unittest.main()
