@@ -20,6 +20,16 @@ def compute_aq(stats):
     def sat(x, target):
         return min(1.0, x / target) if target else 0.0
 
+    # Per-session rate score. An absolute cumulative count over the window penalizes low-session
+    # users by their exact session deficit (a volume artifact — verified: same per-session
+    # behavior scores 2.4x lower for a user with 2.4x fewer sessions). Score count/session
+    # against a PER-SESSION target instead. Targets calibrated from prod non-zero-user p40-50
+    # (2026-07, n~6-10) — PROVISIONAL; recalibrate as adoption grows (see --tools diagnostic).
+    sessions = max((stats.get("volume", {}) or {}).get("total_sessions", 0), 1)
+
+    def rate(x, per_session_target):
+        return sat(x / sessions, per_session_target)
+
     def wsum(*terms):
         """Weighted mean of (coef, value, required_cap) terms, dropping terms whose cap is
         unavailable and renormalizing the remaining coefficients to sum 1. Returns None when
@@ -53,17 +63,21 @@ def compute_aq(stats):
     # fanout target 5: Anthropic's multi-agent research spawns ~3-5 subagents for typical work
     # (1 simple / 2-4 comparison / 10+ complex), and span-of-control theory (Graicunas/Urwick,
     # "rule of 7") lands at 5-7 — 5 sits in the overlap.
+    # agent_runs is a per-session rate (volume floor); subagent_types/fanout stay as-is
+    # (distinct-count and per-session-median — already volume-independent).
     orchestration = (.30 * sat(st.get("subagent_types_distinct", 0), 8) + .30 * sat(fanout, 5)
-                     + .20 * o_harn + .20 * sat(agent_runs, 400))
-    skill_fluency = (.40 * sat(st.get("skills_distinct", 0), 40) + .30 * sat(st.get("skills_total", 0), 1500)
+                     + .20 * o_harn + .20 * rate(agent_runs, 1.0))
+    # skills_total -> per-session rate; skills_distinct stays (diversity, correctly absolute)
+    skill_fluency = (.40 * sat(st.get("skills_distinct", 0), 40) + .30 * rate(st.get("skills_total", 0), 15)
                      + .30 * (1.0 if has_skill(["subagent-driven", "brainstorm", "writing-plans",
                                                 "cerberus", "systematic-debugging"]) else 0.6))
+    # mcp_servers/clis are distinct-counts (kept absolute); toolsearch -> per-session rate.
     # toolsearch term drops out (renormalized) when no present source can record it
     tool_command = wsum((.40, sat(t.get("mcp_servers_distinct", 0), 15), None),
                         (.40, sat(t.get("clis_distinct", 0), 40), None),
-                        (.20, sat(t.get("toolsearch_calls", 0), 300), "toolsearch"))
-    # plan-skill term needs the Skill capability; falls back to task-tool usage alone
-    discipline = wsum((.60, sat(t.get("task_tool_calls", 0), 1500), "tasktool"),
+                        (.20, rate(t.get("toolsearch_calls", 0), 0.30), "toolsearch"))
+    # task-tool -> per-session rate; plan-skill term needs the Skill capability
+    discipline = wsum((.60, rate(t.get("task_tool_calls", 0), 1.5), "tasktool"),
                       (.40, (1.0 if (has_skill(["writing-plans", "autoplan", "plan"])
                                      or b.get("plan_sessions", 0) > 0) else 0.6), "skills"))
     breadth_axes = [
@@ -83,10 +97,12 @@ def compute_aq(stats):
     # ---- Pillar 2: Craft ----
     review_n = _review_skill_uses(skills)
     # review-skill term needs Skill capability; falls back to shell test runs alone
-    verification = wsum((.5, sat(b.get("shell_test_runs", 0), 150), None),
-                        (.5, sat(review_n, 100), "skills"))
+    # test runs + review skills -> per-session rates (matches gstack's per-session test handling)
+    verification = wsum((.5, rate(b.get("shell_test_runs", 0), 1.5), None),
+                        (.5, rate(review_n, 2.5), "skills"))
     grounding = sat(b.get("planning_ratio_explore_to_doing", 0), 1.0)
-    compounding = wsum((.6, sat(st.get("compounding_writes", 0), 30), None),
+    # compounding writes -> per-session rate (rewards the habit, not raw volume)
+    compounding = wsum((.6, rate(st.get("compounding_writes", 0), 0.25), None),
                        (.4, (1.0 if has_skill(["retro", "writing-plans", "brainstorm"]) else 0.6), "skills"))
     knowledge_calls = t.get("mcp_knowledge_calls", 0)
     knowledge_servers = t.get("mcp_knowledge_servers", 0)
@@ -140,7 +156,7 @@ def compute_aq(stats):
     cli_calls, mcp_calls = t.get("cli_calls", 0), t.get("mcp_calls", 0)
     cli_share = cli_calls / (cli_calls + mcp_calls) if (cli_calls + mcp_calls) else 0
     # toolsearch term drops out (renormalized) when unsupported, leaving CLI-share
-    token_economy = wsum((.5, sat(t.get("toolsearch_calls", 0), 300), "toolsearch"),
+    token_economy = wsum((.5, rate(t.get("toolsearch_calls", 0), 0.30), "toolsearch"),
                          (.5, sat(cli_share, 0.70), None))
     savvy_axes = [
         # Model mix needs a real per-turn model id; a source that masks it (Antigravity IDE)

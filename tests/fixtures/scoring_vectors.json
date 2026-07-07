@@ -3,16 +3,16 @@
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 73,
+          "aq_0_100": 83,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 62.8,
+              "score": 79.7,
               "weight": 30
             },
             {
               "name": "Craft",
-              "score": 71.6,
+              "score": 79.1,
               "weight": 35
             },
             {
@@ -22,15 +22,15 @@
             },
             {
               "name": "Savvy",
-              "score": 75.0,
+              "score": 87.5,
               "weight": 15
             }
           ],
-          "tier": "Proficient"
+          "tier": "Advanced"
         },
         "archetype": {
-          "quote": "Proficient and consistent, but not yet at the top tier. Your thinnest axis is breadth \u2014 that's where the next gain is.",
-          "title": "Proficient"
+          "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is craft \u2014 that's where the next gain is.",
+          "title": "Advanced"
         },
         "combination": {
           "rule": "weighted_mean_of_per_source_scores",
@@ -273,7 +273,7 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 73,
+            "aq_0_100": 83,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -286,7 +286,7 @@
                 "axes": [
                   {
                     "name": "Orchestration",
-                    "score": 20.6,
+                    "score": 23.9,
                     "signals": {
                       "agent_runs": 200,
                       "fanout_median": 3,
@@ -297,7 +297,7 @@
                   },
                   {
                     "name": "Skill fluency",
-                    "score": 16.1,
+                    "score": 18.7,
                     "signals": {
                       "skills_distinct": 25,
                       "skills_total": 900
@@ -306,7 +306,7 @@
                   },
                   {
                     "name": "Tool command (MCP + CLI)",
-                    "score": 17.3,
+                    "score": 20.1,
                     "signals": {
                       "clis": 25,
                       "mcp_servers": 10,
@@ -316,7 +316,7 @@
                   },
                   {
                     "name": "Discipline",
-                    "score": 8.8,
+                    "score": 17.0,
                     "signals": {
                       "task_tool_calls": 300
                     },
@@ -324,14 +324,14 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 62.8,
+                "score": 79.7,
                 "weight": 30
               },
               {
                 "axes": [
                   {
                     "name": "Verification",
-                    "score": 28.0,
+                    "score": 31.5,
                     "signals": {
                       "review_skills": 80,
                       "test_runs": 120
@@ -357,7 +357,7 @@
                   },
                   {
                     "name": "Compounding",
-                    "score": 16.0,
+                    "score": 20.0,
                     "signals": {
                       "compounding_writes": 20
                     },
@@ -365,7 +365,7 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 71.6,
+                "score": 79.1,
                 "weight": 35
               },
               {
@@ -406,7 +406,7 @@
                   },
                   {
                     "name": "Token economy",
-                    "score": 37.5,
+                    "score": 50.0,
                     "signals": {
                       "cli_share": 0.79,
                       "toolsearch": 150
@@ -415,19 +415,19 @@
                   }
                 ],
                 "name": "Savvy",
-                "score": 75.0,
+                "score": 87.5,
                 "weight": 15
               }
             ],
-            "tier": "Proficient",
+            "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
               "entropy": 0.8
             }
           },
           "archetype": {
-            "quote": "Proficient and consistent, but not yet at the top tier. Your thinnest axis is breadth \u2014 that's where the next gain is.",
-            "title": "Proficient"
+            "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is craft \u2014 that's where the next gain is.",
+            "title": "Advanced"
           },
           "growth_edges": [
             {
@@ -792,7 +792,7 @@
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 33,
+          "aq_0_100": 41,
           "pillars": [
             {
               "name": "Breadth",
@@ -801,7 +801,7 @@
             },
             {
               "name": "Craft",
-              "score": 11.7,
+              "score": 34.0,
               "weight": 35
             },
             {
@@ -818,7 +818,7 @@
           "tier": "Apprentice"
         },
         "archetype": {
-          "quote": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is craft \u2014 that's where the next gain is.",
+          "quote": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is breadth \u2014 that's where the next gain is.",
           "title": "Apprentice"
         },
         "combination": {
@@ -1060,7 +1060,7 @@
       "by_source": {
         "cursor": {
           "aq": {
-            "aq_0_100": 33,
+            "aq_0_100": 41,
             "mcp_vs_cli": {
               "cli_calls": 100,
               "cli_distinct": 8,
@@ -1105,7 +1105,7 @@
                 "axes": [
                   {
                     "name": "Verification",
-                    "score": 1.5,
+                    "score": 14.6,
                     "signals": {
                       "review_skills": 0,
                       "test_runs": 5
@@ -1122,7 +1122,7 @@
                   },
                   {
                     "name": "Compounding",
-                    "score": 0.8,
+                    "score": 10.0,
                     "signals": {
                       "compounding_writes": 1
                     },
@@ -1133,7 +1133,7 @@
                 "not_applicable": [
                   "Context Intelligence"
                 ],
-                "score": 11.7,
+                "score": 34.0,
                 "weight": 35
               },
               {
@@ -1194,7 +1194,7 @@
             }
           },
           "archetype": {
-            "quote": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is craft \u2014 that's where the next gain is.",
+            "quote": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is breadth \u2014 that's where the next gain is.",
             "title": "Apprentice"
           },
           "growth_edges": [
@@ -1501,16 +1501,16 @@
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 69,
+          "aq_0_100": 78,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 57.8,
+              "score": 72.8,
               "weight": 30
             },
             {
               "name": "Craft",
-              "score": 64.9,
+              "score": 74.1,
               "weight": 35
             },
             {
@@ -1520,15 +1520,15 @@
             },
             {
               "name": "Savvy",
-              "score": 72.9,
+              "score": 84.0,
               "weight": 15
             }
           ],
-          "tier": "Proficient"
+          "tier": "Advanced"
         },
         "archetype": {
-          "quote": "Proficient and consistent, but not yet at the top tier. Your thinnest axis is breadth \u2014 that's where the next gain is.",
-          "title": "Proficient"
+          "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is breadth \u2014 that's where the next gain is.",
+          "title": "Advanced"
         },
         "combination": {
           "rule": "weighted_mean_of_per_source_scores",
@@ -1772,7 +1772,7 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 73,
+            "aq_0_100": 83,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -1785,7 +1785,7 @@
                 "axes": [
                   {
                     "name": "Orchestration",
-                    "score": 20.6,
+                    "score": 23.9,
                     "signals": {
                       "agent_runs": 200,
                       "fanout_median": 3,
@@ -1796,7 +1796,7 @@
                   },
                   {
                     "name": "Skill fluency",
-                    "score": 16.1,
+                    "score": 18.7,
                     "signals": {
                       "skills_distinct": 25,
                       "skills_total": 900
@@ -1805,7 +1805,7 @@
                   },
                   {
                     "name": "Tool command (MCP + CLI)",
-                    "score": 17.3,
+                    "score": 20.1,
                     "signals": {
                       "clis": 25,
                       "mcp_servers": 10,
@@ -1815,7 +1815,7 @@
                   },
                   {
                     "name": "Discipline",
-                    "score": 8.8,
+                    "score": 17.0,
                     "signals": {
                       "task_tool_calls": 300
                     },
@@ -1823,14 +1823,14 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 62.8,
+                "score": 79.7,
                 "weight": 30
               },
               {
                 "axes": [
                   {
                     "name": "Verification",
-                    "score": 28.0,
+                    "score": 31.5,
                     "signals": {
                       "review_skills": 80,
                       "test_runs": 120
@@ -1856,7 +1856,7 @@
                   },
                   {
                     "name": "Compounding",
-                    "score": 16.0,
+                    "score": 20.0,
                     "signals": {
                       "compounding_writes": 20
                     },
@@ -1864,7 +1864,7 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 71.6,
+                "score": 79.1,
                 "weight": 35
               },
               {
@@ -1905,7 +1905,7 @@
                   },
                   {
                     "name": "Token economy",
-                    "score": 37.5,
+                    "score": 50.0,
                     "signals": {
                       "cli_share": 0.79,
                       "toolsearch": 150
@@ -1914,19 +1914,19 @@
                   }
                 ],
                 "name": "Savvy",
-                "score": 75.0,
+                "score": 87.5,
                 "weight": 15
               }
             ],
-            "tier": "Proficient",
+            "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
               "entropy": 0.8
             }
           },
           "archetype": {
-            "quote": "Proficient and consistent, but not yet at the top tier. Your thinnest axis is breadth \u2014 that's where the next gain is.",
-            "title": "Proficient"
+            "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is craft \u2014 that's where the next gain is.",
+            "title": "Advanced"
           },
           "growth_edges": [
             {
@@ -2161,7 +2161,7 @@
         },
         "cursor": {
           "aq": {
-            "aq_0_100": 33,
+            "aq_0_100": 41,
             "mcp_vs_cli": {
               "cli_calls": 100,
               "cli_distinct": 8,
@@ -2206,7 +2206,7 @@
                 "axes": [
                   {
                     "name": "Verification",
-                    "score": 1.5,
+                    "score": 14.6,
                     "signals": {
                       "review_skills": 0,
                       "test_runs": 5
@@ -2223,7 +2223,7 @@
                   },
                   {
                     "name": "Compounding",
-                    "score": 0.8,
+                    "score": 10.0,
                     "signals": {
                       "compounding_writes": 1
                     },
@@ -2234,7 +2234,7 @@
                 "not_applicable": [
                   "Context Intelligence"
                 ],
-                "score": 11.7,
+                "score": 34.0,
                 "weight": 35
               },
               {
@@ -2295,7 +2295,7 @@
             }
           },
           "archetype": {
-            "quote": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is craft \u2014 that's where the next gain is.",
+            "quote": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is breadth \u2014 that's where the next gain is.",
             "title": "Apprentice"
           },
           "growth_edges": [

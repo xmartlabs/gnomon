@@ -31,26 +31,27 @@ from gnomon.output.narrative import write_narrative_input
 from gnomon.output.profile_html import write_profile_html
 
 
-# Rate-scored tool metrics: (label, signal key in stats['agentic'], current absolute target).
-# Surfaced by --tools so a user can see their own per-session usage and the team can gather the
-# calibration sample for the per-session-rate conversion (see the AQ rate plan). Targets mirror
-# the current absolute ones in scoring/aq.py.
+# Tool metrics surfaced by --tools: (label, signal key in stats['agentic'], target, is_rate).
+# The 7 rate-scored metrics use PER-SESSION targets that mirror scoring/aq.py's rate() targets,
+# so the % column matches what AQ actually scores. knowledge_calls is NOT rate-converted (it's
+# the gated Context Intelligence signal, scored on absolute count) -> is_rate=False.
 _TOOLS_DIAG = [
-    ("task_tool_calls", "task_tool_calls", 1500),
-    ("toolsearch_calls", "toolsearch", 300),
-    ("skills_total", "skills_total", 1500),
-    ("review_skills", "review_skills", 100),
-    ("shell_test_runs", "test_runs", 150),
-    ("compounding_writes", "compounding_writes", 30),
-    ("agent_runs", "agent_runs", 400),
-    ("knowledge_calls", "knowledge_calls", 200),
+    ("task_tool_calls", "task_tool_calls", 1.5, True),
+    ("toolsearch_calls", "toolsearch", 0.30, True),
+    ("skills_total", "skills_total", 15, True),
+    ("review_skills", "review_skills", 2.5, True),
+    ("shell_test_runs", "test_runs", 1.5, True),
+    ("compounding_writes", "compounding_writes", 0.25, True),
+    ("agent_runs", "agent_runs", 1.0, True),
+    ("knowledge_calls", "knowledge_calls", 200, False),  # gated, absolute (not per-session)
 ]
 
 
 def tools_diagnostic(stats):
-    """Return (table_lines, json_record) reporting per-session tool usage for the rate-scored
-    metrics — a self-check for the user and the calibration sample for per-session targets.
-    Reads the already-computed signals in stats['agentic']; no recomputation."""
+    """Return (table_lines, json_record) reporting per-session tool usage. The % column matches
+    AQ's scoring: rate metrics score count/session vs a per-session target; knowledge is absolute.
+    A self-check for the user and the calibration sample for per-session targets. Reads the
+    already-computed signals in stats['agentic']; no recomputation."""
     vol = stats.get("volume", {}) or {}
     sessions = vol.get("total_sessions", 0) or 0
     denom = max(sessions, 1)
@@ -59,13 +60,17 @@ def tools_diagnostic(stats):
         for a in p.get("axes", []):
             sig.update(a.get("signals", {}) or {})
     rates, counts = {}, {}
-    lines = [f"{'metric':<20}{'count':>8}{'/session':>10}{'target':>8}{'%':>6}"]
-    for label, key, target in _TOOLS_DIAG:
+    lines = [f"{'metric':<20}{'count':>8}{'/session':>10}{'target':>9}{'%':>6}"]
+    for label, key, target, is_rate in _TOOLS_DIAG:
         c = sig.get(key, 0) or 0
-        rates[label] = round(c / denom, 4)
+        per_session = c / denom
+        rates[label] = round(per_session, 4)
         counts[label] = c
-        pct = min(100, round(100 * c / target)) if target else 0
-        lines.append(f"{label:<20}{c:>8}{c / denom:>10.3f}{target:>8}{pct:>5}%")
+        # % against the SAME basis AQ uses: per-session rate for rate metrics, absolute otherwise
+        scored = per_session if is_rate else c
+        pct = min(100, round(100 * scored / target)) if target else 0
+        tgt = f"{target:g}/s" if is_rate else f"{target:g}"
+        lines.append(f"{label:<20}{c:>8}{per_session:>10.3f}{tgt:>9}{pct:>5}%")
     record = {"sessions": sessions, "prompts": vol.get("total_prompts", 0),
               "active_hours": (stats.get("velocity", {}) or {}).get("active_hours", 0),
               "rates": rates, "counts": counts}

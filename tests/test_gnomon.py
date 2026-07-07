@@ -1530,6 +1530,33 @@ class TestConfigurablePlanNeedles(unittest.TestCase):
         self.assertIn("brainstorm", tax.PLAN_SKILL_NEEDLES)
 
 
+class TestPerSessionRates(unittest.TestCase):
+    """The converted metrics score per-session RATE, not absolute volume: the same rate at
+    different session counts scores identically (kills the volume artifact), and a higher rate
+    scores higher regardless of total sessions."""
+
+    def _discipline(self, task_calls, sessions):
+        s = _sample_stats()
+        s["volume"] = {"total_sessions": sessions}
+        s["tools"]["task_tool_calls"] = task_calls
+        aq = paxel.compute_aq(s)
+        breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
+        return next(a for a in breadth["axes"] if a["name"] == "Discipline")["score"]
+
+    def test_same_rate_same_score(self):
+        # 0.5 task-tool/session either way -> identical Discipline (volume artifact gone)
+        self.assertEqual(self._discipline(50, 100), self._discipline(500, 1000))
+
+    def test_low_session_high_intensity_beats_high_session_low_intensity(self):
+        # fede-like (few sessions, dense) vs volume-heavy but sparse per session
+        dense = self._discipline(150, 100)   # 1.5/session
+        sparse = self._discipline(300, 1000)  # 0.3/session
+        self.assertGreater(dense, sparse)
+
+    def test_zero_sessions_guarded(self):
+        self._discipline(10, 0)  # must not divide by zero
+
+
 class TestToolsDiagnostic(unittest.TestCase):
     """--tools diagnostic: per-session tool rates from the already-computed agentic signals."""
 
