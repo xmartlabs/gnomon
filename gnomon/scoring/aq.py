@@ -104,22 +104,10 @@ def compute_aq(stats):
     # compounding writes -> per-session rate (rewards the habit, not raw volume)
     compounding = wsum((.6, rate(st.get("compounding_writes", 0), 0.25), None),
                        (.4, (1.0 if has_skill(["retro", "writing-plans", "brainstorm"]) else 0.6), "skills"))
-    knowledge_calls = t.get("mcp_knowledge_calls", 0)
-    knowledge_servers = t.get("mcp_knowledge_servers", 0)
-    # Capability gate: below a floor of knowledge-MCP usage the axis is NOT APPLICABLE — the
-    # user's workflow doesn't ground in indexed context, so grading it (near-0) would unfairly
-    # drag Craft. Returning None makes build_pillar drop the axis and renormalize Craft's
-    # remaining weight, mirroring the source-capability renormalization. Floor is provisional
-    # (calibrate with more new-code users): <50 cleanly separates negligible (~tens of calls)
-    # from real usage (hundreds+).
-    context_intel = (None if knowledge_calls < 50
-                     else .60 * sat(knowledge_calls, 200) + .40 * sat(knowledge_servers, 3))
     craft_axes = [
-        ("Verification", 35, verification, {"test_runs": b.get("shell_test_runs", 0), "review_skills": review_n}),
-        ("Grounding", 25, grounding, {"planning_ratio": b.get("planning_ratio_explore_to_doing", 0)}),
-        ("Context Intelligence", 20, context_intel,
-         {"knowledge_calls": knowledge_calls, "knowledge_servers": knowledge_servers}),
-        ("Compounding", 20, compounding, {"compounding_writes": st.get("compounding_writes", 0)}),
+        ("Verification", 40, verification, {"test_runs": b.get("shell_test_runs", 0), "review_skills": review_n}),
+        ("Grounding", 30, grounding, {"planning_ratio": b.get("planning_ratio_explore_to_doing", 0)}),
+        ("Compounding", 30, compounding, {"compounding_writes": st.get("compounding_writes", 0)}),
     ]
 
     # ---- Pillar 3: Efficiency ----

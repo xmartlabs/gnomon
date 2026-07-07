@@ -182,34 +182,17 @@ class TestComputeAqV2(unittest.TestCase):
         self.assertEqual(verification["signals"]["review_skills"], 0)
         self.assertEqual(verification["score"], 0.0)
 
-    def test_context_intel_gate_drops_axis_for_negligible_usage(self):
-        # nicolas-like: 24 knowledge calls -> axis N/A, Craft renormalized over the other 3.
-        s = _sample_stats()
-        s["tools"]["mcp_knowledge_calls"] = 24
-        s["tools"]["mcp_knowledge_servers"] = 2
-        aq = paxel.compute_aq(s)
-        craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
-        self.assertNotIn("Context Intelligence", [a["name"] for a in craft["axes"]])
-        self.assertEqual(sum(a["weight"] for a in craft["axes"]), 100)
-
-    def test_context_intel_gate_keeps_axis_for_real_usage(self):
-        # federico-like: 341 calls -> real knowledge grounding, axis stays and is scored.
+    def test_craft_axes_are_verification_grounding_compounding(self):
+        # Craft has exactly three axes (Context Intelligence removed) summing to weight 100.
+        # Knowledge-MCP volume no longer scores an axis regardless of call count.
         s = _sample_stats()
         s["tools"]["mcp_knowledge_calls"] = 341
         s["tools"]["mcp_knowledge_servers"] = 3
         aq = paxel.compute_aq(s)
         craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
-        self.assertIn("Context Intelligence", [a["name"] for a in craft["axes"]])
-
-    def test_context_intel_gate_lifts_craft_vs_scored_low(self):
-        def craft(calls):
-            s = _sample_stats()
-            s["tools"]["mcp_knowledge_calls"] = calls
-            s["tools"]["mcp_knowledge_servers"] = 2
-            aq = paxel.compute_aq(s)
-            return next(p for p in aq["pillars"] if p["name"] == "Craft")["score"]
-        # gated (24, dropped+renormalized) beats scored-just-above-floor (60, low CI drags Craft)
-        self.assertGreater(craft(24), craft(60))
+        names = [a["name"] for a in craft["axes"]]
+        self.assertEqual(names, ["Verification", "Grounding", "Compounding"])
+        self.assertEqual(sum(a["weight"] for a in craft["axes"]), 100)
 
     def test_verification_counts_real_review_skills(self):
         # Genuine *-review verification skills (caveman-review, security-review) must
@@ -1572,8 +1555,8 @@ class TestToolsDiagnostic(unittest.TestCase):
                     {"name": "Tool command", "signals": {"toolsearch": 30}},
                 ]},
                 {"name": "Craft", "axes": [
-                    {"name": "Verification", "signals": {"test_runs": 150, "review_skills": 20}},
-                    {"name": "Context Intelligence", "signals": {"knowledge_calls": 10}},
+                    {"name": "Verification", "signals": {"test_runs": 150, "review_skills": 20,
+                                                         "knowledge_calls": 10}},
                 ]},
             ]},
         }

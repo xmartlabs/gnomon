@@ -33,8 +33,8 @@ from gnomon.output.profile_html import write_profile_html
 
 # Tool metrics surfaced by --tools: (label, signal key in stats['agentic'], target, is_rate).
 # The 7 rate-scored metrics use PER-SESSION targets that mirror scoring/aq.py's rate() targets,
-# so the % column matches what AQ actually scores. knowledge_calls is NOT rate-converted (it's
-# the gated Context Intelligence signal, scored on absolute count) -> is_rate=False.
+# so the % column matches what AQ actually scores. knowledge_calls is a self-check diagnostic
+# only (it feeds the Research signature move, not an AQ axis) -> reported as absolute, is_rate=False.
 _TOOLS_DIAG = [
     ("task_tool_calls", "task_tool_calls", 1.0, True),
     ("toolsearch_calls", "toolsearch", 0.30, True),
