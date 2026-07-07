@@ -32,7 +32,8 @@ def _build_monthly_noticed_stats(
     month_bash_authored_lines, month_tool_errors, month_recovered_errors,
     month_edits_per_file, month_polite, month_questions, month_delegate,
     month_background, month_scheduled, month_fanouts, month_hour_hist,
-    month_weekday_hist, month_tool_counter, month_session_ts,
+    month_weekday_hist, month_tool_counter, month_skill_counter,
+    month_mcp_server_counter, month_session_ts,
     no_tool_activity, all_sources_no_agent, cwds, gap_cap_s, burst_gap_s, dow,
 ):
     """Build stats['monthly_noticed_stats'] — one entry per calendar month present
@@ -121,7 +122,13 @@ def _build_monthly_noticed_stats(
                 "preferred_days": _preferred_days(month_weekday_hist.get(mk, Counter()), dow),
             },
             "tools": {
-                "top_tools": month_tool_counter.get(mk, Counter()).most_common(20),
+                "top_tools": month_tool_counter.get(mk, Counter()).most_common(100),
+            },
+            "skills": {
+                "top_skills": month_skill_counter.get(mk, Counter()).most_common(100),
+            },
+            "mcp_servers": {
+                "top_mcp_servers": month_mcp_server_counter.get(mk, Counter()).most_common(100),
             },
         }
         out.append({
@@ -146,6 +153,8 @@ def _build_noticed_stats(stats):
     vel = stats.get("velocity") or {}
     st = stats.get("stack") or {}
     t = stats.get("tools") or {}
+    sk = stats.get("skills") or {}
+    mcps = stats.get("mcp_servers") or {}
     r = stats.get("rhythm") or {}
 
     models = st.get("models") or []
@@ -223,6 +232,18 @@ def _build_noticed_stats(stats):
                 for name, calls in (t.get("top_tools") or [])
             ],
         },
+        "skills": {
+            "top_skills": [
+                {"name": str(name), "calls": int(calls)}
+                for name, calls in (sk.get("top_skills") or [])
+            ],
+        },
+        "mcp_servers": {
+            "top_mcp_servers": [
+                {"server": str(server), "calls": int(calls)}
+                for server, calls in (mcps.get("top_mcp_servers") or [])
+            ],
+        },
     }
 
 def _profiles_by_source(scoring_inputs_by_source):
@@ -279,8 +300,17 @@ def build_summary(stats):
         },
         "compounding_writes": st["compounding_writes"],
         "ecosystem": {
-            "skills_distinct": st["skills_distinct"], "skills_total": st["skills_total"],
+            "skills_distinct": st["skills_distinct"],
+            "skills_total": st["skills_total"],
+            "top_skills": [
+                {"name": str(name), "calls": int(calls)}
+                for name, calls in (st.get("top_skills") or [])
+            ],
             "mcp_servers_distinct": t["mcp_servers_distinct"],
+            "top_mcp_servers": [
+                {"server": str(server), "calls": int(calls)}
+                for server, calls in (t.get("top_mcp_servers") or [])
+            ],
         },
         "progression_monthly": (stats.get("progression") or {}).get("monthly", []),
         "noticed_stats_monthly": stats.get("monthly_noticed_stats", []),
