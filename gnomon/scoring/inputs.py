@@ -52,6 +52,7 @@ def build_scoring_inputs(stats):
             "iteration_depth_p90": b.get("iteration_depth_p90"),
             "iteration_depth_max": b.get("iteration_depth_max"),
             "files_hammered_over_15x": b.get("files_hammered_over_15x", 0),
+            "no_tool_activity": b.get("no_tool_activity", False),
         },
         "stack": {
             "skills_distinct": st.get("skills_distinct", 0),
@@ -79,6 +80,10 @@ def build_scoring_inputs(stats):
             # server NAMES (not just count) so the aggregate can union distinct servers
             # across sources instead of max()-ing counts (which undercounts the union)
             "mcp_knowledge_server_names": list(t.get("mcp_knowledge_server_names", []) or []),
+            "mcp_grounded_sessions": t.get("mcp_grounded_sessions", 0),
+            # session IDs (not just count) so the aggregate can union distinct grounded
+            # sessions across sources instead of summing (which double-counts a shared sid)
+            "mcp_grounded_session_names": list(t.get("mcp_grounded_session_names", []) or []),
             "mcp_subcategory_breakdown": t.get("mcp_subcategory_breakdown", {}),
             "top_tools": _pairs(t.get("top_tools")),
         },
@@ -98,6 +103,7 @@ def build_monthly_scoring_stats(
     no_tool_activity, all_sources_no_agent, month_plan_sessions=None,
     month_session_subagent_types=None,
     month_mcp_subcategory_counter=None, month_mcp_subcategory_servers=None,
+    month_grounded_sessions=None,
 ):
     out = []
     for mk in months:
@@ -129,6 +135,8 @@ def build_monthly_scoring_stats(
         mcp_calls = sum(mcp_c.values())
         m_subcat_c = (month_mcp_subcategory_counter or {}).get(mk, {})
         m_subcat_s = (month_mcp_subcategory_servers or {}).get(mk, {})
+        m_grounded = (month_grounded_sessions or {}).get(mk, set())
+        m_grounded_counted = len(m_grounded & set(month_sessions.get(mk, set())))
         actions_per_prompt = (m_tool_total / m_prompts) if m_prompts else 0
 
         cats = Counter()
@@ -169,6 +177,7 @@ def build_monthly_scoring_stats(
                 "iteration_depth_p90": ids["p90"],
                 "iteration_depth_max": ids["max"],
                 "files_hammered_over_15x": ids["heavy_files"],
+                "no_tool_activity": m_no_tool,
             },
             "stack": {
                 "models": month_models.get(mk, Counter()).most_common(),
@@ -192,6 +201,8 @@ def build_monthly_scoring_stats(
                 "mcp_knowledge_calls": m_subcat_c.get("knowledge", 0) if isinstance(m_subcat_c, dict) else (m_subcat_c.get("knowledge", 0) if m_subcat_c else 0),
                 "mcp_knowledge_servers": len(m_subcat_s.get("knowledge", set())) if m_subcat_s else 0,
                 "mcp_knowledge_server_names": sorted(m_subcat_s.get("knowledge", set())) if m_subcat_s else [],
+                "mcp_grounded_sessions": m_grounded_counted,
+                "mcp_grounded_session_names": sorted(m_grounded),
                 "mcp_subcategory_breakdown": {
                     cat: {"calls": m_subcat_c[cat], "servers": len(m_subcat_s.get(cat, set()))}
                     for cat in sorted(set(m_subcat_c))

@@ -101,13 +101,32 @@ def compute_aq(stats):
     verification = wsum((.5, rate(b.get("shell_test_runs", 0), 1.5), None),
                         (.5, rate(review_n, 1.5), "skills"))
     grounding = sat(b.get("planning_ratio_explore_to_doing", 0), 1.0)
+    # Context Intelligence: PURE per-session grounding COVERAGE, not knowledge-MCP call/
+    # server volume (the old `<50 calls` gate was gameable by auto-fired knowledge-MCP
+    # calls with zero relationship to authored output). A session is "grounded" when a
+    # knowledge-MCP call (accumulator.py's per-session state machine) precedes a later
+    # Edit/Write/MultiEdit/NotebookEdit in that SAME session. coverage = grounded/total.
+    # FLOOR/TARGET are PROVISIONAL, like the sibling per-session targets above (recalibrate
+    # from prod p40-50). Below FLOOR the axis is dropped (None -> build_pillar renormalizes
+    # Craft), protecting light-but-real grounders (e.g. browser-automation-heavy workflows)
+    # from a near-zero score cliff — not a volume floor, a coverage floor. Also dropped when
+    # the source cannot reliably reconstruct ordered per-session tool sequences
+    # (no_tool_activity, the same capability-aware None/renormalize pattern used elsewhere).
+    FLOOR_GROUNDED_COVERAGE = 0.05    # PROVISIONAL — below this the axis is N/A
+    TARGET_GROUNDED_COVERAGE = 0.40   # PROVISIONAL — recalibrate w/ prod p40-50
+    grounded = t.get("mcp_grounded_sessions", 0)
+    coverage = grounded / sessions
+    context_intel = (None if (b.get("no_tool_activity") or coverage < FLOOR_GROUNDED_COVERAGE)
+                     else sat(coverage, TARGET_GROUNDED_COVERAGE))
     # compounding writes -> per-session rate (rewards the habit, not raw volume)
     compounding = wsum((.6, rate(st.get("compounding_writes", 0), 0.25), None),
                        (.4, (1.0 if has_skill(["retro", "writing-plans", "brainstorm"]) else 0.6), "skills"))
     craft_axes = [
-        ("Verification", 40, verification, {"test_runs": b.get("shell_test_runs", 0), "review_skills": review_n}),
-        ("Grounding", 30, grounding, {"planning_ratio": b.get("planning_ratio_explore_to_doing", 0)}),
-        ("Compounding", 30, compounding, {"compounding_writes": st.get("compounding_writes", 0)}),
+        ("Verification", 35, verification, {"test_runs": b.get("shell_test_runs", 0), "review_skills": review_n}),
+        ("Grounding", 25, grounding, {"planning_ratio": b.get("planning_ratio_explore_to_doing", 0)}),
+        ("Context Intelligence", 20, context_intel,
+         {"grounded_sessions": grounded, "total_sessions": sessions, "coverage": round(coverage, 3)}),
+        ("Compounding", 20, compounding, {"compounding_writes": st.get("compounding_writes", 0)}),
     ]
 
     # ---- Pillar 3: Efficiency ----

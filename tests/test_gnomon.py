@@ -166,6 +166,17 @@ class TestComputeAqV2(unittest.TestCase):
             for a in p["axes"]:
                 self.assertIn(a["name"], paxel.AQ_AXIS_NOTES)
 
+    def test_context_intelligence_has_tooltip_note_when_live(self):
+        # Context Intelligence is dropped in the default sample (no grounded sessions),
+        # so it won't appear above — score it live here and confirm the note exists.
+        s = _sample_stats()
+        s["volume"] = {"total_sessions": 100}
+        s["tools"]["mcp_grounded_sessions"] = 20
+        aq = paxel.compute_aq(s)
+        craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
+        self.assertIn("Context Intelligence", [a["name"] for a in craft["axes"]])
+        self.assertIn("Context Intelligence", paxel.AQ_AXIS_NOTES)
+
     def test_volume_alone_cannot_max_orchestration(self):
         # 10x the agent_runs but no coordination (fanout=1) -> still capped below full.
         s = _sample_stats(); s["tools"]["agent_calls"] = 5000; s["behavior"]["fanout_median"] = 1
@@ -182,9 +193,11 @@ class TestComputeAqV2(unittest.TestCase):
         self.assertEqual(verification["signals"]["review_skills"], 0)
         self.assertEqual(verification["score"], 0.0)
 
-    def test_craft_axes_are_verification_grounding_compounding(self):
-        # Craft has exactly three axes (Context Intelligence removed) summing to weight 100.
-        # Knowledge-MCP volume no longer scores an axis regardless of call count.
+    def test_craft_axes_drop_context_intelligence_when_coverage_below_floor(self):
+        # _sample_stats has no grounded sessions (mcp_grounded_sessions=0, sessions=1
+        # default) -> coverage 0 < FLOOR -> Context Intelligence is dropped and Craft
+        # renormalizes to the remaining three axes summing to weight 100. Knowledge-MCP
+        # CALL volume alone (no grounded sessions) must NOT resurrect the axis.
         s = _sample_stats()
         s["tools"]["mcp_knowledge_calls"] = 341
         s["tools"]["mcp_knowledge_servers"] = 3
@@ -193,6 +206,91 @@ class TestComputeAqV2(unittest.TestCase):
         names = [a["name"] for a in craft["axes"]]
         self.assertEqual(names, ["Verification", "Grounding", "Compounding"])
         self.assertEqual(sum(a["weight"] for a in craft["axes"]), 100)
+        self.assertIn("Context Intelligence", craft.get("not_applicable", []))
+
+    def _craft_ci(self, grounded, sessions, no_tool_activity=False):
+        s = _sample_stats()
+        s["volume"] = {"total_sessions": sessions}
+        s["tools"]["mcp_grounded_sessions"] = grounded
+        s["behavior"]["no_tool_activity"] = no_tool_activity
+        return paxel.compute_aq(s)
+
+    def test_context_intelligence_dropped_when_no_tool_activity(self):
+        # Even with a coverage that would otherwise be well above floor/target, a source
+        # that cannot record ordered tool sequences (no_tool_activity) drops the axis.
+        aq = self._craft_ci(grounded=40, sessions=100, no_tool_activity=True)
+        craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
+        names = [a["name"] for a in craft["axes"]]
+        self.assertNotIn("Context Intelligence", names)
+        self.assertIn("Context Intelligence", craft.get("not_applicable", []))
+        self.assertEqual(sum(a["weight"] for a in craft["axes"]), 100)
+
+    def test_context_intelligence_dropped_below_floor(self):
+        # coverage = 4/100 = 0.04 < FLOOR (0.05) -> dropped, Craft renormalized.
+        aq = self._craft_ci(grounded=4, sessions=100)
+        craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
+        names = [a["name"] for a in craft["axes"]]
+        self.assertNotIn("Context Intelligence", names)
+        self.assertIn("Context Intelligence", craft.get("not_applicable", []))
+        self.assertEqual(sum(a["weight"] for a in craft["axes"]), 100)
+
+    def test_context_intelligence_scored_at_floor(self):
+        # coverage = 5/100 = 0.05 == FLOOR -> scored (present), not dropped.
+        aq = self._craft_ci(grounded=5, sessions=100)
+        craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
+        names = [a["name"] for a in craft["axes"]]
+        self.assertIn("Context Intelligence", names)
+        self.assertNotIn("Context Intelligence", craft.get("not_applicable", []))
+        self.assertEqual(sum(a["weight"] for a in craft["axes"]), 100)
+
+    def test_context_intelligence_present_and_scored_above_floor(self):
+        # coverage = 20/100 = 0.20 -> scored, present as its own axis (weight 20 of 100).
+        aq = self._craft_ci(grounded=20, sessions=100)
+        craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
+        ci = next(a for a in craft["axes"] if a["name"] == "Context Intelligence")
+        self.assertEqual(ci["weight"], 20)
+        self.assertGreater(ci["score"], 0.0)
+        self.assertEqual(sum(a["weight"] for a in craft["axes"]), 100)
+        names = [a["name"] for a in craft["axes"]]
+        self.assertEqual(names, ["Verification", "Grounding", "Context Intelligence", "Compounding"])
+
+    def test_context_intelligence_full_credit_at_target(self):
+        # coverage = 40/100 = 0.40 == TARGET -> full credit (sat=1.0 -> axis score ==
+        # its full renormalized weight).
+        aq = self._craft_ci(grounded=40, sessions=100)
+        craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
+        ci = next(a for a in craft["axes"] if a["name"] == "Context Intelligence")
+        self.assertEqual(ci["score"], ci["weight"])
+
+    def test_context_intelligence_caps_at_full_credit_above_target(self):
+        # coverage above TARGET must not exceed full credit (sat clamps at 1.0).
+        aq = self._craft_ci(grounded=90, sessions=100)
+        craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
+        ci = next(a for a in craft["axes"] if a["name"] == "Context Intelligence")
+        self.assertEqual(ci["score"], ci["weight"])
+
+    def test_context_intelligence_boundary_discontinuity_documented(self):
+        # Just-below-FLOOR is dropped; just-above-FLOOR is scored near (but not at) zero.
+        # This documents the ACCEPTED trade-off from the design (small jump, not a cliff).
+        below = self._craft_ci(grounded=4, sessions=100)   # 0.04 < 0.05
+        above = self._craft_ci(grounded=6, sessions=100)   # 0.06 >= 0.05
+        craft_below = next(p for p in below["pillars"] if p["name"] == "Craft")
+        craft_above = next(p for p in above["pillars"] if p["name"] == "Craft")
+        self.assertNotIn("Context Intelligence",
+                         [a["name"] for a in craft_below["axes"]])
+        ci_above = next(a for a in craft_above["axes"] if a["name"] == "Context Intelligence")
+        self.assertGreater(ci_above["score"], 0.0)
+        self.assertLess(ci_above["score"], ci_above["weight"] * 0.5)
+
+    def test_context_intelligence_signals_shape(self):
+        aq = self._craft_ci(grounded=20, sessions=100)
+        craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
+        ci = next(a for a in craft["axes"] if a["name"] == "Context Intelligence")
+        self.assertEqual(ci["signals"]["grounded_sessions"], 20)
+        self.assertEqual(ci["signals"]["total_sessions"], 100)
+        self.assertEqual(ci["signals"]["coverage"], 0.2)
+        self.assertNotIn("knowledge_calls", ci["signals"])
+        self.assertNotIn("knowledge_servers", ci["signals"])
 
     def test_verification_counts_real_review_skills(self):
         # Genuine *-review verification skills (caveman-review, security-review) must
@@ -1606,6 +1704,44 @@ class TestAggregateKnowledgeServerUnion(unittest.TestCase):
                  ("b", {"weight": 100, "block": {"tools": {"mcp_knowledge_servers": 3}}})]
         synth = _synth_stats_for_aggregate(items, {})
         self.assertEqual(synth["tools"]["mcp_knowledge_servers"], 3)  # max fallback
+
+
+class TestAggregateGroundedSessionUnion(unittest.TestCase):
+    """Aggregate mcp_grounded_sessions is the UNION of grounded session IDs across
+    sources (not a sum, which would double-count a session appearing in two source
+    exports), while total_sessions stays the existing SUMMED denominator."""
+
+    @staticmethod
+    def _synth(name_lists, total_sessions_each=None):
+        from gnomon.scoring.aggregate import _synth_stats_for_aggregate
+        total_sessions_each = total_sessions_each or [10] * len(name_lists)
+        items = [(f"src{i}", {"weight": 100, "block": {
+            "tools": {"mcp_grounded_session_names": names,
+                     "mcp_grounded_sessions": len(names)},
+            "volume": {"total_sessions": ts},
+        }}) for i, (names, ts) in enumerate(zip(name_lists, total_sessions_each))]
+        return _synth_stats_for_aggregate(items, {})
+
+    def test_same_session_across_sources_counted_once(self):
+        synth = self._synth([["s1", "s2"], ["s1", "s3"]])
+        self.assertEqual(synth["tools"]["mcp_grounded_sessions"], 3)  # s1,s2,s3 union
+
+    def test_distinct_sessions_across_sources_both_counted(self):
+        synth = self._synth([["x"], ["y"]])
+        self.assertEqual(synth["tools"]["mcp_grounded_sessions"], 2)
+
+    def test_total_sessions_stays_summed_denominator(self):
+        synth = self._synth([["s1"], ["s2"]], total_sessions_each=[10, 15])
+        self.assertEqual(synth["volume"]["total_sessions"], 25)
+
+    def test_fallback_to_wsum_when_names_absent(self):
+        from gnomon.scoring.aggregate import _synth_stats_for_aggregate
+        items = [("a", {"weight": 100, "block": {"tools": {"mcp_grounded_sessions": 2},
+                                                 "volume": {"total_sessions": 10}}}),
+                 ("b", {"weight": 100, "block": {"tools": {"mcp_grounded_sessions": 3},
+                                                 "volume": {"total_sessions": 10}}})]
+        synth = _synth_stats_for_aggregate(items, {})
+        self.assertEqual(synth["tools"]["mcp_grounded_sessions"], 5)  # wsum fallback
 
 
 if __name__ == "__main__":

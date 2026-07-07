@@ -19,7 +19,9 @@ import unittest
 
 from gnomon.scoring.inputs import SCORING_INPUTS_VERSION
 from gnomon.scoring.aggregate import score_by_source
-from tests._scoring_vectors_cases import CLAUDE_BLOCK, CURSOR_BLOCK, cases
+from tests._scoring_vectors_cases import (
+    CLAUDE_BLOCK, CURSOR_BLOCK, CLAUDE_BOUNDARY_BLOCK, NO_TOOL_ACTIVITY_BLOCK, cases,
+)
 
 VECTORS_PATH = os.path.join(os.path.dirname(__file__), "fixtures", "scoring_vectors.json")
 
@@ -39,7 +41,8 @@ class TestScoringVectorsFile(unittest.TestCase):
         data = _load()
         self.assertGreaterEqual(len(data), 3)
         names = {c["name"] for c in data}
-        self.assertEqual(names, {"claude_only", "cursor_only", "mixed_claude_cursor"})
+        self.assertEqual(names, {"claude_only", "cursor_only", "mixed_claude_cursor",
+                                  "claude_boundary_above_floor", "no_tool_activity"})
 
     def test_version_tagged(self):
         for c in _load():
@@ -94,6 +97,38 @@ class TestCapabilityContract(unittest.TestCase):
         self.assertEqual(breadth.get("not_applicable", []), [])
         axis_names = {a["name"] for a in breadth["axes"]}
         self.assertIn("Skill fluency", axis_names)
+
+
+class TestContextIntelligenceVectorCases(unittest.TestCase):
+    """Context Intelligence coverage on both sides of FLOOR, exercised through the
+    golden-vector fixture cases (mirdash pulls these same cases for parity)."""
+
+    def test_claude_only_above_target_scored_near_full(self):
+        # 18/40 = 0.45 coverage, above TARGET (0.40) -> present, near-full credit.
+        out = score_by_source({"claude": {"window": CLAUDE_BLOCK, "monthly": []}})
+        craft = next(p for p in out["by_source"]["claude"]["aq"]["pillars"] if p["name"] == "Craft")
+        ci = next(a for a in craft["axes"] if a["name"] == "Context Intelligence")
+        self.assertEqual(ci["score"], ci["weight"])
+
+    def test_cursor_only_below_floor_dropped(self):
+        # 0/10 = 0.0 coverage, below FLOOR (0.05) -> dropped (None), Craft renormalizes.
+        out = score_by_source({"cursor": {"window": CURSOR_BLOCK, "monthly": []}})
+        craft = next(p for p in out["by_source"]["cursor"]["aq"]["pillars"] if p["name"] == "Craft")
+        self.assertIn("Context Intelligence", craft.get("not_applicable", []))
+
+    def test_boundary_just_above_floor_scored_near_zero(self):
+        # 3/40 = 0.075 coverage, just above FLOOR (0.05) -> present, scored near zero
+        # (documents the accepted floor->N/A boundary discontinuity from the design).
+        out = score_by_source({"claude-boundary": {"window": CLAUDE_BOUNDARY_BLOCK, "monthly": []}})
+        craft = next(p for p in out["by_source"]["claude-boundary"]["aq"]["pillars"] if p["name"] == "Craft")
+        ci = next(a for a in craft["axes"] if a["name"] == "Context Intelligence")
+        self.assertGreater(ci["score"], 0.0)
+        self.assertLess(ci["score"], ci["weight"] * 0.5)
+
+    def test_no_tool_activity_drops_context_intelligence(self):
+        out = score_by_source({"no-tool-activity": {"window": NO_TOOL_ACTIVITY_BLOCK, "monthly": []}})
+        craft = next(p for p in out["by_source"]["no-tool-activity"]["aq"]["pillars"] if p["name"] == "Craft")
+        self.assertIn("Context Intelligence", craft.get("not_applicable", []))
 
 
 class TestAggregateIsWeightedMean(unittest.TestCase):

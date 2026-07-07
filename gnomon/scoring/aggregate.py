@@ -252,6 +252,17 @@ def _synth_stats_for_aggregate(items, agg_aq):
                                   for _, e in items)))
                 if any(t(e["block"]).get("mcp_knowledge_server_names") for _, e in items)
                 else (max((t(e["block"]).get("mcp_knowledge_servers") or 0) for _, e in items) if items else 0)),
+            # UNION of grounded session IDs across sources — the same session appearing in
+            # two source exports (e.g. re-exported logs) must count once, not twice. Falls
+            # back to wsum(count) for blocks predating the names field (legacy fixtures/
+            # exports). total_sessions stays the existing SUMMED denominator (line 198) —
+            # sessions are source-scoped, so summing the denominator is correct; only the
+            # numerator needs de-duplication against a shared sid.
+            "mcp_grounded_sessions": (
+                len(set().union(*(set(t(e["block"]).get("mcp_grounded_session_names") or [])
+                                  for _, e in items)))
+                if any(t(e["block"]).get("mcp_grounded_session_names") for _, e in items)
+                else wsum(lambda blk: t(blk).get("mcp_grounded_sessions"))),
             "mcp_subcategory_breakdown": {},
         },
     }
