@@ -1530,5 +1530,42 @@ class TestConfigurablePlanNeedles(unittest.TestCase):
         self.assertIn("brainstorm", tax.PLAN_SKILL_NEEDLES)
 
 
+class TestToolsDiagnostic(unittest.TestCase):
+    """--tools diagnostic: per-session tool rates from the already-computed agentic signals."""
+
+    def _stats(self, sessions):
+        return {
+            "volume": {"total_sessions": sessions, "total_prompts": sessions * 4},
+            "velocity": {"active_hours": 50.0},
+            "agentic": {"pillars": [
+                {"name": "Breadth", "axes": [
+                    {"name": "Discipline", "signals": {"task_tool_calls": 50}},
+                    {"name": "Orchestration", "signals": {"agent_runs": 200}},
+                    {"name": "Tool command", "signals": {"toolsearch": 30}},
+                ]},
+                {"name": "Craft", "axes": [
+                    {"name": "Verification", "signals": {"test_runs": 150, "review_skills": 20}},
+                    {"name": "Context Intelligence", "signals": {"knowledge_calls": 10}},
+                ]},
+            ]},
+        }
+
+    def test_rates_and_record(self):
+        from gnomon.cli.local import tools_diagnostic
+        lines, rec = tools_diagnostic(self._stats(100))
+        self.assertEqual(rec["sessions"], 100)
+        self.assertEqual(rec["rates"]["task_tool_calls"], 0.5)   # 50/100
+        self.assertEqual(rec["rates"]["agent_runs"], 2.0)        # 200/100
+        self.assertEqual(rec["rates"]["toolsearch_calls"], 0.3)  # 30/100
+        self.assertEqual(rec["counts"]["review_skills"], 20)
+        self.assertTrue(any("task_tool_calls" in l for l in lines))
+
+    def test_zero_sessions_no_crash(self):
+        from gnomon.cli.local import tools_diagnostic
+        lines, rec = tools_diagnostic({"volume": {"total_sessions": 0}, "agentic": {"pillars": []}})
+        self.assertEqual(rec["sessions"], 0)
+        self.assertEqual(rec["rates"]["task_tool_calls"], 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()
