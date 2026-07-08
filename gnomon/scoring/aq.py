@@ -1,4 +1,4 @@
-from gnomon.analysis.metrics import _review_skill_uses
+from gnomon.analysis.metrics import _review_skill_uses, _task_skill_uses
 from gnomon.config import available_caps
 
 
@@ -76,8 +76,10 @@ def compute_aq(stats):
     tool_command = wsum((.40, sat(t.get("mcp_servers_distinct", 0), 15), None),
                         (.40, sat(t.get("clis_distinct", 0), 40), None),
                         (.20, rate(t.get("toolsearch_calls", 0), 0.30), "toolsearch"))
-    # task-tool -> per-session rate; plan-skill term needs the Skill capability
-    discipline = wsum((.60, rate(t.get("task_tool_calls", 0), 1.0), "tasktool"),
+    # task-tool -> per-session rate; TaskCreate/Update + SDD sdd-tasks skill invocations
+    # both count as structured task planning. plan-skill term needs the Skill capability.
+    task_calls = t.get("task_tool_calls", 0) + _task_skill_uses(skills)
+    discipline = wsum((.60, rate(task_calls, 1.0), "tasktool"),
                       (.40, (1.0 if (has_skill(["writing-plans", "autoplan", "plan"])
                                      or b.get("plan_sessions", 0) > 0) else 0.6), "skills"))
     breadth_axes = [
@@ -91,7 +93,7 @@ def compute_aq(stats):
          "skills_total": st.get("skills_total", 0)}, "skills"),
         ("Tool command (MCP + CLI)", 28, tool_command, {"mcp_servers": t.get("mcp_servers_distinct", 0),
          "clis": t.get("clis_distinct", 0), "toolsearch": t.get("toolsearch_calls", 0)}),
-        ("Discipline", 17, discipline, {"task_tool_calls": t.get("task_tool_calls", 0)}),
+        ("Discipline", 17, discipline, {"task_tool_calls": task_calls}),
     ]
 
     # ---- Pillar 2: Craft ----

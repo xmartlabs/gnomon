@@ -1012,7 +1012,10 @@ class Accumulator:
         else:
             _s_gc_since = self.all_min_dt.isoformat() if self.all_min_dt else "1970-01-01"
             _s_gc_until = self.all_max_dt.isoformat() if self.all_max_dt else "2100-01-01"
-        _s_gc = git_churn(list(self.project_activity.keys()), _s_gc_since, _s_gc_until)
+        _s_gc_cwds = list(self.project_activity.keys())
+        _s_gc = git_churn(_s_gc_cwds, _s_gc_since, _s_gc_until) if _s_gc_cwds else {
+            "repos_seen": 0, "repos_with_commits": 0, "insertions": 0,
+            "deletions": 0, "churn": 0, "commits": 0, "per_repo": []}
         _s_sessions = len(self.session_ts) or len(self.session_files)
 
         s_stats = {

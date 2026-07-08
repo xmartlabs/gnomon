@@ -58,7 +58,7 @@ def _resolve_mirdash_base(argv):
 _MAX_BACKFILL = 12
 
 # Default window size when --window is absent.
-_DEFAULT_WINDOW_MONTHS = 6
+_DEFAULT_WINDOW_MONTHS = 3
 
 # Parallel month uploads. Each month runs paxel.py as a subprocess (CPU-bound),
 # so threads only block on subprocess.run -- no GIL contention, real multi-core.

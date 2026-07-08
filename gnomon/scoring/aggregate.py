@@ -38,6 +38,11 @@ from gnomon.scoring.insights import (
 from gnomon.scoring.profiles import build_profile, stats_from_scoring_block
 
 
+RECENT_WINDOW_DAYS = 30
+RECENT_WEIGHT = 0.65
+HISTORY_WEIGHT = 0.35
+
+
 def _aq_tier_for(total):
     """The single AQ→tier vocabulary, kept identical to compute_aq's banding."""
     return ("Elite" if total >= 88 else "Advanced" if total >= 75 else "Proficient" if total >= 60
@@ -276,19 +281,70 @@ def _synth_stats_for_aggregate(items, agg_aq):
     return synth
 
 
-def score_by_source(scoring_inputs_by_source):
+def _blend_aq(full_aq, recent_aq, recent_w=RECENT_WEIGHT, history_w=HISTORY_WEIGHT):
+    """Blend two AQ dicts (recent + full window) into one.
+    Preserves axes and extra keys from the full AQ; only blends pillar/total scores."""
+    blended_total = round(recent_w * recent_aq["aq_0_100"] + history_w * full_aq["aq_0_100"])
+    full_pillars = {p["name"]: p for p in full_aq.get("pillars", [])}
+    recent_pillars = {p["name"]: p for p in recent_aq.get("pillars", [])}
+    blended_pillars = []
+    for name in full_pillars:
+        fp = dict(full_pillars[name])
+        rp = recent_pillars.get(name)
+        if rp is not None:
+            fp["score"] = round(recent_w * rp["score"] + history_w * fp["score"], 1)
+        blended_pillars.append(fp)
+    result = dict(full_aq)
+    result["aq_0_100"] = blended_total
+    result["tier"] = _aq_tier_for(blended_total)
+    result["pillars"] = blended_pillars
+    return result
+
+
+def _blend_profiles(full_profile, recent_profile):
+    """Blend a full-window profile with a recent-window profile.
+    AQ and pillars are blended by weight; non-numeric fields are re-derived
+    from the blended scores."""
+    blended_aq = _blend_aq(full_profile["aq"], recent_profile["aq"])
+    blended = dict(full_profile)
+    blended["aq"] = blended_aq
+    blended["blend"] = {
+        "recent_weight": RECENT_WEIGHT,
+        "history_weight": HISTORY_WEIGHT,
+        "recent_aq": recent_profile["aq"]["aq_0_100"],
+        "full_aq": full_profile["aq"]["aq_0_100"],
+    }
+    return blended
+
+
+def score_by_source(scoring_inputs_by_source, recent_scoring_inputs_by_source=None):
     """Given build_summary's scoring_inputs_by_source, return:
         {"by_source": {<source>: <profile>}, "aggregate": <profile>}
 
     Each per-source profile is computed from that source's WINDOW slice using that
     source's own caps (single-source → no union dilution). The aggregate combines the
     per-source SCORES per the module's documented weighted-mean rule.
+
+    When recent_scoring_inputs_by_source is provided, each source's profile is blended:
+    65% recent (30-day) + 35% full window.
     """
     by_source = {}
     per_source_meta = {}
     for src, blocks in scoring_inputs_by_source.items():
         window = blocks.get("window") or {}
-        profile = _profile_from_block(window)
+        full_profile = _profile_from_block(window)
+
+        if recent_scoring_inputs_by_source and src in recent_scoring_inputs_by_source:
+            recent_window = (recent_scoring_inputs_by_source[src].get("window") or {})
+            recent_vol = (recent_window.get("volume") or {}).get("total_sessions", 0)
+            if recent_vol > 0:
+                recent_profile = _profile_from_block(recent_window)
+                profile = _blend_profiles(full_profile, recent_profile)
+            else:
+                profile = full_profile
+        else:
+            profile = full_profile
+
         by_source[src] = profile
         per_source_meta[src] = {
             "profile": profile,
