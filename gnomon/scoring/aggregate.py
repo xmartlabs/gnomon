@@ -38,6 +38,7 @@ from gnomon.scoring.insights import (
 from gnomon.scoring.profiles import build_profile, stats_from_scoring_block
 
 
+RECENCY_BLEND_ENABLED = True
 RECENT_WINDOW_DAYS = 30
 RECENT_WEIGHT = 0.65
 HISTORY_WEIGHT = 0.35

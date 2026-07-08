@@ -24,7 +24,7 @@ from gnomon.scoring.gstack import compute_scores
 from gnomon.scoring.aq import compute_aq
 from gnomon.scoring.archetype import pick_archetype
 from gnomon.scoring.inputs import SCORING_INPUTS_VERSION, build_scoring_inputs
-from gnomon.scoring.aggregate import RECENT_WINDOW_DAYS, RECENT_WEIGHT, HISTORY_WEIGHT, _blend_aq
+from gnomon.scoring.aggregate import RECENCY_BLEND_ENABLED, RECENT_WINDOW_DAYS, RECENT_WEIGHT, HISTORY_WEIGHT, _blend_aq
 from gnomon.cli.accumulator import Accumulator
 from gnomon.output.summary import build_summary
 from gnomon.output.report import write_report
@@ -217,27 +217,28 @@ def main(argv=None, output_dir=None):
     stats["scoring_inputs_by_source"] = scoring_by_source
 
     # ---- recent-window scoring inputs (exact 30-day rolling from accumulator) ---
-    _recent_per_source_stats = narrative.get("_recent_per_source_stats", {})
-    recent_stats_corpus = narrative.get("_recent_stats")
     recent_scoring_by_source = {}
-    for src in srcs_present:
-        r_stats = _recent_per_source_stats.get(src)
-        if r_stats and (r_stats.get("volume", {}).get("total_sessions", 0) or 0) > 0:
-            recent_scoring_by_source[src] = {"window": build_scoring_inputs(r_stats)}
-    stats["recent_scoring_inputs_by_source"] = recent_scoring_by_source
+    if RECENCY_BLEND_ENABLED:
+        _recent_per_source_stats = narrative.get("_recent_per_source_stats", {})
+        recent_stats_corpus = narrative.get("_recent_stats")
+        for src in srcs_present:
+            r_stats = _recent_per_source_stats.get(src)
+            if r_stats and (r_stats.get("volume", {}).get("total_sessions", 0) or 0) > 0:
+                recent_scoring_by_source[src] = {"window": build_scoring_inputs(r_stats)}
+        stats["recent_scoring_inputs_by_source"] = recent_scoring_by_source
 
-    # ---- blend corpus-level AQ (recent 30d + full window) --------------------
-    if recent_stats_corpus and (recent_stats_corpus.get("volume", {}).get("total_sessions", 0) or 0) > 0:
-        recent_corpus_aq = compute_aq(recent_stats_corpus)
-        full_corpus_aq = stats["agentic"]
-        stats["agentic"] = _blend_aq(full_corpus_aq, recent_corpus_aq)
-        stats["agentic"]["blend"] = {
-            "recent_weight": RECENT_WEIGHT,
-            "history_weight": HISTORY_WEIGHT,
-            "recent_aq": recent_corpus_aq["aq_0_100"],
-            "full_aq": full_corpus_aq["aq_0_100"],
-            "recent_window_days": RECENT_WINDOW_DAYS,
-        }
+        # ---- blend corpus-level AQ (recent 30d + full window) ----------------
+        if recent_stats_corpus and (recent_stats_corpus.get("volume", {}).get("total_sessions", 0) or 0) > 0:
+            recent_corpus_aq = compute_aq(recent_stats_corpus)
+            full_corpus_aq = stats["agentic"]
+            stats["agentic"] = _blend_aq(full_corpus_aq, recent_corpus_aq)
+            stats["agentic"]["blend"] = {
+                "recent_weight": RECENT_WEIGHT,
+                "history_weight": HISTORY_WEIGHT,
+                "recent_aq": recent_corpus_aq["aq_0_100"],
+                "full_aq": full_corpus_aq["aq_0_100"],
+                "recent_window_days": RECENT_WINDOW_DAYS,
+            }
 
     _t_scoring_inputs = time.monotonic() - _t0_si
     # internal-only working field (per-month full stats slices); not part of the payload
@@ -344,9 +345,10 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
     _srcs_present = sorted({s for s, _, _ in sources})
     src_accums = {s: Accumulator() for s in _srcs_present}
 
-    recent_since_dt = datetime.now().astimezone() - timedelta(days=RECENT_WINDOW_DAYS)
-    recent_corpus = Accumulator()
-    recent_src_accums = {s: Accumulator() for s in _srcs_present}
+    if RECENCY_BLEND_ENABLED:
+        recent_since_dt = datetime.now().astimezone() - timedelta(days=RECENT_WINDOW_DAYS)
+        recent_corpus = Accumulator()
+        recent_src_accums = {s: Accumulator() for s in _srcs_present}
 
     # ---- narrative quote candidates (corpus-only, never serialized) ----------
     phrase_counts = Counter()      # normalized short prompt -> times seen
@@ -369,11 +371,12 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
             except OSError:
                 pass
         sa = src_accums[cur_src]
-        rsa = recent_src_accums[cur_src]
         corpus.begin_file(cur_src, fp)
         sa.begin_file(cur_src, fp)
-        recent_corpus.begin_file(cur_src, fp)
-        rsa.begin_file(cur_src, fp)
+        if RECENCY_BLEND_ENABLED:
+            rsa = recent_src_accums[cur_src]
+            recent_corpus.begin_file(cur_src, fp)
+            rsa.begin_file(cur_src, fp)
         if verbose and corpus.files_parsed % 300 == 0:
             print(f"  ...{corpus.files_parsed}/{total_file_count}")
 
@@ -393,14 +396,16 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
             ):
                 corpus.skip_file()
                 sa.skip_file()
-                recent_corpus.skip_file()
-                rsa.skip_file()
+                if RECENCY_BLEND_ENABLED:
+                    recent_corpus.skip_file()
+                    rsa.skip_file()
                 continue
             for ev in _ev_list:
                 info = corpus.observe(ev, since_dt, until_dt)
                 sa.observe(ev, since_dt, until_dt)
-                recent_corpus.observe(ev, recent_since_dt, until_dt)
-                rsa.observe(ev, recent_since_dt, until_dt)
+                if RECENCY_BLEND_ENABLED:
+                    recent_corpus.observe(ev, recent_since_dt, until_dt)
+                    rsa.observe(ev, recent_since_dt, until_dt)
                 if info is None:
                     continue
                 # ---- narrative: verbatim-quote candidates from a genuine prompt ----
@@ -441,8 +446,9 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
                     del longest_prompts[120:]
         corpus.end_file()
         sa.end_file()
-        recent_corpus.end_file()
-        rsa.end_file()
+        if RECENCY_BLEND_ENABLED:
+            recent_corpus.end_file()
+            rsa.end_file()
 
     # ---- whole-corpus stats (also stashes corpus gc window + null-honesty flag) --
     stats = corpus.to_corpus_stats(since_dt, until_dt, antigravity)
@@ -463,21 +469,23 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
         _per_source_stats[_src_name] = _sa.to_source_stats(_src_name, since_dt, until_dt)
 
     # ---- recent-window stats (exact 30-day rolling) ----------------------------
-    # Clear project_activity on recent accumulators so to_source_stats() doesn't
-    # trigger expensive git_churn calls — we only need scoring inputs for the blend.
-    recent_corpus.project_activity = {}
-    for _rsa in recent_src_accums.values():
-        _rsa.project_activity = {}
-    _recent_srcs = sorted(recent_src_accums.keys())
-    recent_stats = recent_corpus.to_source_stats(
-        ",".join(_recent_srcs), recent_since_dt, until_dt)
     _recent_per_source_stats = {}
-    for _src_name, _rsa in recent_src_accums.items():
-        if _single_source:
-            _recent_per_source_stats[_src_name] = recent_stats
-            continue
-        _recent_per_source_stats[_src_name] = _rsa.to_source_stats(
-            _src_name, recent_since_dt, until_dt)
+    recent_stats = None
+    if RECENCY_BLEND_ENABLED:
+        # Clear project_activity on recent accumulators so to_source_stats() doesn't
+        # trigger expensive git_churn calls — we only need scoring inputs for the blend.
+        recent_corpus.project_activity = {}
+        for _rsa in recent_src_accums.values():
+            _rsa.project_activity = {}
+        _recent_srcs = sorted(recent_src_accums.keys())
+        recent_stats = recent_corpus.to_source_stats(
+            ",".join(_recent_srcs), recent_since_dt, until_dt)
+        for _src_name, _rsa in recent_src_accums.items():
+            if _single_source:
+                _recent_per_source_stats[_src_name] = recent_stats
+                continue
+            _recent_per_source_stats[_src_name] = _rsa.to_source_stats(
+                _src_name, recent_since_dt, until_dt)
 
     narrative = {
         "opening_prompts": opening_prompts,

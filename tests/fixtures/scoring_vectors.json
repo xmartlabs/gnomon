@@ -351,7 +351,10 @@
                     "score": 20.0,
                     "signals": {
                       "coverage": 0.45,
+                      "grounded_session_rule": "knowledge-MCP lookup before a later Edit/Write/MultiEdit/NotebookEdit in the same session",
                       "grounded_sessions": 18,
+                      "score_formula": "coverage = grounded_sessions / total_sessions; score = min(1, coverage / 0.40)",
+                      "target_coverage": 0.4,
                       "total_sessions": 40
                     },
                     "weight": 20
@@ -1147,7 +1150,10 @@
                     "score": 0.0,
                     "signals": {
                       "coverage": 0.0,
+                      "grounded_session_rule": "knowledge-MCP lookup before a later Edit/Write/MultiEdit/NotebookEdit in the same session",
                       "grounded_sessions": 0,
+                      "score_formula": "coverage = grounded_sessions / total_sessions; score = min(1, coverage / 0.40)",
+                      "target_coverage": 0.4,
                       "total_sessions": 10
                     },
                     "weight": 20
@@ -1881,7 +1887,10 @@
                     "score": 20.0,
                     "signals": {
                       "coverage": 0.45,
+                      "grounded_session_rule": "knowledge-MCP lookup before a later Edit/Write/MultiEdit/NotebookEdit in the same session",
                       "grounded_sessions": 18,
+                      "score_formula": "coverage = grounded_sessions / total_sessions; score = min(1, coverage / 0.40)",
+                      "target_coverage": 0.4,
                       "total_sessions": 40
                     },
                     "weight": 20
@@ -2258,7 +2267,10 @@
                     "score": 0.0,
                     "signals": {
                       "coverage": 0.0,
+                      "grounded_session_rule": "knowledge-MCP lookup before a later Edit/Write/MultiEdit/NotebookEdit in the same session",
                       "grounded_sessions": 0,
+                      "score_formula": "coverage = grounded_sessions / total_sessions; score = min(1, coverage / 0.40)",
+                      "target_coverage": 0.4,
                       "total_sessions": 10
                     },
                     "weight": 20
@@ -3133,7 +3145,10 @@
                     "score": 3.7,
                     "signals": {
                       "coverage": 0.075,
+                      "grounded_session_rule": "knowledge-MCP lookup before a later Edit/Write/MultiEdit/NotebookEdit in the same session",
                       "grounded_sessions": 3,
+                      "score_formula": "coverage = grounded_sessions / total_sessions; score = min(1, coverage / 0.40)",
+                      "target_coverage": 0.4,
                       "total_sessions": 40
                     },
                     "weight": 20
