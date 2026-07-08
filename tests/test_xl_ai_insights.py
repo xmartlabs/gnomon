@@ -481,7 +481,9 @@ class TestCliReleaseFreshness(unittest.TestCase):
         self.assertIn("not running the published release", output)
         self.assertIn("Installed:        0.4.0", output)
         self.assertIn("Published latest: 0.2.0", output)
+        self.assertIn("Use the latest stable release before uploading metrics.", output)
         self.assertIn("\n      uvx --refresh --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights\n", output)
+        self.assertIn("\n  Run latest version:\n", output)
         self.assertIn("\n  Override:\n      xl-ai-insights --allow-stale-cli ...\n", output)
         mock_main_web.assert_not_called()
 

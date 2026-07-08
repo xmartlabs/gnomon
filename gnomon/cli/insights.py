@@ -140,8 +140,8 @@ def _enforce_cli_freshness(allow_stale: bool):
     print("\n  ! xl-ai-insights is not running the published release\n")
     print(f"    Installed:        {release.get('current')}")
     print(f"    Published latest: {release.get('latest')}")
-    print("\n  This command uploads data, so it only runs from the published release.")
-    print("\n  Update and re-run:")
+    print("\n  Use the latest stable release before uploading metrics.")
+    print("\n  Run latest version:")
     print(f"      {_CLI_REFRESH_COMMAND}")
     if allow_stale:
         print("\n  Continuing because --allow-stale-cli was provided.")
