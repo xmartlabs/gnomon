@@ -1,11 +1,14 @@
 """CLI entry point for xl-ai-insights (auth + upload wrapper around local analysis)."""
 
 import datetime
+import importlib.metadata
 import os
 import re
 import sys
 import urllib.parse
+import urllib.request
 import webbrowser
+from itertools import zip_longest
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from gnomon.upload.auth import _capture_cli_token, _wait_for_auth_tokens, _SHARE_AUTH_TIMEOUT, _WEB_AUTH_TIMEOUT
@@ -22,7 +25,7 @@ from gnomon.upload.mirdash import (
 
 
 _HELP_TEXT = """Usage:
-    xl-ai-insights [source ...] [--local] [--mirdash-base=URL] [--window=N] [--no-open] [--quiet] [--verbose] [--console] [--output-dir=PATH]
+    xl-ai-insights [source ...] [--local] [--allow-stale-cli] [--mirdash-base=URL] [--window=N] [--no-open] [--quiet] [--verbose] [--console] [--output-dir=PATH]
     xl-ai-insights --force
     xl-ai-insights --dry-run
     xl-ai-insights --help
@@ -30,6 +33,8 @@ _HELP_TEXT = """Usage:
 
     source        e.g. claude, codex, gemini -- same as paxel.py (default: all)
     --local       run local analysis only (no login, no upload)
+    --allow-stale-cli
+                  continue network/upload flows after a confirmed stale CLI warning
     --force       re-upload all months (ignores what has already been uploaded)
     --dry-run     show what would be uploaded (and why) without uploading anything
     --mirdash-base=URL  override the mirdash server URL
@@ -46,6 +51,10 @@ _HELP_TEXT = """Usage:
     uploads only what is needed (first run uploads everything automatically).
 """
 
+_LATEST_CLI_RELEASE_URL = "https://raw.githubusercontent.com/xmartlabs/gnomon/latest/pyproject.toml"
+_CLI_REFRESH_COMMAND = "uvx --refresh --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights"
+_ALLOW_STALE_CLI_FLAG = "--allow-stale-cli"
+
 
 _REASON_LABELS = {
     "force":   "force re-upload",
@@ -55,6 +64,89 @@ _REASON_LABELS = {
     "refresh": "refresh (server snapshot predates month end)",
     "backfill": "backfill",
 }
+
+
+def _release_result(status, current=None, latest=None, reason=None):
+    return {"status": status, "current": current, "latest": latest, "reason": reason}
+
+
+def _plain_numeric_release(version):
+    if not isinstance(version, str) or not re.match(r"^\d+(?:\.\d+)*$", version):
+        return None
+    return tuple(int(part) for part in version.split("."))
+
+
+def _compare_plain_numeric_release(current, latest):
+    current_parts = _plain_numeric_release(current)
+    latest_parts = _plain_numeric_release(latest)
+    if current_parts is None or latest_parts is None:
+        return None
+    for current_part, latest_part in zip_longest(current_parts, latest_parts, fillvalue=0):
+        if current_part < latest_part:
+            return -1
+        if current_part > latest_part:
+            return 1
+    return 0
+
+
+def _parse_project_version(pyproject_text):
+    in_project = False
+    for line in pyproject_text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped.startswith("[") and stripped.endswith("]"):
+            in_project = stripped == "[project]"
+            continue
+        if in_project:
+            match = re.match(r'''version\s*=\s*["']([^"']+)["']''', stripped)
+            if match:
+                return match.group(1)
+    return None
+
+
+def _check_latest_cli_release(timeout=1.5):
+    try:
+        current = importlib.metadata.version("xl-ai-insights")
+    except Exception as exc:
+        return _release_result("unknown", reason=f"current-version:{exc.__class__.__name__}")
+
+    if _plain_numeric_release(current) is None:
+        return _release_result("unknown", current=current, reason="current-version-not-plain-numeric")
+
+    try:
+        with urllib.request.urlopen(_LATEST_CLI_RELEASE_URL, timeout=timeout) as response:
+            latest_text = response.read().decode("utf-8")
+    except Exception as exc:
+        return _release_result("unknown", current=current, reason=f"latest-fetch:{exc.__class__.__name__}")
+
+    latest = _parse_project_version(latest_text)
+    if not latest:
+        return _release_result("unknown", current=current, reason="latest-version-missing")
+
+    comparison = _compare_plain_numeric_release(current, latest)
+    if comparison is None:
+        return _release_result("unknown", current=current, latest=latest, reason="ambiguous-version")
+    if comparison != 0:
+        return _release_result("mismatch", current=current, latest=latest)
+    return _release_result("current", current=current, latest=latest)
+
+
+def _enforce_cli_freshness(allow_stale: bool):
+    release = _check_latest_cli_release()
+    if release.get("status") != "mismatch":
+        return
+
+    print(
+        "  warning: this xl-ai-insights CLI is not the published latest release "
+        f"(installed {release.get('current')}, published latest {release.get('latest')})."
+    )
+    print(f"  Refresh with: {_CLI_REFRESH_COMMAND}")
+    if allow_stale:
+        print("  Continuing because --allow-stale-cli was provided.")
+        return
+    print("  Aborting before auth/upload. Re-run with --allow-stale-cli to override.")
+    raise SystemExit(1)
 
 
 def _print_dry_run_plan(mode, windows, plan_pairs):
@@ -367,6 +459,9 @@ def main(argv=None):
         print(_HELP_TEXT)
         raise SystemExit(0)
 
+    allow_stale_cli = _ALLOW_STALE_CLI_FLAG in argv
+    argv = [a for a in argv if a != _ALLOW_STALE_CLI_FLAG]
+
     # --local mode: run analysis directly, no auth/upload
     if "--local" in argv:
         from gnomon.cli.local import main as local_main
@@ -431,6 +526,8 @@ def main(argv=None):
             plan_pairs = plan_upload(today, [], force=True)
         _print_dry_run_plan(mode, windows, plan_pairs)
         sys.exit(0)
+
+    _enforce_cli_freshness(allow_stale=allow_stale_cli)
 
     if console:
         _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,

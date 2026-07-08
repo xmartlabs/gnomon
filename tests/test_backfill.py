@@ -12,6 +12,8 @@ import unittest
 from unittest.mock import MagicMock, call, patch
 
 import gnomon.cli.insights as _insights
+_RELEASE_CURRENT = {"status": "current", "current": "0.4.0", "latest": "0.4.0"}
+
 import gnomon.upload.mirdash as _mirdash
 from gnomon.upload.mirdash import (
     _MAX_BACKFILL,
@@ -246,6 +248,7 @@ class TestBackfillLoop(unittest.TestCase):
 
         with (
             patch.object(_insights, "_capture_cli_token", return_value=(tokens, [])),
+            patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(
                 _mirdash,
@@ -369,6 +372,7 @@ class TestBatchOutputContract(unittest.TestCase):
 
         with (
             patch.object(_insights, "_capture_cli_token", return_value=(tokens, [])),
+            patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(_mirdash, "_run_paxel", side_effect=summaries),
             patch.object(
@@ -464,6 +468,7 @@ class TestParallelAggregation(unittest.TestCase):
 
         with (
             patch.object(_insights, "_capture_cli_token", return_value=(tokens, [])),
+            patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(_insights, "_upload_window", side_effect=_fake_upload_window),
             patch.object(_insights.os.path, "isfile", return_value=True),

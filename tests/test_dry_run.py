@@ -17,6 +17,8 @@ import unittest
 from unittest.mock import MagicMock, call, patch
 
 import gnomon.cli.insights as _insights
+_RELEASE_CURRENT = {"status": "current", "current": "0.4.0", "latest": "0.4.0"}
+
 import gnomon.upload.mirdash as _mirdash
 from gnomon.upload.mirdash import (
     _MAX_BACKFILL,
@@ -460,6 +462,7 @@ class TestDryRunNotForwardedToPaxel(unittest.TestCase):
     def test_dry_run_stripped_from_paxel_forward(self):
         with (
             patch.object(_insights, "_main_web") as mock_web,
+            patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             patch.object(_insights, "_main_console") as mock_console,
         ):
             _insights.main(["--dry-run", "claude", "--console"])
@@ -474,6 +477,7 @@ class TestDryRunNotForwardedToPaxel(unittest.TestCase):
     def test_dry_run_keyword_arg_passed_true(self):
         with (
             patch.object(_insights, "_main_web") as mock_web,
+            patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
         ):
             _insights.main(["--dry-run"])
 

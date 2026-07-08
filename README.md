@@ -32,7 +32,9 @@ python3 paxel.py
 
 All read detected local transcripts (Claude, Codex, Gemini, Cursor, …) and open your profile.
 
-> **Cache note:** `uvx` caches packages. After a new release, run `uv cache prune` first to pick up the new version.
+> **Cache note:** `uvx` caches packages. After a new release, run
+> `uvx --refresh --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights`
+> to pick up the new version for upload/network flows.
 
 Restrict to one or more sources:
 
@@ -44,7 +46,7 @@ xl-ai-insights --local --summary         # also write summary.json
 xl-ai-insights --local --output-dir=.    # write outputs to current directory
 ```
 
-`xl-ai-insights --local` is 100% local — no network, no login, nothing leaves your machine.
+`xl-ai-insights --local` is 100% local — no network, no release check, no login, nothing leaves your machine.
 
 > **Legacy:** `python3 paxel.py` still works from a repo checkout and behaves identically. It is a thin shim over `gnomon.cli.local`.
 
@@ -62,6 +64,20 @@ uvx xl-ai-insights
 # Alternative with pipx
 pipx run xl-ai-insights
 ```
+
+Upload/network flows require the installed CLI to match the published latest
+release exactly. Local `main`/development builds may be newer than the published
+tag, but they are still blocked before login/upload because the server flow only
+trusts the published release. When a mismatch is confirmed, the command prints
+the refresh command:
+
+```bash
+uvx --refresh --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights
+```
+
+If you intentionally need to continue with a non-published CLI, pass
+`--allow-stale-cli`. Help and `--local` never perform this network freshness
+check.
 
 It accepts the same source arguments:
 

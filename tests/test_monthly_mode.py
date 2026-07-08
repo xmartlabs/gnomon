@@ -16,6 +16,8 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import gnomon.cli.insights as _insights
+_RELEASE_CURRENT = {"status": "current", "current": "0.4.0", "latest": "0.4.0"}
+
 import gnomon.upload.mirdash as _mirdash
 from gnomon.upload.mirdash import (
     decide_mode,
@@ -257,6 +259,7 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
             argv = argv + ["--console"]
         with (
             patch.object(_insights, "_capture_cli_token", return_value=(tokens, uploaded)),
+            patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(
                 _mirdash,
@@ -398,6 +401,7 @@ class TestForceMode(unittest.TestCase):
 
         with (
             patch.object(_insights, "_capture_cli_token", return_value=(tokens, [])),
+            patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(
                 _mirdash,
@@ -462,6 +466,7 @@ class TestHeadlessAuthCleanExit(unittest.TestCase):
     def _run_headless(self, *, raises):
         with (
             patch.object(_insights, "_capture_cli_token") as mock_capture,
+            patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(_insights, "_run_paxel") as mock_paxel,
             patch.object(_insights, "_upload_summary") as mock_upload,
