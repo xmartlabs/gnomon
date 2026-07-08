@@ -9,6 +9,8 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import gnomon.cli.insights as _insights
+_RELEASE_CURRENT = {"status": "current", "current": "0.4.0", "latest": "0.4.0"}
+
 import gnomon.upload.mirdash as _mirdash
 from gnomon.upload.mirdash import _DEFAULT_WINDOW_MONTHS, parse_window
 
@@ -97,6 +99,7 @@ class TestWindowNotForwardedToPaxel(unittest.TestCase):
         """--window=N must not be forwarded to paxel."""
         with (
             patch.object(_insights, "_main_web") as mock_main_web,
+            patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             patch.object(
                 _insights.sys,
                 "argv",
@@ -115,6 +118,7 @@ class TestWindowNotForwardedToPaxel(unittest.TestCase):
         """--window=N must not reach paxel in console mode either."""
         with (
             patch.object(_insights, "_main_console") as mock_main_console,
+            patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             patch.object(
                 _insights.sys,
                 "argv",
@@ -138,6 +142,7 @@ class TestWindowMonthsPassedToHandlers(unittest.TestCase):
     def test_window_months_passed_to_main_web(self):
         with (
             patch.object(_insights, "_main_web") as mock_main_web,
+            patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             patch.object(
                 _insights.sys,
                 "argv",
@@ -152,6 +157,7 @@ class TestWindowMonthsPassedToHandlers(unittest.TestCase):
     def test_window_months_passed_to_main_console(self):
         with (
             patch.object(_insights, "_main_console") as mock_main_console,
+            patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             patch.object(
                 _insights.sys,
                 "argv",
@@ -166,6 +172,7 @@ class TestWindowMonthsPassedToHandlers(unittest.TestCase):
     def test_default_window_months_passed_when_absent(self):
         with (
             patch.object(_insights, "_main_web") as mock_main_web,
+            patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             patch.object(
                 _insights.sys,
                 "argv",
@@ -224,6 +231,7 @@ class TestWindowMonthsInPayload(unittest.TestCase):
 
         with (
             patch.object(_insights, "_capture_cli_token", return_value=(tokens, uploaded)),
+            patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(_insights, "_run_paxel", side_effect=fake_run_paxel),
             patch.object(_insights, "_upload_summary", side_effect=capture_upload),
@@ -283,6 +291,7 @@ class TestWindowMonthsInPayload(unittest.TestCase):
 
         with (
             patch.object(_insights, "_capture_cli_token", return_value=(["t1", "t2"], [])),
+            patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(_mirdash, "_run_paxel", side_effect=capture_paxel),
             patch.object(_mirdash, "_upload_summary", return_value="/r/1"),
@@ -330,6 +339,7 @@ class TestWindowMonthsAutoSweepPayload(unittest.TestCase):
         argv = ["--no-open", "--console"] + ([window_arg] if window_arg else [])
         with (
             patch.object(_insights, "_capture_cli_token", return_value=([f"t{i}" for i in range(12)], [])),
+            patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(_mirdash, "_run_paxel", side_effect=list(summaries)),
             patch.object(_mirdash, "_upload_summary", side_effect=capture_upload),

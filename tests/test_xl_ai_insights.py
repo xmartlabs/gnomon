@@ -243,6 +243,7 @@ class TestPaxelArtifacts(unittest.TestCase):
 class TestOutputDirArgParsing(unittest.TestCase):
     def test_output_dir_is_consumed_by_wrapper_not_forwarded_to_paxel(self):
         with (
+            patch.object(_insights, "_check_latest_cli_release", return_value={"status": "current"}),
             patch.object(_insights, "_main_web") as mock_main_web,
             patch.object(
                 _insights.sys,
@@ -439,6 +440,192 @@ class TestConsoleFailureAndSummary(unittest.TestCase):
         self.assertIn("Your build profile", out)
         self.assertIn("Report ready", out)
         self.assertFalse(exited)
+
+
+class TestCliReleaseFreshness(unittest.TestCase):
+    MISMATCH_OLDER = {"status": "mismatch", "current": "1.0.0", "latest": "1.1.0", "reason": None}
+    MISMATCH_NEWER = {"status": "mismatch", "current": "0.4.0", "latest": "0.2.0", "reason": None}
+    CURRENT = {"status": "current", "current": "1.1.0", "latest": "1.1.0", "reason": None}
+    UNKNOWN = {"status": "unknown", "current": None, "latest": None, "reason": "offline"}
+
+    def test_confirmed_stale_network_flow_aborts_with_refresh_command(self):
+        stdout = io.StringIO()
+        with (
+            patch.object(_insights, "_check_latest_cli_release", return_value=self.MISMATCH_OLDER),
+            patch.object(_insights, "_main_web") as mock_main_web,
+            patch.object(_insights.sys, "argv", ["xl-ai-insights"]),
+            contextlib.redirect_stdout(stdout),
+            self.assertRaises(SystemExit) as exc,
+        ):
+            _insights.main()
+
+        self.assertEqual(exc.exception.code, 1)
+        self.assertIn("uvx --refresh --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights", stdout.getvalue())
+        mock_main_web.assert_not_called()
+
+
+    def test_confirmed_newer_than_published_release_aborts_with_refresh_command(self):
+        stdout = io.StringIO()
+        with (
+            patch.object(_insights, "_check_latest_cli_release", return_value=self.MISMATCH_NEWER),
+            patch.object(_insights, "_main_web") as mock_main_web,
+            patch.object(_insights.sys, "argv", ["xl-ai-insights"]),
+            contextlib.redirect_stdout(stdout),
+            self.assertRaises(SystemExit) as exc,
+        ):
+            _insights.main()
+
+        output = stdout.getvalue()
+        self.assertEqual(exc.exception.code, 1)
+        self.assertTrue(output.startswith("\n  ! xl-ai-insights is not running the published release\n\n"))
+        self.assertIn("not running the published release", output)
+        self.assertIn("Installed:        0.4.0", output)
+        self.assertIn("Published latest: 0.2.0", output)
+        self.assertIn("Use the latest stable release before uploading metrics.", output)
+        self.assertIn("\n      uvx --refresh --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights\n", output)
+        self.assertIn("\n  Run latest version:\n", output)
+        self.assertIn("\n  Override:\n      xl-ai-insights --allow-stale-cli ...\n", output)
+        mock_main_web.assert_not_called()
+
+    def test_allow_stale_cli_warns_and_continues_without_forwarding_wrapper_flag(self):
+        stdout = io.StringIO()
+        with (
+            patch.object(_insights, "_check_latest_cli_release", return_value=self.MISMATCH_OLDER),
+            patch.object(_insights, "_main_web") as mock_main_web,
+            patch.object(_insights.sys, "argv", ["xl-ai-insights", "--allow-stale-cli", "claude"]),
+            contextlib.redirect_stdout(stdout),
+        ):
+            _insights.main()
+
+        self.assertIn("uvx --refresh --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights", stdout.getvalue())
+        paxel_forward = mock_main_web.call_args.args[4]
+        self.assertEqual(paxel_forward, ["claude"])
+
+    def test_current_release_continues_without_warning(self):
+        stdout = io.StringIO()
+        with (
+            patch.object(_insights, "_check_latest_cli_release", return_value=self.CURRENT),
+            patch.object(_insights, "_main_web") as mock_main_web,
+            patch.object(_insights.sys, "argv", ["xl-ai-insights", "codex"]),
+            contextlib.redirect_stdout(stdout),
+        ):
+            _insights.main()
+
+        mock_main_web.assert_called_once()
+        self.assertNotIn("stale", stdout.getvalue().lower())
+
+    def test_unknown_release_check_continues_without_warning(self):
+        stdout = io.StringIO()
+        with (
+            patch.object(_insights, "_check_latest_cli_release", return_value=self.UNKNOWN),
+            patch.object(_insights, "_main_web") as mock_main_web,
+            patch.object(_insights.sys, "argv", ["xl-ai-insights", "gemini"]),
+            contextlib.redirect_stdout(stdout),
+        ):
+            _insights.main()
+
+        mock_main_web.assert_called_once()
+        self.assertNotIn("uvx --refresh", stdout.getvalue())
+
+    def test_help_bypasses_freshness_check(self):
+        stdout = io.StringIO()
+        with (
+            patch.object(_insights, "_check_latest_cli_release") as mock_check,
+            patch.object(_insights.sys, "argv", ["xl-ai-insights", "--help", "--allow-stale-cli"]),
+            contextlib.redirect_stdout(stdout),
+            self.assertRaises(SystemExit) as exc,
+        ):
+            _insights.main()
+
+        self.assertEqual(exc.exception.code, 0)
+        self.assertIn("Usage:", stdout.getvalue())
+        mock_check.assert_not_called()
+
+    def test_local_bypasses_freshness_check_and_strips_wrapper_flag(self):
+        with (
+            patch.object(_insights, "_check_latest_cli_release") as mock_check,
+            patch("gnomon.cli.local.main") as mock_local_main,
+            patch.object(_insights.sys, "argv", ["xl-ai-insights", "--local", "--allow-stale-cli", "claude"]),
+        ):
+            _insights.main()
+
+        mock_check.assert_not_called()
+        self.assertNotIn("--allow-stale-cli", mock_local_main.call_args.kwargs["argv"])
+        self.assertIn("claude", mock_local_main.call_args.kwargs["argv"])
+
+    def test_force_dry_run_bypasses_freshness_check_before_no_network_plan(self):
+        stdout = io.StringIO()
+        with (
+            patch.object(_insights, "_check_latest_cli_release") as mock_check,
+            patch.object(_insights.sys, "argv", ["xl-ai-insights", "--dry-run", "--force"]),
+            contextlib.redirect_stdout(stdout),
+            self.assertRaises(SystemExit) as exc,
+        ):
+            _insights.main()
+
+        self.assertEqual(exc.exception.code, 0)
+        self.assertIn("Dry run -- no uploads", stdout.getvalue())
+        mock_check.assert_not_called()
+
+    def test_check_latest_cli_release_reports_mismatch_for_plain_numeric_versions(self):
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = b'[project]\nversion = "1.2.0"\n'
+        with (
+            patch.object(_insights.importlib.metadata, "version", return_value="1.1.9"),
+            patch.object(_insights.urllib.request, "urlopen", return_value=response),
+        ):
+            result = _insights._check_latest_cli_release()
+
+        self.assertEqual(result["status"], "mismatch")
+        self.assertEqual(result["current"], "1.1.9")
+        self.assertEqual(result["latest"], "1.2.0")
+
+        newer_response = MagicMock()
+        newer_response.__enter__.return_value.read.return_value = b'[project]\nversion = "0.2.0"\n'
+        with (
+            patch.object(_insights.importlib.metadata, "version", return_value="0.4.0"),
+            patch.object(_insights.urllib.request, "urlopen", return_value=newer_response),
+        ):
+            newer_result = _insights._check_latest_cli_release()
+
+        self.assertEqual(newer_result["status"], "mismatch")
+        self.assertEqual(newer_result["current"], "0.4.0")
+        self.assertEqual(newer_result["latest"], "0.2.0")
+
+        equal_response = MagicMock()
+        equal_response.__enter__.return_value.read.return_value = b'[project]\nversion = "0.2.0"\n'
+        with (
+            patch.object(_insights.importlib.metadata, "version", return_value="0.2.0"),
+            patch.object(_insights.urllib.request, "urlopen", return_value=equal_response),
+        ):
+            equal_result = _insights._check_latest_cli_release()
+
+        self.assertEqual(equal_result["status"], "current")
+        self.assertEqual(equal_result["current"], "0.2.0")
+        self.assertEqual(equal_result["latest"], "0.2.0")
+
+    def test_check_latest_cli_release_reports_mismatch_for_non_published_variants(self):
+        published_response = MagicMock()
+        published_response.__enter__.return_value.read.return_value = b'[project]\nversion = "1.2.0"\n'
+
+        for current_version in ("1.2.0rc1", "1.2.0+local", "1.2.0.post1"):
+            with self.subTest(current_version=current_version):
+                with (
+                    patch.object(_insights.importlib.metadata, "version", return_value=current_version),
+                    patch.object(_insights.urllib.request, "urlopen", return_value=published_response),
+                ):
+                    result = _insights._check_latest_cli_release()
+                self.assertEqual(result["status"], "mismatch")
+                self.assertEqual(result["current"], current_version)
+                self.assertEqual(result["latest"], "1.2.0")
+
+    def test_check_latest_cli_release_fails_soft_for_network_failure(self):
+        with (
+            patch.object(_insights.importlib.metadata, "version", return_value="1.2.0"),
+            patch.object(_insights.urllib.request, "urlopen", side_effect=OSError("offline")),
+        ):
+            failure = _insights._check_latest_cli_release()
+        self.assertEqual(failure["status"], "unknown")
 
 
 class TestHelpOutput(unittest.TestCase):
