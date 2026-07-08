@@ -477,9 +477,12 @@ class TestCliReleaseFreshness(unittest.TestCase):
 
         output = stdout.getvalue()
         self.assertEqual(exc.exception.code, 1)
-        self.assertIn("not the published latest release", output)
-        self.assertIn("installed 0.4.0, published latest 0.2.0", output)
-        self.assertIn("uvx --refresh --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights", output)
+        self.assertTrue(output.startswith("\n  ! xl-ai-insights is not running the published release\n\n"))
+        self.assertIn("not running the published release", output)
+        self.assertIn("Installed:        0.4.0", output)
+        self.assertIn("Published latest: 0.2.0", output)
+        self.assertIn("\n      uvx --refresh --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights\n", output)
+        self.assertIn("\n  Override:\n      xl-ai-insights --allow-stale-cli ...\n", output)
         mock_main_web.assert_not_called()
 
     def test_allow_stale_cli_warns_and_continues_without_forwarding_wrapper_flag(self):

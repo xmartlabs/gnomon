@@ -137,15 +137,18 @@ def _enforce_cli_freshness(allow_stale: bool):
     if release.get("status") != "mismatch":
         return
 
-    print(
-        "  warning: this xl-ai-insights CLI is not the published latest release "
-        f"(installed {release.get('current')}, published latest {release.get('latest')})."
-    )
-    print(f"  Refresh with: {_CLI_REFRESH_COMMAND}")
+    print("\n  ! xl-ai-insights is not running the published release\n")
+    print(f"    Installed:        {release.get('current')}")
+    print(f"    Published latest: {release.get('latest')}")
+    print("\n  This command uploads data, so it only runs from the published release.")
+    print("\n  Update and re-run:")
+    print(f"      {_CLI_REFRESH_COMMAND}")
     if allow_stale:
-        print("  Continuing because --allow-stale-cli was provided.")
+        print("\n  Continuing because --allow-stale-cli was provided.")
         return
-    print("  Aborting before auth/upload. Re-run with --allow-stale-cli to override.")
+    print("\n  Override:")
+    print("      xl-ai-insights --allow-stale-cli ...")
+    print("\n  Aborted before auth/upload.\n")
     raise SystemExit(1)
 
 
