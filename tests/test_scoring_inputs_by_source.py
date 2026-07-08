@@ -90,7 +90,7 @@ class TestScoringInputsBySource(unittest.TestCase):
                  "error_recovery_ratio", "error_rate_per_100_tools", "api_errors_retries",
                  "fanout_median", "shell_test_runs", "plan_sessions", "delegate_actions",
                  "background_tasks", "iteration_depth_mean", "iteration_depth_p90",
-                 "iteration_depth_max", "files_hammered_over_15x"}
+                 "iteration_depth_max", "files_hammered_over_15x", "no_tool_activity"}
     _STACK = {"skills_distinct", "skills_total", "compounding_writes",
               "subagent_types_distinct", "subagent_types", "max_session_subagent_types",
               "top_skills", "skills_all", "models"}
@@ -98,7 +98,7 @@ class TestScoringInputsBySource(unittest.TestCase):
               "task_tool_calls", "cli_calls", "mcp_calls", "tool_diversity",
               "tool_entropy_normalized", "top_tools",
               "mcp_knowledge_calls", "mcp_knowledge_servers", "mcp_knowledge_server_names",
-              "mcp_subcategory_breakdown"}
+              "mcp_subcategory_breakdown", "mcp_grounded_sessions", "mcp_grounded_session_names"}
 
     def _stats(self):
         rows = []
@@ -152,6 +152,31 @@ class TestScoringInputsBySource(unittest.TestCase):
         block = paxel.build_summary(stats)["scoring_inputs_by_source"]["claude"]["window"]
         names = [k for k, _ in block["stack"]["skills_all"]]
         self.assertIn("writing-plans", names)
+
+    def _grounded_rows(self, sid, ts):
+        return [
+            {"type": "assistant", "sessionId": sid, "cwd": "/repo", "timestamp": ts,
+             "message": {"role": "assistant", "content": [
+                 {"type": "tool_use", "name": "mcp__engram__mem_search", "input": {}}]}},
+            {"type": "assistant", "sessionId": sid, "cwd": "/repo", "timestamp": ts,
+             "message": {"role": "assistant", "content": [
+                 {"type": "tool_use", "name": "Edit",
+                  "input": {"file_path": "/repo/a.py", "new_string": "x", "old_string": ""}}]}},
+        ]
+
+    def test_window_tools_block_carries_mcp_grounded_sessions(self):
+        rows = _claude_turn("g1", "2026-03-01T10:00:00.000Z", prompt="ground it")
+        rows += self._grounded_rows("g1", "2026-03-01T10:05:00.000Z")
+        stats = _run_claude_transcript(self, rows)
+        window = paxel.build_summary(stats)["scoring_inputs_by_source"]["claude"]["window"]
+        self.assertEqual(window["tools"]["mcp_grounded_sessions"], 1)
+
+    def test_monthly_tools_block_carries_mcp_grounded_sessions(self):
+        rows = self._grounded_rows("g1", "2026-03-01T10:00:00.000Z")
+        stats = _run_claude_transcript(self, rows)
+        block = paxel.build_summary(stats)["scoring_inputs_by_source"]["claude"]
+        march = next(m for m in block["monthly"] if m["month"] == "2026-03")
+        self.assertEqual(march["tools"]["mcp_grounded_sessions"], 1)
 
 
 class TestPerSourceParityRegressions(unittest.TestCase):
@@ -349,6 +374,127 @@ class TestCrossSourcePlanToolNormalization(unittest.TestCase):
         from gnomon.sources.antigravity import _AG_TOOL
         self.assertEqual(_AG_TOOL["manage_task"], "TodoWrite")
         self.assertIn(_AG_TOOL["manage_task"], self._COUNTED)
+
+
+class TestKnowledgeGroundingStateMachine(unittest.TestCase):
+    """Context Intelligence's behavioral grounding signal: a session is GROUNDED when a
+    knowledge-MCP call (classify_mcp_subcategory == "knowledge") precedes a later
+    Edit/Write/MultiEdit/NotebookEdit event in that SAME session. Mirrors the
+    `_pending_error` per-session, per-file transient state machine pattern."""
+
+    @staticmethod
+    def _mcp_ev(sid, ts, server="engram", tool="mem_search"):
+        return {"type": "assistant", "sessionId": sid, "timestamp": ts,
+                "message": {"role": "assistant", "content": [
+                    {"type": "tool_use", "name": f"mcp__{server}__{tool}", "input": {}}]}}
+
+    @staticmethod
+    def _write_ev(sid, ts, name="Edit", file_path="/repo/a.py"):
+        inp = {"file_path": file_path}
+        if name == "Edit":
+            inp["new_string"] = "x"
+            inp["old_string"] = ""
+        elif name == "Write":
+            inp["content"] = "x"
+        elif name == "NotebookEdit":
+            inp = {"notebook_path": file_path, "new_source": "x"}
+        elif name == "MultiEdit":
+            inp = {"file_path": file_path,
+                   "edits": [{"new_string": "x", "old_string": ""}]}
+        return {"type": "assistant", "sessionId": sid, "timestamp": ts,
+                "message": {"role": "assistant", "content": [
+                    {"type": "tool_use", "name": name, "input": inp}]}}
+
+    def _acc(self, events):
+        acc = Accumulator()
+        acc.begin_file("claude", "/c/s.jsonl")
+        for ev in events:
+            acc.observe(ev, None, None)
+        acc.end_file()
+        return acc
+
+    def test_knowledge_call_then_edit_same_session_is_grounded(self):
+        acc = self._acc([
+            self._mcp_ev("s1", "2026-05-01T10:00:00.000Z"),
+            self._write_ev("s1", "2026-05-01T10:01:00.000Z", "Edit"),
+        ])
+        self.assertIn("s1", acc.grounded_sessions)
+
+    def test_edit_then_knowledge_call_wrong_order_not_grounded(self):
+        acc = self._acc([
+            self._write_ev("s1", "2026-05-01T10:00:00.000Z", "Edit"),
+            self._mcp_ev("s1", "2026-05-01T10:01:00.000Z"),
+        ])
+        self.assertNotIn("s1", acc.grounded_sessions)
+
+    def test_knowledge_call_with_no_later_write_not_grounded(self):
+        acc = self._acc([self._mcp_ev("s1", "2026-05-01T10:00:00.000Z")])
+        self.assertNotIn("s1", acc.grounded_sessions)
+
+    def test_write_with_no_preceding_knowledge_call_not_grounded(self):
+        acc = self._acc([self._write_ev("s1", "2026-05-01T10:00:00.000Z", "Edit")])
+        self.assertNotIn("s1", acc.grounded_sessions)
+
+    def test_two_writes_after_one_call_counts_one_grounded_session(self):
+        # Consume-once: the first grounded write flips the pending flag off.
+        acc = self._acc([
+            self._mcp_ev("s1", "2026-05-01T10:00:00.000Z"),
+            self._write_ev("s1", "2026-05-01T10:01:00.000Z", "Edit"),
+            self._write_ev("s1", "2026-05-01T10:02:00.000Z", "Edit"),
+        ])
+        self.assertEqual(len(acc.grounded_sessions), 1)
+        self.assertIn("s1", acc.grounded_sessions)
+
+    def test_write_branch_covers_all_four_tool_types(self):
+        for tool in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
+            with self.subTest(tool=tool):
+                acc = self._acc([
+                    self._mcp_ev(f"s-{tool}", "2026-05-01T10:00:00.000Z"),
+                    self._write_ev(f"s-{tool}", "2026-05-01T10:01:00.000Z", tool),
+                ])
+                self.assertIn(f"s-{tool}", acc.grounded_sessions, tool)
+
+    def test_non_knowledge_mcp_call_does_not_ground(self):
+        # A browser-category MCP call must NOT mark grounding.
+        acc = self._acc([
+            self._mcp_ev("s1", "2026-05-01T10:00:00.000Z", server="playwright", tool="navigate"),
+            self._write_ev("s1", "2026-05-01T10:01:00.000Z", "Edit"),
+        ])
+        self.assertNotIn("s1", acc.grounded_sessions)
+
+    def test_distinct_sessions_independent(self):
+        acc = self._acc([
+            self._mcp_ev("s1", "2026-05-01T10:00:00.000Z"),
+            self._write_ev("s1", "2026-05-01T10:01:00.000Z", "Edit"),
+            self._write_ev("s2", "2026-05-01T10:02:00.000Z", "Edit"),  # no grounding call
+        ])
+        self.assertIn("s1", acc.grounded_sessions)
+        self.assertNotIn("s2", acc.grounded_sessions)
+
+    def test_corpus_stats_surfaces_grounded_sessions_count(self):
+        acc = self._acc([
+            self._mcp_ev("s1", "2026-05-01T10:00:00.000Z"),
+            self._write_ev("s1", "2026-05-01T10:01:00.000Z", "Edit"),
+        ])
+        stats = acc.to_corpus_stats(None, None, False)
+        self.assertEqual(stats["tools"]["mcp_grounded_sessions"], 1)
+
+    def test_source_stats_surfaces_grounded_sessions_count(self):
+        acc = self._acc([
+            self._mcp_ev("s1", "2026-05-01T10:00:00.000Z"),
+            self._write_ev("s1", "2026-05-01T10:01:00.000Z", "Edit"),
+        ])
+        s_stats = acc.to_source_stats("claude", None, None)
+        self.assertEqual(s_stats["tools"]["mcp_grounded_sessions"], 1)
+
+    def test_monthly_slice_surfaces_grounded_sessions(self):
+        acc = self._acc([
+            self._mcp_ev("s1", "2026-05-01T10:00:00.000Z"),
+            self._write_ev("s1", "2026-05-01T10:01:00.000Z", "Edit"),
+        ])
+        stats = acc.to_corpus_stats(None, None, False)
+        may = next(m for m in stats["_scoring_monthly_full"] if m["month"] == "2026-05")
+        self.assertEqual(may["stats_full"]["tools"]["mcp_grounded_sessions"], 1)
 
 
 class TestSkillUsesAnyReadsFullList(unittest.TestCase):

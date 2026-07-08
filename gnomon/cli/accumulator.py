@@ -94,6 +94,10 @@ class Accumulator:
         self.mcp_server_counter = Counter()
         self.mcp_subcategory_counter = Counter()
         self.mcp_subcategory_servers = defaultdict(set)
+        # Context Intelligence (behavioral): sessions where a knowledge-MCP call
+        # preceded a later Edit/Write/MultiEdit/NotebookEdit in the SAME session.
+        self.grounded_sessions = set()
+        self.month_grounded_sessions = defaultdict(set)
         self.cli_counter = Counter()
         self.compounding_counter = 0
         self.project_activity = Counter()
@@ -176,6 +180,7 @@ class Accumulator:
         self._cur_src = None
         self._cur_fp = None
         self._pending_error = defaultdict(bool)
+        self._pending_knowledge_grounding = defaultdict(bool)
         self._file_edit_run = defaultdict(lambda: defaultdict(int))
         self._file_edit_month = defaultdict(dict)
 
@@ -191,6 +196,9 @@ class Accumulator:
         self.source_files[cur_src] += 1
         # per-session, per-file ordered state for error-recovery + iteration depth
         self._pending_error = defaultdict(bool)        # sessionId -> unrecovered error flag
+        # sessionId -> a knowledge-MCP call occurred earlier in this session, not yet
+        # consumed by a later write (Edit/Write/MultiEdit/NotebookEdit)
+        self._pending_knowledge_grounding = defaultdict(bool)
         self._file_edit_run = defaultdict(lambda: defaultdict(int))  # session -> file -> edits since commit
         self._file_edit_month = defaultdict(dict)      # session -> file -> month key
 
@@ -222,6 +230,25 @@ class Accumulator:
         if self.session_ts:
             return len(self.plan_sessions & set(self.session_ts))
         return min(len(self.plan_sessions), len(self.session_files))
+
+    # ---- Context Intelligence (behavioral grounding) helper ----------------
+    def _consume_knowledge_grounding(self, sid, mkey):
+        """A write (Edit/Write/MultiEdit/NotebookEdit) consumes a pending knowledge-MCP
+        grounding flag for this session, marking the session grounded. Consume-once: the
+        FIRST grounded write flips the flag off, so repeated writes after one knowledge
+        call still count as exactly one grounded session."""
+        if sid and self._pending_knowledge_grounding.get(sid):
+            self.grounded_sessions.add(sid)
+            if mkey:
+                self.month_grounded_sessions[mkey].add(sid)
+            self._pending_knowledge_grounding[sid] = False
+
+    def _counted_grounded_sessions(self):
+        """Grounded sessions restricted to the same universe as total_sessions, mirroring
+        _counted_plan_sessions, so grounded/total can never exceed 1."""
+        if self.session_ts:
+            return len(self.grounded_sessions & set(self.session_ts))
+        return min(len(self.grounded_sessions), len(self.session_files))
 
     def end_file(self):
         # flush any remaining edit runs as iteration-depth samples
@@ -431,6 +458,11 @@ class Accumulator:
                                 if mkey:
                                     self.month_mcp_subcategory_counter[mkey][subcat] += 1
                                     self.month_mcp_subcategory_servers[mkey][subcat].add(server)
+                                # Context Intelligence (behavioral): a knowledge-MCP call
+                                # arms grounding for this session, consumed by the next
+                                # write (Edit/Write/MultiEdit/NotebookEdit) below.
+                                if subcat == "knowledge" and sid:
+                                    self._pending_knowledge_grounding[sid] = True
                         else:
                             self.native_calls += 1
 
@@ -489,6 +521,7 @@ class Accumulator:
 
                         # ---- code churn + iteration depth ----------
                         if name == "Edit":
+                            self._consume_knowledge_grounding(sid, mkey)
                             a = line_count(inp.get("new_string", ""))
                             r = line_count(inp.get("old_string", ""))
                             self.lines_added += a
@@ -505,6 +538,7 @@ class Accumulator:
                                 if mkey:
                                     self.month_compounding[mkey] += 1
                         elif name == "Write":
+                            self._consume_knowledge_grounding(sid, mkey)
                             a = line_count(inp.get("content", ""))
                             self.lines_added += a
                             if mkey:
@@ -519,6 +553,7 @@ class Accumulator:
                                 if mkey:
                                     self.month_compounding[mkey] += 1
                         elif name == "MultiEdit":
+                            self._consume_knowledge_grounding(sid, mkey)
                             _me_added = 0
                             _me_removed = 0
                             for e in inp.get("edits", []) or []:
@@ -541,6 +576,7 @@ class Accumulator:
                                 if mkey:
                                     self.month_compounding[mkey] += 1
                         elif name == "NotebookEdit":
+                            self._consume_knowledge_grounding(sid, mkey)
                             _nb_a = line_count(inp.get("new_source", ""))
                             self.lines_added += _nb_a
                             fpth = inp.get("notebook_path")
@@ -753,6 +789,8 @@ class Accumulator:
                 "mcp_knowledge_calls": self.mcp_subcategory_counter.get("knowledge", 0),
                 "mcp_knowledge_servers": len(self.mcp_subcategory_servers.get("knowledge", set())),
                 "mcp_knowledge_server_names": sorted(self.mcp_subcategory_servers.get("knowledge", set())),
+                "mcp_grounded_sessions": self._counted_grounded_sessions(),
+                "mcp_grounded_session_names": sorted(self.grounded_sessions),
                 "mcp_subcategory_breakdown": {
                     cat: {"calls": self.mcp_subcategory_counter[cat],
                           "servers": len(self.mcp_subcategory_servers[cat])}
@@ -810,6 +848,7 @@ class Accumulator:
                 "scheduled_actions": self.scheduled_actions,
                 "shell_test_runs": self.shell_test_runs,
                 "plan_sessions": self._counted_plan_sessions(),
+                "no_tool_activity": no_tool_activity,
             },
             "rhythm": {
                 "hour_histogram_local": {str(h): self.hour_hist.get(h, 0) for h in range(24)},
@@ -913,6 +952,7 @@ class Accumulator:
             month_mcp_server_counter=self.month_mcp_server_counter, month_cli_counter=self.month_cli_counter,
             month_mcp_subcategory_counter=self.month_mcp_subcategory_counter,
             month_mcp_subcategory_servers=self.month_mcp_subcategory_servers,
+            month_grounded_sessions=self.month_grounded_sessions,
             month_compounding=self.month_compounding, month_shell_test_runs=self.month_shell_test_runs,
             month_plan_sessions=self.month_plan_sessions,
             month_api_errors=self.month_api_errors,
@@ -1020,6 +1060,7 @@ class Accumulator:
                 "iteration_depth_p90": _s_ids["p90"],
                 "iteration_depth_max": _s_ids["max"],
                 "files_hammered_over_15x": _s_ids["heavy_files"],
+                "no_tool_activity": _s_no_tool,
             },
             "tools": {
                 "tool_diversity": _s_diversity,
@@ -1031,6 +1072,8 @@ class Accumulator:
                 "mcp_knowledge_calls": self.mcp_subcategory_counter.get("knowledge", 0),
                 "mcp_knowledge_servers": len(self.mcp_subcategory_servers.get("knowledge", set())),
                 "mcp_knowledge_server_names": sorted(self.mcp_subcategory_servers.get("knowledge", set())),
+                "mcp_grounded_sessions": self._counted_grounded_sessions(),
+                "mcp_grounded_session_names": sorted(self.grounded_sessions),
                 "mcp_subcategory_breakdown": {
                     cat: {"calls": self.mcp_subcategory_counter[cat],
                           "servers": len(self.mcp_subcategory_servers[cat])}

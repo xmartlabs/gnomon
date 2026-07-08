@@ -6,8 +6,13 @@ the test re-derives them to keep the file honest. Keeping the inputs in a tiny m
 (not inline in the test) lets both the generator and the test import the same source.
 
 Three cases, chosen to exercise the contract:
-  * claude_only  — full-capability source; every AQ term stays.
+  * claude_only  — full-capability source; every AQ term stays. Grounded-session coverage
+                   (18/40 = 0.45) is ABOVE Context Intelligence's TARGET (0.40) -> the axis
+                   is present and near-full credit.
   * cursor_only  — no skills / toolsearch / tasktool caps; those terms DROP + renormalize.
+                   Grounded-session coverage (0/10 = 0.0) is a REAL measured zero (the block
+                   HAS the field and HAS tool activity) -> Context Intelligence is present and
+                   scored 0 (monotonic, no floor), dragging Craft down rather than dropping.
   * mixed        — claude + cursor; proves the aggregate is the tool-volume WEIGHTED MEAN
                    of the per-source scores, NOT the pooled-union number.
 """
@@ -41,6 +46,9 @@ CLAUDE_BLOCK = {
         "toolsearch_calls": 150, "task_tool_calls": 300, "cli_calls": 1500,
         "mcp_calls": 400, "tool_diversity": 30, "tool_entropy_normalized": 0.8,
         "mcp_knowledge_calls": 80, "mcp_knowledge_servers": 2,
+        # 18/40 sessions = 0.45 coverage -> ABOVE Context Intelligence's TARGET (0.40).
+        "mcp_grounded_sessions": 18,
+        "mcp_grounded_session_names": [f"claude-s{i}" for i in range(18)],
         "mcp_subcategory_breakdown": {"knowledge": {"calls": 80, "servers": 2}, "browser": {"calls": 50, "servers": 1}},
         "top_tools": [["Bash", 1500], ["Edit", 1000]],
     },
@@ -70,8 +78,57 @@ CURSOR_BLOCK = {
         "toolsearch_calls": 0, "task_tool_calls": 0, "cli_calls": 100,
         "mcp_calls": 50, "tool_diversity": 12, "tool_entropy_normalized": 0.6,
         "mcp_knowledge_calls": 0, "mcp_knowledge_servers": 0,
+        # 0/10 sessions = 0.0 coverage, a REAL measured zero (field present + tool activity)
+        # -> axis present and scored 0 (monotonic, no floor), NOT dropped.
+        "mcp_grounded_sessions": 0,
+        "mcp_grounded_session_names": [],
         "mcp_subcategory_breakdown": {},
         "top_tools": [["Bash", 100]],
+    },
+}
+
+
+# Context Intelligence low-coverage case: a claude-shaped block with a small but non-zero
+# grounded-session coverage. With no floor, the axis is present and scored monotonically
+# near (but not at) zero — a light grounder scores a little, a real zero (CURSOR_BLOCK)
+# scores exactly zero, and neither is dropped. No boundary discontinuity remains.
+CLAUDE_BOUNDARY_BLOCK = dict(CLAUDE_BLOCK, source="claude-boundary")
+CLAUDE_BOUNDARY_BLOCK["volume"] = dict(CLAUDE_BLOCK["volume"])
+CLAUDE_BOUNDARY_BLOCK["tools"] = dict(CLAUDE_BLOCK["tools"])
+# 3/40 = 0.075 coverage -> low, scored monotonically (well below TARGET 0.40).
+CLAUDE_BOUNDARY_BLOCK["tools"]["mcp_grounded_sessions"] = 3
+CLAUDE_BOUNDARY_BLOCK["tools"]["mcp_grounded_session_names"] = ["b-s0", "b-s1", "b-s2"]
+
+# no_tool_activity capability-drop case: a source with sessions but zero tool calls.
+# Context Intelligence (and every other tool-derived axis) must be dropped, not scored 0.
+NO_TOOL_ACTIVITY_BLOCK = {
+    "source": "no-tool-activity",
+    "volume": {"total_sessions": 5, "total_prompts": 20,
+               "tool_calls_total": 0, "thinking_blocks": 0},
+    "velocity": {"active_hours": 2.0, "tool_churn_edit_write": 0,
+                 "shell_authored_lines_est": 0},
+    "behavior": {
+        "planning_ratio_explore_to_doing": 0, "actions_per_prompt": 0,
+        "questions_asked": 0, "error_recovery_ratio": None,
+        "error_rate_per_100_tools": None, "api_errors_retries": 0, "fanout_median": None,
+        "shell_test_runs": 0, "delegate_actions": 0, "background_tasks": 0,
+        "iteration_depth_mean": None, "iteration_depth_p90": None, "iteration_depth_max": None,
+        "files_hammered_over_15x": 0, "plan_sessions": 0,
+        "no_tool_activity": True,
+    },
+    "stack": {
+        "skills_distinct": 0, "skills_total": 0, "compounding_writes": 0,
+        "subagent_types_distinct": 0, "subagent_types": [],
+        "top_skills": [], "skills_all": [], "models": [["default", 20]],
+    },
+    "tools": {
+        "agent_calls": 0, "mcp_servers_distinct": 0, "clis_distinct": 0,
+        "toolsearch_calls": 0, "task_tool_calls": 0, "cli_calls": 0,
+        "mcp_calls": 0, "tool_diversity": 0, "tool_entropy_normalized": 0,
+        "mcp_knowledge_calls": 0, "mcp_knowledge_servers": 0,
+        "mcp_grounded_sessions": 0, "mcp_grounded_session_names": [],
+        "mcp_subcategory_breakdown": {},
+        "top_tools": [],
     },
 }
 
@@ -84,5 +141,11 @@ def cases():
         ("mixed_claude_cursor", {
             "claude": {"window": CLAUDE_BLOCK, "monthly": []},
             "cursor": {"window": CURSOR_BLOCK, "monthly": []},
+        }),
+        ("claude_boundary_above_floor", {
+            "claude-boundary": {"window": CLAUDE_BOUNDARY_BLOCK, "monthly": []},
+        }),
+        ("no_tool_activity", {
+            "no-tool-activity": {"window": NO_TOOL_ACTIVITY_BLOCK, "monthly": []},
         }),
     ]
