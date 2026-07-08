@@ -271,7 +271,7 @@ Covers the CLI extractor, Codex injected-message filter, compounding-path matche
 
 All analysis runs on-device. For accurate code-churn it shells out to your local `git` (`git log --numstat`) on the repos it finds. `xl-ai-insights --local` makes zero network calls — nothing leaves your machine.
 
-If you run `xl-ai-insights` (without `--local`), it makes one outbound network call: a POST of `summary.json` (described above under "What is uploaded") to mirdash after you authenticate. No prompts, no quotes, no project names are ever sent. Running `xl-ai-insights` without `--local` is entirely opt-in.
+If you run `xl-ai-insights` (without `--local`), it first makes one outbound GET request to check the published latest CLI version, and then — after you authenticate — it POSTs `summary.json` (described above under "What is uploaded") to mirdash. No prompts, no quotes, no project names are ever sent. Running `xl-ai-insights` without `--local` is entirely opt-in.
 
 ### Cursor specifics
 

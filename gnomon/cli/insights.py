@@ -8,7 +8,6 @@ import sys
 import urllib.parse
 import urllib.request
 import webbrowser
-from itertools import zip_longest
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from gnomon.upload.auth import _capture_cli_token, _wait_for_auth_tokens, _SHARE_AUTH_TIMEOUT, _WEB_AUTH_TIMEOUT
@@ -70,25 +69,6 @@ def _release_result(status, current=None, latest=None, reason=None):
     return {"status": status, "current": current, "latest": latest, "reason": reason}
 
 
-def _plain_numeric_release(version):
-    if not isinstance(version, str) or not re.match(r"^\d+(?:\.\d+)*$", version):
-        return None
-    return tuple(int(part) for part in version.split("."))
-
-
-def _compare_plain_numeric_release(current, latest):
-    current_parts = _plain_numeric_release(current)
-    latest_parts = _plain_numeric_release(latest)
-    if current_parts is None or latest_parts is None:
-        return None
-    for current_part, latest_part in zip_longest(current_parts, latest_parts, fillvalue=0):
-        if current_part < latest_part:
-            return -1
-        if current_part > latest_part:
-            return 1
-    return 0
-
-
 def _parse_project_version(pyproject_text):
     in_project = False
     for line in pyproject_text.splitlines():
@@ -111,8 +91,8 @@ def _check_latest_cli_release(timeout=1.5):
     except Exception as exc:
         return _release_result("unknown", reason=f"current-version:{exc.__class__.__name__}")
 
-    if _plain_numeric_release(current) is None:
-        return _release_result("unknown", current=current, reason="current-version-not-plain-numeric")
+    if not isinstance(current, str) or not current:
+        return _release_result("unknown", reason="current-version-missing")
 
     try:
         with urllib.request.urlopen(_LATEST_CLI_RELEASE_URL, timeout=timeout) as response:
@@ -124,10 +104,7 @@ def _check_latest_cli_release(timeout=1.5):
     if not latest:
         return _release_result("unknown", current=current, reason="latest-version-missing")
 
-    comparison = _compare_plain_numeric_release(current, latest)
-    if comparison is None:
-        return _release_result("unknown", current=current, latest=latest, reason="ambiguous-version")
-    if comparison != 0:
+    if current != latest:
         return _release_result("mismatch", current=current, latest=latest)
     return _release_result("current", current=current, latest=latest)
 

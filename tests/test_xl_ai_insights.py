@@ -604,15 +604,22 @@ class TestCliReleaseFreshness(unittest.TestCase):
         self.assertEqual(equal_result["current"], "0.2.0")
         self.assertEqual(equal_result["latest"], "0.2.0")
 
-    def test_check_latest_cli_release_fails_soft_for_prerelease_or_network_failure(self):
-        with (
-            patch.object(_insights.importlib.metadata, "version", return_value="1.2.0rc1"),
-            patch.object(_insights.urllib.request, "urlopen") as mock_urlopen,
-        ):
-            prerelease = _insights._check_latest_cli_release()
-        mock_urlopen.assert_not_called()
-        self.assertEqual(prerelease["status"], "unknown")
+    def test_check_latest_cli_release_reports_mismatch_for_non_published_variants(self):
+        published_response = MagicMock()
+        published_response.__enter__.return_value.read.return_value = b'[project]\nversion = "1.2.0"\n'
 
+        for current_version in ("1.2.0rc1", "1.2.0+local", "1.2.0.post1"):
+            with self.subTest(current_version=current_version):
+                with (
+                    patch.object(_insights.importlib.metadata, "version", return_value=current_version),
+                    patch.object(_insights.urllib.request, "urlopen", return_value=published_response),
+                ):
+                    result = _insights._check_latest_cli_release()
+                self.assertEqual(result["status"], "mismatch")
+                self.assertEqual(result["current"], current_version)
+                self.assertEqual(result["latest"], "1.2.0")
+
+    def test_check_latest_cli_release_fails_soft_for_network_failure(self):
         with (
             patch.object(_insights.importlib.metadata, "version", return_value="1.2.0"),
             patch.object(_insights.urllib.request, "urlopen", side_effect=OSError("offline")),
