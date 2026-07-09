@@ -117,8 +117,11 @@ def compute_aq(stats):
     # a missing field means backward-compat, so stay N/A instead of scoring a phantom 0).
     TARGET_GROUNDED_COVERAGE = 0.40   # PROVISIONAL — recalibrate w/ prod p40-50
     grounded = t.get("mcp_grounded_sessions")
-    coverage = (grounded / sessions) if grounded is not None else None
-    context_intel = (None if (b.get("no_tool_activity") or grounded is None)
+    write_sessions = t.get("mcp_write_sessions")
+    ci_denom = write_sessions if write_sessions is not None else sessions
+    coverage = (grounded / ci_denom) if grounded is not None and ci_denom else None
+    context_intel = (None if (b.get("no_tool_activity") or grounded is None
+                              or not ci_denom)
                      else sat(coverage, TARGET_GROUNDED_COVERAGE))
     # compounding writes -> per-session rate (rewards the habit, not raw volume)
     compounding = wsum((.6, rate(st.get("compounding_writes", 0), 0.25), None),
@@ -127,8 +130,12 @@ def compute_aq(stats):
         ("Verification", 35, verification, {"test_runs": b.get("shell_test_runs", 0), "review_skills": review_n}),
         ("Grounding", 25, grounding, {"planning_ratio": b.get("planning_ratio_explore_to_doing", 0)}),
         ("Context Intelligence", 20, context_intel,
-         {"grounded_sessions": grounded, "total_sessions": sessions,
-          "coverage": round(coverage, 3) if coverage is not None else None}),
+         {"grounded_sessions": grounded, "write_sessions": ci_denom,
+          "total_sessions": sessions,
+          "coverage": round(coverage, 3) if coverage is not None else None,
+          "target_coverage": TARGET_GROUNDED_COVERAGE,
+          "grounded_session_rule": "knowledge-MCP call OR explore-class project/data/design MCP call before a later Edit/Write/MultiEdit/NotebookEdit in the same session",
+          "score_formula": "coverage = grounded_sessions / write_sessions; score = min(1, coverage / 0.40)"}),
         ("Compounding", 20, compounding, {"compounding_writes": st.get("compounding_writes", 0)}),
     ]
 

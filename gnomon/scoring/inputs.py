@@ -81,6 +81,7 @@ def build_scoring_inputs(stats):
             # across sources instead of max()-ing counts (which undercounts the union)
             "mcp_knowledge_server_names": list(t.get("mcp_knowledge_server_names", []) or []),
             "mcp_grounded_sessions": t.get("mcp_grounded_sessions", 0),
+            "mcp_write_sessions": t.get("mcp_write_sessions", 0),
             # session IDs (not just count) so the aggregate can union distinct grounded
             # sessions across sources instead of summing (which double-counts a shared sid)
             "mcp_grounded_session_names": list(t.get("mcp_grounded_session_names", []) or []),
@@ -103,7 +104,7 @@ def build_monthly_scoring_stats(
     no_tool_activity, all_sources_no_agent, month_plan_sessions=None,
     month_session_subagent_types=None,
     month_mcp_subcategory_counter=None, month_mcp_subcategory_servers=None,
-    month_grounded_sessions=None,
+    month_grounded_sessions=None, month_write_sessions=None,
 ):
     out = []
     for mk in months:
@@ -137,6 +138,8 @@ def build_monthly_scoring_stats(
         m_subcat_s = (month_mcp_subcategory_servers or {}).get(mk, {})
         m_grounded = (month_grounded_sessions or {}).get(mk, set())
         m_grounded_counted = len(m_grounded & set(month_sessions.get(mk, set())))
+        m_write_sess = (month_write_sessions or {}).get(mk, set())
+        m_write_counted = len(m_write_sess & set(month_sessions.get(mk, set())))
         actions_per_prompt = (m_tool_total / m_prompts) if m_prompts else 0
 
         cats = Counter()
@@ -202,6 +205,7 @@ def build_monthly_scoring_stats(
                 "mcp_knowledge_servers": len(m_subcat_s.get("knowledge", set())) if m_subcat_s else 0,
                 "mcp_knowledge_server_names": sorted(m_subcat_s.get("knowledge", set())) if m_subcat_s else [],
                 "mcp_grounded_sessions": m_grounded_counted,
+                "mcp_write_sessions": m_write_counted,
                 "mcp_grounded_session_names": sorted(m_grounded),
                 "mcp_subcategory_breakdown": {
                     cat: {"calls": m_subcat_c[cat], "servers": len(m_subcat_s.get(cat, set()))}

@@ -46,8 +46,9 @@ CLAUDE_BLOCK = {
         "toolsearch_calls": 150, "task_tool_calls": 300, "cli_calls": 1500,
         "mcp_calls": 400, "tool_diversity": 30, "tool_entropy_normalized": 0.8,
         "mcp_knowledge_calls": 80, "mcp_knowledge_servers": 2,
-        # 18/40 sessions = 0.45 coverage -> ABOVE Context Intelligence's TARGET (0.40).
+        # 18/25 write-sessions = 0.72 coverage -> ABOVE Context Intelligence's TARGET (0.40).
         "mcp_grounded_sessions": 18,
+        "mcp_write_sessions": 25,
         "mcp_grounded_session_names": [f"claude-s{i}" for i in range(18)],
         "mcp_subcategory_breakdown": {"knowledge": {"calls": 80, "servers": 2}, "browser": {"calls": 50, "servers": 1}},
         "top_tools": [["Bash", 1500], ["Edit", 1000]],
@@ -78,9 +79,10 @@ CURSOR_BLOCK = {
         "toolsearch_calls": 0, "task_tool_calls": 0, "cli_calls": 100,
         "mcp_calls": 50, "tool_diversity": 12, "tool_entropy_normalized": 0.6,
         "mcp_knowledge_calls": 0, "mcp_knowledge_servers": 0,
-        # 0/10 sessions = 0.0 coverage, a REAL measured zero (field present + tool activity)
+        # 0/8 write-sessions = 0.0 coverage, a REAL measured zero (field present + tool activity)
         # -> axis present and scored 0 (monotonic, no floor), NOT dropped.
         "mcp_grounded_sessions": 0,
+        "mcp_write_sessions": 8,
         "mcp_grounded_session_names": [],
         "mcp_subcategory_breakdown": {},
         "top_tools": [["Bash", 100]],
@@ -95,9 +97,10 @@ CURSOR_BLOCK = {
 CLAUDE_BOUNDARY_BLOCK = dict(CLAUDE_BLOCK, source="claude-boundary")
 CLAUDE_BOUNDARY_BLOCK["volume"] = dict(CLAUDE_BLOCK["volume"])
 CLAUDE_BOUNDARY_BLOCK["tools"] = dict(CLAUDE_BLOCK["tools"])
-# 3/40 = 0.075 coverage -> low, scored monotonically (well below TARGET 0.40).
+# 3/25 = 0.12 coverage -> low, scored monotonically (well below TARGET 0.40).
 CLAUDE_BOUNDARY_BLOCK["tools"]["mcp_grounded_sessions"] = 3
 CLAUDE_BOUNDARY_BLOCK["tools"]["mcp_grounded_session_names"] = ["b-s0", "b-s1", "b-s2"]
+CLAUDE_BOUNDARY_BLOCK["tools"]["mcp_write_sessions"] = 25
 
 # no_tool_activity capability-drop case: a source with sessions but zero tool calls.
 # Context Intelligence (and every other tool-derived axis) must be dropped, not scored 0.
@@ -126,7 +129,8 @@ NO_TOOL_ACTIVITY_BLOCK = {
         "toolsearch_calls": 0, "task_tool_calls": 0, "cli_calls": 0,
         "mcp_calls": 0, "tool_diversity": 0, "tool_entropy_normalized": 0,
         "mcp_knowledge_calls": 0, "mcp_knowledge_servers": 0,
-        "mcp_grounded_sessions": 0, "mcp_grounded_session_names": [],
+        "mcp_grounded_sessions": 0, "mcp_write_sessions": 0,
+        "mcp_grounded_session_names": [],
         "mcp_subcategory_breakdown": {},
         "top_tools": [],
     },

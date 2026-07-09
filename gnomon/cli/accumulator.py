@@ -27,7 +27,7 @@ from datetime import datetime, timedelta
 from gnomon.config import parse_ts, line_count, strip_injections
 from gnomon.taxonomy import (
     SCHEDULE_TOOLS, ASK_TOOLS, PLAN_SIGNAL_TOOLS, PLAN_SKILL_NEEDLES,
-    classify_tool, classify_mcp_subcategory,
+    classify_tool, classify_mcp_subcategory, CI_CONTEXT_SUBCATS,
     bash_writes_file, bash_runs_tests, _extract_clis,
     _is_compounding_path, _SKILL_MD_RX,
 )
@@ -95,9 +95,12 @@ class Accumulator:
         self.mcp_subcategory_counter = Counter()
         self.mcp_subcategory_servers = defaultdict(set)
         # Context Intelligence (behavioral): sessions where a knowledge-MCP call
-        # preceded a later Edit/Write/MultiEdit/NotebookEdit in the SAME session.
+        # OR an explore-class project/data/design MCP call preceded a later
+        # Edit/Write/MultiEdit/NotebookEdit in the SAME session.
         self.grounded_sessions = set()
+        self.write_sessions = set()
         self.month_grounded_sessions = defaultdict(set)
+        self.month_write_sessions = defaultdict(set)
         self.cli_counter = Counter()
         self.compounding_counter = 0
         self.project_activity = Counter()
@@ -196,8 +199,9 @@ class Accumulator:
         self.source_files[cur_src] += 1
         # per-session, per-file ordered state for error-recovery + iteration depth
         self._pending_error = defaultdict(bool)        # sessionId -> unrecovered error flag
-        # sessionId -> a knowledge-MCP call occurred earlier in this session, not yet
-        # consumed by a later write (Edit/Write/MultiEdit/NotebookEdit)
+        # sessionId -> an external-context MCP call (knowledge, or explore-class
+        # project/data/design) occurred earlier in this session, not yet consumed
+        # by a later write (Edit/Write/MultiEdit/NotebookEdit)
         self._pending_knowledge_grounding = defaultdict(bool)
         self._file_edit_run = defaultdict(lambda: defaultdict(int))  # session -> file -> edits since commit
         self._file_edit_month = defaultdict(dict)      # session -> file -> month key
@@ -236,7 +240,12 @@ class Accumulator:
         """A write (Edit/Write/MultiEdit/NotebookEdit) consumes a pending knowledge-MCP
         grounding flag for this session, marking the session grounded. Consume-once: the
         FIRST grounded write flips the flag off, so repeated writes after one knowledge
-        call still count as exactly one grounded session."""
+        call still count as exactly one grounded session.
+        Also tracks this session as a write-session (CI denominator)."""
+        if sid:
+            self.write_sessions.add(sid)
+            if mkey:
+                self.month_write_sessions[mkey].add(sid)
         if sid and self._pending_knowledge_grounding.get(sid):
             self.grounded_sessions.add(sid)
             if mkey:
@@ -249,6 +258,12 @@ class Accumulator:
         if self.session_ts:
             return len(self.grounded_sessions & set(self.session_ts))
         return min(len(self.grounded_sessions), len(self.session_files))
+
+    def _counted_write_sessions(self):
+        """Write sessions restricted to same universe as total_sessions."""
+        if self.session_ts:
+            return len(self.write_sessions & set(self.session_ts))
+        return min(len(self.write_sessions), len(self.session_files))
 
     def end_file(self):
         # flush any remaining edit runs as iteration-depth samples
@@ -458,10 +473,13 @@ class Accumulator:
                                 if mkey:
                                     self.month_mcp_subcategory_counter[mkey][subcat] += 1
                                     self.month_mcp_subcategory_servers[mkey][subcat].add(server)
-                                # Context Intelligence (behavioral): a knowledge-MCP call
-                                # arms grounding for this session, consumed by the next
+                                # Context Intelligence (behavioral): arm grounding
+                                # for knowledge MCPs (any call) or project/data/design
+                                # MCPs (explore/read calls only), consumed by the next
                                 # write (Edit/Write/MultiEdit/NotebookEdit) below.
-                                if subcat == "knowledge" and sid:
+                                if sid and (subcat == "knowledge"
+                                            or (subcat in CI_CONTEXT_SUBCATS
+                                                and _cat == "explore")):
                                     self._pending_knowledge_grounding[sid] = True
                         else:
                             self.native_calls += 1
@@ -790,6 +808,7 @@ class Accumulator:
                 "mcp_knowledge_servers": len(self.mcp_subcategory_servers.get("knowledge", set())),
                 "mcp_knowledge_server_names": sorted(self.mcp_subcategory_servers.get("knowledge", set())),
                 "mcp_grounded_sessions": self._counted_grounded_sessions(),
+                "mcp_write_sessions": self._counted_write_sessions(),
                 "mcp_grounded_session_names": sorted(self.grounded_sessions),
                 "mcp_subcategory_breakdown": {
                     cat: {"calls": self.mcp_subcategory_counter[cat],
@@ -953,6 +972,7 @@ class Accumulator:
             month_mcp_subcategory_counter=self.month_mcp_subcategory_counter,
             month_mcp_subcategory_servers=self.month_mcp_subcategory_servers,
             month_grounded_sessions=self.month_grounded_sessions,
+            month_write_sessions=self.month_write_sessions,
             month_compounding=self.month_compounding, month_shell_test_runs=self.month_shell_test_runs,
             month_plan_sessions=self.month_plan_sessions,
             month_api_errors=self.month_api_errors,
@@ -1076,6 +1096,7 @@ class Accumulator:
                 "mcp_knowledge_servers": len(self.mcp_subcategory_servers.get("knowledge", set())),
                 "mcp_knowledge_server_names": sorted(self.mcp_subcategory_servers.get("knowledge", set())),
                 "mcp_grounded_sessions": self._counted_grounded_sessions(),
+                "mcp_write_sessions": self._counted_write_sessions(),
                 "mcp_grounded_session_names": sorted(self.grounded_sessions),
                 "mcp_subcategory_breakdown": {
                     cat: {"calls": self.mcp_subcategory_counter[cat],
