@@ -350,9 +350,13 @@
                     "name": "Context Intelligence",
                     "score": 20.0,
                     "signals": {
-                      "coverage": 0.45,
+                      "coverage": 0.72,
+                      "grounded_session_rule": "knowledge-MCP call OR explore-class project/data/design MCP call before a later Edit/Write/MultiEdit/NotebookEdit in the same session",
                       "grounded_sessions": 18,
-                      "total_sessions": 40
+                      "score_formula": "coverage = grounded_sessions / write_sessions; score = min(1, coverage / 0.40)",
+                      "target_coverage": 0.4,
+                      "total_sessions": 40,
+                      "write_sessions": 25
                     },
                     "weight": 20
                   },
@@ -779,6 +783,7 @@
                 "servers": 2
               }
             },
+            "mcp_write_sessions": 25,
             "task_tool_calls": 300,
             "tool_diversity": 30,
             "tool_entropy_normalized": 0.8,
@@ -1147,8 +1152,12 @@
                     "score": 0.0,
                     "signals": {
                       "coverage": 0.0,
+                      "grounded_session_rule": "knowledge-MCP call OR explore-class project/data/design MCP call before a later Edit/Write/MultiEdit/NotebookEdit in the same session",
                       "grounded_sessions": 0,
-                      "total_sessions": 10
+                      "score_formula": "coverage = grounded_sessions / write_sessions; score = min(1, coverage / 0.40)",
+                      "target_coverage": 0.4,
+                      "total_sessions": 10,
+                      "write_sessions": 8
                     },
                     "weight": 20
                   },
@@ -1501,6 +1510,7 @@
             "mcp_knowledge_servers": 0,
             "mcp_servers_distinct": 2,
             "mcp_subcategory_breakdown": {},
+            "mcp_write_sessions": 8,
             "task_tool_calls": 0,
             "tool_diversity": 12,
             "tool_entropy_normalized": 0.6,
@@ -1880,9 +1890,13 @@
                     "name": "Context Intelligence",
                     "score": 20.0,
                     "signals": {
-                      "coverage": 0.45,
+                      "coverage": 0.72,
+                      "grounded_session_rule": "knowledge-MCP call OR explore-class project/data/design MCP call before a later Edit/Write/MultiEdit/NotebookEdit in the same session",
                       "grounded_sessions": 18,
-                      "total_sessions": 40
+                      "score_formula": "coverage = grounded_sessions / write_sessions; score = min(1, coverage / 0.40)",
+                      "target_coverage": 0.4,
+                      "total_sessions": 40,
+                      "write_sessions": 25
                     },
                     "weight": 20
                   },
@@ -2258,8 +2272,12 @@
                     "score": 0.0,
                     "signals": {
                       "coverage": 0.0,
+                      "grounded_session_rule": "knowledge-MCP call OR explore-class project/data/design MCP call before a later Edit/Write/MultiEdit/NotebookEdit in the same session",
                       "grounded_sessions": 0,
-                      "total_sessions": 10
+                      "score_formula": "coverage = grounded_sessions / write_sessions; score = min(1, coverage / 0.40)",
+                      "target_coverage": 0.4,
+                      "total_sessions": 10,
+                      "write_sessions": 8
                     },
                     "weight": 20
                   },
@@ -2679,6 +2697,7 @@
                 "servers": 2
               }
             },
+            "mcp_write_sessions": 25,
             "task_tool_calls": 300,
             "tool_diversity": 30,
             "tool_entropy_normalized": 0.8,
@@ -2754,6 +2773,7 @@
             "mcp_knowledge_servers": 0,
             "mcp_servers_distinct": 2,
             "mcp_subcategory_breakdown": {},
+            "mcp_write_sessions": 8,
             "task_tool_calls": 0,
             "tool_diversity": 12,
             "tool_entropy_normalized": 0.6,
@@ -2785,7 +2805,7 @@
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 82,
+          "aq_0_100": 83,
           "pillars": [
             {
               "name": "Breadth",
@@ -2794,7 +2814,7 @@
             },
             {
               "name": "Craft",
-              "score": 76.2,
+              "score": 78.5,
               "weight": 35
             },
             {
@@ -3055,7 +3075,7 @@
       "by_source": {
         "claude-boundary": {
           "aq": {
-            "aq_0_100": 82,
+            "aq_0_100": 83,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -3130,11 +3150,15 @@
                   },
                   {
                     "name": "Context Intelligence",
-                    "score": 3.7,
+                    "score": 6.0,
                     "signals": {
-                      "coverage": 0.075,
+                      "coverage": 0.12,
+                      "grounded_session_rule": "knowledge-MCP call OR explore-class project/data/design MCP call before a later Edit/Write/MultiEdit/NotebookEdit in the same session",
                       "grounded_sessions": 3,
-                      "total_sessions": 40
+                      "score_formula": "coverage = grounded_sessions / write_sessions; score = min(1, coverage / 0.40)",
+                      "target_coverage": 0.4,
+                      "total_sessions": 40,
+                      "write_sessions": 25
                     },
                     "weight": 20
                   },
@@ -3148,7 +3172,7 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 76.2,
+                "score": 78.5,
                 "weight": 35
               },
               {
@@ -3546,6 +3570,7 @@
                 "servers": 2
               }
             },
+            "mcp_write_sessions": 25,
             "task_tool_calls": 300,
             "tool_diversity": 30,
             "tool_entropy_normalized": 0.8,
@@ -4268,6 +4293,7 @@
             "mcp_knowledge_servers": 0,
             "mcp_servers_distinct": 0,
             "mcp_subcategory_breakdown": {},
+            "mcp_write_sessions": 0,
             "task_tool_calls": 0,
             "tool_diversity": 0,
             "tool_entropy_normalized": 0,

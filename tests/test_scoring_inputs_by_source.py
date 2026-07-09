@@ -98,7 +98,8 @@ class TestScoringInputsBySource(unittest.TestCase):
               "task_tool_calls", "cli_calls", "mcp_calls", "tool_diversity",
               "tool_entropy_normalized", "top_tools",
               "mcp_knowledge_calls", "mcp_knowledge_servers", "mcp_knowledge_server_names",
-              "mcp_subcategory_breakdown", "mcp_grounded_sessions", "mcp_grounded_session_names"}
+              "mcp_subcategory_breakdown", "mcp_grounded_sessions", "mcp_write_sessions",
+              "mcp_grounded_session_names"}
 
     def _stats(self):
         rows = []
@@ -376,10 +377,10 @@ class TestCrossSourcePlanToolNormalization(unittest.TestCase):
         self.assertIn(_AG_TOOL["manage_task"], self._COUNTED)
 
 
-class TestKnowledgeGroundingStateMachine(unittest.TestCase):
+class TestContextGroundingStateMachine(unittest.TestCase):
     """Context Intelligence's behavioral grounding signal: a session is GROUNDED when a
-    knowledge-MCP call (classify_mcp_subcategory == "knowledge") precedes a later
-    Edit/Write/MultiEdit/NotebookEdit event in that SAME session. Mirrors the
+    knowledge-MCP call (any) OR an explore-class project/data/design MCP call precedes
+    a later Edit/Write/MultiEdit/NotebookEdit event in that SAME session. Mirrors the
     `_pending_error` per-session, per-file transient state machine pattern."""
 
     @staticmethod
@@ -495,6 +496,64 @@ class TestKnowledgeGroundingStateMachine(unittest.TestCase):
         stats = acc.to_corpus_stats(None, None, False)
         may = next(m for m in stats["_scoring_monthly_full"] if m["month"] == "2026-05")
         self.assertEqual(may["stats_full"]["tools"]["mcp_grounded_sessions"], 1)
+
+    # ---- expanded context grounding (project/data/design explore calls) ----
+
+    def test_project_read_mcp_grounds(self):
+        acc = self._acc([
+            self._mcp_ev("s1", "2026-05-01T10:00:00.000Z",
+                         server="Atlassian", tool="get_issue"),
+            self._write_ev("s1", "2026-05-01T10:01:00.000Z", "Edit"),
+        ])
+        self.assertIn("s1", acc.grounded_sessions)
+
+    def test_project_write_mcp_does_not_ground(self):
+        acc = self._acc([
+            self._mcp_ev("s1", "2026-05-01T10:00:00.000Z",
+                         server="Atlassian", tool="create_issue"),
+            self._write_ev("s1", "2026-05-01T10:01:00.000Z", "Edit"),
+        ])
+        self.assertNotIn("s1", acc.grounded_sessions)
+
+    def test_data_read_mcp_grounds(self):
+        acc = self._acc([
+            self._mcp_ev("s1", "2026-05-01T10:00:00.000Z",
+                         server="claude_ai_Notion", tool="notion_search"),
+            self._write_ev("s1", "2026-05-01T10:01:00.000Z", "Edit"),
+        ])
+        self.assertIn("s1", acc.grounded_sessions)
+
+    def test_data_write_mcp_does_not_ground(self):
+        acc = self._acc([
+            self._mcp_ev("s1", "2026-05-01T10:00:00.000Z",
+                         server="claude_ai_Notion", tool="notion_update_page"),
+            self._write_ev("s1", "2026-05-01T10:01:00.000Z", "Edit"),
+        ])
+        self.assertNotIn("s1", acc.grounded_sessions)
+
+    def test_design_read_mcp_grounds(self):
+        acc = self._acc([
+            self._mcp_ev("s1", "2026-05-01T10:00:00.000Z",
+                         server="Figma", tool="get_design_context"),
+            self._write_ev("s1", "2026-05-01T10:01:00.000Z", "Edit"),
+        ])
+        self.assertIn("s1", acc.grounded_sessions)
+
+    def test_communication_read_mcp_does_not_ground(self):
+        acc = self._acc([
+            self._mcp_ev("s1", "2026-05-01T10:00:00.000Z",
+                         server="claude_ai_Slack", tool="slack_read_channel"),
+            self._write_ev("s1", "2026-05-01T10:01:00.000Z", "Edit"),
+        ])
+        self.assertNotIn("s1", acc.grounded_sessions)
+
+    def test_infra_mcp_does_not_ground(self):
+        acc = self._acc([
+            self._mcp_ev("s1", "2026-05-01T10:00:00.000Z",
+                         server="coolify", tool="status"),
+            self._write_ev("s1", "2026-05-01T10:01:00.000Z", "Edit"),
+        ])
+        self.assertNotIn("s1", acc.grounded_sessions)
 
 
 class TestSkillUsesAnyReadsFullList(unittest.TestCase):

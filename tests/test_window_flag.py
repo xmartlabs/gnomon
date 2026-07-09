@@ -78,8 +78,8 @@ class TestParseWindow(unittest.TestCase):
     def test_absent_with_other_flags(self):
         self.assertEqual(parse_window(["--quiet", "--no-open"]), _DEFAULT_WINDOW_MONTHS)
 
-    def test_default_is_6(self):
-        self.assertEqual(_DEFAULT_WINDOW_MONTHS, 6)
+    def test_default_is_3(self):
+        self.assertEqual(_DEFAULT_WINDOW_MONTHS, 3)
 
     def test_bare_window_warns_and_returns_default(self):
         buf = io.StringIO()

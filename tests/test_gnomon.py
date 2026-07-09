@@ -317,6 +317,20 @@ class TestComputeAqV2(unittest.TestCase):
         self.assertNotIn("knowledge_calls", ci["signals"])
         self.assertNotIn("knowledge_servers", ci["signals"])
 
+    def test_context_intelligence_signals_explain_calculation(self):
+        aq = self._craft_ci(grounded=20, sessions=100)
+        craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
+        ci = next(a for a in craft["axes"] if a["name"] == "Context Intelligence")
+        self.assertEqual(
+            ci["signals"]["grounded_session_rule"],
+            "knowledge-MCP call OR explore-class project/data/design MCP call before a later Edit/Write/MultiEdit/NotebookEdit in the same session",
+        )
+        self.assertEqual(
+            ci["signals"]["score_formula"],
+            "coverage = grounded_sessions / write_sessions; score = min(1, coverage / 0.40)",
+        )
+        self.assertEqual(ci["signals"]["target_coverage"], 0.4)
+
     def test_verification_counts_real_review_skills(self):
         # Genuine *-review verification skills (caveman-review, security-review) must
         # count toward Verification — they are not planning ceremonies.

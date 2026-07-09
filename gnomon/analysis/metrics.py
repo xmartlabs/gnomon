@@ -136,16 +136,36 @@ def _is_review_skill_name(name):
     We want `code-review`, `requesting-code-review`, `verify`, `cerberus`, a bare
     terminal `review`, and any other `*-review` verification skill (e.g.
     `caveman-review`, `security-review`, `hand-review`) -- but NOT planning ceremonies
-    like `plan-eng-review` or `ceo-review`, which are planning rather than verification."""
+    like `plan-eng-review` or `ceo-review`, which are planning rather than verification.
+
+    Also matches `review-*` prefixed skills (e.g. `review-readability`, `review-risk`,
+    `review-reliability`, `review-resilience`) and adversarial review protocols
+    (`judgment-day`, `jd-judge-*`)."""
     s = str(name or "").lower()
     if any(k in s for k in ("code-review", "requesting-code-review", "cerberus", "verify")):
         return True
     tail = s.split(":")[-1].split("/")[-1]
     if tail in _PLANNING_REVIEW_TAILS or tail.startswith("plan"):
         return False
+    if tail.startswith("review-") or tail.startswith("judgment") or tail.startswith("jd-judge"):
+        return True
     return tail == "review" or tail.endswith("-review")
 
 
 def _review_skill_uses(skills):
     """Count only true review/verification skill invocations from a skills list."""
     return sum(n for k, n in skills if _is_review_skill_name(k))
+
+
+_TASK_SKILL_NAMES = frozenset({"sdd-tasks", "sdd-ff"})
+
+
+def _is_task_skill_name(name):
+    """True for skills that produce structured task breakdowns (SDD task planning)."""
+    tail = str(name or "").lower().split(":")[-1].split("/")[-1]
+    return tail in _TASK_SKILL_NAMES
+
+
+def _task_skill_uses(skills):
+    """Count task-planning skill invocations from a skills list."""
+    return sum(n for k, n in skills if _is_task_skill_name(k))

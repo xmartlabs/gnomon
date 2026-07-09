@@ -43,8 +43,12 @@ AQ_AXIS_NOTES = {
     "Discipline": "Structured work: task-tool usage plus planning skills in evidence.",
     "Verification": "Whether work gets checked: shell test runs and review-type skill invocations.",
     "Grounding": "Reading before writing — how much the agent explores relative to how much it edits.",
-    "Context Intelligence": "Grounding in knowledge tools before you write — the share of sessions "
-                            "where a knowledge-MCP lookup (memory, docs, code graph) precedes an edit.",
+    "Context Intelligence": "Consulting external context before you write. We count the share of "
+                            "write-sessions where a knowledge-MCP call or an explore-class project/data/"
+                            "design MCP call (Jira, Notion, Figma, etc.) happens before a later Edit/"
+                            "Write/MultiEdit/NotebookEdit in that same session. Sessions without writes "
+                            "are excluded — they can't demonstrate the consult-then-write habit. "
+                            "Score = min(1, (grounded_sessions / write_sessions) / 0.40).",
     "Compounding": "Whether learnings persist: writes to memory/docs/skills, plus retro and planning habits.",
     "Steering leverage": "Agent actions per prompt, scored as a sweet spot (5–20): enough leash "
                          "to run, not so loose it drifts.",

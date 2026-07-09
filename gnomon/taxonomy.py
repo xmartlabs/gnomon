@@ -92,6 +92,11 @@ MCP_TOOL_HINTS = {
     "design": ("component", "design", "layout", "style", "asset", "frame"),
 }
 
+# MCP subcategories that arm Context Intelligence grounding when the tool call
+# classifies as "explore" (read/query operations via MCP_INSPECT_HINTS).
+# Knowledge MCPs arm unconditionally (handled separately in accumulator.py).
+CI_CONTEXT_SUBCATS = frozenset({"project", "data", "design"})
+
 
 def classify_mcp_subcategory(server_name, tool_name=""):
     low = server_name.lower()

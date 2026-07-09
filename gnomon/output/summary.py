@@ -246,12 +246,12 @@ def _build_noticed_stats(stats):
         },
     }
 
-def _profiles_by_source(scoring_inputs_by_source):
+def _profiles_by_source(scoring_inputs_by_source, recent_scoring_inputs_by_source=None):
     """Precompute per-source + aggregate profiles (so mirdash just displays them — no
     recompute). Each per-source profile's model_usage is populated from that source's own
     stack.models (score_by_source leaves it empty); tokens are 0 there (token usage is only
     tracked corpus-wide). The aggregate keeps model_usage empty (it's a score blend)."""
-    sbs = score_by_source(scoring_inputs_by_source or {})
+    sbs = score_by_source(scoring_inputs_by_source or {}, recent_scoring_inputs_by_source)
     for src, profile in (sbs.get("by_source") or {}).items():
         window = (scoring_inputs_by_source.get(src) or {}).get("window") or {}
         models = (window.get("stack") or {}).get("models") or []
@@ -319,7 +319,9 @@ def build_summary(stats):
         "profile": _build_profile(stats),
         "scoring_inputs_version": stats.get("scoring_inputs_version", SCORING_INPUTS_VERSION),
         "scoring_inputs_by_source": stats.get("scoring_inputs_by_source", {}),
-        "profiles_by_source": _profiles_by_source(stats.get("scoring_inputs_by_source") or {}),
+        "profiles_by_source": _profiles_by_source(
+            stats.get("scoring_inputs_by_source") or {},
+            stats.get("recent_scoring_inputs_by_source")),
         "source_usage": _build_source_usage(stats.get("scoring_inputs_by_source") or {}),
         "source_usage_monthly": _build_source_usage_monthly(stats.get("scoring_inputs_by_source") or {}),
         "token_usage": stats.get("token_usage") or {
