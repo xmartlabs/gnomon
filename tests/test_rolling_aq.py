@@ -390,6 +390,41 @@ class TestPerSourceRollingBlend(unittest.TestCase):
         )
         self.assertEqual(result["aggregate"]["aq"]["aq_0_100"], 53)
 
+    def test_nonempty_bucket_without_metadata_uses_full_profile_and_legacy_weight(self):
+        full_inputs = {"claude": {"window": self._block(
+            sessions=40, tests=0, planning_ratio=0, tool_calls=40)}}
+        bucket_inputs = {"recent_30d": {"claude": {"window": self._block(
+            sessions=10, tests=120, planning_ratio=1, tool_calls=10)}}}
+        full_only = aggregate.score_by_source(full_inputs)
+
+        result = aggregate.score_by_source(full_inputs, bucket_inputs)
+
+        self.assertEqual(result["by_source"]["claude"], full_only["by_source"]["claude"])
+        self.assertEqual(
+            result["aggregate"]["combination"]["weights"],
+            {"claude": 40},
+        )
+
+    def test_bucket_missing_from_partial_metadata_uses_legacy_fallbacks(self):
+        full_inputs = {"claude": {"window": self._block(
+            sessions=40, tests=0, planning_ratio=0, tool_calls=40)}}
+        bucket_inputs = {"older_90d": {"claude": {"window": self._block(
+            sessions=10, tests=120, planning_ratio=1, tool_calls=10)}}}
+        partial_metadata = [
+            {"id": "recent_30d", "configured_weight": 0.5,
+             "day_bounds": {"lower": 0, "upper": 30}},
+        ]
+        full_only = aggregate.score_by_source(full_inputs)
+
+        result = aggregate.score_by_source(
+            full_inputs, bucket_inputs, partial_metadata)
+
+        self.assertEqual(result["by_source"]["claude"], full_only["by_source"]["claude"])
+        self.assertEqual(
+            result["aggregate"]["combination"]["weights"],
+            {"claude": 40},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

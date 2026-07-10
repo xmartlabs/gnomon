@@ -438,10 +438,11 @@ def score_by_source(scoring_inputs_by_source, bucket_scoring_inputs_by_source=No
     source's own caps (single-source → no union dilution). The aggregate combines the
     per-source SCORES per the module's documented weighted-mean rule.
 
-    When bucket inputs are provided, each source's AQ is composed from its non-empty
-    rolling buckets. Full-window gstack and narratives stay full-window scoped except
-    AQ-derived growth edges, which are refreshed from the blended AQ. Aggregate source
-    weights use configured recency multiplied by bucket tool volume when components exist.
+    When bucket inputs are provided, each source's AQ is composed from its non-empty,
+    positive-weight rolling buckets. Full-window gstack and narratives stay full-window
+    scoped except AQ-derived growth edges, which are refreshed from the blended AQ.
+    Aggregate source weights use configured recency multiplied by bucket tool volume when
+    valid components exist; otherwise the full profile and legacy full-window weight apply.
     """
     metadata_by_id = {entry["id"]: entry for entry in (bucket_metadata or [])}
     by_source = {}
@@ -457,9 +458,13 @@ def score_by_source(scoring_inputs_by_source, bucket_scoring_inputs_by_source=No
             if sessions <= 0:
                 continue
             metadata = metadata_by_id.get(bucket_id, {})
+            configured_weight = metadata.get("configured_weight", 0)
+            if (not isinstance(configured_weight, (int, float))
+                    or configured_weight <= 0):
+                continue
             components.append({
                 "id": bucket_id,
-                "configured_weight": metadata.get("configured_weight", 0),
+                "configured_weight": configured_weight,
                 "day_bounds": metadata.get("day_bounds"),
                 "tool_calls_total": (bucket_window.get("volume") or {}).get(
                     "tool_calls_total", 0),
