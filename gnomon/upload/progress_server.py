@@ -213,7 +213,7 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     <span class="blink">&hellip;</span>
   </div>
 
-  <div class="privacy"><b>Prompts and file contents stay on your machine.</b> <code>summary.json</code> includes aggregated usage plus raw skill, MCP server, and model identifiers &mdash; mirdash uses it to generate your recommendations.</div>
+  <div class="privacy"><b>Prompts and file contents stay on your machine.</b> Only <code>summary.json</code>, a usage statistics summary, is uploaded.</div>
 </div>
 
 <script>
