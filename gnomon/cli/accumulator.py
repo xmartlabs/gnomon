@@ -49,6 +49,10 @@ BURST_GAP_S = 1800                # a gap > 30 min ends a contiguous work "run"
 DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 _KNOWLEDGE_NATIVE_TOOLS = frozenset({"WebFetch", "WebSearch"})
+# Keep native web tools out of Context Intelligence while recalibrating the metric.
+# They remain counted as explore/native tool activity; this only controls whether
+# they can arm a later write session as context-grounded.
+ENABLE_WEB_CONTEXT_GROUNDING = False
 
 
 def _is_local_url(url):
@@ -500,7 +504,8 @@ class Accumulator:
                         else:
                             self.native_calls += 1
 
-                        if sid and name in _KNOWLEDGE_NATIVE_TOOLS:
+                        if (ENABLE_WEB_CONTEXT_GROUNDING and sid
+                                and name in _KNOWLEDGE_NATIVE_TOOLS):
                             url = inp.get("url", "")
                             if not _is_local_url(url):
                                 self._pending_knowledge_grounding[sid] = True

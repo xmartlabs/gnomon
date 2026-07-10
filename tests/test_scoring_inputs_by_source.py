@@ -414,6 +414,13 @@ class TestContextGroundingStateMachine(unittest.TestCase):
                     {"type": "tool_use", "name": f"mcp__{server}__{tool}", "input": {}}]}}
 
     @staticmethod
+    def _native_ev(sid, ts, tool):
+        return {"type": "assistant", "sessionId": sid, "timestamp": ts,
+                "message": {"role": "assistant", "content": [
+                    {"type": "tool_use", "name": tool,
+                     "input": {"url": "https://example.com"}}]}}
+
+    @staticmethod
     def _write_ev(sid, ts, name="Edit", file_path="/repo/a.py"):
         inp = {"file_path": file_path}
         if name == "Edit":
@@ -486,6 +493,15 @@ class TestContextGroundingStateMachine(unittest.TestCase):
             self._write_ev("s1", "2026-05-01T10:01:00.000Z", "Edit"),
         ])
         self.assertNotIn("s1", acc.grounded_sessions)
+
+    def test_web_fetch_and_search_do_not_ground_while_disabled(self):
+        for tool in ("WebFetch", "WebSearch"):
+            with self.subTest(tool=tool):
+                acc = self._acc([
+                    self._native_ev("s1", "2026-05-01T10:00:00.000Z", tool),
+                    self._write_ev("s1", "2026-05-01T10:01:00.000Z", "Edit"),
+                ])
+                self.assertNotIn("s1", acc.grounded_sessions)
 
     def test_distinct_sessions_independent(self):
         acc = self._acc([
