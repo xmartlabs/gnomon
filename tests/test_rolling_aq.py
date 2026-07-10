@@ -223,6 +223,36 @@ class TestRollingBucketAccumulation(unittest.TestCase):
         self.assertEqual(counts, {"recent_30d": 2, "middle_60d": 2, "older_90d": 2})
         self.assertEqual(sum(counts.values()), 6)
 
+    def test_corpus_bucket_preserves_each_source_capability_key(self):
+        anchor = datetime(2025, 7, 1, 12, tzinfo=timezone.utc)
+
+        def event(source):
+            return {
+                "type": "user",
+                "sessionId": f"{source}-session",
+                "timestamp": (anchor - timedelta(days=1)).isoformat(),
+                "cwd": "/repo",
+                "message": {"role": "user", "content": "preserve source capabilities"},
+            }
+
+        with tempfile.NamedTemporaryFile() as claude_file, \
+                tempfile.NamedTemporaryFile() as cursor_file, \
+                mock.patch.object(local, "iter_events", side_effect=[[event("claude")], [event("cursor")]]):
+            _stats, narrative = local._accumulate(
+                [
+                    ("claude", claude_file.name, "claude"),
+                    ("cursor", cursor_file.name, "cursor"),
+                ],
+                since_dt=None,
+                until_dt=anchor,
+                cursor_twins=set(),
+                antigravity=None,
+                verbose=False,
+            )
+
+        recent_sources = narrative["_aq_bucket_stats"]["recent_30d"]["corpus"]["sources"]
+        self.assertEqual(set(recent_sources), {"claude", "cursor"})
+
 
 class TestPerSourceRollingBlend(unittest.TestCase):
     def _block(self, *, sessions, tests, planning_ratio):

@@ -513,6 +513,13 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
             source_accumulator.project_activity = {}
         bucket_stats[bucket_id] = bucket_corpus.to_source_stats(
             ",".join(_srcs_present), bucket["since"], bucket["until"])
+        # to_source_stats accepts one source name, but this accumulator is the
+        # multi-source corpus. Restore the real source keys so capability-aware
+        # AQ sees the same union as the full-window corpus.
+        bucket_stats[bucket_id]["corpus"]["sources"] = {
+            source_name: {}
+            for source_name in _srcs_present
+        }
         bucket_per_source_stats[bucket_id] = {}
         for source_name, source_accumulator in bucket_src_accums[bucket_id].items():
             if _single_source:
