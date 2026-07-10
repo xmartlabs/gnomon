@@ -527,6 +527,21 @@ class TestCliReleaseFreshness(unittest.TestCase):
         mock_main_web.assert_called_once()
         self.assertNotIn("uvx --refresh", stdout.getvalue())
 
+    def test_custom_mirdash_base_skips_public_release_check(self):
+        with (
+            patch.object(_insights, "_check_latest_cli_release") as mock_check,
+            patch.object(_insights, "_main_web") as mock_main_web,
+            patch.object(
+                _insights.sys,
+                "argv",
+                ["xl-ai-insights", "--mirdash-base=https://mirdash.internal.example", "claude"],
+            ),
+        ):
+            _insights.main()
+
+        mock_check.assert_not_called()
+        self.assertEqual(mock_main_web.call_args.args[1], "https://mirdash.internal.example")
+
     def test_help_bypasses_freshness_check(self):
         stdout = io.StringIO()
         with (
@@ -569,19 +584,23 @@ class TestCliReleaseFreshness(unittest.TestCase):
 
     def test_check_latest_cli_release_reports_mismatch_for_plain_numeric_versions(self):
         response = MagicMock()
-        response.__enter__.return_value.read.return_value = b'[project]\nversion = "1.2.0"\n'
+        response.__enter__.return_value.read.return_value = b'{"tag_name":"v1.2.0"}'
         with (
             patch.object(_insights.importlib.metadata, "version", return_value="1.1.9"),
-            patch.object(_insights.urllib.request, "urlopen", return_value=response),
+            patch.object(_insights.urllib.request, "urlopen", return_value=response) as mock_urlopen,
         ):
             result = _insights._check_latest_cli_release()
 
         self.assertEqual(result["status"], "mismatch")
         self.assertEqual(result["current"], "1.1.9")
         self.assertEqual(result["latest"], "1.2.0")
+        self.assertEqual(
+            mock_urlopen.call_args.args[0],
+            "https://api.github.com/repos/xmartlabs/gnomon/releases/latest",
+        )
 
         newer_response = MagicMock()
-        newer_response.__enter__.return_value.read.return_value = b'[project]\nversion = "0.2.0"\n'
+        newer_response.__enter__.return_value.read.return_value = b'{"tag_name":"0.2.0"}'
         with (
             patch.object(_insights.importlib.metadata, "version", return_value="0.4.0"),
             patch.object(_insights.urllib.request, "urlopen", return_value=newer_response),
@@ -593,7 +612,7 @@ class TestCliReleaseFreshness(unittest.TestCase):
         self.assertEqual(newer_result["latest"], "0.2.0")
 
         equal_response = MagicMock()
-        equal_response.__enter__.return_value.read.return_value = b'[project]\nversion = "0.2.0"\n'
+        equal_response.__enter__.return_value.read.return_value = b'{"tag_name":"v0.2.0"}'
         with (
             patch.object(_insights.importlib.metadata, "version", return_value="0.2.0"),
             patch.object(_insights.urllib.request, "urlopen", return_value=equal_response),
@@ -606,7 +625,7 @@ class TestCliReleaseFreshness(unittest.TestCase):
 
     def test_check_latest_cli_release_reports_mismatch_for_non_published_variants(self):
         published_response = MagicMock()
-        published_response.__enter__.return_value.read.return_value = b'[project]\nversion = "1.2.0"\n'
+        published_response.__enter__.return_value.read.return_value = b'{"tag_name":"v1.2.0"}'
 
         for current_version in ("1.2.0rc1", "1.2.0+local", "1.2.0.post1"):
             with self.subTest(current_version=current_version):
@@ -626,6 +645,18 @@ class TestCliReleaseFreshness(unittest.TestCase):
         ):
             failure = _insights._check_latest_cli_release()
         self.assertEqual(failure["status"], "unknown")
+
+    def test_check_latest_cli_release_fails_soft_for_invalid_release_payloads(self):
+        for payload in (b'not-json', b'{}', b'{"tag_name":"v1.2.0-rc.1"}', b'{"tag_name":12}'):
+            with self.subTest(payload=payload):
+                response = MagicMock()
+                response.__enter__.return_value.read.return_value = payload
+                with (
+                    patch.object(_insights.importlib.metadata, "version", return_value="1.2.0"),
+                    patch.object(_insights.urllib.request, "urlopen", return_value=response),
+                ):
+                    result = _insights._check_latest_cli_release()
+                self.assertEqual(result["status"], "unknown")
 
 
 class TestHelpOutput(unittest.TestCase):

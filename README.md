@@ -1,6 +1,6 @@
 # gnomon
 
-> A local builder-profiler for AI-assisted coding. Reads your agent transcripts on-device and grades **how you build** (gstack) and **how well you operate agents** (Agentic Quotient). Everything runs locally — nothing leaves your machine. For AI-powered analysis and to track your evolution over time, run the separate opt-in command `xl-ai-insights`.
+> A local builder-profiler for AI-assisted coding. Reads your agent transcripts on-device and grades **how you build** (gstack) and **how well you operate agents** (Agentic Quotient). Local mode keeps all data on your machine; the separate opt-in `xl-ai-insights` flow uploads the disclosed `summary.json` fields for AI-powered analysis and historical tracking.
 
 _gnomon (γνώμων): the part of a sundial that casts the shadow — "the one that knows/judges." It measures by what you cast._
 
@@ -94,6 +94,17 @@ months** (default 6) ending at its anchor month, so a single weak month doesn't
 tank the score. `--window=1` scores each month on its own. The window applies to
 normal monthly runs and to `--backfill`/`--force`.
 
+Within the default six-month view, AQ uses a **180-day rolling horizon** anchored
+at the scored window's effective end. The most recent 30 days carry **50%**, the
+preceding 60 days carry **30%**, and the oldest 90 days carry **20%**. Empty
+buckets are omitted and the remaining weights are renormalized, so missing
+history does not become a zero score.
+
+This is **scoring contract version 4** and a **v0.4 methodology discontinuity**:
+AQ results produced before and after v0.4 are not directly comparable. The raw
+full-window inputs remain in the payload for compatibility, but the full window
+is not an additional AQ blend component.
+
 What happens when you run it (without `--local`):
 
 1. Runs the local analysis engine to compute your metrics.
@@ -122,12 +133,19 @@ If the browser can't open (headless/CI) or the auth times out (120 s), the comma
 - `churn` — git churn total + tool-authored churn (Edit/Write)
 - `orchestration` — fanout median + delegate action count
 - `compounding_writes`
-- `ecosystem` — distinct skills, total skill uses, distinct MCP servers
+- `ecosystem` — distinct skills, total skill uses, distinct MCP servers, and raw
+  custom skill and MCP server names
 - `progression_monthly` — per-month counts (prompts, tools, sessions, active days, tool churn lines) plus the **names of AI models used that month** (top model + per-model turn counts, up to 3 models per month)
 - `profile` — computed AQ/archetype/scorecard block used by the report UI
 - `noticed_stats` — share-safe evidence used by the local "What we noticed" cards: counts and derived metrics for shipping, iteration, errors, models, rhythm, prompt lengths, agents, sessions, and top tools
 
-**What is NOT uploaded:** prompts, verbatim quotes, project names, file paths, `narrative_input.md` contents, and `stats.json`. The mirdash server associates the upload with your account via your login token; `xl-ai-insights` itself sends no email or PII. Note: model names (e.g. `claude-opus-4`, `gpt-5.4`) are included in `progression_monthly`, `profile`, and `noticed_stats`.
+**What is NOT uploaded:** Prompts and file contents are not uploaded. Verbatim
+quotes, file paths, `narrative_input.md` contents, and `stats.json` are also
+excluded. The payload does include raw custom skill and MCP server names; those
+are user-chosen identifiers and may themselves contain a project, customer, or
+environment name. Model names (for example `claude-opus-4` or `gpt-5.4`) are
+also included. The mirdash server associates the upload with your account via
+your login token; `xl-ai-insights` itself sends no email address.
 
 ### Overriding the mirdash URL
 
@@ -271,7 +289,13 @@ Covers the CLI extractor, Codex injected-message filter, compounding-path matche
 
 All analysis runs on-device. For accurate code-churn it shells out to your local `git` (`git log --numstat`) on the repos it finds. `xl-ai-insights --local` makes zero network calls — nothing leaves your machine.
 
-If you run `xl-ai-insights` (without `--local`), it first makes one outbound GET request to check the published latest CLI version, and then — after you authenticate — it POSTs `summary.json` (described above under "What is uploaded") to mirdash. No prompts, no quotes, no project names are ever sent. Running `xl-ai-insights` without `--local` is entirely opt-in.
+If you run `xl-ai-insights` (without `--local`) against the default public
+mirdash, it first makes one outbound GET request to GitHub Releases to check the
+latest stable CLI version. A custom `--mirdash-base` skips that public release
+policy. After you authenticate, the command POSTs `summary.json` (described
+above under "What is uploaded") to the selected mirdash. Prompts and file
+contents remain excluded, while raw custom skill/MCP names and model names are
+included as disclosed above. Running without `--local` is entirely opt-in.
 
 ### Cursor specifics
 
