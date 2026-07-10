@@ -27,8 +27,9 @@ from datetime import datetime, timedelta
 from gnomon.config import parse_ts, line_count, strip_injections
 from gnomon.taxonomy import (
     SCHEDULE_TOOLS, ASK_TOOLS, PLAN_SIGNAL_TOOLS, PLAN_SKILL_NEEDLES,
+    KNOWLEDGE_SKILL_NEEDLES,
     classify_tool, classify_mcp_subcategory, CI_CONTEXT_SUBCATS,
-    bash_writes_file, bash_runs_tests, _extract_clis,
+    bash_writes_file, bash_runs_tests, bash_runs_knowledge, _extract_clis,
     _is_compounding_path, _SKILL_MD_RX,
 )
 from gnomon.sources.discovery import _AGENT_UNSUPPORTED_SOURCES
@@ -46,6 +47,15 @@ from gnomon.analysis.quotes import _POLITE_RE
 GAP_CAP_S = 600                   # cap idle gaps at 10 min when summing active time
 BURST_GAP_S = 1800                # a gap > 30 min ends a contiguous work "run"
 DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+_KNOWLEDGE_NATIVE_TOOLS = frozenset({"WebFetch", "WebSearch"})
+
+
+def _is_local_url(url):
+    if not url:
+        return False
+    low = url.lower()
+    return any(h in low for h in ("localhost", "127.0.0.1", "0.0.0.0", "[::1]"))
 
 
 def _zero_tok():
@@ -217,6 +227,10 @@ class Accumulator:
     def _is_plan_skill(name):
         sl = str(name).lower()
         return any(nd in sl for nd in PLAN_SKILL_NEEDLES)
+
+    def _is_knowledge_skill(self, name):
+        low = (name or "").lower()
+        return any(n in low for n in KNOWLEDGE_SKILL_NEEDLES)
 
     def _mark_plan_session(self, sid, mkey):
         """Record that session `sid` (in month `mkey`) contained a planning signal.
@@ -433,6 +447,8 @@ class Accumulator:
                     self.month_skill_counter[mkey][ev["attributionSkill"]] += 1
                 if self._is_plan_skill(ev["attributionSkill"]):
                     self._mark_plan_session(sid, mkey)
+                if self._is_knowledge_skill(ev["attributionSkill"]):
+                    self._pending_knowledge_grounding[sid] = True
             content = msg.get("content")
             if isinstance(content, list):
                 for b in content:
@@ -484,6 +500,11 @@ class Accumulator:
                         else:
                             self.native_calls += 1
 
+                        if sid and name in _KNOWLEDGE_NATIVE_TOOLS:
+                            url = inp.get("url", "")
+                            if not _is_local_url(url):
+                                self._pending_knowledge_grounding[sid] = True
+
                         # a tool use after a pending error = recovery
                         if sid and self._pending_error.get(sid):
                             self.recovered_errors += 1
@@ -500,6 +521,8 @@ class Accumulator:
                                 # a planning Skill also marks this a planning session
                                 if self._is_plan_skill(s):
                                     self._mark_plan_session(sid, mkey)
+                                if self._is_knowledge_skill(s):
+                                    self._pending_knowledge_grounding[sid] = True
                         # Plan-ceremony signal: mark this SESSION as a planning session.
                         # PLAN_SIGNAL_TOOLS normalizes across sources (EnterPlanMode = Cursor
                         # create_plan; ExitPlanMode = Claude Code native plan mode, shift+tab ->
@@ -512,10 +535,10 @@ class Accumulator:
                         if name == "Agent":
                             st = inp.get("subagent_type", "general-purpose")
                             self.subagent_counter[st] += 1
-                            # A planning subagent (SDD planning phases, the built-in Plan
-                            # agent, *-planner types) also marks this a planning session.
                             if self._is_plan_skill(st):
                                 self._mark_plan_session(sid, mkey)
+                            if self._is_knowledge_skill(st):
+                                self._pending_knowledge_grounding[sid] = True
                             if mkey:
                                 self.month_subagent_counter[mkey][st] += 1
                             if sid:
@@ -623,6 +646,8 @@ class Accumulator:
                                         self.month_skill_counter[mkey][_sm.group(1)] += 1
                                     if self._is_plan_skill(_sm.group(1)):
                                         self._mark_plan_session(sid, mkey)
+                                    if self._is_knowledge_skill(_sm.group(1)):
+                                        self._pending_knowledge_grounding[sid] = True
                             if bash_writes_file(cmd):
                                 self.bash_write_calls += 1
                                 _bash_nl = cmd.count("\n")
@@ -634,6 +659,8 @@ class Accumulator:
                                 self.shell_test_runs += 1
                                 if mkey:
                                     self.month_shell_test_runs[mkey] += 1
+                            if bash_runs_knowledge(cmd):
+                                self._pending_knowledge_grounding[sid] = True
                             if "git commit" in cmd:
                                 self.git_commits += 1
                                 # flush iteration-depth run for this session
