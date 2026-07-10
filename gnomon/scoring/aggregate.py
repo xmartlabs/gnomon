@@ -13,15 +13,20 @@ combines the per-source SCORES into an aggregate.
 AGGREGATE RULE (documented contract — mirdash mirrors this in TS):
     Do NOT pool the raw inputs (pooling re-introduces the union-capability dilution and
     lets a noisy source drown a precise one). Instead combine the per-source SCORES with
-    a tool-volume weight:
+    a tool-volume activity weight:
 
-        aggregate_score = Σ_s (w_s · score_s) / Σ_s w_s,   w_s = tool_calls_total(s)
+        aggregate_score = Σ_s (w_s · score_s) / Σ_s w_s
+
+    For rolling profiles, w_s is the sum of configured bucket weight multiplied by that
+    bucket's tool calls. Without rolling components, w_s remains the full-window
+    tool_calls_total(s) for backward compatibility.
 
     Applied independently to: the AQ total (aq_0_100), each of the 4 AQ pillars
     (Breadth/Craft/Efficiency/Savvy), and each of the 3 gstack axes (Execution/Planning/
-    Engineering). A source with zero tool calls contributes zero weight. When every source
-    has zero weight the aggregate falls back to a simple unweighted mean so a degenerate
-    corpus still yields a well-formed (zero-ish) profile rather than a divide-by-zero.
+    Engineering). A source with zero effective tool activity contributes zero weight. When
+    every source has zero weight the aggregate falls back to a simple unweighted mean so a
+    degenerate corpus still yields a well-formed (zero-ish) profile rather than a
+    divide-by-zero.
 
     The aggregate's non-numeric fields (tier, archetype, steering, growth_edges,
     signature_moves) are derived from the WEIGHTED-MEAN numbers via the same vocabulary /
@@ -435,7 +440,8 @@ def score_by_source(scoring_inputs_by_source, bucket_scoring_inputs_by_source=No
 
     When bucket inputs are provided, each source's AQ is composed from its non-empty
     rolling buckets. Full-window gstack and narratives stay full-window scoped except
-    AQ-derived growth edges, which are refreshed from the blended AQ.
+    AQ-derived growth edges, which are refreshed from the blended AQ. Aggregate source
+    weights use configured recency multiplied by bucket tool volume when components exist.
     """
     metadata_by_id = {entry["id"]: entry for entry in (bucket_metadata or [])}
     by_source = {}
@@ -455,16 +461,22 @@ def score_by_source(scoring_inputs_by_source, bucket_scoring_inputs_by_source=No
                 "id": bucket_id,
                 "configured_weight": metadata.get("configured_weight", 0),
                 "day_bounds": metadata.get("day_bounds"),
+                "tool_calls_total": (bucket_window.get("volume") or {}).get(
+                    "tool_calls_total", 0),
                 "profile": _profile_from_block(bucket_window),
             })
         profile = (_blend_profiles(full_profile, components, window)
                    if components else full_profile)
 
         by_source[src] = profile
+        weight = (sum(component["configured_weight"] * component["tool_calls_total"]
+                      for component in components)
+                  if components
+                  else (window.get("volume") or {}).get("tool_calls_total", 0))
         per_source_meta[src] = {
             "profile": profile,
             "block": window,
-            "weight": (window.get("volume") or {}).get("tool_calls_total", 0),
+            "weight": weight,
         }
     aggregate = _aggregate_profile(per_source_meta) if per_source_meta else None
     return {"by_source": by_source, "aggregate": aggregate}

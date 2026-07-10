@@ -7,7 +7,7 @@ from unittest import mock
 
 from gnomon.cli import local
 from gnomon.scoring import aggregate
-from tests._scoring_vectors_cases import CLAUDE_BLOCK
+from tests._scoring_vectors_cases import CLAUDE_BLOCK, CURSOR_BLOCK
 
 
 def _aq(first, second, first_signal, second_signal):
@@ -290,9 +290,12 @@ class TestRollingBucketAccumulation(unittest.TestCase):
 
 
 class TestPerSourceRollingBlend(unittest.TestCase):
-    def _block(self, *, sessions, tests, planning_ratio):
-        block = copy.deepcopy(CLAUDE_BLOCK)
+    def _block(self, *, sessions, tests, planning_ratio, template=CLAUDE_BLOCK,
+               tool_calls=None):
+        block = copy.deepcopy(template)
         block["volume"]["total_sessions"] = sessions
+        if tool_calls is not None:
+            block["volume"]["tool_calls_total"] = tool_calls
         block["behavior"]["shell_test_runs"] = tests
         block["behavior"]["planning_ratio_explore_to_doing"] = planning_ratio
         return block
@@ -328,6 +331,64 @@ class TestPerSourceRollingBlend(unittest.TestCase):
         ))
         self.assertEqual(profile["aq"]["aq_0_100"], expected_total)
         self.assertEqual(profile["aq"]["tier"], aggregate._aq_tier_for(expected_total))
+
+    def test_aggregate_weights_sources_by_their_recency_weighted_bucket_activity(self):
+        full_inputs = {
+            "claude": {"window": self._block(
+                sessions=10, tests=120, planning_ratio=0.7, tool_calls=10)},
+            "cursor": {"window": self._block(
+                sessions=0, tests=5, planning_ratio=0.3,
+                template=CURSOR_BLOCK, tool_calls=0)},
+        }
+        bucket_inputs = {
+            "recent_30d": {"claude": {"window": self._block(
+                sessions=10, tests=120, planning_ratio=0.7, tool_calls=10)}},
+            "older_90d": {"cursor": {"window": self._block(
+                sessions=10, tests=5, planning_ratio=0.3,
+                template=CURSOR_BLOCK, tool_calls=10)}},
+        }
+        metadata = [
+            {"id": "recent_30d", "configured_weight": 0.5,
+             "day_bounds": {"lower": 0, "upper": 30}},
+            {"id": "middle_60d", "configured_weight": 0.3,
+             "day_bounds": {"lower": 30, "upper": 90}},
+            {"id": "older_90d", "configured_weight": 0.2,
+             "day_bounds": {"lower": 90, "upper": 180}},
+        ]
+
+        result = aggregate.score_by_source(full_inputs, bucket_inputs, metadata)
+
+        self.assertEqual(
+            {source: profile["aq"]["aq_0_100"]
+             for source, profile in result["by_source"].items()},
+            {"claude": 86, "cursor": 37},
+        )
+        self.assertEqual(
+            result["aggregate"]["combination"]["weights"],
+            {"claude": 5.0, "cursor": 2.0},
+        )
+        self.assertEqual(result["aggregate"]["aq"]["aq_0_100"], 72)
+        self.assertNotEqual(
+            result["aggregate"]["aq"]["aq_0_100"],
+            result["by_source"]["claude"]["aq"]["aq_0_100"],
+        )
+
+    def test_aggregate_without_buckets_keeps_full_window_tool_volume_weights(self):
+        full_inputs = {
+            "claude": {"window": self._block(
+                sessions=40, tests=120, planning_ratio=0.7, tool_calls=10)},
+            "cursor": {"window": self._block(
+                sessions=10, tests=5, planning_ratio=0.3,
+                template=CURSOR_BLOCK, tool_calls=20)},
+        }
+
+        result = aggregate.score_by_source(full_inputs)
+
+        self.assertEqual(
+            result["aggregate"]["combination"]["weights"],
+            {"claude": 10, "cursor": 20},
+        )
+        self.assertEqual(result["aggregate"]["aq"]["aq_0_100"], 53)
 
 
 if __name__ == "__main__":
