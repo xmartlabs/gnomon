@@ -380,6 +380,12 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
         bucket["id"]: {source: Accumulator() for source in _srcs_present}
         for bucket in bucket_windows
     }
+    # The report's calendar-month start can be newer than the rolling 180-day
+    # AQ horizon (especially during a partial current month). Scan far enough
+    # back for both consumers; each accumulator still applies its own bounds.
+    file_scan_since = since_dt
+    if since_dt is not None and bucket_windows:
+        file_scan_since = min(since_dt, min(bucket["since"] for bucket in bucket_windows))
 
     # ---- narrative quote candidates (corpus-only, never serialized) ----------
     phrase_counts = Counter()      # normalized short prompt -> times seen
@@ -395,9 +401,9 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
         # mtime pre-filter: a file last written before the window start can't contain
         # in-window events — skip the parse entirely (big win on ~38k codex seeds).
         # No mtime skip for --until: old events can live in recently-written files.
-        if since_dt is not None:
+        if file_scan_since is not None:
             try:
-                if datetime.fromtimestamp(os.path.getmtime(fp)).astimezone() < since_dt:
+                if datetime.fromtimestamp(os.path.getmtime(fp)).astimezone() < file_scan_since:
                     continue
             except OSError:
                 pass
@@ -434,12 +440,10 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
                 info = corpus.observe(ev, since_dt, until_dt)
                 sa.observe(ev, since_dt, until_dt)
                 for bucket in bucket_windows:
-                    bucket_since = max(bucket["since"], since_dt) if since_dt else bucket["since"]
-                    bucket_until = min(bucket["until"], until_dt) if until_dt else bucket["until"]
-                    if bucket_since < bucket_until:
-                        bucket_corpora[bucket["id"]].observe(ev, bucket_since, bucket_until)
-                        bucket_src_accums[bucket["id"]][cur_src].observe(
-                            ev, bucket_since, bucket_until)
+                    bucket_corpora[bucket["id"]].observe(
+                        ev, bucket["since"], bucket["until"])
+                    bucket_src_accums[bucket["id"]][cur_src].observe(
+                        ev, bucket["since"], bucket["until"])
                 if info is None:
                     continue
                 # ---- narrative: verbatim-quote candidates from a genuine prompt ----

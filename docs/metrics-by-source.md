@@ -85,8 +85,9 @@ Mirdash reads `actions_per_prompt` from `churn`, with legacy fallback to `contex
 - `scoring_inputs_by_source[*].window` — **window** (up to 6-month) raw scoring input per source.
 - `noticed_stats_monthly` — **per calendar month** evidence, one entry per month with its own `git_churn`, tokens, errors, etc.
 - `scoring_inputs_by_source[*].monthly` — **per source per calendar month** raw scoring inputs.
-- `profiles_by_source` / `profile` / AQ — **180-day rolling AQ** within the
-  requested window; gstack/archetype/steering remain full-window scoped.
+- `profiles_by_source` / `profile` / AQ — **180-day rolling AQ**, independent
+  of the calendar-month report start; gstack/archetype/steering remain scoped
+  to the requested full-window inputs.
 - `source_usage` — **window** usage share by source.
 - `source_usage_monthly` — **per calendar month** usage share by source.
 

@@ -1,5 +1,6 @@
 import unittest
 import copy
+import os
 import tempfile
 from datetime import datetime, timedelta, timezone
 from unittest import mock
@@ -179,6 +180,40 @@ class TestWeightedAQBlend(unittest.TestCase):
 
 
 class TestRollingBucketAccumulation(unittest.TestCase):
+    def test_current_partial_month_report_since_does_not_clip_180_day_aq_horizon(self):
+        anchor = datetime(2026, 7, 9, 12, tzinfo=timezone.utc)
+        report_since = datetime(2026, 2, 1, tzinfo=timezone.utc)
+        report_until = datetime(2026, 8, 1, tzinfo=timezone.utc)
+        old_timestamp = anchor - timedelta(days=170)
+        event = {
+            "type": "user",
+            "sessionId": "older-only",
+            "timestamp": old_timestamp.isoformat(),
+            "cwd": "/repo",
+            "message": {"role": "user", "content": "include the full aq horizon"},
+        }
+        windows = local._rolling_aq_bucket_windows(until_dt=report_until, now=anchor)
+
+        with tempfile.NamedTemporaryFile() as transcript:
+            os.utime(transcript.name, (old_timestamp.timestamp(), old_timestamp.timestamp()))
+            with mock.patch.object(local, "_rolling_aq_bucket_windows", return_value=windows), \
+                    mock.patch.object(local, "iter_events", return_value=[event]):
+                stats, narrative = local._accumulate(
+                    [("claude", transcript.name, "claude")],
+                    since_dt=report_since,
+                    until_dt=report_until,
+                    cursor_twins=set(),
+                    antigravity=None,
+                    verbose=False,
+                )
+
+        self.assertEqual(stats["volume"]["total_sessions"], 0)
+        counts = {
+            bucket_id: bucket_stats["volume"]["total_sessions"]
+            for bucket_id, bucket_stats in narrative["_aq_bucket_stats"].items()
+        }
+        self.assertEqual(counts, {"recent_30d": 0, "middle_60d": 0, "older_90d": 1})
+
     def test_events_are_routed_to_exactly_one_bucket(self):
         anchor = datetime(2025, 7, 1, 12, tzinfo=timezone.utc)
         timestamps = [

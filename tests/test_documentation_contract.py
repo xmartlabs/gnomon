@@ -17,6 +17,10 @@ class TestPublicDocumentationContract(unittest.TestCase):
 
     def test_readme_explains_rolling_180_day_weighting(self):
         self.assertIn("180-day rolling horizon", self.readme)
+        self.assertIn(
+            "independent of the calendar-month report window",
+            " ".join(self.readme.split()),
+        )
         self.assertIn("50%", self.readme)
         self.assertIn("30%", self.readme)
         self.assertIn("20%", self.readme)
