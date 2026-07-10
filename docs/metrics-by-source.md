@@ -60,6 +60,11 @@ directly — no external dependency). Both decode to the same normalized events.
 
 ## Uploaded summary contract
 
+Current scoring contract: **version 4**. Version 4 is a methodology break from
+pre-v0.4 scores: AQ is composed from disjoint 30/60/90-day rolling buckets at
+50/30/20, with empty-bucket renormalization. Full-window raw inputs remain for
+compatibility and reporting but are not an AQ blend component.
+
 `build_summary()` uploads:
 
 - `context.total_prompts`
@@ -80,7 +85,8 @@ Mirdash reads `actions_per_prompt` from `churn`, with legacy fallback to `contex
 - `scoring_inputs_by_source[*].window` — **window** (up to 6-month) raw scoring input per source.
 - `noticed_stats_monthly` — **per calendar month** evidence, one entry per month with its own `git_churn`, tokens, errors, etc.
 - `scoring_inputs_by_source[*].monthly` — **per source per calendar month** raw scoring inputs.
-- `profiles_by_source` / `profile` / AQ — **window** only.
+- `profiles_by_source` / `profile` / AQ — **180-day rolling AQ** within the
+  requested window; gstack/archetype/steering remain full-window scoped.
 - `source_usage` — **window** usage share by source.
 - `source_usage_monthly` — **per calendar month** usage share by source.
 

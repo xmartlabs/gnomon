@@ -8,7 +8,7 @@ from gnomon.analysis.metrics import (
 )
 
 
-SCORING_INPUTS_VERSION = 3
+SCORING_INPUTS_VERSION = 4
 
 
 def _pairs(seq):

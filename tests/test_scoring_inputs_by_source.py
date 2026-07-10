@@ -114,7 +114,7 @@ class TestScoringInputsBySource(unittest.TestCase):
     def test_payload_has_version_and_by_source(self):
         stats = self._stats()
         summary = paxel.build_summary(stats)
-        self.assertEqual(summary["scoring_inputs_version"], 3)
+        self.assertEqual(summary["scoring_inputs_version"], 4)
         self.assertIn("claude", summary["scoring_inputs_by_source"])
 
     def test_block_field_set_window_and_monthly(self):
@@ -153,6 +153,30 @@ class TestScoringInputsBySource(unittest.TestCase):
         block = paxel.build_summary(stats)["scoring_inputs_by_source"]["claude"]["window"]
         names = [k for k, _ in block["stack"]["skills_all"]]
         self.assertIn("writing-plans", names)
+
+    def test_shareable_payload_retains_raw_custom_skill_and_mcp_identifiers(self):
+        custom_skill = "customer-acme-release-review"
+        custom_mcp_server = "customer-acme-prod"
+        skill_rows = _claude_turn(
+            "raw-skill", "2026-03-01T10:00:00.000Z", prompt="use custom skill", tool="Skill")
+        skill_rows[1]["message"]["content"][1]["input"]["skill"] = custom_skill
+        mcp_rows = _claude_turn(
+            "raw-mcp", "2026-03-01T11:00:00.000Z", prompt="query custom server",
+            tool=f"mcp__{custom_mcp_server}__lookup")
+
+        summary = paxel.build_summary(_run_claude_transcript(self, skill_rows + mcp_rows))
+
+        self.assertIn(custom_skill, [entry["name"] for entry in summary["ecosystem"]["top_skills"]])
+        self.assertIn(
+            custom_mcp_server,
+            [entry["server"] for entry in summary["ecosystem"]["top_mcp_servers"]],
+        )
+        window = summary["scoring_inputs_by_source"]["claude"]["window"]
+        self.assertIn(custom_skill, dict(window["stack"]["skills_all"]))
+        self.assertIn(
+            f"mcp__{custom_mcp_server}__lookup",
+            dict(window["tools"]["top_tools"]),
+        )
 
     def _grounded_rows(self, sid, ts):
         return [

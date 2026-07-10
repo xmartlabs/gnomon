@@ -20,7 +20,8 @@ import unittest
 from gnomon.scoring.inputs import SCORING_INPUTS_VERSION
 from gnomon.scoring.aggregate import score_by_source
 from tests._scoring_vectors_cases import (
-    CLAUDE_BLOCK, CURSOR_BLOCK, CLAUDE_BOUNDARY_BLOCK, NO_TOOL_ACTIVITY_BLOCK, cases,
+    CLAUDE_BLOCK, CURSOR_BLOCK, CLAUDE_BOUNDARY_BLOCK, NO_TOOL_ACTIVITY_BLOCK,
+    cases, rolling_cases,
 )
 
 VECTORS_PATH = os.path.join(os.path.dirname(__file__), "fixtures", "scoring_vectors.json")
@@ -37,12 +38,16 @@ def _roundtrip(obj):
 
 
 class TestScoringVectorsFile(unittest.TestCase):
+    def test_scoring_contract_is_version_four(self):
+        self.assertEqual(SCORING_INPUTS_VERSION, 4)
+
     def test_file_exists_and_has_cases(self):
         data = _load()
         self.assertGreaterEqual(len(data), 3)
         names = {c["name"] for c in data}
         self.assertEqual(names, {"claude_only", "cursor_only", "mixed_claude_cursor",
-                                  "claude_boundary_above_floor", "no_tool_activity"})
+                                  "claude_boundary_above_floor", "no_tool_activity",
+                                  "rolling_claude_all_buckets"})
 
     def test_version_tagged(self):
         for c in _load():
@@ -59,6 +64,22 @@ class TestScoringVectorsFile(unittest.TestCase):
                 self.assertEqual(got, data[name]["expected"],
                                  f"{name}: live scoring diverged from committed vectors; "
                                  f"regenerate tests/fixtures/scoring_vectors.json")
+        for name, sibs, bucket_sibs, metadata in rolling_cases():
+            with self.subTest(case=name):
+                got = _roundtrip(score_by_source(
+                    sibs,
+                    bucket_scoring_inputs_by_source=bucket_sibs,
+                    bucket_metadata=metadata,
+                ))
+                self.assertEqual(got, data[name]["expected"],
+                                 f"{name}: live rolling scoring diverged from committed vectors; "
+                                 f"regenerate tests/fixtures/scoring_vectors.json")
+
+    def test_rolling_vector_uses_exact_configured_weights(self):
+        rolling = next(c for c in _load() if c["name"] == "rolling_claude_all_buckets")
+        buckets = rolling["expected"]["by_source"]["claude"]["aq"]["blend"]["buckets"]
+        self.assertEqual([bucket["configured_weight"] for bucket in buckets], [0.5, 0.3, 0.2])
+        self.assertEqual([bucket["effective_weight"] for bucket in buckets], [0.5, 0.3, 0.2])
 
     def test_profile_shape(self):
         """Each profile carries the same shape build_summary's `profile` produces."""

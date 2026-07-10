@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from gnomon.scoring.inputs import SCORING_INPUTS_VERSION
 from gnomon.scoring.aggregate import score_by_source
-from tests._scoring_vectors_cases import cases
+from tests._scoring_vectors_cases import cases, rolling_cases
 
 OUT = os.path.join(os.path.dirname(__file__), "fixtures", "scoring_vectors.json")
 
@@ -32,6 +32,19 @@ def build():
             "scoring_inputs_version": SCORING_INPUTS_VERSION,
             "scoring_inputs_by_source": sibs,
             "expected": score_by_source(sibs),
+        })
+    for name, sibs, bucket_sibs, metadata in rolling_cases():
+        out.append({
+            "name": name,
+            "scoring_inputs_version": SCORING_INPUTS_VERSION,
+            "scoring_inputs_by_source": sibs,
+            "bucket_scoring_inputs_by_source": bucket_sibs,
+            "bucket_metadata": metadata,
+            "expected": score_by_source(
+                sibs,
+                bucket_scoring_inputs_by_source=bucket_sibs,
+                bucket_metadata=metadata,
+            ),
         })
     return out
 

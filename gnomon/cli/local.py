@@ -24,7 +24,7 @@ from gnomon.scoring.gstack import compute_scores
 from gnomon.scoring.aq import compute_aq
 from gnomon.scoring.archetype import pick_archetype
 from gnomon.scoring.inputs import SCORING_INPUTS_VERSION, build_scoring_inputs
-from gnomon.scoring.aggregate import RECENCY_BLEND_ENABLED, RECENT_WINDOW_DAYS, RECENT_WEIGHT, HISTORY_WEIGHT, _blend_aq
+from gnomon.scoring.aggregate import AQ_BUCKETS, RECENCY_BLEND_ENABLED, _blend_aq
 from gnomon.cli.accumulator import Accumulator
 from gnomon.output.summary import build_summary
 from gnomon.output.report import write_report
@@ -46,6 +46,22 @@ _TOOLS_DIAG = [
     ("agent_runs", "agent_runs", 1.0, True),
     ("knowledge_calls", "knowledge_calls", 200, False),  # gated, absolute (not per-session)
 ]
+
+
+def _rolling_aq_bucket_windows(until_dt=None, now=None):
+    """Return disjoint rolling AQ windows anchored at the effective scoring end."""
+    now = now or datetime.now().astimezone()
+    anchor = min(until_dt, now) if until_dt is not None else now
+    return [
+        {
+            "id": bucket["id"],
+            "configured_weight": bucket["configured_weight"],
+            "day_bounds": {"lower": bucket["lower_days"], "upper": bucket["upper_days"]},
+            "since": anchor - timedelta(days=bucket["upper_days"]),
+            "until": anchor - timedelta(days=bucket["lower_days"]),
+        }
+        for bucket in AQ_BUCKETS
+    ]
 
 
 def tools_diagnostic(stats):
@@ -216,29 +232,35 @@ def main(argv=None, output_dir=None):
         scoring_by_source[src] = {"window": window, "monthly": monthly}
     stats["scoring_inputs_by_source"] = scoring_by_source
 
-    # ---- recent-window scoring inputs (exact 30-day rolling from accumulator) ---
-    recent_scoring_by_source = {}
+    # ---- rolling bucket scoring (internal raw inputs; only scored AQ is shared) ----
     if RECENCY_BLEND_ENABLED:
-        _recent_per_source_stats = narrative.get("_recent_per_source_stats", {})
-        recent_stats_corpus = narrative.get("_recent_stats")
-        for src in srcs_present:
-            r_stats = _recent_per_source_stats.get(src)
-            if r_stats and (r_stats.get("volume", {}).get("total_sessions", 0) or 0) > 0:
-                recent_scoring_by_source[src] = {"window": build_scoring_inputs(r_stats)}
-        stats["recent_scoring_inputs_by_source"] = recent_scoring_by_source
+        bucket_metadata = [
+            {key: bucket[key] for key in ("id", "configured_weight", "day_bounds")}
+            for bucket in narrative.get("_aq_bucket_windows", [])
+        ]
+        bucket_scoring_by_source = {}
+        for bucket_id, per_source in narrative.get("_aq_bucket_per_source_stats", {}).items():
+            bucket_scoring_by_source[bucket_id] = {}
+            for src in srcs_present:
+                bucket_stats = per_source.get(src)
+                if bucket_stats is not None:
+                    bucket_scoring_by_source[bucket_id][src] = {
+                        "window": build_scoring_inputs(bucket_stats),
+                    }
+        stats["_aq_bucket_scoring_inputs_by_source"] = bucket_scoring_by_source
+        stats["_aq_bucket_metadata"] = bucket_metadata
 
-        # ---- blend corpus-level AQ (recent 30d + full window) ----------------
-        if recent_stats_corpus and (recent_stats_corpus.get("volume", {}).get("total_sessions", 0) or 0) > 0:
-            recent_corpus_aq = compute_aq(recent_stats_corpus)
+        corpus_components = []
+        metadata_by_id = {entry["id"]: entry for entry in bucket_metadata}
+        for bucket_id, bucket_stats in narrative.get("_aq_bucket_stats", {}).items():
+            if (bucket_stats.get("volume", {}).get("total_sessions", 0) or 0) <= 0:
+                continue
+            metadata = metadata_by_id[bucket_id]
+            corpus_components.append(dict(metadata, aq=compute_aq(bucket_stats)))
+        if corpus_components:
             full_corpus_aq = stats["agentic"]
-            stats["agentic"] = _blend_aq(full_corpus_aq, recent_corpus_aq)
-            stats["agentic"]["blend"] = {
-                "recent_weight": RECENT_WEIGHT,
-                "history_weight": HISTORY_WEIGHT,
-                "recent_aq": recent_corpus_aq["aq_0_100"],
-                "full_aq": full_corpus_aq["aq_0_100"],
-                "recent_window_days": RECENT_WINDOW_DAYS,
-            }
+            stats["_full_window_agentic"] = full_corpus_aq
+            stats["agentic"] = _blend_aq(full_corpus_aq, corpus_components)
 
     _t_scoring_inputs = time.monotonic() - _t0_si
     # internal-only working field (per-month full stats slices); not part of the payload
@@ -249,7 +271,11 @@ def main(argv=None, output_dir=None):
     _t0_scores = time.monotonic()
     scores = compute_scores(stats)
     _t_compute_scores = time.monotonic() - _t0_scores
-    archetype, quote = pick_archetype(stats, scores)
+    archetype_stats = stats
+    if stats.get("_full_window_agentic"):
+        archetype_stats = dict(stats)
+        archetype_stats["agentic"] = stats["_full_window_agentic"]
+    archetype, quote = pick_archetype(archetype_stats, scores)
 
     # ---- assemble timing metadata ------------------------------------------
     _t_compute_aq = stats.pop("_timing_compute_aq_s", 0)
@@ -264,8 +290,11 @@ def main(argv=None, output_dir=None):
         "compute_scores_s": round(_t_compute_scores, 3),
     }
 
+    stats_for_disk = {key: value for key, value in stats.items()
+                      if key not in {"_aq_bucket_scoring_inputs_by_source",
+                                     "_aq_bucket_metadata", "_full_window_agentic"}}
     with open(os.path.join(_out_dir, "stats.json"), "w", encoding="utf-8") as f:
-        json.dump(stats, f, indent=2, default=str)
+        json.dump(stats_for_disk, f, indent=2, default=str)
 
     if "--summary" in argv:
         _t0_summ = time.monotonic()
@@ -345,10 +374,12 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
     _srcs_present = sorted({s for s, _, _ in sources})
     src_accums = {s: Accumulator() for s in _srcs_present}
 
-    if RECENCY_BLEND_ENABLED:
-        recent_since_dt = datetime.now().astimezone() - timedelta(days=RECENT_WINDOW_DAYS)
-        recent_corpus = Accumulator()
-        recent_src_accums = {s: Accumulator() for s in _srcs_present}
+    bucket_windows = (_rolling_aq_bucket_windows(until_dt) if RECENCY_BLEND_ENABLED else [])
+    bucket_corpora = {bucket["id"]: Accumulator() for bucket in bucket_windows}
+    bucket_src_accums = {
+        bucket["id"]: {source: Accumulator() for source in _srcs_present}
+        for bucket in bucket_windows
+    }
 
     # ---- narrative quote candidates (corpus-only, never serialized) ----------
     phrase_counts = Counter()      # normalized short prompt -> times seen
@@ -373,10 +404,9 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
         sa = src_accums[cur_src]
         corpus.begin_file(cur_src, fp)
         sa.begin_file(cur_src, fp)
-        if RECENCY_BLEND_ENABLED:
-            rsa = recent_src_accums[cur_src]
-            recent_corpus.begin_file(cur_src, fp)
-            rsa.begin_file(cur_src, fp)
+        for bucket in bucket_windows:
+            bucket_corpora[bucket["id"]].begin_file(cur_src, fp)
+            bucket_src_accums[bucket["id"]][cur_src].begin_file(cur_src, fp)
         if verbose and corpus.files_parsed % 300 == 0:
             print(f"  ...{corpus.files_parsed}/{total_file_count}")
 
@@ -396,16 +426,20 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
             ):
                 corpus.skip_file()
                 sa.skip_file()
-                if RECENCY_BLEND_ENABLED:
-                    recent_corpus.skip_file()
-                    rsa.skip_file()
+                for bucket in bucket_windows:
+                    bucket_corpora[bucket["id"]].skip_file()
+                    bucket_src_accums[bucket["id"]][cur_src].skip_file()
                 continue
             for ev in _ev_list:
                 info = corpus.observe(ev, since_dt, until_dt)
                 sa.observe(ev, since_dt, until_dt)
-                if RECENCY_BLEND_ENABLED:
-                    recent_corpus.observe(ev, recent_since_dt, until_dt)
-                    rsa.observe(ev, recent_since_dt, until_dt)
+                for bucket in bucket_windows:
+                    bucket_since = max(bucket["since"], since_dt) if since_dt else bucket["since"]
+                    bucket_until = min(bucket["until"], until_dt) if until_dt else bucket["until"]
+                    if bucket_since < bucket_until:
+                        bucket_corpora[bucket["id"]].observe(ev, bucket_since, bucket_until)
+                        bucket_src_accums[bucket["id"]][cur_src].observe(
+                            ev, bucket_since, bucket_until)
                 if info is None:
                     continue
                 # ---- narrative: verbatim-quote candidates from a genuine prompt ----
@@ -446,9 +480,9 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
                     del longest_prompts[120:]
         corpus.end_file()
         sa.end_file()
-        if RECENCY_BLEND_ENABLED:
-            recent_corpus.end_file()
-            rsa.end_file()
+        for bucket in bucket_windows:
+            bucket_corpora[bucket["id"]].end_file()
+            bucket_src_accums[bucket["id"]][cur_src].end_file()
 
     # ---- whole-corpus stats (also stashes corpus gc window + null-honesty flag) --
     stats = corpus.to_corpus_stats(since_dt, until_dt, antigravity)
@@ -468,24 +502,24 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
             continue
         _per_source_stats[_src_name] = _sa.to_source_stats(_src_name, since_dt, until_dt)
 
-    # ---- recent-window stats (exact 30-day rolling) ----------------------------
-    _recent_per_source_stats = {}
-    recent_stats = None
-    if RECENCY_BLEND_ENABLED:
-        # Clear project_activity on recent accumulators so to_source_stats() doesn't
-        # trigger expensive git_churn calls — we only need scoring inputs for the blend.
-        recent_corpus.project_activity = {}
-        for _rsa in recent_src_accums.values():
-            _rsa.project_activity = {}
-        _recent_srcs = sorted(recent_src_accums.keys())
-        recent_stats = recent_corpus.to_source_stats(
-            ",".join(_recent_srcs), recent_since_dt, until_dt)
-        for _src_name, _rsa in recent_src_accums.items():
+    # ---- rolling AQ bucket stats (internal only) -------------------------------
+    bucket_stats = {}
+    bucket_per_source_stats = {}
+    for bucket in bucket_windows:
+        bucket_id = bucket["id"]
+        bucket_corpus = bucket_corpora[bucket_id]
+        bucket_corpus.project_activity = {}
+        for source_accumulator in bucket_src_accums[bucket_id].values():
+            source_accumulator.project_activity = {}
+        bucket_stats[bucket_id] = bucket_corpus.to_source_stats(
+            ",".join(_srcs_present), bucket["since"], bucket["until"])
+        bucket_per_source_stats[bucket_id] = {}
+        for source_name, source_accumulator in bucket_src_accums[bucket_id].items():
             if _single_source:
-                _recent_per_source_stats[_src_name] = recent_stats
+                bucket_per_source_stats[bucket_id][source_name] = bucket_stats[bucket_id]
                 continue
-            _recent_per_source_stats[_src_name] = _rsa.to_source_stats(
-                _src_name, recent_since_dt, until_dt)
+            bucket_per_source_stats[bucket_id][source_name] = source_accumulator.to_source_stats(
+                source_name, bucket["since"], bucket["until"])
 
     narrative = {
         "opening_prompts": opening_prompts,
@@ -499,8 +533,9 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
         "source_files": corpus.source_files,
         "source_sessions": corpus.source_sessions,
         "_per_source_stats": _per_source_stats,
-        "_recent_per_source_stats": _recent_per_source_stats,
-        "_recent_stats": recent_stats,
+        "_aq_bucket_windows": bucket_windows,
+        "_aq_bucket_per_source_stats": bucket_per_source_stats,
+        "_aq_bucket_stats": bucket_stats,
     }
     return stats, narrative
 

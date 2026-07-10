@@ -39,9 +39,11 @@ from gnomon.scoring.profiles import build_profile, stats_from_scoring_block
 
 
 RECENCY_BLEND_ENABLED = True
-RECENT_WINDOW_DAYS = 30
-RECENT_WEIGHT = 0.65
-HISTORY_WEIGHT = 0.35
+AQ_BUCKETS = (
+    {"id": "recent_30d", "configured_weight": 0.50, "lower_days": 0, "upper_days": 30},
+    {"id": "middle_60d", "configured_weight": 0.30, "lower_days": 30, "upper_days": 90},
+    {"id": "older_90d", "configured_weight": 0.20, "lower_days": 90, "upper_days": 180},
+)
 
 
 def _aq_tier_for(total):
@@ -282,43 +284,148 @@ def _synth_stats_for_aggregate(items, agg_aq):
     return synth
 
 
-def _blend_aq(full_aq, recent_aq, recent_w=RECENT_WEIGHT, history_w=HISTORY_WEIGHT):
-    """Blend two AQ dicts (recent + full window) into one.
-    Preserves axes and extra keys from the full AQ; only blends pillar/total scores."""
-    blended_total = round(recent_w * recent_aq["aq_0_100"] + history_w * full_aq["aq_0_100"])
-    full_pillars = {p["name"]: p for p in full_aq.get("pillars", [])}
-    recent_pillars = {p["name"]: p for p in recent_aq.get("pillars", [])}
+def _blend_aq(full_aq, components):
+    """Blend named, weighted AQ components axis-by-axis.
+
+    ``full_aq`` remains the compatibility/fallback score. It is intentionally not a
+    weighted component. Components with no AQ are omitted and the configured weights
+    of the remaining components are renormalized to one.
+    """
+    available = [dict(component) for component in components
+                 if component.get("aq") and component.get("configured_weight", 0) > 0]
+    if not available:
+        return full_aq
+
+    configured_total = sum(component["configured_weight"] for component in available)
+    for component in available:
+        component["effective_weight"] = component["configured_weight"] / configured_total
+
+    # The highest-effective-weight component provides compatibility fields such as
+    # axis signals and not_applicable. Scores are always recomputed from all components.
+    primary = max(enumerate(available), key=lambda item: (item[1]["effective_weight"], -item[0]))[1]
+
+    pillar_order = []
+    pillar_weights = {}
+    for component in available:
+        for pillar in component["aq"].get("pillars", []):
+            if pillar["name"] not in pillar_weights:
+                pillar_order.append(pillar["name"])
+                pillar_weights[pillar["name"]] = pillar.get("weight", 0)
+
     blended_pillars = []
-    for name in full_pillars:
-        fp = dict(full_pillars[name])
-        rp = recent_pillars.get(name)
-        if rp is not None:
-            fp["score"] = round(recent_w * rp["score"] + history_w * fp["score"], 1)
-        blended_pillars.append(fp)
+    for pillar_name in pillar_order:
+        axis_order = []
+        for component in available:
+            pillar = next((p for p in component["aq"].get("pillars", [])
+                           if p["name"] == pillar_name), None)
+            for axis in (pillar or {}).get("axes", []):
+                if axis["name"] not in axis_order:
+                    axis_order.append(axis["name"])
+
+        blended_axes = []
+        for axis_name in axis_order:
+            axis_components = []
+            for component in available:
+                pillar = next((p for p in component["aq"].get("pillars", [])
+                               if p["name"] == pillar_name), None)
+                axis = next((a for a in (pillar or {}).get("axes", [])
+                             if a["name"] == axis_name), None)
+                if axis is not None:
+                    axis_components.append((component, axis))
+            if not axis_components:
+                continue
+
+            axis_weight_total = sum(component["effective_weight"]
+                                    for component, _ in axis_components)
+            score = round(sum(component["effective_weight"] * axis["score"]
+                              for component, axis in axis_components) / axis_weight_total, 1)
+            _, source_axis = max(
+                axis_components,
+                key=lambda item: item[0]["effective_weight"],
+            )
+            blended_axis = dict(source_axis)
+            blended_axis["score"] = score
+            blended_axis["signals"] = source_axis.get("signals", {})
+            blended_axis["components"] = [
+                {
+                    "id": component["id"],
+                    "score": axis["score"],
+                    "signals": axis.get("signals", {}),
+                    "effective_weight": component["effective_weight"],
+                }
+                for component, axis in axis_components
+            ]
+            blended_axes.append(blended_axis)
+
+        primary_pillar = next(
+            (p for p in primary["aq"].get("pillars", []) if p["name"] == pillar_name),
+            None,
+        )
+        pillar = dict(primary_pillar or {"name": pillar_name})
+        pillar["weight"] = pillar_weights[pillar_name]
+        pillar["axes"] = blended_axes
+        pillar["score"] = round(sum(axis["score"] for axis in blended_axes), 1)
+        component_pillars = [
+            next((p for p in component["aq"].get("pillars", [])
+                  if p["name"] == pillar_name), None)
+            for component in available
+        ]
+        not_applicable_sets = [set(p.get("not_applicable", []))
+                               for p in component_pillars if p is not None]
+        not_applicable = (set.intersection(*not_applicable_sets)
+                          if not_applicable_sets else set())
+        if not_applicable:
+            pillar["not_applicable"] = sorted(not_applicable)
+        else:
+            pillar.pop("not_applicable", None)
+        blended_pillars.append(pillar)
+
+    total = round(sum(pillar.get("weight", 0) / 100 * pillar["score"]
+                      for pillar in blended_pillars))
     result = dict(full_aq)
-    result["aq_0_100"] = blended_total
-    result["tier"] = _aq_tier_for(blended_total)
+    result["aq_0_100"] = total
+    result["tier"] = _aq_tier_for(total)
     result["pillars"] = blended_pillars
+    result["blend"] = {
+        "full_aq": full_aq.get("aq_0_100", 0),
+        "buckets": [
+            {
+                "id": component["id"],
+                "configured_weight": component["configured_weight"],
+                "effective_weight": component["effective_weight"],
+                "day_bounds": component.get("day_bounds"),
+                "component_aq": component["aq"].get("aq_0_100", 0),
+            }
+            for component in available
+        ],
+    }
     return result
 
 
-def _blend_profiles(full_profile, recent_profile):
-    """Blend a full-window profile with a recent-window profile.
-    AQ and pillars are blended by weight; non-numeric fields are re-derived
-    from the blended scores."""
-    blended_aq = _blend_aq(full_profile["aq"], recent_profile["aq"])
+def _blend_profiles(full_profile, components, full_block):
+    """Apply bucketed AQ while keeping non-AQ profile fields full-window scoped."""
+    blended_aq = _blend_aq(full_profile["aq"], [
+        dict(component, aq=component["profile"]["aq"])
+        for component in components
+    ])
     blended = dict(full_profile)
     blended["aq"] = blended_aq
-    blended["blend"] = {
-        "recent_weight": RECENT_WEIGHT,
-        "history_weight": HISTORY_WEIGHT,
-        "recent_aq": recent_profile["aq"]["aq_0_100"],
-        "full_aq": full_profile["aq"]["aq_0_100"],
+    # Growth edges are the one narrative surface that reads AQ axes. Recompute
+    # those against the blended AQ, but retain full-window gstack/archetype/
+    # steering/signature fields copied above.
+    stats = _slice_to_stats(full_block)
+    stats["agentic"] = blended_aq
+    scores = {
+        "Execution": full_profile["scores"]["execution"]["value"],
+        "Planning": full_profile["scores"]["planning"]["value"],
+        "Engineering": full_profile["scores"]["engineering"]["value"],
     }
+    blended["growth_edges"] = growth_edges_structured(stats, scores)
     return blended
 
 
-def score_by_source(scoring_inputs_by_source, recent_scoring_inputs_by_source=None):
+def score_by_source(scoring_inputs_by_source, bucket_scoring_inputs_by_source=None,
+                    bucket_metadata=None):
     """Given build_summary's scoring_inputs_by_source, return:
         {"by_source": {<source>: <profile>}, "aggregate": <profile>}
 
@@ -326,25 +433,32 @@ def score_by_source(scoring_inputs_by_source, recent_scoring_inputs_by_source=No
     source's own caps (single-source → no union dilution). The aggregate combines the
     per-source SCORES per the module's documented weighted-mean rule.
 
-    When recent_scoring_inputs_by_source is provided, each source's profile is blended:
-    65% recent (30-day) + 35% full window.
+    When bucket inputs are provided, each source's AQ is composed from its non-empty
+    rolling buckets. Full-window gstack and narratives stay full-window scoped except
+    AQ-derived growth edges, which are refreshed from the blended AQ.
     """
+    metadata_by_id = {entry["id"]: entry for entry in (bucket_metadata or [])}
     by_source = {}
     per_source_meta = {}
     for src, blocks in scoring_inputs_by_source.items():
         window = blocks.get("window") or {}
         full_profile = _profile_from_block(window)
 
-        if recent_scoring_inputs_by_source and src in recent_scoring_inputs_by_source:
-            recent_window = (recent_scoring_inputs_by_source[src].get("window") or {})
-            recent_vol = (recent_window.get("volume") or {}).get("total_sessions", 0)
-            if recent_vol > 0:
-                recent_profile = _profile_from_block(recent_window)
-                profile = _blend_profiles(full_profile, recent_profile)
-            else:
-                profile = full_profile
-        else:
-            profile = full_profile
+        components = []
+        for bucket_id, bucket_sources in (bucket_scoring_inputs_by_source or {}).items():
+            bucket_window = ((bucket_sources.get(src) or {}).get("window") or {})
+            sessions = (bucket_window.get("volume") or {}).get("total_sessions", 0)
+            if sessions <= 0:
+                continue
+            metadata = metadata_by_id.get(bucket_id, {})
+            components.append({
+                "id": bucket_id,
+                "configured_weight": metadata.get("configured_weight", 0),
+                "day_bounds": metadata.get("day_bounds"),
+                "profile": _profile_from_block(bucket_window),
+            })
+        profile = (_blend_profiles(full_profile, components, window)
+                   if components else full_profile)
 
         by_source[src] = profile
         per_source_meta[src] = {

@@ -813,7 +813,7 @@
         }
       }
     },
-    "scoring_inputs_version": 3
+    "scoring_inputs_version": 4
   },
   {
     "expected": {
@@ -1536,7 +1536,7 @@
         }
       }
     },
-    "scoring_inputs_version": 3
+    "scoring_inputs_version": 4
   },
   {
     "expected": {
@@ -2799,7 +2799,7 @@
         }
       }
     },
-    "scoring_inputs_version": 3
+    "scoring_inputs_version": 4
   },
   {
     "expected": {
@@ -3600,7 +3600,7 @@
         }
       }
     },
-    "scoring_inputs_version": 3
+    "scoring_inputs_version": 4
   },
   {
     "expected": {
@@ -4314,6 +4314,1632 @@
         }
       }
     },
-    "scoring_inputs_version": 3
+    "scoring_inputs_version": 4
+  },
+  {
+    "bucket_metadata": [
+      {
+        "configured_weight": 0.5,
+        "day_bounds": {
+          "lower": 0,
+          "upper": 30
+        },
+        "id": "recent_30d"
+      },
+      {
+        "configured_weight": 0.3,
+        "day_bounds": {
+          "lower": 30,
+          "upper": 90
+        },
+        "id": "middle_60d"
+      },
+      {
+        "configured_weight": 0.2,
+        "day_bounds": {
+          "lower": 90,
+          "upper": 180
+        },
+        "id": "older_90d"
+      }
+    ],
+    "bucket_scoring_inputs_by_source": {
+      "middle_60d": {
+        "claude": {
+          "window": {
+            "behavior": {
+              "actions_per_prompt": 13.0,
+              "api_errors_retries": 4,
+              "background_tasks": 30,
+              "delegate_actions": 200,
+              "error_rate_per_100_tools": 3.0,
+              "error_recovery_ratio": 0.8,
+              "fanout_median": 3,
+              "files_hammered_over_15x": 2,
+              "iteration_depth_max": 20,
+              "iteration_depth_mean": 2.5,
+              "iteration_depth_p90": 4,
+              "plan_sessions": 16,
+              "planning_ratio_explore_to_doing": 0.5,
+              "questions_asked": 5,
+              "shell_test_runs": 30
+            },
+            "source": "claude",
+            "stack": {
+              "compounding_writes": 20,
+              "models": [
+                [
+                  "claude-opus-4-8",
+                  3000
+                ],
+                [
+                  "claude-sonnet-4-5",
+                  1000
+                ]
+              ],
+              "skills_all": [
+                [
+                  "writing-plans",
+                  60
+                ],
+                [
+                  "code-review",
+                  80
+                ],
+                [
+                  "systematic-debugging",
+                  30
+                ]
+              ],
+              "skills_distinct": 25,
+              "skills_total": 900,
+              "subagent_types": [
+                [
+                  "general-purpose",
+                  120
+                ],
+                [
+                  "code-reviewer",
+                  40
+                ]
+              ],
+              "subagent_types_distinct": 6,
+              "top_skills": [
+                [
+                  "writing-plans",
+                  60
+                ],
+                [
+                  "code-review",
+                  80
+                ],
+                [
+                  "systematic-debugging",
+                  30
+                ]
+              ]
+            },
+            "tools": {
+              "agent_calls": 200,
+              "cli_calls": 1500,
+              "clis_distinct": 25,
+              "mcp_calls": 400,
+              "mcp_grounded_session_names": [
+                "rolling-s0",
+                "rolling-s1",
+                "rolling-s2",
+                "rolling-s3"
+              ],
+              "mcp_grounded_sessions": 4,
+              "mcp_knowledge_calls": 80,
+              "mcp_knowledge_servers": 2,
+              "mcp_servers_distinct": 10,
+              "mcp_subcategory_breakdown": {
+                "browser": {
+                  "calls": 50,
+                  "servers": 1
+                },
+                "knowledge": {
+                  "calls": 80,
+                  "servers": 2
+                }
+              },
+              "mcp_write_sessions": 10,
+              "task_tool_calls": 300,
+              "tool_diversity": 30,
+              "tool_entropy_normalized": 0.8,
+              "toolsearch_calls": 150,
+              "top_tools": [
+                [
+                  "Bash",
+                  1500
+                ],
+                [
+                  "Edit",
+                  1000
+                ]
+              ]
+            },
+            "velocity": {
+              "active_hours": 80.0,
+              "shell_authored_lines_est": 2000,
+              "tool_churn_edit_write": 50000
+            },
+            "volume": {
+              "thinking_blocks": 600,
+              "tool_calls_total": 4000,
+              "total_prompts": 300,
+              "total_sessions": 10
+            }
+          }
+        }
+      },
+      "older_90d": {
+        "claude": {
+          "window": {
+            "behavior": {
+              "actions_per_prompt": 13.0,
+              "api_errors_retries": 4,
+              "background_tasks": 30,
+              "delegate_actions": 200,
+              "error_rate_per_100_tools": 3.0,
+              "error_recovery_ratio": 0.8,
+              "fanout_median": 3,
+              "files_hammered_over_15x": 2,
+              "iteration_depth_max": 20,
+              "iteration_depth_mean": 2.5,
+              "iteration_depth_p90": 4,
+              "plan_sessions": 16,
+              "planning_ratio_explore_to_doing": 0.0,
+              "questions_asked": 5,
+              "shell_test_runs": 0
+            },
+            "source": "claude",
+            "stack": {
+              "compounding_writes": 20,
+              "models": [
+                [
+                  "claude-opus-4-8",
+                  3000
+                ],
+                [
+                  "claude-sonnet-4-5",
+                  1000
+                ]
+              ],
+              "skills_all": [
+                [
+                  "writing-plans",
+                  60
+                ],
+                [
+                  "code-review",
+                  80
+                ],
+                [
+                  "systematic-debugging",
+                  30
+                ]
+              ],
+              "skills_distinct": 25,
+              "skills_total": 900,
+              "subagent_types": [
+                [
+                  "general-purpose",
+                  120
+                ],
+                [
+                  "code-reviewer",
+                  40
+                ]
+              ],
+              "subagent_types_distinct": 6,
+              "top_skills": [
+                [
+                  "writing-plans",
+                  60
+                ],
+                [
+                  "code-review",
+                  80
+                ],
+                [
+                  "systematic-debugging",
+                  30
+                ]
+              ]
+            },
+            "tools": {
+              "agent_calls": 200,
+              "cli_calls": 1500,
+              "clis_distinct": 25,
+              "mcp_calls": 400,
+              "mcp_grounded_session_names": [],
+              "mcp_grounded_sessions": 0,
+              "mcp_knowledge_calls": 80,
+              "mcp_knowledge_servers": 2,
+              "mcp_servers_distinct": 10,
+              "mcp_subcategory_breakdown": {
+                "browser": {
+                  "calls": 50,
+                  "servers": 1
+                },
+                "knowledge": {
+                  "calls": 80,
+                  "servers": 2
+                }
+              },
+              "mcp_write_sessions": 10,
+              "task_tool_calls": 300,
+              "tool_diversity": 30,
+              "tool_entropy_normalized": 0.8,
+              "toolsearch_calls": 150,
+              "top_tools": [
+                [
+                  "Bash",
+                  1500
+                ],
+                [
+                  "Edit",
+                  1000
+                ]
+              ]
+            },
+            "velocity": {
+              "active_hours": 80.0,
+              "shell_authored_lines_est": 2000,
+              "tool_churn_edit_write": 50000
+            },
+            "volume": {
+              "thinking_blocks": 600,
+              "tool_calls_total": 4000,
+              "total_prompts": 300,
+              "total_sessions": 10
+            }
+          }
+        }
+      },
+      "recent_30d": {
+        "claude": {
+          "window": {
+            "behavior": {
+              "actions_per_prompt": 13.0,
+              "api_errors_retries": 4,
+              "background_tasks": 30,
+              "delegate_actions": 200,
+              "error_rate_per_100_tools": 3.0,
+              "error_recovery_ratio": 0.8,
+              "fanout_median": 3,
+              "files_hammered_over_15x": 2,
+              "iteration_depth_max": 20,
+              "iteration_depth_mean": 2.5,
+              "iteration_depth_p90": 4,
+              "plan_sessions": 16,
+              "planning_ratio_explore_to_doing": 1.0,
+              "questions_asked": 5,
+              "shell_test_runs": 100
+            },
+            "source": "claude",
+            "stack": {
+              "compounding_writes": 20,
+              "models": [
+                [
+                  "claude-opus-4-8",
+                  3000
+                ],
+                [
+                  "claude-sonnet-4-5",
+                  1000
+                ]
+              ],
+              "skills_all": [
+                [
+                  "writing-plans",
+                  60
+                ],
+                [
+                  "code-review",
+                  80
+                ],
+                [
+                  "systematic-debugging",
+                  30
+                ]
+              ],
+              "skills_distinct": 25,
+              "skills_total": 900,
+              "subagent_types": [
+                [
+                  "general-purpose",
+                  120
+                ],
+                [
+                  "code-reviewer",
+                  40
+                ]
+              ],
+              "subagent_types_distinct": 6,
+              "top_skills": [
+                [
+                  "writing-plans",
+                  60
+                ],
+                [
+                  "code-review",
+                  80
+                ],
+                [
+                  "systematic-debugging",
+                  30
+                ]
+              ]
+            },
+            "tools": {
+              "agent_calls": 200,
+              "cli_calls": 1500,
+              "clis_distinct": 25,
+              "mcp_calls": 400,
+              "mcp_grounded_session_names": [
+                "rolling-s0",
+                "rolling-s1",
+                "rolling-s2",
+                "rolling-s3",
+                "rolling-s4",
+                "rolling-s5",
+                "rolling-s6",
+                "rolling-s7",
+                "rolling-s8",
+                "rolling-s9"
+              ],
+              "mcp_grounded_sessions": 10,
+              "mcp_knowledge_calls": 80,
+              "mcp_knowledge_servers": 2,
+              "mcp_servers_distinct": 10,
+              "mcp_subcategory_breakdown": {
+                "browser": {
+                  "calls": 50,
+                  "servers": 1
+                },
+                "knowledge": {
+                  "calls": 80,
+                  "servers": 2
+                }
+              },
+              "mcp_write_sessions": 10,
+              "task_tool_calls": 300,
+              "tool_diversity": 30,
+              "tool_entropy_normalized": 0.8,
+              "toolsearch_calls": 150,
+              "top_tools": [
+                [
+                  "Bash",
+                  1500
+                ],
+                [
+                  "Edit",
+                  1000
+                ]
+              ]
+            },
+            "velocity": {
+              "active_hours": 80.0,
+              "shell_authored_lines_est": 2000,
+              "tool_churn_edit_write": 50000
+            },
+            "volume": {
+              "thinking_blocks": 600,
+              "tool_calls_total": 4000,
+              "total_prompts": 300,
+              "total_sessions": 10
+            }
+          }
+        }
+      }
+    },
+    "expected": {
+      "aggregate": {
+        "aq": {
+          "aq_0_100": 85,
+          "pillars": [
+            {
+              "name": "Breadth",
+              "score": 79.7,
+              "weight": 30
+            },
+            {
+              "name": "Craft",
+              "score": 83.7,
+              "weight": 35
+            },
+            {
+              "name": "Efficiency",
+              "score": 91.1,
+              "weight": 20
+            },
+            {
+              "name": "Savvy",
+              "score": 87.5,
+              "weight": 15
+            }
+          ],
+          "tier": "Advanced"
+        },
+        "archetype": {
+          "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is breadth \u2014 that's where the next gain is.",
+          "title": "Advanced"
+        },
+        "combination": {
+          "rule": "weighted_mean_of_per_source_scores",
+          "weight": "tool_calls_total",
+          "weights": {
+            "claude": 4000
+          }
+        },
+        "growth_edges": [
+          {
+            "advice": "You're even across the build sprint, so the next gear isn't a weak spot to patch \u2014 it's depth. Add a short retro after each session and let the learnings compound session over session. (gstack names this /retro \u2014 the Reflect stage.)",
+            "axis": null,
+            "commands": [
+              "/retro"
+            ],
+            "eyebrow": "Go deeper",
+            "severity": "low",
+            "title": "You're balanced \u2014 your edge is depth"
+          }
+        ],
+        "model_usage": [],
+        "scores": {
+          "engineering": {
+            "axis_narrative": "Engineering scores 8.7/10 (excellent). Strongest: Quality ceremony (100%); weakest: Low errors (70%).",
+            "axis_verdict": "excellent",
+            "drag_narrative": "Low errors is the weakest contributor, scoring 70%. Your value: 3 errors/100 tools (target: \u2264 10 errors/100 tools, lower is better).",
+            "drag_note": "Low errors is dragging this down \u2014 3 errors/100 tools (target \u226410).",
+            "gloss": "Craft and low rework",
+            "score_out_of_10": "8.7 / 10",
+            "subs": [
+              {
+                "direction": "lower",
+                "display_target": "\u2264 2 mean file-edit depth",
+                "display_value": "2.5 mean file-edit depth",
+                "is_drag": false,
+                "label": "Low rework",
+                "narrative": "Low rework is excellent (2.5 mean file-edit depth, target \u2264 2 mean file-edit depth \u2014 well within target, scoring 94%).",
+                "pct": 0.9375,
+                "score_pct": 94,
+                "target": 2.0,
+                "unit": "mean file-edit depth",
+                "verdict": "excellent",
+                "weight": 0.3,
+                "your_value": 2.5
+              },
+              {
+                "direction": "lower",
+                "display_target": "\u2264 3 p90 file-edit depth",
+                "display_value": "4 p90 file-edit depth",
+                "is_drag": false,
+                "label": "Clean iteration",
+                "narrative": "Clean iteration is good (4 p90 file-edit depth, target \u2264 3 p90 file-edit depth \u2014 near target threshold, scoring 89%).",
+                "pct": 0.8888888888888888,
+                "score_pct": 89,
+                "target": 3.0,
+                "unit": "p90 file-edit depth",
+                "verdict": "good",
+                "weight": 0.25,
+                "your_value": 4.0
+              },
+              {
+                "direction": "lower",
+                "display_target": "\u2264 0.25 hammered-files/session",
+                "display_value": "0.067 hammered-files/session",
+                "is_drag": false,
+                "label": "Focus",
+                "narrative": "Focus is good (0.067 hammered-files/session, target \u2264 0.25 hammered-files/session \u2014 near target threshold, scoring 73%).",
+                "pct": 0.7333333333333334,
+                "score_pct": 73,
+                "target": 0.25,
+                "unit": "hammered-files/session",
+                "verdict": "good",
+                "weight": 0.2,
+                "your_value": 0.06666666666666667
+              },
+              {
+                "direction": "higher",
+                "display_target": "3 quality-skills/session",
+                "display_value": "4.7 quality-skills/session",
+                "is_drag": false,
+                "label": "Quality ceremony",
+                "narrative": "Quality ceremony is excellent (4.7 quality-skills/session, target 3 quality-skills/session \u2014 well above target, scoring 100%).",
+                "pct": 1.0,
+                "score_pct": 100,
+                "target": 3.0,
+                "unit": "quality-skills/session",
+                "verdict": "excellent",
+                "weight": 0.15,
+                "your_value": 4.666666666666667
+              },
+              {
+                "direction": "lower",
+                "display_target": "\u2264 10 errors/100 tools",
+                "display_value": "3 errors/100 tools",
+                "is_drag": true,
+                "label": "Low errors",
+                "narrative": "Low errors is good (3 errors/100 tools, target \u2264 10 errors/100 tools \u2014 near target threshold, scoring 70%).",
+                "pct": 0.7,
+                "score_pct": 70,
+                "target": 10.0,
+                "unit": "errors/100 tools",
+                "verdict": "good",
+                "weight": 0.1,
+                "your_value": 3.0
+              }
+            ],
+            "value": 8.7
+          },
+          "execution": {
+            "axis_narrative": "Execution scores 7.8/10 (good). Strongest: Delegation & parallelism (100%); weakest: Tool output rate (62%).",
+            "axis_verdict": "good",
+            "drag_narrative": "Tool output rate is the weakest contributor, scoring 62%. Your value: 625 tool-authored lines/hr (target: 1,000 tool-authored lines/hr, higher is better).",
+            "drag_note": "Tool output rate is dragging this down \u2014 6.2e+02 tool-authored lines/hr, target ~1e+03.",
+            "gloss": "How much you ship, at AI leverage",
+            "score_out_of_10": "7.8 / 10",
+            "subs": [
+              {
+                "direction": "higher",
+                "display_target": "1,000 tool-authored lines/hr",
+                "display_value": "625 tool-authored lines/hr",
+                "is_drag": true,
+                "label": "Tool output rate",
+                "narrative": "Tool output rate is adequate (625 tool-authored lines/hr, target 1,000 tool-authored lines/hr \u2014 approaching target, scoring 62%).",
+                "pct": 0.625,
+                "score_pct": 62,
+                "target": 1000,
+                "unit": "tool-authored lines/hr",
+                "verdict": "adequate",
+                "weight": 0.6,
+                "your_value": 625.0
+              },
+              {
+                "direction": "higher",
+                "display_target": "0.3 agent-runs/prompt",
+                "display_value": "0.77 agent-runs/prompt",
+                "is_drag": false,
+                "label": "Delegation & parallelism",
+                "narrative": "Delegation & parallelism is excellent (0.77 agent-runs/prompt, target 0.3 agent-runs/prompt \u2014 well above target, scoring 100%).",
+                "pct": 1.0,
+                "score_pct": 100,
+                "target": 0.3,
+                "unit": "agent-runs/prompt",
+                "verdict": "excellent",
+                "weight": 0.4,
+                "your_value": 0.7666666666666667
+              }
+            ],
+            "value": 7.8
+          },
+          "planning": {
+            "axis_narrative": "Planning scores 9.0/10 (excellent). Strongest: Reasoning depth (100%); weakest: Plan ceremony (100%).",
+            "axis_verdict": "excellent",
+            "drag_narrative": "Plan ceremony is the weakest contributor, scoring 100%. Your value: 0.53 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
+            "drag_note": "Plan ceremony is dragging this down \u2014 0.53 planning sessions/session, target ~0.5.",
+            "gloss": "Think before you build",
+            "score_out_of_10": "9.0 / 10",
+            "subs": [
+              {
+                "direction": "higher",
+                "display_target": "0.65 explore/doing ratio",
+                "display_value": "0.5 explore/doing ratio",
+                "is_drag": false,
+                "label": "Explore-before-build",
+                "narrative": "Explore-before-build is good (0.5 explore/doing ratio, target 0.65 explore/doing ratio \u2014 approaching target, scoring 77%).",
+                "pct": 0.7692307692307692,
+                "score_pct": 77,
+                "target": 0.65,
+                "unit": "explore/doing ratio",
+                "verdict": "good",
+                "weight": 0.45,
+                "your_value": 0.5
+              },
+              {
+                "direction": "higher",
+                "display_target": "12 thinking blocks/session",
+                "display_value": "20 thinking blocks/session",
+                "is_drag": false,
+                "label": "Reasoning depth",
+                "narrative": "Reasoning depth is excellent (20 thinking blocks/session, target 12 thinking blocks/session \u2014 well above target, scoring 100%).",
+                "pct": 1.0,
+                "score_pct": 100,
+                "target": 12.0,
+                "unit": "thinking blocks/session",
+                "verdict": "excellent",
+                "weight": 0.3,
+                "your_value": 20.0
+              },
+              {
+                "direction": "higher",
+                "display_target": "0.5 planning sessions/session",
+                "display_value": "0.53 planning sessions/session",
+                "is_drag": true,
+                "label": "Plan ceremony",
+                "narrative": "Plan ceremony is excellent (0.53 planning sessions/session, target 0.5 planning sessions/session \u2014 well above target, scoring 100%).",
+                "pct": 1.0,
+                "score_pct": 100,
+                "target": 0.5,
+                "unit": "planning sessions/session",
+                "verdict": "excellent",
+                "weight": 0.25,
+                "your_value": 0.5333333333333333
+              }
+            ],
+            "value": 9.0
+          }
+        },
+        "signature_moves": [
+          {
+            "evidence": "80 code-review passes \u2014 one of your most-used skills. You don't trust a diff until a second set of eyes has seen it.",
+            "tag": "Review",
+            "title": "You review more than you write"
+          },
+          {
+            "evidence": "230 delegated & backgrounded agent runs. You parallelize and grind rather than babysit one chat.",
+            "tag": "Build",
+            "title": "You run a team, not a tool"
+          },
+          {
+            "evidence": "600 reasoning blocks (~20/session) before edits land \u2014 you deliberate hard, then commit.",
+            "tag": "Think",
+            "title": "You think before you touch the diff"
+          },
+          {
+            "evidence": "You opened 16 of 30 sessions with a plan \u2014 you scaffold the decision before the implementation, gstack-style.",
+            "tag": "Plan",
+            "title": "You write the plan before the code"
+          },
+          {
+            "evidence": "The agent stopped to ask you on just 2% of 300 prompts \u2014 you point it and let it run, rather than getting pulled into a back-and-forth.",
+            "tag": "User Sovereignty",
+            "title": "You direct, you don't deliberate"
+          }
+        ],
+        "steering": {
+          "detail": "~13 actions per turn before you weigh in \u00b7 the agent checked in on 2% of your prompts",
+          "gloss": "you point the agent and let it run",
+          "label": "Long leash"
+        }
+      },
+      "by_source": {
+        "claude": {
+          "aq": {
+            "aq_0_100": 85,
+            "blend": {
+              "buckets": [
+                {
+                  "component_aq": 90,
+                  "configured_weight": 0.5,
+                  "day_bounds": {
+                    "lower": 0,
+                    "upper": 30
+                  },
+                  "effective_weight": 0.5,
+                  "id": "recent_30d"
+                },
+                {
+                  "component_aq": 86,
+                  "configured_weight": 0.3,
+                  "day_bounds": {
+                    "lower": 30,
+                    "upper": 90
+                  },
+                  "effective_weight": 0.3,
+                  "id": "middle_60d"
+                },
+                {
+                  "component_aq": 68,
+                  "configured_weight": 0.2,
+                  "day_bounds": {
+                    "lower": 90,
+                    "upper": 180
+                  },
+                  "effective_weight": 0.2,
+                  "id": "older_90d"
+                }
+              ],
+              "full_aq": 84
+            },
+            "mcp_vs_cli": {
+              "cli_calls": 1500,
+              "cli_distinct": 25,
+              "mcp_calls": 400,
+              "mcp_distinct": 10,
+              "ratio": 3.8
+            },
+            "pillars": [
+              {
+                "axes": [
+                  {
+                    "components": [
+                      {
+                        "effective_weight": 0.5,
+                        "id": "recent_30d",
+                        "score": 23.9,
+                        "signals": {
+                          "agent_runs": 200,
+                          "fanout_median": 3,
+                          "o_harn": 0.6,
+                          "subagent_types": 6
+                        }
+                      },
+                      {
+                        "effective_weight": 0.3,
+                        "id": "middle_60d",
+                        "score": 23.9,
+                        "signals": {
+                          "agent_runs": 200,
+                          "fanout_median": 3,
+                          "o_harn": 0.6,
+                          "subagent_types": 6
+                        }
+                      },
+                      {
+                        "effective_weight": 0.2,
+                        "id": "older_90d",
+                        "score": 23.9,
+                        "signals": {
+                          "agent_runs": 200,
+                          "fanout_median": 3,
+                          "o_harn": 0.6,
+                          "subagent_types": 6
+                        }
+                      }
+                    ],
+                    "name": "Orchestration",
+                    "score": 23.9,
+                    "signals": {
+                      "agent_runs": 200,
+                      "fanout_median": 3,
+                      "o_harn": 0.6,
+                      "subagent_types": 6
+                    },
+                    "weight": 33
+                  },
+                  {
+                    "components": [
+                      {
+                        "effective_weight": 0.5,
+                        "id": "recent_30d",
+                        "score": 18.7,
+                        "signals": {
+                          "skills_distinct": 25,
+                          "skills_total": 900
+                        }
+                      },
+                      {
+                        "effective_weight": 0.3,
+                        "id": "middle_60d",
+                        "score": 18.7,
+                        "signals": {
+                          "skills_distinct": 25,
+                          "skills_total": 900
+                        }
+                      },
+                      {
+                        "effective_weight": 0.2,
+                        "id": "older_90d",
+                        "score": 18.7,
+                        "signals": {
+                          "skills_distinct": 25,
+                          "skills_total": 900
+                        }
+                      }
+                    ],
+                    "name": "Skill fluency",
+                    "score": 18.7,
+                    "signals": {
+                      "skills_distinct": 25,
+                      "skills_total": 900
+                    },
+                    "weight": 22
+                  },
+                  {
+                    "components": [
+                      {
+                        "effective_weight": 0.5,
+                        "id": "recent_30d",
+                        "score": 20.1,
+                        "signals": {
+                          "clis": 25,
+                          "mcp_servers": 10,
+                          "toolsearch": 150
+                        }
+                      },
+                      {
+                        "effective_weight": 0.3,
+                        "id": "middle_60d",
+                        "score": 20.1,
+                        "signals": {
+                          "clis": 25,
+                          "mcp_servers": 10,
+                          "toolsearch": 150
+                        }
+                      },
+                      {
+                        "effective_weight": 0.2,
+                        "id": "older_90d",
+                        "score": 20.1,
+                        "signals": {
+                          "clis": 25,
+                          "mcp_servers": 10,
+                          "toolsearch": 150
+                        }
+                      }
+                    ],
+                    "name": "Tool command (MCP + CLI)",
+                    "score": 20.1,
+                    "signals": {
+                      "clis": 25,
+                      "mcp_servers": 10,
+                      "toolsearch": 150
+                    },
+                    "weight": 28
+                  },
+                  {
+                    "components": [
+                      {
+                        "effective_weight": 0.5,
+                        "id": "recent_30d",
+                        "score": 17.0,
+                        "signals": {
+                          "task_tool_calls": 300
+                        }
+                      },
+                      {
+                        "effective_weight": 0.3,
+                        "id": "middle_60d",
+                        "score": 17.0,
+                        "signals": {
+                          "task_tool_calls": 300
+                        }
+                      },
+                      {
+                        "effective_weight": 0.2,
+                        "id": "older_90d",
+                        "score": 17.0,
+                        "signals": {
+                          "task_tool_calls": 300
+                        }
+                      }
+                    ],
+                    "name": "Discipline",
+                    "score": 17.0,
+                    "signals": {
+                      "task_tool_calls": 300
+                    },
+                    "weight": 17
+                  }
+                ],
+                "name": "Breadth",
+                "score": 79.7,
+                "weight": 30
+              },
+              {
+                "axes": [
+                  {
+                    "components": [
+                      {
+                        "effective_weight": 0.5,
+                        "id": "recent_30d",
+                        "score": 35.0,
+                        "signals": {
+                          "review_skills": 80,
+                          "test_runs": 100
+                        }
+                      },
+                      {
+                        "effective_weight": 0.3,
+                        "id": "middle_60d",
+                        "score": 35.0,
+                        "signals": {
+                          "review_skills": 80,
+                          "test_runs": 30
+                        }
+                      },
+                      {
+                        "effective_weight": 0.2,
+                        "id": "older_90d",
+                        "score": 17.5,
+                        "signals": {
+                          "review_skills": 80,
+                          "test_runs": 0
+                        }
+                      }
+                    ],
+                    "name": "Verification",
+                    "score": 31.5,
+                    "signals": {
+                      "review_skills": 80,
+                      "test_runs": 100
+                    },
+                    "weight": 35
+                  },
+                  {
+                    "components": [
+                      {
+                        "effective_weight": 0.5,
+                        "id": "recent_30d",
+                        "score": 25.0,
+                        "signals": {
+                          "planning_ratio": 1.0
+                        }
+                      },
+                      {
+                        "effective_weight": 0.3,
+                        "id": "middle_60d",
+                        "score": 12.5,
+                        "signals": {
+                          "planning_ratio": 0.5
+                        }
+                      },
+                      {
+                        "effective_weight": 0.2,
+                        "id": "older_90d",
+                        "score": 0.0,
+                        "signals": {
+                          "planning_ratio": 0.0
+                        }
+                      }
+                    ],
+                    "name": "Grounding",
+                    "score": 16.2,
+                    "signals": {
+                      "planning_ratio": 1.0
+                    },
+                    "weight": 25
+                  },
+                  {
+                    "components": [
+                      {
+                        "effective_weight": 0.5,
+                        "id": "recent_30d",
+                        "score": 20.0,
+                        "signals": {
+                          "coverage": 1.0,
+                          "grounded_session_rule": "knowledge-MCP call OR explore-class project/data/design MCP call before a later Edit/Write/MultiEdit/NotebookEdit in the same session",
+                          "grounded_sessions": 10,
+                          "score_formula": "coverage = grounded_sessions / write_sessions; score = min(1, coverage / 0.40)",
+                          "target_coverage": 0.4,
+                          "total_sessions": 10,
+                          "write_sessions": 10
+                        }
+                      },
+                      {
+                        "effective_weight": 0.3,
+                        "id": "middle_60d",
+                        "score": 20.0,
+                        "signals": {
+                          "coverage": 0.4,
+                          "grounded_session_rule": "knowledge-MCP call OR explore-class project/data/design MCP call before a later Edit/Write/MultiEdit/NotebookEdit in the same session",
+                          "grounded_sessions": 4,
+                          "score_formula": "coverage = grounded_sessions / write_sessions; score = min(1, coverage / 0.40)",
+                          "target_coverage": 0.4,
+                          "total_sessions": 10,
+                          "write_sessions": 10
+                        }
+                      },
+                      {
+                        "effective_weight": 0.2,
+                        "id": "older_90d",
+                        "score": 0.0,
+                        "signals": {
+                          "coverage": 0.0,
+                          "grounded_session_rule": "knowledge-MCP call OR explore-class project/data/design MCP call before a later Edit/Write/MultiEdit/NotebookEdit in the same session",
+                          "grounded_sessions": 0,
+                          "score_formula": "coverage = grounded_sessions / write_sessions; score = min(1, coverage / 0.40)",
+                          "target_coverage": 0.4,
+                          "total_sessions": 10,
+                          "write_sessions": 10
+                        }
+                      }
+                    ],
+                    "name": "Context Intelligence",
+                    "score": 16.0,
+                    "signals": {
+                      "coverage": 1.0,
+                      "grounded_session_rule": "knowledge-MCP call OR explore-class project/data/design MCP call before a later Edit/Write/MultiEdit/NotebookEdit in the same session",
+                      "grounded_sessions": 10,
+                      "score_formula": "coverage = grounded_sessions / write_sessions; score = min(1, coverage / 0.40)",
+                      "target_coverage": 0.4,
+                      "total_sessions": 10,
+                      "write_sessions": 10
+                    },
+                    "weight": 20
+                  },
+                  {
+                    "components": [
+                      {
+                        "effective_weight": 0.5,
+                        "id": "recent_30d",
+                        "score": 20.0,
+                        "signals": {
+                          "compounding_writes": 20
+                        }
+                      },
+                      {
+                        "effective_weight": 0.3,
+                        "id": "middle_60d",
+                        "score": 20.0,
+                        "signals": {
+                          "compounding_writes": 20
+                        }
+                      },
+                      {
+                        "effective_weight": 0.2,
+                        "id": "older_90d",
+                        "score": 20.0,
+                        "signals": {
+                          "compounding_writes": 20
+                        }
+                      }
+                    ],
+                    "name": "Compounding",
+                    "score": 20.0,
+                    "signals": {
+                      "compounding_writes": 20
+                    },
+                    "weight": 20
+                  }
+                ],
+                "name": "Craft",
+                "score": 83.7,
+                "weight": 35
+              },
+              {
+                "axes": [
+                  {
+                    "components": [
+                      {
+                        "effective_weight": 0.5,
+                        "id": "recent_30d",
+                        "score": 50.0,
+                        "signals": {
+                          "actions_per_prompt": 13.0
+                        }
+                      },
+                      {
+                        "effective_weight": 0.3,
+                        "id": "middle_60d",
+                        "score": 50.0,
+                        "signals": {
+                          "actions_per_prompt": 13.0
+                        }
+                      },
+                      {
+                        "effective_weight": 0.2,
+                        "id": "older_90d",
+                        "score": 50.0,
+                        "signals": {
+                          "actions_per_prompt": 13.0
+                        }
+                      }
+                    ],
+                    "name": "Steering leverage",
+                    "score": 50.0,
+                    "signals": {
+                      "actions_per_prompt": 13.0
+                    },
+                    "weight": 50
+                  },
+                  {
+                    "components": [
+                      {
+                        "effective_weight": 0.5,
+                        "id": "recent_30d",
+                        "score": 41.1,
+                        "signals": {
+                          "api_per_100_tools": 0.1,
+                          "api_retries": 4,
+                          "recovery_ratio": 0.8
+                        }
+                      },
+                      {
+                        "effective_weight": 0.3,
+                        "id": "middle_60d",
+                        "score": 41.1,
+                        "signals": {
+                          "api_per_100_tools": 0.1,
+                          "api_retries": 4,
+                          "recovery_ratio": 0.8
+                        }
+                      },
+                      {
+                        "effective_weight": 0.2,
+                        "id": "older_90d",
+                        "score": 41.1,
+                        "signals": {
+                          "api_per_100_tools": 0.1,
+                          "api_retries": 4,
+                          "recovery_ratio": 0.8
+                        }
+                      }
+                    ],
+                    "name": "Recovery",
+                    "score": 41.1,
+                    "signals": {
+                      "api_per_100_tools": 0.1,
+                      "api_retries": 4,
+                      "recovery_ratio": 0.8
+                    },
+                    "weight": 50
+                  }
+                ],
+                "name": "Efficiency",
+                "score": 91.1,
+                "weight": 20
+              },
+              {
+                "axes": [
+                  {
+                    "components": [
+                      {
+                        "effective_weight": 0.5,
+                        "id": "recent_30d",
+                        "score": 37.5,
+                        "signals": {
+                          "distinct_models": 2,
+                          "offload_share": 0.25
+                        }
+                      },
+                      {
+                        "effective_weight": 0.3,
+                        "id": "middle_60d",
+                        "score": 37.5,
+                        "signals": {
+                          "distinct_models": 2,
+                          "offload_share": 0.25
+                        }
+                      },
+                      {
+                        "effective_weight": 0.2,
+                        "id": "older_90d",
+                        "score": 37.5,
+                        "signals": {
+                          "distinct_models": 2,
+                          "offload_share": 0.25
+                        }
+                      }
+                    ],
+                    "name": "Model mix",
+                    "score": 37.5,
+                    "signals": {
+                      "distinct_models": 2,
+                      "offload_share": 0.25
+                    },
+                    "weight": 50
+                  },
+                  {
+                    "components": [
+                      {
+                        "effective_weight": 0.5,
+                        "id": "recent_30d",
+                        "score": 50.0,
+                        "signals": {
+                          "cli_share": 0.79,
+                          "toolsearch": 150
+                        }
+                      },
+                      {
+                        "effective_weight": 0.3,
+                        "id": "middle_60d",
+                        "score": 50.0,
+                        "signals": {
+                          "cli_share": 0.79,
+                          "toolsearch": 150
+                        }
+                      },
+                      {
+                        "effective_weight": 0.2,
+                        "id": "older_90d",
+                        "score": 50.0,
+                        "signals": {
+                          "cli_share": 0.79,
+                          "toolsearch": 150
+                        }
+                      }
+                    ],
+                    "name": "Token economy",
+                    "score": 50.0,
+                    "signals": {
+                      "cli_share": 0.79,
+                      "toolsearch": 150
+                    },
+                    "weight": 50
+                  }
+                ],
+                "name": "Savvy",
+                "score": 87.5,
+                "weight": 15
+              }
+            ],
+            "tier": "Advanced",
+            "tool_diversity": {
+              "distinct": 30,
+              "entropy": 0.8
+            }
+          },
+          "archetype": {
+            "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is breadth \u2014 that's where the next gain is.",
+            "title": "Advanced"
+          },
+          "growth_edges": [
+            {
+              "advice": "You're even across the build sprint, so the next gear isn't a weak spot to patch \u2014 it's depth. Add a short retro after each session and let the learnings compound session over session. (gstack names this /retro \u2014 the Reflect stage.)",
+              "axis": null,
+              "commands": [
+                "/retro"
+              ],
+              "eyebrow": "Go deeper",
+              "severity": "low",
+              "title": "You're balanced \u2014 your edge is depth"
+            }
+          ],
+          "model_usage": [],
+          "scores": {
+            "engineering": {
+              "axis_narrative": "Engineering scores 8.7/10 (excellent). Strongest: Quality ceremony (100%); weakest: Low errors (70%).",
+              "axis_verdict": "excellent",
+              "drag_narrative": "Low errors is the weakest contributor, scoring 70%. Your value: 3 errors/100 tools (target: \u2264 10 errors/100 tools, lower is better).",
+              "drag_note": "Low errors is dragging this down \u2014 3 errors/100 tools (target \u226410).",
+              "gloss": "Craft and low rework",
+              "score_out_of_10": "8.7 / 10",
+              "subs": [
+                {
+                  "direction": "lower",
+                  "display_target": "\u2264 2 mean file-edit depth",
+                  "display_value": "2.5 mean file-edit depth",
+                  "is_drag": false,
+                  "label": "Low rework",
+                  "narrative": "Low rework is excellent (2.5 mean file-edit depth, target \u2264 2 mean file-edit depth \u2014 well within target, scoring 94%).",
+                  "pct": 0.9375,
+                  "score_pct": 94,
+                  "target": 2.0,
+                  "unit": "mean file-edit depth",
+                  "verdict": "excellent",
+                  "weight": 0.3,
+                  "your_value": 2.5
+                },
+                {
+                  "direction": "lower",
+                  "display_target": "\u2264 3 p90 file-edit depth",
+                  "display_value": "4 p90 file-edit depth",
+                  "is_drag": false,
+                  "label": "Clean iteration",
+                  "narrative": "Clean iteration is good (4 p90 file-edit depth, target \u2264 3 p90 file-edit depth \u2014 near target threshold, scoring 89%).",
+                  "pct": 0.8888888888888888,
+                  "score_pct": 89,
+                  "target": 3.0,
+                  "unit": "p90 file-edit depth",
+                  "verdict": "good",
+                  "weight": 0.25,
+                  "your_value": 4
+                },
+                {
+                  "direction": "lower",
+                  "display_target": "\u2264 0.25 hammered-files/session",
+                  "display_value": "0.067 hammered-files/session",
+                  "is_drag": false,
+                  "label": "Focus",
+                  "narrative": "Focus is good (0.067 hammered-files/session, target \u2264 0.25 hammered-files/session \u2014 near target threshold, scoring 73%).",
+                  "pct": 0.7333333333333334,
+                  "score_pct": 73,
+                  "target": 0.25,
+                  "unit": "hammered-files/session",
+                  "verdict": "good",
+                  "weight": 0.2,
+                  "your_value": 0.06666666666666667
+                },
+                {
+                  "direction": "higher",
+                  "display_target": "3 quality-skills/session",
+                  "display_value": "4.7 quality-skills/session",
+                  "is_drag": false,
+                  "label": "Quality ceremony",
+                  "narrative": "Quality ceremony is excellent (4.7 quality-skills/session, target 3 quality-skills/session \u2014 well above target, scoring 100%).",
+                  "pct": 1.0,
+                  "score_pct": 100,
+                  "target": 3.0,
+                  "unit": "quality-skills/session",
+                  "verdict": "excellent",
+                  "weight": 0.15,
+                  "your_value": 4.666666666666667
+                },
+                {
+                  "direction": "lower",
+                  "display_target": "\u2264 10 errors/100 tools",
+                  "display_value": "3 errors/100 tools",
+                  "is_drag": true,
+                  "label": "Low errors",
+                  "narrative": "Low errors is good (3 errors/100 tools, target \u2264 10 errors/100 tools \u2014 near target threshold, scoring 70%).",
+                  "pct": 0.7,
+                  "score_pct": 70,
+                  "target": 10.0,
+                  "unit": "errors/100 tools",
+                  "verdict": "good",
+                  "weight": 0.1,
+                  "your_value": 3.0
+                }
+              ],
+              "value": 8.7
+            },
+            "execution": {
+              "axis_narrative": "Execution scores 7.8/10 (good). Strongest: Delegation & parallelism (100%); weakest: Tool output rate (62%).",
+              "axis_verdict": "good",
+              "drag_narrative": "Tool output rate is the weakest contributor, scoring 62%. Your value: 625 tool-authored lines/hr (target: 1,000 tool-authored lines/hr, higher is better).",
+              "drag_note": "Tool output rate is dragging this down \u2014 6.2e+02 tool-authored lines/hr, target ~1e+03.",
+              "gloss": "How much you ship, at AI leverage",
+              "score_out_of_10": "7.8 / 10",
+              "subs": [
+                {
+                  "direction": "higher",
+                  "display_target": "1,000 tool-authored lines/hr",
+                  "display_value": "625 tool-authored lines/hr",
+                  "is_drag": true,
+                  "label": "Tool output rate",
+                  "narrative": "Tool output rate is adequate (625 tool-authored lines/hr, target 1,000 tool-authored lines/hr \u2014 approaching target, scoring 62%).",
+                  "pct": 0.625,
+                  "score_pct": 62,
+                  "target": 1000,
+                  "unit": "tool-authored lines/hr",
+                  "verdict": "adequate",
+                  "weight": 0.6,
+                  "your_value": 625.0
+                },
+                {
+                  "direction": "higher",
+                  "display_target": "0.3 agent-runs/prompt",
+                  "display_value": "0.77 agent-runs/prompt",
+                  "is_drag": false,
+                  "label": "Delegation & parallelism",
+                  "narrative": "Delegation & parallelism is excellent (0.77 agent-runs/prompt, target 0.3 agent-runs/prompt \u2014 well above target, scoring 100%).",
+                  "pct": 1.0,
+                  "score_pct": 100,
+                  "target": 0.3,
+                  "unit": "agent-runs/prompt",
+                  "verdict": "excellent",
+                  "weight": 0.4,
+                  "your_value": 0.7666666666666667
+                }
+              ],
+              "value": 7.8
+            },
+            "planning": {
+              "axis_narrative": "Planning scores 9.0/10 (excellent). Strongest: Reasoning depth (100%); weakest: Plan ceremony (100%).",
+              "axis_verdict": "excellent",
+              "drag_narrative": "Plan ceremony is the weakest contributor, scoring 100%. Your value: 0.53 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
+              "drag_note": "Plan ceremony is dragging this down \u2014 0.53 planning sessions/session, target ~0.5.",
+              "gloss": "Think before you build",
+              "score_out_of_10": "9.0 / 10",
+              "subs": [
+                {
+                  "direction": "higher",
+                  "display_target": "0.65 explore/doing ratio",
+                  "display_value": "0.5 explore/doing ratio",
+                  "is_drag": false,
+                  "label": "Explore-before-build",
+                  "narrative": "Explore-before-build is good (0.5 explore/doing ratio, target 0.65 explore/doing ratio \u2014 approaching target, scoring 77%).",
+                  "pct": 0.7692307692307692,
+                  "score_pct": 77,
+                  "target": 0.65,
+                  "unit": "explore/doing ratio",
+                  "verdict": "good",
+                  "weight": 0.45,
+                  "your_value": 0.5
+                },
+                {
+                  "direction": "higher",
+                  "display_target": "12 thinking blocks/session",
+                  "display_value": "20 thinking blocks/session",
+                  "is_drag": false,
+                  "label": "Reasoning depth",
+                  "narrative": "Reasoning depth is excellent (20 thinking blocks/session, target 12 thinking blocks/session \u2014 well above target, scoring 100%).",
+                  "pct": 1.0,
+                  "score_pct": 100,
+                  "target": 12.0,
+                  "unit": "thinking blocks/session",
+                  "verdict": "excellent",
+                  "weight": 0.3,
+                  "your_value": 20.0
+                },
+                {
+                  "direction": "higher",
+                  "display_target": "0.5 planning sessions/session",
+                  "display_value": "0.53 planning sessions/session",
+                  "is_drag": true,
+                  "label": "Plan ceremony",
+                  "narrative": "Plan ceremony is excellent (0.53 planning sessions/session, target 0.5 planning sessions/session \u2014 well above target, scoring 100%).",
+                  "pct": 1.0,
+                  "score_pct": 100,
+                  "target": 0.5,
+                  "unit": "planning sessions/session",
+                  "verdict": "excellent",
+                  "weight": 0.25,
+                  "your_value": 0.5333333333333333
+                }
+              ],
+              "value": 9.0
+            }
+          },
+          "signature_moves": [
+            {
+              "evidence": "80 code-review passes \u2014 one of your most-used skills. You don't trust a diff until a second set of eyes has seen it.",
+              "tag": "Review",
+              "title": "You review more than you write"
+            },
+            {
+              "evidence": "230 delegated & backgrounded agent runs with the shell as your top tool. You parallelize and grind rather than babysit one chat.",
+              "tag": "Build",
+              "title": "You run a team, not a tool"
+            },
+            {
+              "evidence": "600 reasoning blocks (~20/session) before edits land \u2014 you deliberate hard, then commit.",
+              "tag": "Think",
+              "title": "You think before you touch the diff"
+            },
+            {
+              "evidence": "You opened 16 of 30 sessions with a plan \u2014 you scaffold the decision before the implementation, gstack-style.",
+              "tag": "Plan",
+              "title": "You write the plan before the code"
+            },
+            {
+              "evidence": "The agent stopped to ask you on just 2% of 300 prompts \u2014 you point it and let it run, rather than getting pulled into a back-and-forth.",
+              "tag": "User Sovereignty",
+              "title": "You direct, you don't deliberate"
+            }
+          ],
+          "steering": {
+            "detail": "~13 actions per turn before you weigh in \u00b7 the agent checked in on 2% of your prompts",
+            "gloss": "you point the agent and let it run",
+            "label": "Long leash"
+          }
+        }
+      }
+    },
+    "name": "rolling_claude_all_buckets",
+    "scoring_inputs_by_source": {
+      "claude": {
+        "window": {
+          "behavior": {
+            "actions_per_prompt": 13.0,
+            "api_errors_retries": 4,
+            "background_tasks": 30,
+            "delegate_actions": 200,
+            "error_rate_per_100_tools": 3.0,
+            "error_recovery_ratio": 0.8,
+            "fanout_median": 3,
+            "files_hammered_over_15x": 2,
+            "iteration_depth_max": 20,
+            "iteration_depth_mean": 2.5,
+            "iteration_depth_p90": 4,
+            "plan_sessions": 16,
+            "planning_ratio_explore_to_doing": 0.5,
+            "questions_asked": 5,
+            "shell_test_runs": 30
+          },
+          "source": "claude",
+          "stack": {
+            "compounding_writes": 20,
+            "models": [
+              [
+                "claude-opus-4-8",
+                3000
+              ],
+              [
+                "claude-sonnet-4-5",
+                1000
+              ]
+            ],
+            "skills_all": [
+              [
+                "writing-plans",
+                60
+              ],
+              [
+                "code-review",
+                80
+              ],
+              [
+                "systematic-debugging",
+                30
+              ]
+            ],
+            "skills_distinct": 25,
+            "skills_total": 900,
+            "subagent_types": [
+              [
+                "general-purpose",
+                120
+              ],
+              [
+                "code-reviewer",
+                40
+              ]
+            ],
+            "subagent_types_distinct": 6,
+            "top_skills": [
+              [
+                "writing-plans",
+                60
+              ],
+              [
+                "code-review",
+                80
+              ],
+              [
+                "systematic-debugging",
+                30
+              ]
+            ]
+          },
+          "tools": {
+            "agent_calls": 200,
+            "cli_calls": 1500,
+            "clis_distinct": 25,
+            "mcp_calls": 400,
+            "mcp_grounded_session_names": [
+              "rolling-s0",
+              "rolling-s1",
+              "rolling-s2",
+              "rolling-s3",
+              "rolling-s4",
+              "rolling-s5",
+              "rolling-s6",
+              "rolling-s7",
+              "rolling-s8",
+              "rolling-s9",
+              "rolling-s10",
+              "rolling-s11"
+            ],
+            "mcp_grounded_sessions": 12,
+            "mcp_knowledge_calls": 80,
+            "mcp_knowledge_servers": 2,
+            "mcp_servers_distinct": 10,
+            "mcp_subcategory_breakdown": {
+              "browser": {
+                "calls": 50,
+                "servers": 1
+              },
+              "knowledge": {
+                "calls": 80,
+                "servers": 2
+              }
+            },
+            "mcp_write_sessions": 30,
+            "task_tool_calls": 300,
+            "tool_diversity": 30,
+            "tool_entropy_normalized": 0.8,
+            "toolsearch_calls": 150,
+            "top_tools": [
+              [
+                "Bash",
+                1500
+              ],
+              [
+                "Edit",
+                1000
+              ]
+            ]
+          },
+          "velocity": {
+            "active_hours": 80.0,
+            "shell_authored_lines_est": 2000,
+            "tool_churn_edit_write": 50000
+          },
+          "volume": {
+            "thinking_blocks": 600,
+            "tool_calls_total": 4000,
+            "total_prompts": 300,
+            "total_sessions": 30
+          }
+        }
+      }
+    },
+    "scoring_inputs_version": 4
   }
 ]
