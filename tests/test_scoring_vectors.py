@@ -78,8 +78,9 @@ class TestScoringVectorsFile(unittest.TestCase):
     def test_rolling_vector_uses_exact_configured_weights(self):
         rolling = next(c for c in _load() if c["name"] == "rolling_claude_all_buckets")
         buckets = rolling["expected"]["by_source"]["claude"]["aq"]["blend"]["buckets"]
-        self.assertEqual([bucket["configured_weight"] for bucket in buckets], [0.5, 0.3, 0.2])
-        self.assertEqual([bucket["effective_weight"] for bucket in buckets], [0.5, 0.3, 0.2])
+        self.assertEqual([bucket["id"] for bucket in buckets], ["recent_30d", "full_window"])
+        self.assertEqual([bucket["configured_weight"] for bucket in buckets], [0.65, 0.35])
+        self.assertEqual([bucket["effective_weight"] for bucket in buckets], [0.65, 0.35])
 
     def test_profile_shape(self):
         """Each profile carries the same shape build_summary's `profile` produces."""

@@ -4319,286 +4319,15 @@
   {
     "bucket_metadata": [
       {
-        "configured_weight": 0.5,
+        "configured_weight": 0.65,
         "day_bounds": {
           "lower": 0,
           "upper": 30
         },
         "id": "recent_30d"
-      },
-      {
-        "configured_weight": 0.3,
-        "day_bounds": {
-          "lower": 30,
-          "upper": 90
-        },
-        "id": "middle_60d"
-      },
-      {
-        "configured_weight": 0.2,
-        "day_bounds": {
-          "lower": 90,
-          "upper": 180
-        },
-        "id": "older_90d"
       }
     ],
     "bucket_scoring_inputs_by_source": {
-      "middle_60d": {
-        "claude": {
-          "window": {
-            "behavior": {
-              "actions_per_prompt": 13.0,
-              "api_errors_retries": 4,
-              "background_tasks": 30,
-              "delegate_actions": 200,
-              "error_rate_per_100_tools": 3.0,
-              "error_recovery_ratio": 0.8,
-              "fanout_median": 3,
-              "files_hammered_over_15x": 2,
-              "iteration_depth_max": 20,
-              "iteration_depth_mean": 2.5,
-              "iteration_depth_p90": 4,
-              "plan_sessions": 16,
-              "planning_ratio_explore_to_doing": 0.5,
-              "questions_asked": 5,
-              "shell_test_runs": 30
-            },
-            "source": "claude",
-            "stack": {
-              "compounding_writes": 20,
-              "models": [
-                [
-                  "claude-opus-4-8",
-                  3000
-                ],
-                [
-                  "claude-sonnet-4-5",
-                  1000
-                ]
-              ],
-              "skills_all": [
-                [
-                  "writing-plans",
-                  60
-                ],
-                [
-                  "code-review",
-                  80
-                ],
-                [
-                  "systematic-debugging",
-                  30
-                ]
-              ],
-              "skills_distinct": 25,
-              "skills_total": 900,
-              "subagent_types": [
-                [
-                  "general-purpose",
-                  120
-                ],
-                [
-                  "code-reviewer",
-                  40
-                ]
-              ],
-              "subagent_types_distinct": 6,
-              "top_skills": [
-                [
-                  "writing-plans",
-                  60
-                ],
-                [
-                  "code-review",
-                  80
-                ],
-                [
-                  "systematic-debugging",
-                  30
-                ]
-              ]
-            },
-            "tools": {
-              "agent_calls": 200,
-              "cli_calls": 1500,
-              "clis_distinct": 25,
-              "mcp_calls": 400,
-              "mcp_grounded_session_names": [
-                "rolling-s0",
-                "rolling-s1",
-                "rolling-s2",
-                "rolling-s3"
-              ],
-              "mcp_grounded_sessions": 4,
-              "mcp_knowledge_calls": 80,
-              "mcp_knowledge_servers": 2,
-              "mcp_servers_distinct": 10,
-              "mcp_subcategory_breakdown": {
-                "browser": {
-                  "calls": 50,
-                  "servers": 1
-                },
-                "knowledge": {
-                  "calls": 80,
-                  "servers": 2
-                }
-              },
-              "mcp_write_sessions": 10,
-              "task_tool_calls": 300,
-              "tool_diversity": 30,
-              "tool_entropy_normalized": 0.8,
-              "toolsearch_calls": 150,
-              "top_tools": [
-                [
-                  "Bash",
-                  1500
-                ],
-                [
-                  "Edit",
-                  1000
-                ]
-              ]
-            },
-            "velocity": {
-              "active_hours": 80.0,
-              "shell_authored_lines_est": 2000,
-              "tool_churn_edit_write": 50000
-            },
-            "volume": {
-              "thinking_blocks": 600,
-              "tool_calls_total": 4000,
-              "total_prompts": 300,
-              "total_sessions": 10
-            }
-          }
-        }
-      },
-      "older_90d": {
-        "claude": {
-          "window": {
-            "behavior": {
-              "actions_per_prompt": 13.0,
-              "api_errors_retries": 4,
-              "background_tasks": 30,
-              "delegate_actions": 200,
-              "error_rate_per_100_tools": 3.0,
-              "error_recovery_ratio": 0.8,
-              "fanout_median": 3,
-              "files_hammered_over_15x": 2,
-              "iteration_depth_max": 20,
-              "iteration_depth_mean": 2.5,
-              "iteration_depth_p90": 4,
-              "plan_sessions": 16,
-              "planning_ratio_explore_to_doing": 0.0,
-              "questions_asked": 5,
-              "shell_test_runs": 0
-            },
-            "source": "claude",
-            "stack": {
-              "compounding_writes": 20,
-              "models": [
-                [
-                  "claude-opus-4-8",
-                  3000
-                ],
-                [
-                  "claude-sonnet-4-5",
-                  1000
-                ]
-              ],
-              "skills_all": [
-                [
-                  "writing-plans",
-                  60
-                ],
-                [
-                  "code-review",
-                  80
-                ],
-                [
-                  "systematic-debugging",
-                  30
-                ]
-              ],
-              "skills_distinct": 25,
-              "skills_total": 900,
-              "subagent_types": [
-                [
-                  "general-purpose",
-                  120
-                ],
-                [
-                  "code-reviewer",
-                  40
-                ]
-              ],
-              "subagent_types_distinct": 6,
-              "top_skills": [
-                [
-                  "writing-plans",
-                  60
-                ],
-                [
-                  "code-review",
-                  80
-                ],
-                [
-                  "systematic-debugging",
-                  30
-                ]
-              ]
-            },
-            "tools": {
-              "agent_calls": 200,
-              "cli_calls": 1500,
-              "clis_distinct": 25,
-              "mcp_calls": 400,
-              "mcp_grounded_session_names": [],
-              "mcp_grounded_sessions": 0,
-              "mcp_knowledge_calls": 80,
-              "mcp_knowledge_servers": 2,
-              "mcp_servers_distinct": 10,
-              "mcp_subcategory_breakdown": {
-                "browser": {
-                  "calls": 50,
-                  "servers": 1
-                },
-                "knowledge": {
-                  "calls": 80,
-                  "servers": 2
-                }
-              },
-              "mcp_write_sessions": 10,
-              "task_tool_calls": 300,
-              "tool_diversity": 30,
-              "tool_entropy_normalized": 0.8,
-              "toolsearch_calls": 150,
-              "top_tools": [
-                [
-                  "Bash",
-                  1500
-                ],
-                [
-                  "Edit",
-                  1000
-                ]
-              ]
-            },
-            "velocity": {
-              "active_hours": 80.0,
-              "shell_authored_lines_est": 2000,
-              "tool_churn_edit_write": 50000
-            },
-            "volume": {
-              "thinking_blocks": 600,
-              "tool_calls_total": 4000,
-              "total_prompts": 300,
-              "total_sessions": 10
-            }
-          }
-        }
-      },
       "recent_30d": {
         "claude": {
           "window": {
@@ -4739,7 +4468,7 @@
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 85,
+          "aq_0_100": 88,
           "pillars": [
             {
               "name": "Breadth",
@@ -4748,7 +4477,7 @@
             },
             {
               "name": "Craft",
-              "score": 83.7,
+              "score": 93.6,
               "weight": 35
             },
             {
@@ -4762,17 +4491,17 @@
               "weight": 15
             }
           ],
-          "tier": "Advanced"
+          "tier": "Elite"
         },
         "archetype": {
           "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is breadth \u2014 that's where the next gain is.",
-          "title": "Advanced"
+          "title": "Elite"
         },
         "combination": {
           "rule": "weighted_mean_of_per_source_scores",
           "weight": "tool_calls_total",
           "weights": {
-            "claude": 4000
+            "claude": 2600.0
           }
         },
         "growth_edges": [
@@ -5009,38 +4738,25 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 85,
+            "aq_0_100": 88,
             "blend": {
               "buckets": [
                 {
                   "component_aq": 90,
-                  "configured_weight": 0.5,
+                  "configured_weight": 0.65,
                   "day_bounds": {
                     "lower": 0,
                     "upper": 30
                   },
-                  "effective_weight": 0.5,
+                  "effective_weight": 0.65,
                   "id": "recent_30d"
                 },
                 {
-                  "component_aq": 86,
-                  "configured_weight": 0.3,
-                  "day_bounds": {
-                    "lower": 30,
-                    "upper": 90
-                  },
-                  "effective_weight": 0.3,
-                  "id": "middle_60d"
-                },
-                {
-                  "component_aq": 68,
-                  "configured_weight": 0.2,
-                  "day_bounds": {
-                    "lower": 90,
-                    "upper": 180
-                  },
-                  "effective_weight": 0.2,
-                  "id": "older_90d"
+                  "component_aq": 84,
+                  "configured_weight": 0.35,
+                  "day_bounds": null,
+                  "effective_weight": 0.35,
+                  "id": "full_window"
                 }
               ],
               "full_aq": 84
@@ -5058,7 +4774,7 @@
                   {
                     "components": [
                       {
-                        "effective_weight": 0.5,
+                        "effective_weight": 0.65,
                         "id": "recent_30d",
                         "score": 23.9,
                         "signals": {
@@ -5069,19 +4785,8 @@
                         }
                       },
                       {
-                        "effective_weight": 0.3,
-                        "id": "middle_60d",
-                        "score": 23.9,
-                        "signals": {
-                          "agent_runs": 200,
-                          "fanout_median": 3,
-                          "o_harn": 0.6,
-                          "subagent_types": 6
-                        }
-                      },
-                      {
-                        "effective_weight": 0.2,
-                        "id": "older_90d",
+                        "effective_weight": 0.35,
+                        "id": "full_window",
                         "score": 23.9,
                         "signals": {
                           "agent_runs": 200,
@@ -5104,7 +4809,7 @@
                   {
                     "components": [
                       {
-                        "effective_weight": 0.5,
+                        "effective_weight": 0.65,
                         "id": "recent_30d",
                         "score": 18.7,
                         "signals": {
@@ -5113,17 +4818,8 @@
                         }
                       },
                       {
-                        "effective_weight": 0.3,
-                        "id": "middle_60d",
-                        "score": 18.7,
-                        "signals": {
-                          "skills_distinct": 25,
-                          "skills_total": 900
-                        }
-                      },
-                      {
-                        "effective_weight": 0.2,
-                        "id": "older_90d",
+                        "effective_weight": 0.35,
+                        "id": "full_window",
                         "score": 18.7,
                         "signals": {
                           "skills_distinct": 25,
@@ -5142,7 +4838,7 @@
                   {
                     "components": [
                       {
-                        "effective_weight": 0.5,
+                        "effective_weight": 0.65,
                         "id": "recent_30d",
                         "score": 20.1,
                         "signals": {
@@ -5152,18 +4848,8 @@
                         }
                       },
                       {
-                        "effective_weight": 0.3,
-                        "id": "middle_60d",
-                        "score": 20.1,
-                        "signals": {
-                          "clis": 25,
-                          "mcp_servers": 10,
-                          "toolsearch": 150
-                        }
-                      },
-                      {
-                        "effective_weight": 0.2,
-                        "id": "older_90d",
+                        "effective_weight": 0.35,
+                        "id": "full_window",
                         "score": 20.1,
                         "signals": {
                           "clis": 25,
@@ -5184,7 +4870,7 @@
                   {
                     "components": [
                       {
-                        "effective_weight": 0.5,
+                        "effective_weight": 0.65,
                         "id": "recent_30d",
                         "score": 17.0,
                         "signals": {
@@ -5192,16 +4878,8 @@
                         }
                       },
                       {
-                        "effective_weight": 0.3,
-                        "id": "middle_60d",
-                        "score": 17.0,
-                        "signals": {
-                          "task_tool_calls": 300
-                        }
-                      },
-                      {
-                        "effective_weight": 0.2,
-                        "id": "older_90d",
+                        "effective_weight": 0.35,
+                        "id": "full_window",
                         "score": 17.0,
                         "signals": {
                           "task_tool_calls": 300
@@ -5225,7 +4903,7 @@
                   {
                     "components": [
                       {
-                        "effective_weight": 0.5,
+                        "effective_weight": 0.65,
                         "id": "recent_30d",
                         "score": 35.0,
                         "signals": {
@@ -5234,26 +4912,17 @@
                         }
                       },
                       {
-                        "effective_weight": 0.3,
-                        "id": "middle_60d",
-                        "score": 35.0,
+                        "effective_weight": 0.35,
+                        "id": "full_window",
+                        "score": 29.2,
                         "signals": {
                           "review_skills": 80,
                           "test_runs": 30
                         }
-                      },
-                      {
-                        "effective_weight": 0.2,
-                        "id": "older_90d",
-                        "score": 17.5,
-                        "signals": {
-                          "review_skills": 80,
-                          "test_runs": 0
-                        }
                       }
                     ],
                     "name": "Verification",
-                    "score": 31.5,
+                    "score": 33.0,
                     "signals": {
                       "review_skills": 80,
                       "test_runs": 100
@@ -5263,7 +4932,7 @@
                   {
                     "components": [
                       {
-                        "effective_weight": 0.5,
+                        "effective_weight": 0.65,
                         "id": "recent_30d",
                         "score": 25.0,
                         "signals": {
@@ -5271,24 +4940,16 @@
                         }
                       },
                       {
-                        "effective_weight": 0.3,
-                        "id": "middle_60d",
+                        "effective_weight": 0.35,
+                        "id": "full_window",
                         "score": 12.5,
                         "signals": {
                           "planning_ratio": 0.5
                         }
-                      },
-                      {
-                        "effective_weight": 0.2,
-                        "id": "older_90d",
-                        "score": 0.0,
-                        "signals": {
-                          "planning_ratio": 0.0
-                        }
                       }
                     ],
                     "name": "Grounding",
-                    "score": 16.2,
+                    "score": 20.6,
                     "signals": {
                       "planning_ratio": 1.0
                     },
@@ -5297,7 +4958,7 @@
                   {
                     "components": [
                       {
-                        "effective_weight": 0.5,
+                        "effective_weight": 0.65,
                         "id": "recent_30d",
                         "score": 20.0,
                         "signals": {
@@ -5311,36 +4972,22 @@
                         }
                       },
                       {
-                        "effective_weight": 0.3,
-                        "id": "middle_60d",
+                        "effective_weight": 0.35,
+                        "id": "full_window",
                         "score": 20.0,
                         "signals": {
                           "coverage": 0.4,
                           "grounded_session_rule": "knowledge-MCP call OR explore-class project/data/design MCP call before a later Edit/Write/MultiEdit/NotebookEdit in the same session",
-                          "grounded_sessions": 4,
+                          "grounded_sessions": 12,
                           "score_formula": "coverage = grounded_sessions / write_sessions; score = min(1, coverage / 0.40)",
                           "target_coverage": 0.4,
-                          "total_sessions": 10,
-                          "write_sessions": 10
-                        }
-                      },
-                      {
-                        "effective_weight": 0.2,
-                        "id": "older_90d",
-                        "score": 0.0,
-                        "signals": {
-                          "coverage": 0.0,
-                          "grounded_session_rule": "knowledge-MCP call OR explore-class project/data/design MCP call before a later Edit/Write/MultiEdit/NotebookEdit in the same session",
-                          "grounded_sessions": 0,
-                          "score_formula": "coverage = grounded_sessions / write_sessions; score = min(1, coverage / 0.40)",
-                          "target_coverage": 0.4,
-                          "total_sessions": 10,
-                          "write_sessions": 10
+                          "total_sessions": 30,
+                          "write_sessions": 30
                         }
                       }
                     ],
                     "name": "Context Intelligence",
-                    "score": 16.0,
+                    "score": 20.0,
                     "signals": {
                       "coverage": 1.0,
                       "grounded_session_rule": "knowledge-MCP call OR explore-class project/data/design MCP call before a later Edit/Write/MultiEdit/NotebookEdit in the same session",
@@ -5355,7 +5002,7 @@
                   {
                     "components": [
                       {
-                        "effective_weight": 0.5,
+                        "effective_weight": 0.65,
                         "id": "recent_30d",
                         "score": 20.0,
                         "signals": {
@@ -5363,16 +5010,8 @@
                         }
                       },
                       {
-                        "effective_weight": 0.3,
-                        "id": "middle_60d",
-                        "score": 20.0,
-                        "signals": {
-                          "compounding_writes": 20
-                        }
-                      },
-                      {
-                        "effective_weight": 0.2,
-                        "id": "older_90d",
+                        "effective_weight": 0.35,
+                        "id": "full_window",
                         "score": 20.0,
                         "signals": {
                           "compounding_writes": 20
@@ -5388,7 +5027,7 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 83.7,
+                "score": 93.6,
                 "weight": 35
               },
               {
@@ -5396,7 +5035,7 @@
                   {
                     "components": [
                       {
-                        "effective_weight": 0.5,
+                        "effective_weight": 0.65,
                         "id": "recent_30d",
                         "score": 50.0,
                         "signals": {
@@ -5404,16 +5043,8 @@
                         }
                       },
                       {
-                        "effective_weight": 0.3,
-                        "id": "middle_60d",
-                        "score": 50.0,
-                        "signals": {
-                          "actions_per_prompt": 13.0
-                        }
-                      },
-                      {
-                        "effective_weight": 0.2,
-                        "id": "older_90d",
+                        "effective_weight": 0.35,
+                        "id": "full_window",
                         "score": 50.0,
                         "signals": {
                           "actions_per_prompt": 13.0
@@ -5430,7 +5061,7 @@
                   {
                     "components": [
                       {
-                        "effective_weight": 0.5,
+                        "effective_weight": 0.65,
                         "id": "recent_30d",
                         "score": 41.1,
                         "signals": {
@@ -5440,18 +5071,8 @@
                         }
                       },
                       {
-                        "effective_weight": 0.3,
-                        "id": "middle_60d",
-                        "score": 41.1,
-                        "signals": {
-                          "api_per_100_tools": 0.1,
-                          "api_retries": 4,
-                          "recovery_ratio": 0.8
-                        }
-                      },
-                      {
-                        "effective_weight": 0.2,
-                        "id": "older_90d",
+                        "effective_weight": 0.35,
+                        "id": "full_window",
                         "score": 41.1,
                         "signals": {
                           "api_per_100_tools": 0.1,
@@ -5479,7 +5100,7 @@
                   {
                     "components": [
                       {
-                        "effective_weight": 0.5,
+                        "effective_weight": 0.65,
                         "id": "recent_30d",
                         "score": 37.5,
                         "signals": {
@@ -5488,17 +5109,8 @@
                         }
                       },
                       {
-                        "effective_weight": 0.3,
-                        "id": "middle_60d",
-                        "score": 37.5,
-                        "signals": {
-                          "distinct_models": 2,
-                          "offload_share": 0.25
-                        }
-                      },
-                      {
-                        "effective_weight": 0.2,
-                        "id": "older_90d",
+                        "effective_weight": 0.35,
+                        "id": "full_window",
                         "score": 37.5,
                         "signals": {
                           "distinct_models": 2,
@@ -5517,7 +5129,7 @@
                   {
                     "components": [
                       {
-                        "effective_weight": 0.5,
+                        "effective_weight": 0.65,
                         "id": "recent_30d",
                         "score": 50.0,
                         "signals": {
@@ -5526,17 +5138,8 @@
                         }
                       },
                       {
-                        "effective_weight": 0.3,
-                        "id": "middle_60d",
-                        "score": 50.0,
-                        "signals": {
-                          "cli_share": 0.79,
-                          "toolsearch": 150
-                        }
-                      },
-                      {
-                        "effective_weight": 0.2,
-                        "id": "older_90d",
+                        "effective_weight": 0.35,
+                        "id": "full_window",
                         "score": 50.0,
                         "signals": {
                           "cli_share": 0.79,
@@ -5558,7 +5161,7 @@
                 "weight": 15
               }
             ],
-            "tier": "Advanced",
+            "tier": "Elite",
             "tool_diversity": {
               "distinct": 30,
               "entropy": 0.8

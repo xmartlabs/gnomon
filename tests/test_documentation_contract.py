@@ -15,15 +15,13 @@ class TestPublicDocumentationContract(unittest.TestCase):
         self.assertIn("default 6", _HELP_TEXT)
         self.assertIn("default 6", self.readme)
 
-    def test_readme_explains_rolling_180_day_weighting(self):
-        self.assertIn("180-day rolling horizon", self.readme)
+    def test_readme_explains_rolling_30_day_weighting(self):
         self.assertIn(
-            "independent of the calendar-month report window",
+            "recent (rolling 30-day) + 35% full-window",
             " ".join(self.readme.split()),
         )
-        self.assertIn("50%", self.readme)
-        self.assertIn("30%", self.readme)
-        self.assertIn("20%", self.readme)
+        self.assertIn("65%", self.readme)
+        self.assertIn("35%", self.readme)
 
     def test_readme_discloses_raw_identifiers_without_claiming_project_names_never_upload(self):
         self.assertIn("custom skill and MCP server names", self.readme)

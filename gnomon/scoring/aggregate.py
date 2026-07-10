@@ -17,9 +17,10 @@ AGGREGATE RULE (documented contract — mirdash mirrors this in TS):
 
         aggregate_score = Σ_s (w_s · score_s) / Σ_s w_s
 
-    For rolling profiles, w_s is the sum of configured bucket weight multiplied by that
-    bucket's tool calls. Without rolling components, w_s remains the full-window
-    tool_calls_total(s) for backward compatibility.
+    For blended profiles (recent + full-window), w_s is the sum of configured
+    component weight multiplied by that component's tool calls. Without blended
+    components, w_s remains the full-window tool_calls_total(s) for backward
+    compatibility.
 
     Applied independently to: the AQ total (aq_0_100), each of the 4 AQ pillars
     (Breadth/Craft/Efficiency/Savvy), and each of the 3 gstack axes (Execution/Planning/
@@ -44,10 +45,11 @@ from gnomon.scoring.profiles import build_profile, stats_from_scoring_block
 
 
 RECENCY_BLEND_ENABLED = True
+RECENT_WINDOW_DAYS = 30
+RECENT_WEIGHT = 0.65
+HISTORY_WEIGHT = 0.35
 AQ_BUCKETS = (
-    {"id": "recent_30d", "configured_weight": 0.50, "lower_days": 0, "upper_days": 30},
-    {"id": "middle_60d", "configured_weight": 0.30, "lower_days": 30, "upper_days": 90},
-    {"id": "older_90d", "configured_weight": 0.20, "lower_days": 90, "upper_days": 180},
+    {"id": "recent_30d", "configured_weight": RECENT_WEIGHT, "lower_days": 0, "upper_days": RECENT_WINDOW_DAYS},
 )
 
 
@@ -409,10 +411,14 @@ def _blend_aq(full_aq, components):
 
 def _blend_profiles(full_profile, components, full_block):
     """Apply bucketed AQ while keeping non-AQ profile fields full-window scoped."""
-    blended_aq = _blend_aq(full_profile["aq"], [
-        dict(component, aq=component["profile"]["aq"])
-        for component in components
-    ])
+    aq_components = [dict(component, aq=component["profile"]["aq"])
+                     for component in components]
+    aq_components.append({
+        "id": "full_window",
+        "configured_weight": HISTORY_WEIGHT,
+        "aq": full_profile["aq"],
+    })
+    blended_aq = _blend_aq(full_profile["aq"], aq_components)
     blended = dict(full_profile)
     blended["aq"] = blended_aq
     # Growth edges are the one narrative surface that reads AQ axes. Recompute
@@ -438,11 +444,10 @@ def score_by_source(scoring_inputs_by_source, bucket_scoring_inputs_by_source=No
     source's own caps (single-source → no union dilution). The aggregate combines the
     per-source SCORES per the module's documented weighted-mean rule.
 
-    When bucket inputs are provided, each source's AQ is composed from its non-empty,
-    positive-weight rolling buckets. Full-window gstack and narratives stay full-window
-    scoped except AQ-derived growth edges, which are refreshed from the blended AQ.
-    Aggregate source weights use configured recency multiplied by bucket tool volume when
-    valid components exist; otherwise the full profile and legacy full-window weight apply.
+    When bucket inputs are provided, each source's AQ is blended from the recent
+    rolling bucket plus the full window (65/35). Full-window gstack and narratives
+    stay full-window scoped except AQ-derived growth edges, which are refreshed
+    from the blended AQ.
     """
     metadata_by_id = {entry["id"]: entry for entry in (bucket_metadata or [])}
     by_source = {}

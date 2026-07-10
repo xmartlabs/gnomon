@@ -42,13 +42,14 @@ def _aq(first, second, first_signal, second_signal):
     }
 
 
-def _component(bucket_id, configured_weight, aq, lower_days, upper_days):
-    return {
-        "id": bucket_id,
-        "configured_weight": configured_weight,
-        "day_bounds": {"lower": lower_days, "upper": upper_days},
-        "aq": aq,
-    }
+def _component(bucket_id, configured_weight, aq, lower_days=None, upper_days=None):
+    """Build a weighted blend component. `full_window` (added at blend time by
+    _blend_profiles / local.py) carries no day_bounds, so lower/upper_days default
+    to None and the key is omitted, matching production shape."""
+    entry = {"id": bucket_id, "configured_weight": configured_weight, "aq": aq}
+    if lower_days is not None or upper_days is not None:
+        entry["day_bounds"] = {"lower": lower_days, "upper": upper_days}
+    return entry
 
 
 class TestRollingBucketWindows(unittest.TestCase):
@@ -59,9 +60,9 @@ class TestRollingBucketWindows(unittest.TestCase):
         windows = local._rolling_aq_bucket_windows(
             until_dt=self.now + timedelta(days=5), now=self.now)
 
+        self.assertEqual(len(windows), 1)
         self.assertEqual(windows[0]["until"], self.now)
         self.assertEqual(windows[0]["since"], self.now - timedelta(days=30))
-        self.assertEqual(windows[-1]["since"], self.now - timedelta(days=180))
 
     def test_historical_window_anchors_at_past_until(self):
         historical_until = datetime(2025, 3, 1, tzinfo=timezone.utc)
@@ -69,7 +70,7 @@ class TestRollingBucketWindows(unittest.TestCase):
             until_dt=historical_until, now=self.now)
 
         self.assertEqual(windows[0]["until"], historical_until)
-        self.assertEqual(windows[-1]["since"], historical_until - timedelta(days=180))
+        self.assertEqual(windows[0]["since"], historical_until - timedelta(days=30))
 
     def test_no_until_anchors_at_now_and_preserves_timezone(self):
         local_now = self.now.astimezone(timezone(timedelta(hours=-3)))
@@ -78,15 +79,13 @@ class TestRollingBucketWindows(unittest.TestCase):
         self.assertEqual(windows[0]["until"], local_now)
         self.assertEqual(windows[0]["until"].utcoffset(), timedelta(hours=-3))
 
-    def test_exact_boundaries_are_disjoint_and_cover_180_days(self):
+    def test_exact_boundaries_cover_30_days(self):
         windows = local._rolling_aq_bucket_windows(until_dt=self.now, now=self.now)
         cases = {
             self.now: None,
             self.now - timedelta(microseconds=1): "recent_30d",
             self.now - timedelta(days=30): "recent_30d",
-            self.now - timedelta(days=90): "middle_60d",
-            self.now - timedelta(days=180): "older_90d",
-            self.now - timedelta(days=180, microseconds=1): None,
+            self.now - timedelta(days=30, microseconds=1): None,
         }
 
         for timestamp, expected in cases.items():
@@ -96,24 +95,27 @@ class TestRollingBucketWindows(unittest.TestCase):
 
         self.assertEqual(
             [(w["id"], w["day_bounds"]) for w in windows],
-            [
-                ("recent_30d", {"lower": 0, "upper": 30}),
-                ("middle_60d", {"lower": 30, "upper": 90}),
-                ("older_90d", {"lower": 90, "upper": 180}),
-            ],
+            [("recent_30d", {"lower": 0, "upper": 30})],
         )
 
 
 class TestWeightedAQBlend(unittest.TestCase):
+    """Exercises the generic `_blend_aq` weighted-blend mechanism (axis blending,
+    renormalization, tier recompute, not_applicable handling). Production now blends
+    exactly two components -- recent_30d (0.65) and full_window (0.35, appended at
+    blend time by _blend_profiles / local.py's corpus blend) -- so most tests below
+    mirror that shape. `_blend_aq` itself stays generic over any number of named,
+    weighted components; test_missing_bucket_weights_are_renormalized uses two
+    synthetic components (not real bucket ids) purely to prove that generic
+    renormalization behavior still holds when configured weights don't sum to one."""
+
     def setUp(self):
         self.full = _aq(5.0, 5.0, 1, 1)
         self.recent = _aq(50.0, 40.0, 50, 40)
-        self.middle = _aq(25.0, 20.0, 25, 20)
-        self.older = _aq(0.0, 10.0, 0, 10)
+        self.history = _aq(0.0, 20.0, 0, 20)
         self.components = [
-            _component("recent_30d", 0.50, self.recent, 0, 30),
-            _component("middle_60d", 0.30, self.middle, 30, 90),
-            _component("older_90d", 0.20, self.older, 90, 180),
+            _component("recent_30d", 0.65, self.recent, 0, 30),
+            _component("full_window", 0.35, self.history),
         ]
 
     def test_blends_axes_then_recomputes_pillar_total_and_tier(self):
@@ -122,9 +124,9 @@ class TestWeightedAQBlend(unittest.TestCase):
         pillar = blended["pillars"][0]
         axes = {axis["name"]: axis for axis in pillar["axes"]}
         self.assertEqual(axes["Verification"]["score"], 32.5)
-        self.assertEqual(axes["Grounding"]["score"], 28.0)
-        self.assertEqual(pillar["score"], 60.5)
-        self.assertEqual(blended["aq_0_100"], 60)
+        self.assertEqual(axes["Grounding"]["score"], 33.0)
+        self.assertEqual(pillar["score"], 65.5)
+        self.assertEqual(blended["aq_0_100"], 66)
         self.assertEqual(blended["tier"], "Proficient")
 
     def test_axis_signals_come_from_highest_effective_weight_bucket(self):
@@ -134,11 +136,11 @@ class TestWeightedAQBlend(unittest.TestCase):
         self.assertEqual(axes["Verification"]["signals"], {"test_runs": 50})
         self.assertEqual(
             [component["id"] for component in axes["Verification"]["components"]],
-            ["recent_30d", "middle_60d", "older_90d"],
+            ["recent_30d", "full_window"],
         )
         self.assertEqual(
             [component["effective_weight"] for component in axes["Verification"]["components"]],
-            [0.5, 0.3, 0.2],
+            [0.65, 0.35],
         )
 
     def test_axis_available_in_lower_weight_bucket_is_not_marked_not_applicable(self):
@@ -146,7 +148,7 @@ class TestWeightedAQBlend(unittest.TestCase):
         recent["pillars"][0]["axes"] = recent["pillars"][0]["axes"][:1]
         recent["pillars"][0]["score"] = 50.0
         recent["pillars"][0]["not_applicable"] = ["Grounding"]
-        components = [dict(self.components[0], aq=recent), self.components[1], self.components[2]]
+        components = [dict(self.components[0], aq=recent), self.components[1]]
 
         pillar = aggregate._blend_aq(self.full, components)["pillars"][0]
 
@@ -154,7 +156,12 @@ class TestWeightedAQBlend(unittest.TestCase):
         self.assertNotIn("Grounding", pillar.get("not_applicable", []))
 
     def test_missing_bucket_weights_are_renormalized(self):
-        blended = aggregate._blend_aq(self.full, [self.components[0], self.components[2]])
+        # Synthetic components (not the real recent_30d/full_window pair) purely to
+        # prove _blend_aq renormalizes configured weights that don't already sum to one.
+        alpha = _component("alpha_sample", 0.50, self.recent, 0, 30)
+        gamma = _component("gamma_sample", 0.20, _aq(0.0, 10.0, 0, 10), 90, 180)
+
+        blended = aggregate._blend_aq(self.full, [alpha, gamma])
         buckets = blended["blend"]["buckets"]
 
         self.assertAlmostEqual(buckets[0]["effective_weight"], 5 / 7)
@@ -166,31 +173,31 @@ class TestWeightedAQBlend(unittest.TestCase):
         blended = aggregate._blend_aq(self.full, [self.components[1]])
 
         self.assertEqual(blended["blend"]["buckets"][0]["effective_weight"], 1.0)
-        self.assertEqual(blended["aq_0_100"], self.middle["aq_0_100"])
+        self.assertEqual(blended["aq_0_100"], self.history["aq_0_100"])
 
     def test_full_window_is_informational_not_a_blend_component(self):
         blended = aggregate._blend_aq(_aq(50.0, 50.0, 99, 99), self.components)
 
-        self.assertEqual(blended["aq_0_100"], 60)
+        self.assertEqual(blended["aq_0_100"], 66)
         self.assertEqual(blended["blend"]["full_aq"], 100)
         self.assertEqual(
             [bucket["id"] for bucket in blended["blend"]["buckets"]],
-            ["recent_30d", "middle_60d", "older_90d"],
+            ["recent_30d", "full_window"],
         )
 
 
 class TestRollingBucketAccumulation(unittest.TestCase):
-    def test_current_partial_month_report_since_does_not_clip_180_day_aq_horizon(self):
+    def test_current_partial_month_report_since_does_not_clip_30_day_aq_horizon(self):
         anchor = datetime(2026, 7, 9, 12, tzinfo=timezone.utc)
-        report_since = datetime(2026, 2, 1, tzinfo=timezone.utc)
+        report_since = datetime(2026, 7, 5, tzinfo=timezone.utc)
         report_until = datetime(2026, 8, 1, tzinfo=timezone.utc)
-        old_timestamp = anchor - timedelta(days=170)
+        old_timestamp = anchor - timedelta(days=20)
         event = {
             "type": "user",
             "sessionId": "older-only",
             "timestamp": old_timestamp.isoformat(),
             "cwd": "/repo",
-            "message": {"role": "user", "content": "include the full aq horizon"},
+            "message": {"role": "user", "content": "include the recent-30d aq horizon"},
         }
         windows = local._rolling_aq_bucket_windows(until_dt=report_until, now=anchor)
 
@@ -207,24 +214,23 @@ class TestRollingBucketAccumulation(unittest.TestCase):
                     verbose=False,
                 )
 
+        # The event predates report_since, so the whole-corpus report excludes it...
         self.assertEqual(stats["volume"]["total_sessions"], 0)
+        # ...but it still falls inside the recent_30d bucket's own (wider) horizon, so
+        # the file-scan lower bound must not be clipped to report_since alone.
         counts = {
             bucket_id: bucket_stats["volume"]["total_sessions"]
             for bucket_id, bucket_stats in narrative["_aq_bucket_stats"].items()
         }
-        self.assertEqual(counts, {"recent_30d": 0, "middle_60d": 0, "older_90d": 1})
+        self.assertEqual(counts, {"recent_30d": 1})
 
     def test_events_are_routed_to_exactly_one_bucket(self):
         anchor = datetime(2025, 7, 1, 12, tzinfo=timezone.utc)
         timestamps = [
-            anchor - timedelta(microseconds=1),
-            anchor - timedelta(days=30),
-            anchor - timedelta(days=30, microseconds=1),
-            anchor - timedelta(days=90),
-            anchor - timedelta(days=90, microseconds=1),
-            anchor - timedelta(days=180),
-            anchor - timedelta(days=180, microseconds=1),
-            anchor,
+            anchor - timedelta(microseconds=1),                 # in-bounds (just before now)
+            anchor - timedelta(days=30),                          # in-bounds (since, inclusive)
+            anchor - timedelta(days=30, microseconds=1),          # out-of-bounds (before since)
+            anchor,                                                # out-of-bounds (until, exclusive)
         ]
         events = [
             {
@@ -255,8 +261,7 @@ class TestRollingBucketAccumulation(unittest.TestCase):
             bucket_id: stats["volume"]["total_sessions"]
             for bucket_id, stats in narrative["_aq_bucket_stats"].items()
         }
-        self.assertEqual(counts, {"recent_30d": 2, "middle_60d": 2, "older_90d": 2})
-        self.assertEqual(sum(counts.values()), 6)
+        self.assertEqual(counts, {"recent_30d": 2})
 
     def test_corpus_bucket_preserves_each_source_capability_key(self):
         anchor = datetime(2025, 7, 1, 12, tzinfo=timezone.utc)
@@ -304,13 +309,9 @@ class TestPerSourceRollingBlend(unittest.TestCase):
         full_inputs = {"claude": {"window": self._block(sessions=30, tests=0, planning_ratio=0)}}
         bucket_inputs = {
             "recent_30d": {"claude": {"window": self._block(sessions=10, tests=100, planning_ratio=1)}},
-            "middle_60d": {"claude": {"window": self._block(sessions=10, tests=50, planning_ratio=0.5)}},
-            "older_90d": {"claude": {"window": self._block(sessions=10, tests=0, planning_ratio=0)}},
         }
         metadata = [
-            {"id": "recent_30d", "configured_weight": 0.5, "day_bounds": {"lower": 0, "upper": 30}},
-            {"id": "middle_60d", "configured_weight": 0.3, "day_bounds": {"lower": 30, "upper": 90}},
-            {"id": "older_90d", "configured_weight": 0.2, "day_bounds": {"lower": 90, "upper": 180}},
+            {"id": "recent_30d", "configured_weight": 0.65, "day_bounds": {"lower": 0, "upper": 30}},
         ]
 
         full_only = aggregate.score_by_source(full_inputs)["by_source"]["claude"]
@@ -323,7 +324,11 @@ class TestPerSourceRollingBlend(unittest.TestCase):
         self.assertEqual(profile["scores"], full_only["scores"])
         self.assertEqual(profile["archetype"], full_only["archetype"])
         self.assertEqual(profile["steering"], full_only["steering"])
-        self.assertEqual([b["id"] for b in profile["aq"]["blend"]["buckets"]], list(bucket_inputs))
+        # recent_30d (configured) plus full_window (appended at blend time).
+        self.assertEqual(
+            [b["id"] for b in profile["aq"]["blend"]["buckets"]],
+            ["recent_30d", "full_window"],
+        )
         for pillar in profile["aq"]["pillars"]:
             self.assertEqual(pillar["score"], round(sum(axis["score"] for axis in pillar["axes"]), 1))
         expected_total = round(sum(
@@ -332,46 +337,39 @@ class TestPerSourceRollingBlend(unittest.TestCase):
         self.assertEqual(profile["aq"]["aq_0_100"], expected_total)
         self.assertEqual(profile["aq"]["tier"], aggregate._aq_tier_for(expected_total))
 
-    def test_aggregate_weights_sources_by_their_recency_weighted_bucket_activity(self):
+    def test_aggregate_weights_recent_bucket_sources_by_recency_and_legacy_sources_by_full_window(self):
         full_inputs = {
             "claude": {"window": self._block(
                 sessions=10, tests=120, planning_ratio=0.7, tool_calls=10)},
             "cursor": {"window": self._block(
-                sessions=0, tests=5, planning_ratio=0.3,
-                template=CURSOR_BLOCK, tool_calls=0)},
+                sessions=10, tests=5, planning_ratio=0.3,
+                template=CURSOR_BLOCK, tool_calls=20)},
         }
         bucket_inputs = {
             "recent_30d": {"claude": {"window": self._block(
                 sessions=10, tests=120, planning_ratio=0.7, tool_calls=10)}},
-            "older_90d": {"cursor": {"window": self._block(
-                sessions=10, tests=5, planning_ratio=0.3,
-                template=CURSOR_BLOCK, tool_calls=10)}},
         }
         metadata = [
-            {"id": "recent_30d", "configured_weight": 0.5,
+            {"id": "recent_30d", "configured_weight": 0.65,
              "day_bounds": {"lower": 0, "upper": 30}},
-            {"id": "middle_60d", "configured_weight": 0.3,
-             "day_bounds": {"lower": 30, "upper": 90}},
-            {"id": "older_90d", "configured_weight": 0.2,
-             "day_bounds": {"lower": 90, "upper": 180}},
         ]
 
         result = aggregate.score_by_source(full_inputs, bucket_inputs, metadata)
 
-        self.assertEqual(
-            {source: profile["aq"]["aq_0_100"]
-             for source, profile in result["by_source"].items()},
-            {"claude": 86, "cursor": 37},
-        )
+        # claude has recent_30d bucket activity -> weighted by configured_weight * that
+        # bucket's tool_calls_total. cursor has none -> falls back to the legacy
+        # full-window tool_calls_total.
         self.assertEqual(
             result["aggregate"]["combination"]["weights"],
-            {"claude": 5.0, "cursor": 2.0},
+            {"claude": 0.65 * 10, "cursor": 20},
         )
-        self.assertEqual(result["aggregate"]["aq"]["aq_0_100"], 72)
-        self.assertNotEqual(
-            result["aggregate"]["aq"]["aq_0_100"],
-            result["by_source"]["claude"]["aq"]["aq_0_100"],
-        )
+        claude_aq = result["by_source"]["claude"]["aq"]["aq_0_100"]
+        cursor_aq = result["by_source"]["cursor"]["aq"]["aq_0_100"]
+        wa = result["aggregate"]["combination"]["weights"]["claude"]
+        wu = result["aggregate"]["combination"]["weights"]["cursor"]
+        expected_aggregate = round((claude_aq * wa + cursor_aq * wu) / (wa + wu))
+        self.assertEqual(result["aggregate"]["aq"]["aq_0_100"], expected_aggregate)
+        self.assertNotEqual(result["aggregate"]["aq"]["aq_0_100"], claude_aq)
 
     def test_aggregate_without_buckets_keeps_full_window_tool_volume_weights(self):
         full_inputs = {
@@ -408,10 +406,10 @@ class TestPerSourceRollingBlend(unittest.TestCase):
     def test_bucket_missing_from_partial_metadata_uses_legacy_fallbacks(self):
         full_inputs = {"claude": {"window": self._block(
             sessions=40, tests=0, planning_ratio=0, tool_calls=40)}}
-        bucket_inputs = {"older_90d": {"claude": {"window": self._block(
+        bucket_inputs = {"unscored_bucket": {"claude": {"window": self._block(
             sessions=10, tests=120, planning_ratio=1, tool_calls=10)}}}
         partial_metadata = [
-            {"id": "recent_30d", "configured_weight": 0.5,
+            {"id": "recent_30d", "configured_weight": 0.65,
              "day_bounds": {"lower": 0, "upper": 30}},
         ]
         full_only = aggregate.score_by_source(full_inputs)

@@ -24,7 +24,7 @@ from gnomon.scoring.gstack import compute_scores
 from gnomon.scoring.aq import compute_aq
 from gnomon.scoring.archetype import pick_archetype
 from gnomon.scoring.inputs import SCORING_INPUTS_VERSION, build_scoring_inputs
-from gnomon.scoring.aggregate import AQ_BUCKETS, RECENCY_BLEND_ENABLED, _blend_aq
+from gnomon.scoring.aggregate import AQ_BUCKETS, RECENCY_BLEND_ENABLED, RECENT_WEIGHT, HISTORY_WEIGHT, _blend_aq
 from gnomon.cli.accumulator import Accumulator
 from gnomon.output.summary import build_summary
 from gnomon.output.report import write_report
@@ -49,7 +49,7 @@ _TOOLS_DIAG = [
 
 
 def _rolling_aq_bucket_windows(until_dt=None, now=None):
-    """Return disjoint rolling AQ windows anchored at the effective scoring end."""
+    """Return rolling AQ windows anchored at the effective scoring end."""
     now = now or datetime.now().astimezone()
     anchor = min(until_dt, now) if until_dt is not None else now
     return [
@@ -260,6 +260,11 @@ def main(argv=None, output_dir=None):
         if corpus_components:
             full_corpus_aq = stats["agentic"]
             stats["_full_window_agentic"] = full_corpus_aq
+            corpus_components.append({
+                "id": "full_window",
+                "configured_weight": HISTORY_WEIGHT,
+                "aq": full_corpus_aq,
+            })
             stats["agentic"] = _blend_aq(full_corpus_aq, corpus_components)
 
     _t_scoring_inputs = time.monotonic() - _t0_si

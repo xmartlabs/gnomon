@@ -157,12 +157,8 @@ def cases():
 
 
 ROLLING_BUCKET_METADATA = [
-    {"id": "recent_30d", "configured_weight": 0.5,
+    {"id": "recent_30d", "configured_weight": 0.65,
      "day_bounds": {"lower": 0, "upper": 30}},
-    {"id": "middle_60d", "configured_weight": 0.3,
-     "day_bounds": {"lower": 30, "upper": 90}},
-    {"id": "older_90d", "configured_weight": 0.2,
-     "day_bounds": {"lower": 90, "upper": 180}},
 ]
 
 
@@ -180,15 +176,12 @@ def _rolling_block(*, sessions, tests, planning_ratio, grounded_sessions):
 
 
 def rolling_cases():
-    """Cases that exercise scoring-contract v4 bucket composition."""
+    """Cases that exercise scoring-contract v4 bucket composition (65% recent_30d +
+    35% full_window, the latter appended at blend time by score_by_source)."""
     full = {"claude": {"window": _rolling_block(
         sessions=30, tests=30, planning_ratio=0.5, grounded_sessions=12)}}
     buckets = {
         "recent_30d": {"claude": {"window": _rolling_block(
             sessions=10, tests=100, planning_ratio=1.0, grounded_sessions=10)}},
-        "middle_60d": {"claude": {"window": _rolling_block(
-            sessions=10, tests=30, planning_ratio=0.5, grounded_sessions=4)}},
-        "older_90d": {"claude": {"window": _rolling_block(
-            sessions=10, tests=0, planning_ratio=0.0, grounded_sessions=0)}},
     }
     return [("rolling_claude_all_buckets", full, buckets, ROLLING_BUCKET_METADATA)]

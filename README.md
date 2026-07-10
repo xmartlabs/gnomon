@@ -94,19 +94,15 @@ months** (default 6) ending at its anchor month, so a single weak month doesn't
 tank the score. `--window=1` scores each month on its own. The window applies to
 normal monthly runs and to `--backfill`/`--force`.
 
-Within the default six-month view, AQ uses a **180-day rolling horizon** anchored
-at the scored window's effective end. This horizon is independent of the
-calendar-month report window: AQ may inspect earlier events needed to complete
-all 180 days while report totals and raw full-window inputs still honor the
-requested `--since`/`--until` bounds. The most recent 30 days carry **50%**, the
-preceding 60 days carry **30%**, and the oldest 90 days carry **20%**. Empty
-buckets are omitted and the remaining weights are renormalized, so missing
-history does not become a zero score.
+Within the default six-month view, AQ is blended as **65% recent (rolling
+30-day) + 35% full-window** (the entire scored period). Because the full
+window includes recent activity, improvements are reflected in both
+components — recent behavior dominates while the full window provides
+stability. When the recent window has no sessions the blend falls back to the
+unblended full-window AQ.
 
 This is **scoring contract version 4** and a **v0.4 methodology discontinuity**:
-AQ results produced before and after v0.4 are not directly comparable. The raw
-full-window inputs remain in the payload for compatibility, but the full window
-is not an additional AQ blend component.
+AQ results produced before and after v0.4 are not directly comparable.
 
 What happens when you run it (without `--local`):
 
@@ -178,10 +174,10 @@ xl-ai-insights --local --since=2026-03-01 --until=2026-05-31   # explicit window
 
 Report metrics follow the requested window — **including git churn**, whose
 `git log --since/--until` range tracks the kept events. AQ is the documented
-exception: its rolling buckets may inspect up to 180 days before the effective
-anchor. Events without a timestamp are dropped in windowed runs (they can't
-honor explicit bounds); that includes Cursor JSONL-only sessions beyond their
-single file-mtime timestamp.
+exception: its recent-window blend may inspect up to 30 days before the
+effective anchor. Events without a timestamp are dropped in windowed runs
+(they can't honor explicit bounds); that includes Cursor JSONL-only sessions
+beyond their single file-mtime timestamp.
 
 ### Sandbox / self-hosted / copied histories
 
