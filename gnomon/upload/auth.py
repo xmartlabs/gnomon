@@ -103,7 +103,7 @@ _SUCCESS_PAGE = b"""\
     <h1>You\xe2\x80\x99re authenticated</h1>
     <p class="sub">Signed in with your XL account. Close this tab and head back to your terminal \xe2\x80\x94 it\xe2\x80\x99s computing your build profile and sharing it now.</p>
     <div class="term"><svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> Return to your terminal</div>
-    <div class="foot"><b>Your transcripts never leave your machine.</b> Only aggregated usage statistics (summary.json) are uploaded \xe2\x80\x94 mirdash uses them to generate your recommendations.</div>
+    <div class="foot"><b>Prompts and file contents stay on your machine.</b> Only <code>summary.json</code>, a usage statistics summary, is uploaded.</div>
   </div>
 </body>
 </html>

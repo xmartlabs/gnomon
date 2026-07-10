@@ -2,6 +2,7 @@
 
 import datetime
 import importlib.metadata
+import json
 import os
 import re
 import sys
@@ -13,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from gnomon.upload.auth import _capture_cli_token, _wait_for_auth_tokens, _SHARE_AUTH_TIMEOUT, _WEB_AUTH_TIMEOUT
 from gnomon.upload.mirdash import (
     _resolve_mirdash_base, _resolve_output_dir, _absolutize_dir_flags,
+    _DEFAULT_MIRDASH_BASE,
     _DEFAULT_WINDOW_MONTHS, _UPLOAD_CONCURRENCY, parse_window, decide_mode,
     month_windows, months_to_upload, plan_upload, windows_for_anchors,
     _is_report_url, _upload_window, _upload_window_web,
@@ -50,7 +52,7 @@ _HELP_TEXT = """Usage:
     uploads only what is needed (first run uploads everything automatically).
 """
 
-_LATEST_CLI_RELEASE_URL = "https://raw.githubusercontent.com/xmartlabs/gnomon/latest/pyproject.toml"
+_LATEST_CLI_RELEASE_URL = "https://api.github.com/repos/xmartlabs/gnomon/releases/latest"
 _CLI_REFRESH_COMMAND = "uvx --refresh --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights"
 _ALLOW_STALE_CLI_FLAG = "--allow-stale-cli"
 
@@ -69,20 +71,16 @@ def _release_result(status, current=None, latest=None, reason=None):
     return {"status": status, "current": current, "latest": latest, "reason": reason}
 
 
-def _parse_project_version(pyproject_text):
-    in_project = False
-    for line in pyproject_text.splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        if stripped.startswith("[") and stripped.endswith("]"):
-            in_project = stripped == "[project]"
-            continue
-        if in_project:
-            match = re.match(r'''version\s*=\s*["']([^"']+)["']''', stripped)
-            if match:
-                return match.group(1)
-    return None
+def _parse_stable_release_tag(release_text):
+    """Return normalized X.Y.Z from a stable GitHub Release tag, else None."""
+    try:
+        tag_name = json.loads(release_text).get("tag_name")
+    except (AttributeError, json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(tag_name, str):
+        return None
+    match = re.fullmatch(r"v?((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))", tag_name)
+    return match.group(1) if match else None
 
 
 def _check_latest_cli_release(timeout=1.5):
@@ -100,7 +98,7 @@ def _check_latest_cli_release(timeout=1.5):
     except Exception as exc:
         return _release_result("unknown", current=current, reason=f"latest-fetch:{exc.__class__.__name__}")
 
-    latest = _parse_project_version(latest_text)
+    latest = _parse_stable_release_tag(latest_text)
     if not latest:
         return _release_result("unknown", current=current, reason="latest-version-missing")
 
@@ -507,7 +505,8 @@ def main(argv=None):
         _print_dry_run_plan(mode, windows, plan_pairs)
         sys.exit(0)
 
-    _enforce_cli_freshness(allow_stale=allow_stale_cli)
+    if mirdash_base == _DEFAULT_MIRDASH_BASE:
+        _enforce_cli_freshness(allow_stale=allow_stale_cli)
 
     if console:
         _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,

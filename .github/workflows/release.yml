@@ -1,0 +1,149 @@
+name: Stable release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable version from pyproject.toml (X.Y.Z, without v)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out the dispatched main commit with tags
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Validate requested version
+        id: version
+        shell: bash
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          REQUESTED="$REQUESTED_VERSION"
+          PROJECT_VERSION="$(python3 - <<'PY'
+          import tomllib
+          with open("pyproject.toml", "rb") as handle:
+              print(tomllib.load(handle)["project"]["version"])
+          PY
+          )"
+          if [[ ! "$REQUESTED" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Requested version must be stable X.Y.Z, got: $REQUESTED" >&2
+            exit 1
+          fi
+          if [[ "$REQUESTED" != "$PROJECT_VERSION" ]]; then
+            echo "Requested version $REQUESTED does not match pyproject.toml $PROJECT_VERSION" >&2
+            exit 1
+          fi
+          echo "VERSION=$REQUESTED" >> "$GITHUB_ENV"
+          echo "TAG=v$REQUESTED" >> "$GITHUB_ENV"
+
+      - name: Byte-compile paxel.py
+        run: python3 -m py_compile paxel.py
+
+      - name: Run tests (pipeline smoke + invariants + poster JS node --check)
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Create or validate immutable version tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          REMOTE_VERSION_SHA="$(
+            git ls-remote --tags origin "refs/tags/${TAG}^{}" | awk 'NR == 1 {print $1}'
+          )"
+          if [[ -z "$REMOTE_VERSION_SHA" ]]; then
+            REMOTE_VERSION_SHA="$(
+              git ls-remote --tags origin "refs/tags/$TAG" | awk 'NR == 1 {print $1}'
+            )"
+          fi
+
+          if [[ -n "$REMOTE_VERSION_SHA" ]]; then
+            if [[ "$REMOTE_VERSION_SHA" != "$GITHUB_SHA" ]]; then
+              echo "Immutable version tag $TAG resolves to $REMOTE_VERSION_SHA, expected $GITHUB_SHA." >&2
+              exit 1
+            fi
+            echo "Immutable version tag $TAG already exists at expected SHA $GITHUB_SHA."
+            git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+          else
+            git tag -a "$TAG" "$GITHUB_SHA" -m "Release $TAG"
+            git push origin "refs/tags/$TAG"
+          fi
+          test "$(git rev-list -n 1 "$TAG")" = "$GITHUB_SHA"
+
+      - name: Create or validate GitHub Release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            EXISTING_RELEASE_TAG="$(
+              gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName
+            )"
+            test "$EXISTING_RELEASE_TAG" = "$TAG"
+            echo "Release $TAG already exists at expected tag."
+          else
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --title "$TAG" \
+              --generate-notes
+          fi
+          RELEASE_TAG="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .tag_name)"
+          test "$RELEASE_TAG" = "$TAG"
+
+      - name: Move latest after release publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          git tag -fa latest "$GITHUB_SHA" -m "Latest stable release: $TAG"
+          git push origin "+refs/tags/latest"
+
+      - name: Verify release API and tag SHAs
+        shell: bash
+        run: |
+          set -euo pipefail
+          RELEASE_TAG="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .tag_name)"
+          read -r VERSION_REF_TYPE VERSION_REF_SHA < <(
+            gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" \
+              --jq '.object | [.type, .sha] | @tsv'
+          )
+          LATEST_REF_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/latest" --jq .object.sha)"
+          test "$RELEASE_TAG" = "$TAG"
+          case "$VERSION_REF_TYPE" in
+            tag)
+              test "$VERSION_REF_SHA" = "$(git rev-parse "$TAG^{tag}")"
+              ;;
+            commit)
+              test "$VERSION_REF_SHA" = "$GITHUB_SHA"
+              ;;
+            *)
+              echo "Unexpected version ref type for $TAG: $VERSION_REF_TYPE" >&2
+              exit 1
+              ;;
+          esac
+          test "$LATEST_REF_SHA" = "$(git rev-parse "latest^{tag}")"
+          test "$(git rev-list -n 1 "$TAG")" = "$GITHUB_SHA"
+          test "$(git rev-list -n 1 latest)" = "$GITHUB_SHA"

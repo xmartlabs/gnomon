@@ -18,6 +18,8 @@ _COPIED_OUTPUTS = (
     "narrative_input.md",
 )
 
+_DEFAULT_MIRDASH_BASE = "https://mirdash.xmartlabs.com"
+
 
 def _gnomon_config():
     """Read ~/.config/gnomon/config.json; return {} on missing/invalid."""
@@ -51,14 +53,14 @@ def _resolve_mirdash_base(argv):
     cfg = _gnomon_config().get("mirdash_base", "").strip()
     if cfg:
         return cfg.rstrip("/")
-    return "https://mirdash.xmartlabs.com"
+    return _DEFAULT_MIRDASH_BASE
 
 
 # Maximum batch size supported by the mirdash auth endpoint.
 _MAX_BACKFILL = 12
 
 # Default window size when --window is absent.
-_DEFAULT_WINDOW_MONTHS = 3
+_DEFAULT_WINDOW_MONTHS = 6
 
 # Parallel month uploads. Each month runs paxel.py as a subprocess (CPU-bound),
 # so threads only block on subprocess.run -- no GIL contention, real multi-core.

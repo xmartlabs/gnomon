@@ -246,12 +246,17 @@ def _build_noticed_stats(stats):
         },
     }
 
-def _profiles_by_source(scoring_inputs_by_source, recent_scoring_inputs_by_source=None):
+def _profiles_by_source(scoring_inputs_by_source, bucket_scoring_inputs_by_source=None,
+                        bucket_metadata=None):
     """Precompute per-source + aggregate profiles (so mirdash just displays them — no
     recompute). Each per-source profile's model_usage is populated from that source's own
     stack.models (score_by_source leaves it empty); tokens are 0 there (token usage is only
     tracked corpus-wide). The aggregate keeps model_usage empty (it's a score blend)."""
-    sbs = score_by_source(scoring_inputs_by_source or {}, recent_scoring_inputs_by_source)
+    sbs = score_by_source(
+        scoring_inputs_by_source or {},
+        bucket_scoring_inputs_by_source=bucket_scoring_inputs_by_source,
+        bucket_metadata=bucket_metadata,
+    )
     for src, profile in (sbs.get("by_source") or {}).items():
         window = (scoring_inputs_by_source.get(src) or {}).get("window") or {}
         models = (window.get("stack") or {}).get("models") or []
@@ -265,8 +270,9 @@ def build_summary(stats):
     """The shareable subset for the low-cost feedback loop (docs/metrics-evaluation.md):
     the 8 high-signal MEASURED metrics + monthly progression + rubric profile block.
     The profile sub-dict carries scores/level/archetype/steering; all values are computed
-    or count-based — no prompts, no verbatim quotes, no project names.
-    Includes tool, skill, and MCP server names (ecosystem + monthly noticed stats)."""
+    or count-based — no prompts, verbatim quotes, file paths, or file contents.
+    Includes raw tool, skill, and MCP server names; user-chosen identifiers can
+    therefore contain project/customer/environment names."""
     v, b, vel, st, t, c = (stats["volume"], stats["behavior"], stats["velocity"],
                            stats["stack"], stats["tools"], stats["corpus"])
     result = {
@@ -321,7 +327,8 @@ def build_summary(stats):
         "scoring_inputs_by_source": stats.get("scoring_inputs_by_source", {}),
         "profiles_by_source": _profiles_by_source(
             stats.get("scoring_inputs_by_source") or {},
-            stats.get("recent_scoring_inputs_by_source")),
+            stats.get("_aq_bucket_scoring_inputs_by_source"),
+            stats.get("_aq_bucket_metadata")),
         "source_usage": _build_source_usage(stats.get("scoring_inputs_by_source") or {}),
         "source_usage_monthly": _build_source_usage_monthly(stats.get("scoring_inputs_by_source") or {}),
         "token_usage": stats.get("token_usage") or {

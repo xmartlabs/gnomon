@@ -16,6 +16,7 @@ Three cases, chosen to exercise the contract:
   * mixed        — claude + cursor; proves the aggregate is the tool-volume WEIGHTED MEAN
                    of the per-source scores, NOT the pooled-union number.
 """
+import copy
 
 CLAUDE_BLOCK = {
     "source": "claude",
@@ -153,3 +154,34 @@ def cases():
             "no-tool-activity": {"window": NO_TOOL_ACTIVITY_BLOCK, "monthly": []},
         }),
     ]
+
+
+ROLLING_BUCKET_METADATA = [
+    {"id": "recent_30d", "configured_weight": 0.65,
+     "day_bounds": {"lower": 0, "upper": 30}},
+]
+
+
+def _rolling_block(*, sessions, tests, planning_ratio, grounded_sessions):
+    block = copy.deepcopy(CLAUDE_BLOCK)
+    block["volume"]["total_sessions"] = sessions
+    block["behavior"]["shell_test_runs"] = tests
+    block["behavior"]["planning_ratio_explore_to_doing"] = planning_ratio
+    block["tools"]["mcp_grounded_sessions"] = grounded_sessions
+    block["tools"]["mcp_write_sessions"] = sessions
+    block["tools"]["mcp_grounded_session_names"] = [
+        f"rolling-s{i}" for i in range(grounded_sessions)
+    ]
+    return block
+
+
+def rolling_cases():
+    """Cases that exercise scoring-contract v4 bucket composition (65% recent_30d +
+    35% full_window, the latter appended at blend time by score_by_source)."""
+    full = {"claude": {"window": _rolling_block(
+        sessions=30, tests=30, planning_ratio=0.5, grounded_sessions=12)}}
+    buckets = {
+        "recent_30d": {"claude": {"window": _rolling_block(
+            sessions=10, tests=100, planning_ratio=1.0, grounded_sessions=10)}},
+    }
+    return [("rolling_claude_all_buckets", full, buckets, ROLLING_BUCKET_METADATA)]
