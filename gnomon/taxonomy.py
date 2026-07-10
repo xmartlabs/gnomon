@@ -27,6 +27,20 @@ _extra_plan_needles = os.environ.get("GNOMON_PLAN_SKILL_NEEDLES", "")
 if _extra_plan_needles:
     PLAN_SKILL_NEEDLES = PLAN_SKILL_NEEDLES + tuple(
         n.strip().lower() for n in _extra_plan_needles.split(",") if n.strip())
+KNOWLEDGE_SKILL_NEEDLES = (
+    "deep-research",
+    "explore",
+    "claude-api",
+    "graphify",
+    "codegraph",
+    "find-docs",
+    "find-skills",
+    "explain-code",
+)
+_extra_knowledge_needles = os.environ.get("GNOMON_KNOWLEDGE_SKILL_NEEDLES", "")
+if _extra_knowledge_needles:
+    KNOWLEDGE_SKILL_NEEDLES = KNOWLEDGE_SKILL_NEEDLES + tuple(
+        n.strip().lower() for n in _extra_knowledge_needles.split(",") if n.strip())
 SCHEDULE_TOOLS = {"ScheduleWakeup", "CronCreate", "CronDelete", "CronList",
                   "RemoteTrigger", "PushNotification", "Monitor"}
 SKILL_TOOLS = {"Skill"}
@@ -180,6 +194,20 @@ _SHELL_TEST_RE = re.compile(
 
 def bash_runs_tests(cmd):
     return bool(_SHELL_TEST_RE.search(cmd or ""))
+
+
+_SHELL_KNOWLEDGE_RE = re.compile(
+    r'(?:^|[\s;&|(/])('
+    r'codegraph\s+(?:explore|search|query)'
+    r'|graphify'
+    r'|gh\s+(?:issue|pr)\s+view'
+    r')(?=$|[\s;&|):])',
+    re.IGNORECASE,
+)
+
+
+def bash_runs_knowledge(cmd):
+    return bool(_SHELL_KNOWLEDGE_RE.search(cmd or ""))
 
 
 def _extract_clis(command):
