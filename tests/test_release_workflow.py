@@ -77,6 +77,20 @@ class TestReleaseWorkflowContract(unittest.TestCase):
         self.assertIn('git/ref/tags/latest', self.text)
         self.assertIn('GITHUB_SHA', self.text)
 
+    def test_final_verification_supports_resuming_from_a_lightweight_version_tag(self):
+        verification = self.text.split("- name: Verify release API and tag SHAs", 1)[1]
+
+        self.assertIn("VERSION_REF_TYPE", verification)
+        self.assertIn("case \"$VERSION_REF_TYPE\" in", verification)
+        self.assertIn('test "$VERSION_REF_SHA" = "$(git rev-parse "$TAG^{tag}")"', verification)
+        self.assertIn('test "$VERSION_REF_SHA" = "$GITHUB_SHA"', verification)
+        self.assertIn("Unexpected version ref type", verification)
+        self.assertIn('test "$(git rev-list -n 1 "$TAG")" = "$GITHUB_SHA"', verification)
+        case_start = verification.index('case "$VERSION_REF_TYPE" in')
+        case_end = verification.index("esac", case_start) + len("esac")
+        outside_type_dispatch = verification[:case_start] + verification[case_end:]
+        self.assertNotIn('git rev-parse "$TAG^{tag}"', outside_type_dispatch)
+
 
 if __name__ == "__main__":
     unittest.main()

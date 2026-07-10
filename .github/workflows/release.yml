@@ -126,10 +126,24 @@ jobs:
         run: |
           set -euo pipefail
           RELEASE_TAG="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .tag_name)"
-          VERSION_REF_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq .object.sha)"
+          read -r VERSION_REF_TYPE VERSION_REF_SHA < <(
+            gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" \
+              --jq '.object | [.type, .sha] | @tsv'
+          )
           LATEST_REF_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/latest" --jq .object.sha)"
           test "$RELEASE_TAG" = "$TAG"
-          test "$VERSION_REF_SHA" = "$(git rev-parse "$TAG^{tag}")"
+          case "$VERSION_REF_TYPE" in
+            tag)
+              test "$VERSION_REF_SHA" = "$(git rev-parse "$TAG^{tag}")"
+              ;;
+            commit)
+              test "$VERSION_REF_SHA" = "$GITHUB_SHA"
+              ;;
+            *)
+              echo "Unexpected version ref type for $TAG: $VERSION_REF_TYPE" >&2
+              exit 1
+              ;;
+          esac
           test "$LATEST_REF_SHA" = "$(git rev-parse "latest^{tag}")"
           test "$(git rev-list -n 1 "$TAG")" = "$GITHUB_SHA"
           test "$(git rev-list -n 1 latest)" = "$GITHUB_SHA"
