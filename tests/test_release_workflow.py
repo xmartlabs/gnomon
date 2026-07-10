@@ -1,9 +1,36 @@
+import os
 import pathlib
+import subprocess
+import tempfile
+import textwrap
 import unittest
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
+WORKFLOW = pathlib.Path(os.environ.get(
+    "RELEASE_WORKFLOW_UNDER_TEST",
+    ROOT / ".github" / "workflows" / "release.yml",
+))
+
+
+def _workflow_run_block(workflow_text, step_name):
+    lines = workflow_text.splitlines()
+    step_index = next(
+        index for index, line in enumerate(lines)
+        if line.strip() == f"- name: {step_name}"
+    )
+    run_index = next(
+        index for index in range(step_index + 1, len(lines))
+        if lines[index].strip() == "run: |"
+    )
+    run_indent = len(lines[run_index]) - len(lines[run_index].lstrip())
+    block = []
+    for line in lines[run_index + 1:]:
+        indent = len(line) - len(line.lstrip())
+        if line.strip() and indent <= run_indent:
+            break
+        block.append(line)
+    return textwrap.dedent("\n".join(block))
 
 
 class TestReleaseWorkflowContract(unittest.TestCase):
@@ -77,19 +104,117 @@ class TestReleaseWorkflowContract(unittest.TestCase):
         self.assertIn('git/ref/tags/latest', self.text)
         self.assertIn('GITHUB_SHA', self.text)
 
-    def test_final_verification_supports_resuming_from_a_lightweight_version_tag(self):
-        verification = self.text.split("- name: Verify release API and tag SHAs", 1)[1]
 
-        self.assertIn("VERSION_REF_TYPE", verification)
-        self.assertIn("case \"$VERSION_REF_TYPE\" in", verification)
-        self.assertIn('test "$VERSION_REF_SHA" = "$(git rev-parse "$TAG^{tag}")"', verification)
-        self.assertIn('test "$VERSION_REF_SHA" = "$GITHUB_SHA"', verification)
-        self.assertIn("Unexpected version ref type", verification)
-        self.assertIn('test "$(git rev-list -n 1 "$TAG")" = "$GITHUB_SHA"', verification)
-        case_start = verification.index('case "$VERSION_REF_TYPE" in')
-        case_end = verification.index("esac", case_start) + len("esac")
-        outside_type_dispatch = verification[:case_start] + verification[case_end:]
-        self.assertNotIn('git rev-parse "$TAG^{tag}"', outside_type_dispatch)
+class TestReleaseWorkflowFinalVerification(unittest.TestCase):
+    def setUp(self):
+        text = WORKFLOW.read_text(encoding="utf-8")
+        self.script = _workflow_run_block(text, "Verify release API and tag SHAs")
+
+    def _run_verification(self, *, local_version_tag="lightweight",
+                          version_ref_type=None, version_ref_sha=None,
+                          latest_ref_sha=None):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo = pathlib.Path(temp_dir) / "repo"
+            fake_bin = pathlib.Path(temp_dir) / "bin"
+            repo.mkdir()
+            fake_bin.mkdir()
+
+            def git(*args, capture=False):
+                command = ["git", *args]
+                if capture:
+                    return subprocess.check_output(
+                        command, cwd=repo, text=True).strip()
+                subprocess.run(command, cwd=repo, check=True,
+                               stdout=subprocess.DEVNULL)
+                return None
+
+            git("init", "-q", "-b", "main")
+            git("config", "user.name", "Release Test")
+            git("config", "user.email", "release-test@example.com")
+            (repo / "artifact.txt").write_text("release\n", encoding="utf-8")
+            git("add", "artifact.txt")
+            git("commit", "-qm", "release fixture")
+            commit_sha = git("rev-parse", "HEAD", capture=True)
+            if local_version_tag == "annotated":
+                git("tag", "-a", "v1.2.3", "-m", "Release v1.2.3")
+            else:
+                git("tag", "v1.2.3")
+            git("tag", "-a", "latest", "-m", "Latest stable release")
+
+            version_ref_type = version_ref_type or (
+                "tag" if local_version_tag == "annotated" else "commit")
+            if version_ref_sha is None:
+                version_ref_sha = (git("rev-parse", "v1.2.3^{tag}", capture=True)
+                                   if version_ref_type == "tag" else commit_sha)
+            if latest_ref_sha is None:
+                latest_ref_sha = git("rev-parse", "latest^{tag}", capture=True)
+
+            fake_gh = fake_bin / "gh"
+            fake_gh.write_text(textwrap.dedent("""\
+                #!/usr/bin/env bash
+                set -euo pipefail
+                case "$*" in
+                  *"releases/tags/$TAG"*)
+                    printf '%s\n' "$TAG"
+                    ;;
+                  *"git/ref/tags/$TAG"*)
+                    if [[ "$*" == *"@tsv"* ]]; then
+                      printf '%s\t%s\n' "$FAKE_VERSION_REF_TYPE" "$FAKE_VERSION_REF_SHA"
+                    else
+                      printf '%s\n' "$FAKE_VERSION_REF_SHA"
+                    fi
+                    ;;
+                  *"git/ref/tags/latest"*)
+                    printf '%s\n' "$FAKE_LATEST_REF_SHA"
+                    ;;
+                  *)
+                    echo "Unexpected fake gh request: $*" >&2
+                    exit 2
+                    ;;
+                esac
+                """), encoding="utf-8")
+            fake_gh.chmod(0o755)
+
+            env = dict(os.environ)
+            env.update({
+                "PATH": f"{fake_bin}{os.pathsep}{env['PATH']}",
+                "GITHUB_REPOSITORY": "example/gnomon",
+                "GITHUB_SHA": commit_sha,
+                "TAG": "v1.2.3",
+                "FAKE_VERSION_REF_TYPE": version_ref_type,
+                "FAKE_VERSION_REF_SHA": version_ref_sha,
+                "FAKE_LATEST_REF_SHA": latest_ref_sha,
+            })
+            return subprocess.run(
+                ["bash", "-c", self.script], cwd=repo, env=env,
+                text=True, capture_output=True,
+            )
+
+    def test_matching_lightweight_version_tag_passes(self):
+        result = self._run_verification(local_version_tag="lightweight")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_matching_annotated_version_tag_passes(self):
+        result = self._run_verification(local_version_tag="annotated")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_unexpected_version_ref_type_fails(self):
+        result = self._run_verification(version_ref_type="tree")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Unexpected version ref type", result.stderr)
+
+    def test_version_ref_sha_mismatch_fails(self):
+        result = self._run_verification(version_ref_sha="deadbeef")
+
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_latest_ref_sha_mismatch_fails(self):
+        result = self._run_verification(latest_ref_sha="deadbeef")
+
+        self.assertNotEqual(result.returncode, 0)
 
 
 if __name__ == "__main__":
