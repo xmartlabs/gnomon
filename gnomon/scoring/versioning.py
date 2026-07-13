@@ -1,0 +1,9 @@
+SCORING_INPUTS_VERSION = 5
+AQ_VERSION = 3
+GSTACK_VERSION = 3
+SCORE_CONTRACT_ID = f"{SCORING_INPUTS_VERSION}:{AQ_VERSION}:{GSTACK_VERSION}"
+COMPARISON_POLICY = "same_score_contract_id_only"
+
+
+class IncompatibleScoreContract(ValueError):
+    pass

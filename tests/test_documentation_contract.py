@@ -29,9 +29,17 @@ class TestPublicDocumentationContract(unittest.TestCase):
         self.assertIn("Prompts and file contents are not uploaded", self.readme)
         self.assertNotIn("No prompts, no quotes, no project names are ever sent", self.readme)
 
-    def test_readme_documents_scoring_contract_v4_discontinuity(self):
-        self.assertIn("scoring contract version 4", self.readme)
-        self.assertIn("v0.4 methodology discontinuity", self.readme)
+    def test_public_docs_publish_runtime_scoring_contract_v5(self):
+        metrics = (ROOT / "docs" / "metrics-by-source.md").read_text(encoding="utf-8")
+        for document in (self.readme, metrics):
+            self.assertIn("scoring inputs version 5", document)
+            self.assertIn("AQ version 3", document)
+            self.assertIn("GStack version 3", document)
+            self.assertNotIn("scoring contract version 4", document)
+
+    def test_readme_model_mix_describes_explicit_provider_tiers(self):
+        self.assertIn("explicit provider tier tables", self.readme)
+        self.assertNotIn("no hard-coded model names", self.readme)
 
 
 if __name__ == "__main__":

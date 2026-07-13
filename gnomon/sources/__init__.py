@@ -9,7 +9,7 @@ from gnomon.sources.cursor import _cursor_jsonl_events, _cursor_sqlite_events
 from gnomon.sources.antigravity import _antigravity_cli_events, _antigravity_ide_export_events
 
 
-def iter_events(fp, fmt, cursor_twins=None):
+def _iter_events_raw(fp, fmt, cursor_twins=None):
     """Yield Claude-shaped event dicts for any supported source format."""
     if fmt == "claude":
         try:
@@ -43,3 +43,11 @@ def iter_events(fp, fmt, cursor_twins=None):
         yield from _antigravity_cli_events(fp)
     elif fmt == "antigravity-ide-export":
         yield from _antigravity_ide_export_events(fp)
+
+
+def iter_events(fp, fmt, cursor_twins=None):
+    """Yield canonical events with a stable adapter ordinal for timestamp ties."""
+    for ordinal, event in enumerate(_iter_events_raw(fp, fmt, cursor_twins)):
+        if isinstance(event, dict) and "__ordinal__" not in event:
+            event = dict(event, __ordinal__=ordinal)
+        yield event

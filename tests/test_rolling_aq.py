@@ -8,12 +8,14 @@ from unittest import mock
 from gnomon.cli import local
 from gnomon.scoring import aggregate
 from tests._scoring_vectors_cases import CLAUDE_BLOCK, CURSOR_BLOCK
+from gnomon.scoring.versioning import SCORE_CONTRACT_ID
 
 
 def _aq(first, second, first_signal, second_signal):
     pillar_score = round(first + second, 1)
     total = round(pillar_score)
     return {
+        "score_contract_id": SCORE_CONTRACT_ID,
         "aq_0_100": total,
         "tier": aggregate._aq_tier_for(total),
         "pillars": [

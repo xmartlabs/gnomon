@@ -13,8 +13,7 @@ def _write_jsonl(rows):
 
 
 # ---------------------------------------------------------------------------
-# FIX 1 — synthetic Codex Agent fan-out event must carry a timestamp so it is
-# not dropped by windowed runs (--since/--until, --last, monthly uploads).
+# FIX 1 — real Codex Agent calls are authoritative and remain windowed.
 # ---------------------------------------------------------------------------
 
 class TestCodexFanoutTimestamp(unittest.TestCase):
@@ -31,20 +30,14 @@ class TestCodexFanoutTimestamp(unittest.TestCase):
                          "content": [{"type": "input_text", "text": "do the work"}]}},
         ]
 
-    def test_synthetic_agent_event_has_timestamp(self):
+    def test_child_metadata_does_not_synthesize_parent_agent(self):
         path = _write_jsonl(self._child_rows())
         try:
             evs = list(paxel._codex_events(path))
         finally:
             os.unlink(path)
         agent = [e for e in evs if e.get("sessionId") == "parent-1"]
-        self.assertTrue(agent, "no synthetic Agent event keyed to the parent session")
-        self.assertIsNotNone(agent[0].get("timestamp"),
-                             "synthetic Agent event must carry a timestamp")
-        # must parse to a datetime inside the child's window
-        dt = paxel.parse_ts(agent[0]["timestamp"])
-        self.assertIsNotNone(dt)
-        self.assertEqual(dt.strftime("%Y-%m"), "2026-03-10"[:7])
+        self.assertEqual(agent, [])
 
     def test_fanout_counted_in_bounded_window(self):
         """A parent Codex session whose fan-out happens inside the window must have
@@ -53,7 +46,7 @@ class TestCodexFanoutTimestamp(unittest.TestCase):
         self.addCleanup(shutil.rmtree, codex_dir, ignore_errors=True)
         empty = tempfile.mkdtemp(prefix="paxel-fanout-empty-")
         self.addCleanup(shutil.rmtree, empty, ignore_errors=True)
-        # child session that spawns the synthetic Agent on the parent
+        # Child metadata links routing but must not create another fan-out event.
         child = self._child_rows()
         with open(os.path.join(codex_dir, "child.jsonl"), "w") as fh:
             fh.write("\n".join(json.dumps(r) for r in child))
@@ -66,6 +59,13 @@ class TestCodexFanoutTimestamp(unittest.TestCase):
             {"type": "response_item", "timestamp": "2026-03-10T11:00:02Z",
              "payload": {"type": "message", "role": "user",
                          "content": [{"type": "input_text", "text": "orchestrate this"}]}},
+            {"type": "response_item", "timestamp": "2026-03-10T11:00:03Z",
+             "payload": {"type": "function_call", "name": "spawn_agent",
+                         "call_id": "spawn-1", "arguments": json.dumps({
+                             "task_name": "worker", "subagent_type": "codex-subagent"})}},
+            {"type": "response_item", "timestamp": "2026-03-10T11:00:04Z",
+             "payload": {"type": "function_call_output", "call_id": "spawn-1",
+                         "output": json.dumps({"agent_id": "child-1"})}},
         ]
         with open(os.path.join(codex_dir, "parent.jsonl"), "w") as fh:
             fh.write("\n".join(json.dumps(r) for r in parent))
@@ -86,10 +86,8 @@ class TestCodexFanoutTimestamp(unittest.TestCase):
             paxel.main()
         with open(os.path.join(out, "stats.json")) as fh:
             stats = json.load(fh)
-        agent_runs = next((c for n, c in stats["stack"].get("subagent_types", [])
-                           if n == "codex-subagent"), 0)
-        self.assertGreaterEqual(agent_runs, 1,
-                                "fan-out Agent event was dropped in the bounded window")
+        self.assertEqual(stats["tools"]["agent_calls"], 1,
+                         "real fan-out Agent event was dropped or duplicated")
 
 
 # ---------------------------------------------------------------------------

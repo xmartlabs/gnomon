@@ -46,6 +46,15 @@ SCHEDULE_TOOLS = {"ScheduleWakeup", "CronCreate", "CronDelete", "CronList",
 SKILL_TOOLS = {"Skill"}
 ASK_TOOLS = {"AskUserQuestion"}
 
+# Eligibility/routing use the taxonomy's positive work classes, but remove
+# orchestration ceremony and passive lifecycle polling from those classes.
+# classify_tool intentionally keeps these tools visible in descriptive tool
+# metrics; this narrower predicate answers whether a call is substantive work.
+_NONSUBSTANTIVE_WORK_TOOLS = frozenset(
+    PLAN_TOOLS | SCHEDULE_TOOLS | ASK_TOOLS
+    | {"BashOutput", "KillShell", "ToolSearch", "TaskOutput", "TaskStop"}
+)
+
 KNOWN_CLIS = {
     "git", "gh", "npm", "npx", "yarn", "pnpm", "bun", "python", "python3", "pip",
     "pip3", "node", "deno", "cargo", "go", "rg", "grep", "sed", "awk", "find",
@@ -148,6 +157,18 @@ def classify_tool(name: str) -> str:
     return "other"
 
 
+def is_substantive_tool(name: str) -> bool:
+    """Whether a canonical tool call represents substantive project work."""
+    name = str(name or "")
+    if name in _NONSUBSTANTIVE_WORK_TOOLS:
+        return False
+    leaf = name.split("__")[-1].lower().replace("-", "_")
+    if (leaf in {"status", "get_status", "check_status", "wait", "poll"}
+            or leaf.endswith("_status")):
+        return False
+    return classify_tool(name) in {"produce", "explore", "execute", "delegate"}
+
+
 _REDIR = re.compile(r'(?<!2)>{1,2}(?!\s*(?:/dev/null|&\d))')
 
 
@@ -234,6 +255,7 @@ def _canon_tool(name):
     """Normalize Pi/opencode/Gemini lower-case tool names to the Claude-style taxonomy."""
     n = str(name or "tool")
     key = n.lower().replace("-", "_")
+    leaf = key.rsplit(".", 1)[-1]
     mapping = {
         "bash": "Bash", "shell": "Bash", "exec": "Bash", "run": "Bash",
         "run_shell_command": "Bash",
@@ -247,7 +269,9 @@ def _canon_tool(name):
         "task": "Agent", "agent": "Agent", "webfetch": "WebFetch", "web_fetch": "WebFetch",
         "websearch": "WebSearch", "web_search": "WebSearch",
     }
-    return mapping.get(key, n)
+    if leaf in {"spawn_agent", "delegate", "dispatch_agent"}:
+        return "Agent"
+    return mapping.get(key, mapping.get(leaf, n))
 
 
 def _canon_input(name, inp):

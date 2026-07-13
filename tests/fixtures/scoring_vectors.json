@@ -26,6 +26,7 @@
               "weight": 15
             }
           ],
+          "score_contract_id": "5:3:3",
           "tier": "Elite"
         },
         "archetype": {
@@ -181,12 +182,12 @@
             "value": 7.8
           },
           "planning": {
-            "axis_narrative": "Planning scores 9.5/10 (excellent). Strongest: Explore-before-build (100%); weakest: Plan ceremony (80%).",
+            "axis_narrative": "Planning scores 9.4/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning skill practice (80%).",
             "axis_verdict": "excellent",
-            "drag_narrative": "Plan ceremony is the weakest contributor, scoring 80%. Your value: 0.4 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
-            "drag_note": "Plan ceremony is dragging this down \u2014 0.4 planning sessions/session, target ~0.5.",
+            "drag_narrative": "Planning skill practice is the weakest contributor, scoring 80%. Your value: 0.4 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
+            "drag_note": "Planning skill practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.5.",
             "gloss": "Think before you build",
-            "score_out_of_10": "9.5 / 10",
+            "score_out_of_10": "9.4 / 10",
             "subs": [
               {
                 "direction": "higher",
@@ -200,7 +201,7 @@
                 "target": 0.65,
                 "unit": "explore/doing ratio",
                 "verdict": "excellent",
-                "weight": 0.45,
+                "weight": 0.3529,
                 "your_value": 0.7
               },
               {
@@ -215,7 +216,7 @@
                 "target": 12.0,
                 "unit": "thinking blocks/session",
                 "verdict": "excellent",
-                "weight": 0.3,
+                "weight": 0.3529,
                 "your_value": 15.0
               },
               {
@@ -223,18 +224,18 @@
                 "display_target": "0.5 planning sessions/session",
                 "display_value": "0.4 planning sessions/session",
                 "is_drag": true,
-                "label": "Plan ceremony",
-                "narrative": "Plan ceremony is good (0.4 planning sessions/session, target 0.5 planning sessions/session \u2014 approaching target, scoring 80%).",
+                "label": "Planning skill practice",
+                "narrative": "Planning skill practice is good (0.4 planning sessions/session, target 0.5 planning sessions/session \u2014 approaching target, scoring 80%).",
                 "pct": 0.8,
                 "score_pct": 80,
                 "target": 0.5,
                 "unit": "planning sessions/session",
                 "verdict": "good",
-                "weight": 0.25,
+                "weight": 0.2941,
                 "your_value": 0.4
               }
             ],
-            "value": 9.5
+            "value": 9.4
           }
         },
         "signature_moves": [
@@ -405,7 +406,14 @@
                     "score": 37.5,
                     "signals": {
                       "distinct_models": 2,
-                      "offload_share": 0.25
+                      "offload_share": 0.25,
+                      "routing": {
+                        "eligible_completed_substantive_pairs": 0,
+                        "excluded_reasons": {},
+                        "score": null,
+                        "state": "unsupported",
+                        "successful_lower_tier_pairs": 0
+                      }
                     },
                     "weight": 50
                   },
@@ -424,6 +432,7 @@
                 "weight": 15
               }
             ],
+            "score_contract_id": "5:3:3",
             "tier": "Elite",
             "tool_diversity": {
               "distinct": 30,
@@ -576,12 +585,12 @@
               "value": 7.8
             },
             "planning": {
-              "axis_narrative": "Planning scores 9.5/10 (excellent). Strongest: Explore-before-build (100%); weakest: Plan ceremony (80%).",
+              "axis_narrative": "Planning scores 9.4/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning skill practice (80%).",
               "axis_verdict": "excellent",
-              "drag_narrative": "Plan ceremony is the weakest contributor, scoring 80%. Your value: 0.4 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
-              "drag_note": "Plan ceremony is dragging this down \u2014 0.4 planning sessions/session, target ~0.5.",
+              "drag_narrative": "Planning skill practice is the weakest contributor, scoring 80%. Your value: 0.4 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
+              "drag_note": "Planning skill practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.5.",
               "gloss": "Think before you build",
-              "score_out_of_10": "9.5 / 10",
+              "score_out_of_10": "9.4 / 10",
               "subs": [
                 {
                   "direction": "higher",
@@ -595,7 +604,7 @@
                   "target": 0.65,
                   "unit": "explore/doing ratio",
                   "verdict": "excellent",
-                  "weight": 0.45,
+                  "weight": 0.3529,
                   "your_value": 0.7
                 },
                 {
@@ -610,7 +619,7 @@
                   "target": 12.0,
                   "unit": "thinking blocks/session",
                   "verdict": "excellent",
-                  "weight": 0.3,
+                  "weight": 0.3529,
                   "your_value": 15.0
                 },
                 {
@@ -618,18 +627,18 @@
                   "display_target": "0.5 planning sessions/session",
                   "display_value": "0.4 planning sessions/session",
                   "is_drag": true,
-                  "label": "Plan ceremony",
-                  "narrative": "Plan ceremony is good (0.4 planning sessions/session, target 0.5 planning sessions/session \u2014 approaching target, scoring 80%).",
+                  "label": "Planning skill practice",
+                  "narrative": "Planning skill practice is good (0.4 planning sessions/session, target 0.5 planning sessions/session \u2014 approaching target, scoring 80%).",
                   "pct": 0.8,
                   "score_pct": 80,
                   "target": 0.5,
                   "unit": "planning sessions/session",
                   "verdict": "good",
-                  "weight": 0.25,
+                  "weight": 0.2941,
                   "your_value": 0.4
                 }
               ],
-              "value": 9.5
+              "value": 9.4
             }
           },
           "signature_moves": [
@@ -813,7 +822,7 @@
         }
       }
     },
-    "scoring_inputs_version": 4
+    "scoring_inputs_version": 5
   },
   {
     "expected": {
@@ -842,6 +851,7 @@
               "weight": 15
             }
           ],
+          "score_contract_id": "5:3:3",
           "tier": "Apprentice"
         },
         "archetype": {
@@ -867,7 +877,7 @@
             "title": "When a file fights back, root-cause it"
           },
           {
-            "advice": "Planning is 3.1. Sketch the plan and reframe the ask before writing code \u2014 it's the cheapest place to catch a wrong turn. (gstack front-loads this with /office-hours + /autoplan.)",
+            "advice": "Planning is 2.3. Sketch the plan and reframe the ask before writing code \u2014 it's the cheapest place to catch a wrong turn. (gstack front-loads this with /office-hours + /autoplan.)",
             "axis": null,
             "commands": [
               "/office-hours",
@@ -1021,12 +1031,12 @@
             "value": 1.5
           },
           "planning": {
-            "axis_narrative": "Planning scores 3.1/10 (weak). Strongest: Explore-before-build (46%); weakest: Reasoning depth (0%).",
-            "axis_verdict": "weak",
+            "axis_narrative": "Planning scores 2.3/10 (poor). Strongest: Explore-before-build (46%); weakest: Reasoning depth (0%).",
+            "axis_verdict": "poor",
             "drag_narrative": "Reasoning depth is the weakest contributor, scoring 0%. Your value: 0 thinking blocks/session (target: 12 thinking blocks/session, higher is better).",
             "drag_note": "Reasoning depth is dragging this down \u2014 0 thinking blocks/session, target ~12.",
             "gloss": "Think before you build",
-            "score_out_of_10": "3.1 / 10",
+            "score_out_of_10": "2.3 / 10",
             "subs": [
               {
                 "direction": "higher",
@@ -1040,7 +1050,7 @@
                 "target": 0.65,
                 "unit": "explore/doing ratio",
                 "verdict": "weak",
-                "weight": 0.45,
+                "weight": 0.5,
                 "your_value": 0.3
               },
               {
@@ -1055,26 +1065,11 @@
                 "target": 12.0,
                 "unit": "thinking blocks/session",
                 "verdict": "poor",
-                "weight": 0.3,
+                "weight": 0.5,
                 "your_value": 0.0
-              },
-              {
-                "direction": "higher",
-                "display_target": "0.5 planning sessions/session",
-                "display_value": "0.2 planning sessions/session",
-                "is_drag": false,
-                "label": "Plan ceremony",
-                "narrative": "Plan ceremony is weak (0.2 planning sessions/session, target 0.5 planning sessions/session \u2014 below target, scoring 40%).",
-                "pct": 0.4,
-                "score_pct": 40,
-                "target": 0.5,
-                "unit": "planning sessions/session",
-                "verdict": "weak",
-                "weight": 0.25,
-                "your_value": 0.2
               }
             ],
-            "value": 3.1
+            "value": 2.3
           }
         },
         "signature_moves": [],
@@ -1206,7 +1201,14 @@
                     "score": 8.3,
                     "signals": {
                       "distinct_models": 1,
-                      "offload_share": 0.0
+                      "offload_share": 0.0,
+                      "routing": {
+                        "eligible_completed_substantive_pairs": 0,
+                        "excluded_reasons": {},
+                        "score": null,
+                        "state": "unsupported",
+                        "successful_lower_tier_pairs": 0
+                      }
                     },
                     "weight": 50
                   },
@@ -1225,6 +1227,7 @@
                 "weight": 15
               }
             ],
+            "score_contract_id": "5:3:3",
             "tier": "Apprentice",
             "tool_diversity": {
               "distinct": 12,
@@ -1247,7 +1250,7 @@
               "title": "When a file fights back, root-cause it"
             },
             {
-              "advice": "Planning is 3.1. Sketch the plan and reframe the ask before writing code \u2014 it's the cheapest place to catch a wrong turn. (gstack front-loads this with /office-hours + /autoplan.)",
+              "advice": "Planning is 2.3. Sketch the plan and reframe the ask before writing code \u2014 it's the cheapest place to catch a wrong turn. (gstack front-loads this with /office-hours + /autoplan.)",
               "axis": null,
               "commands": [
                 "/office-hours",
@@ -1396,12 +1399,12 @@
               "value": 1.5
             },
             "planning": {
-              "axis_narrative": "Planning scores 3.1/10 (weak). Strongest: Explore-before-build (46%); weakest: Reasoning depth (0%).",
-              "axis_verdict": "weak",
+              "axis_narrative": "Planning scores 2.3/10 (poor). Strongest: Explore-before-build (46%); weakest: Reasoning depth (0%).",
+              "axis_verdict": "poor",
               "drag_narrative": "Reasoning depth is the weakest contributor, scoring 0%. Your value: 0 thinking blocks/session (target: 12 thinking blocks/session, higher is better).",
               "drag_note": "Reasoning depth is dragging this down \u2014 0 thinking blocks/session, target ~12.",
               "gloss": "Think before you build",
-              "score_out_of_10": "3.1 / 10",
+              "score_out_of_10": "2.3 / 10",
               "subs": [
                 {
                   "direction": "higher",
@@ -1415,7 +1418,7 @@
                   "target": 0.65,
                   "unit": "explore/doing ratio",
                   "verdict": "weak",
-                  "weight": 0.45,
+                  "weight": 0.5,
                   "your_value": 0.3
                 },
                 {
@@ -1430,26 +1433,11 @@
                   "target": 12.0,
                   "unit": "thinking blocks/session",
                   "verdict": "poor",
-                  "weight": 0.3,
+                  "weight": 0.5,
                   "your_value": 0.0
-                },
-                {
-                  "direction": "higher",
-                  "display_target": "0.5 planning sessions/session",
-                  "display_value": "0.2 planning sessions/session",
-                  "is_drag": false,
-                  "label": "Plan ceremony",
-                  "narrative": "Plan ceremony is weak (0.2 planning sessions/session, target 0.5 planning sessions/session \u2014 below target, scoring 40%).",
-                  "pct": 0.4,
-                  "score_pct": 40,
-                  "target": 0.5,
-                  "unit": "planning sessions/session",
-                  "verdict": "weak",
-                  "weight": 0.25,
-                  "your_value": 0.2
                 }
               ],
-              "value": 3.1
+              "value": 2.3
             }
           },
           "signature_moves": [],
@@ -1536,7 +1524,7 @@
         }
       }
     },
-    "scoring_inputs_version": 4
+    "scoring_inputs_version": 5
   },
   {
     "expected": {
@@ -1565,6 +1553,7 @@
               "weight": 15
             }
           ],
+          "score_contract_id": "5:3:3",
           "tier": "Advanced"
         },
         "archetype": {
@@ -1721,12 +1710,12 @@
             "value": 7.1
           },
           "planning": {
-            "axis_narrative": "Planning scores 8.8/10 (excellent). Strongest: Explore-before-build (100%); weakest: Plan ceremony (72%).",
+            "axis_narrative": "Planning scores 8.6/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning skill practice (72%).",
             "axis_verdict": "excellent",
-            "drag_narrative": "Plan ceremony is the weakest contributor, scoring 72%. Your value: 0.36 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
-            "drag_note": "Plan ceremony is dragging this down \u2014 0.36 planning sessions/session, target ~0.5.",
+            "drag_narrative": "Planning skill practice is the weakest contributor, scoring 72%. Your value: 0.36 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
+            "drag_note": "Planning skill practice is dragging this down \u2014 0.36 planning sessions/session, target ~0.5.",
             "gloss": "Think before you build",
-            "score_out_of_10": "8.8 / 10",
+            "score_out_of_10": "8.6 / 10",
             "subs": [
               {
                 "direction": "higher",
@@ -1740,7 +1729,7 @@
                 "target": 0.65,
                 "unit": "explore/doing ratio",
                 "verdict": "excellent",
-                "weight": 0.45,
+                "weight": 0.3529,
                 "your_value": 0.66
               },
               {
@@ -1755,7 +1744,7 @@
                 "target": 12.0,
                 "unit": "thinking blocks/session",
                 "verdict": "excellent",
-                "weight": 0.3,
+                "weight": 0.3529,
                 "your_value": 12.0
               },
               {
@@ -1763,18 +1752,18 @@
                 "display_target": "0.5 planning sessions/session",
                 "display_value": "0.36 planning sessions/session",
                 "is_drag": true,
-                "label": "Plan ceremony",
-                "narrative": "Plan ceremony is good (0.36 planning sessions/session, target 0.5 planning sessions/session \u2014 approaching target, scoring 72%).",
+                "label": "Planning skill practice",
+                "narrative": "Planning skill practice is good (0.36 planning sessions/session, target 0.5 planning sessions/session \u2014 approaching target, scoring 72%).",
                 "pct": 0.72,
                 "score_pct": 72,
                 "target": 0.5,
                 "unit": "planning sessions/session",
                 "verdict": "good",
-                "weight": 0.25,
+                "weight": 0.2941,
                 "your_value": 0.36
               }
             ],
-            "value": 8.8
+            "value": 8.6
           }
         },
         "signature_moves": [
@@ -1945,7 +1934,14 @@
                     "score": 37.5,
                     "signals": {
                       "distinct_models": 2,
-                      "offload_share": 0.25
+                      "offload_share": 0.25,
+                      "routing": {
+                        "eligible_completed_substantive_pairs": 0,
+                        "excluded_reasons": {},
+                        "score": null,
+                        "state": "unsupported",
+                        "successful_lower_tier_pairs": 0
+                      }
                     },
                     "weight": 50
                   },
@@ -1964,6 +1960,7 @@
                 "weight": 15
               }
             ],
+            "score_contract_id": "5:3:3",
             "tier": "Elite",
             "tool_diversity": {
               "distinct": 30,
@@ -2116,12 +2113,12 @@
               "value": 7.8
             },
             "planning": {
-              "axis_narrative": "Planning scores 9.5/10 (excellent). Strongest: Explore-before-build (100%); weakest: Plan ceremony (80%).",
+              "axis_narrative": "Planning scores 9.4/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning skill practice (80%).",
               "axis_verdict": "excellent",
-              "drag_narrative": "Plan ceremony is the weakest contributor, scoring 80%. Your value: 0.4 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
-              "drag_note": "Plan ceremony is dragging this down \u2014 0.4 planning sessions/session, target ~0.5.",
+              "drag_narrative": "Planning skill practice is the weakest contributor, scoring 80%. Your value: 0.4 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
+              "drag_note": "Planning skill practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.5.",
               "gloss": "Think before you build",
-              "score_out_of_10": "9.5 / 10",
+              "score_out_of_10": "9.4 / 10",
               "subs": [
                 {
                   "direction": "higher",
@@ -2135,7 +2132,7 @@
                   "target": 0.65,
                   "unit": "explore/doing ratio",
                   "verdict": "excellent",
-                  "weight": 0.45,
+                  "weight": 0.3529,
                   "your_value": 0.7
                 },
                 {
@@ -2150,7 +2147,7 @@
                   "target": 12.0,
                   "unit": "thinking blocks/session",
                   "verdict": "excellent",
-                  "weight": 0.3,
+                  "weight": 0.3529,
                   "your_value": 15.0
                 },
                 {
@@ -2158,18 +2155,18 @@
                   "display_target": "0.5 planning sessions/session",
                   "display_value": "0.4 planning sessions/session",
                   "is_drag": true,
-                  "label": "Plan ceremony",
-                  "narrative": "Plan ceremony is good (0.4 planning sessions/session, target 0.5 planning sessions/session \u2014 approaching target, scoring 80%).",
+                  "label": "Planning skill practice",
+                  "narrative": "Planning skill practice is good (0.4 planning sessions/session, target 0.5 planning sessions/session \u2014 approaching target, scoring 80%).",
                   "pct": 0.8,
                   "score_pct": 80,
                   "target": 0.5,
                   "unit": "planning sessions/session",
                   "verdict": "good",
-                  "weight": 0.25,
+                  "weight": 0.2941,
                   "your_value": 0.4
                 }
               ],
-              "value": 9.5
+              "value": 9.4
             }
           },
           "signature_moves": [
@@ -2326,7 +2323,14 @@
                     "score": 8.3,
                     "signals": {
                       "distinct_models": 1,
-                      "offload_share": 0.0
+                      "offload_share": 0.0,
+                      "routing": {
+                        "eligible_completed_substantive_pairs": 0,
+                        "excluded_reasons": {},
+                        "score": null,
+                        "state": "unsupported",
+                        "successful_lower_tier_pairs": 0
+                      }
                     },
                     "weight": 50
                   },
@@ -2345,6 +2349,7 @@
                 "weight": 15
               }
             ],
+            "score_contract_id": "5:3:3",
             "tier": "Apprentice",
             "tool_diversity": {
               "distinct": 12,
@@ -2367,7 +2372,7 @@
               "title": "When a file fights back, root-cause it"
             },
             {
-              "advice": "Planning is 3.1. Sketch the plan and reframe the ask before writing code \u2014 it's the cheapest place to catch a wrong turn. (gstack front-loads this with /office-hours + /autoplan.)",
+              "advice": "Planning is 2.3. Sketch the plan and reframe the ask before writing code \u2014 it's the cheapest place to catch a wrong turn. (gstack front-loads this with /office-hours + /autoplan.)",
               "axis": null,
               "commands": [
                 "/office-hours",
@@ -2516,12 +2521,12 @@
               "value": 1.5
             },
             "planning": {
-              "axis_narrative": "Planning scores 3.1/10 (weak). Strongest: Explore-before-build (46%); weakest: Reasoning depth (0%).",
-              "axis_verdict": "weak",
+              "axis_narrative": "Planning scores 2.3/10 (poor). Strongest: Explore-before-build (46%); weakest: Reasoning depth (0%).",
+              "axis_verdict": "poor",
               "drag_narrative": "Reasoning depth is the weakest contributor, scoring 0%. Your value: 0 thinking blocks/session (target: 12 thinking blocks/session, higher is better).",
               "drag_note": "Reasoning depth is dragging this down \u2014 0 thinking blocks/session, target ~12.",
               "gloss": "Think before you build",
-              "score_out_of_10": "3.1 / 10",
+              "score_out_of_10": "2.3 / 10",
               "subs": [
                 {
                   "direction": "higher",
@@ -2535,7 +2540,7 @@
                   "target": 0.65,
                   "unit": "explore/doing ratio",
                   "verdict": "weak",
-                  "weight": 0.45,
+                  "weight": 0.5,
                   "your_value": 0.3
                 },
                 {
@@ -2550,26 +2555,11 @@
                   "target": 12.0,
                   "unit": "thinking blocks/session",
                   "verdict": "poor",
-                  "weight": 0.3,
+                  "weight": 0.5,
                   "your_value": 0.0
-                },
-                {
-                  "direction": "higher",
-                  "display_target": "0.5 planning sessions/session",
-                  "display_value": "0.2 planning sessions/session",
-                  "is_drag": false,
-                  "label": "Plan ceremony",
-                  "narrative": "Plan ceremony is weak (0.2 planning sessions/session, target 0.5 planning sessions/session \u2014 below target, scoring 40%).",
-                  "pct": 0.4,
-                  "score_pct": 40,
-                  "target": 0.5,
-                  "unit": "planning sessions/session",
-                  "verdict": "weak",
-                  "weight": 0.25,
-                  "your_value": 0.2
                 }
               ],
-              "value": 3.1
+              "value": 2.3
             }
           },
           "signature_moves": [],
@@ -2799,7 +2789,7 @@
         }
       }
     },
-    "scoring_inputs_version": 4
+    "scoring_inputs_version": 5
   },
   {
     "expected": {
@@ -2828,6 +2818,7 @@
               "weight": 15
             }
           ],
+          "score_contract_id": "5:3:3",
           "tier": "Advanced"
         },
         "archetype": {
@@ -2983,12 +2974,12 @@
             "value": 7.8
           },
           "planning": {
-            "axis_narrative": "Planning scores 9.5/10 (excellent). Strongest: Explore-before-build (100%); weakest: Plan ceremony (80%).",
+            "axis_narrative": "Planning scores 9.4/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning skill practice (80%).",
             "axis_verdict": "excellent",
-            "drag_narrative": "Plan ceremony is the weakest contributor, scoring 80%. Your value: 0.4 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
-            "drag_note": "Plan ceremony is dragging this down \u2014 0.4 planning sessions/session, target ~0.5.",
+            "drag_narrative": "Planning skill practice is the weakest contributor, scoring 80%. Your value: 0.4 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
+            "drag_note": "Planning skill practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.5.",
             "gloss": "Think before you build",
-            "score_out_of_10": "9.5 / 10",
+            "score_out_of_10": "9.4 / 10",
             "subs": [
               {
                 "direction": "higher",
@@ -3002,7 +2993,7 @@
                 "target": 0.65,
                 "unit": "explore/doing ratio",
                 "verdict": "excellent",
-                "weight": 0.45,
+                "weight": 0.3529,
                 "your_value": 0.7
               },
               {
@@ -3017,7 +3008,7 @@
                 "target": 12.0,
                 "unit": "thinking blocks/session",
                 "verdict": "excellent",
-                "weight": 0.3,
+                "weight": 0.3529,
                 "your_value": 15.0
               },
               {
@@ -3025,18 +3016,18 @@
                 "display_target": "0.5 planning sessions/session",
                 "display_value": "0.4 planning sessions/session",
                 "is_drag": true,
-                "label": "Plan ceremony",
-                "narrative": "Plan ceremony is good (0.4 planning sessions/session, target 0.5 planning sessions/session \u2014 approaching target, scoring 80%).",
+                "label": "Planning skill practice",
+                "narrative": "Planning skill practice is good (0.4 planning sessions/session, target 0.5 planning sessions/session \u2014 approaching target, scoring 80%).",
                 "pct": 0.8,
                 "score_pct": 80,
                 "target": 0.5,
                 "unit": "planning sessions/session",
                 "verdict": "good",
-                "weight": 0.25,
+                "weight": 0.2941,
                 "your_value": 0.4
               }
             ],
-            "value": 9.5
+            "value": 9.4
           }
         },
         "signature_moves": [
@@ -3207,7 +3198,14 @@
                     "score": 37.5,
                     "signals": {
                       "distinct_models": 2,
-                      "offload_share": 0.25
+                      "offload_share": 0.25,
+                      "routing": {
+                        "eligible_completed_substantive_pairs": 0,
+                        "excluded_reasons": {},
+                        "score": null,
+                        "state": "unsupported",
+                        "successful_lower_tier_pairs": 0
+                      }
                     },
                     "weight": 50
                   },
@@ -3226,6 +3224,7 @@
                 "weight": 15
               }
             ],
+            "score_contract_id": "5:3:3",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -3378,12 +3377,12 @@
               "value": 7.8
             },
             "planning": {
-              "axis_narrative": "Planning scores 9.5/10 (excellent). Strongest: Explore-before-build (100%); weakest: Plan ceremony (80%).",
+              "axis_narrative": "Planning scores 9.4/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning skill practice (80%).",
               "axis_verdict": "excellent",
-              "drag_narrative": "Plan ceremony is the weakest contributor, scoring 80%. Your value: 0.4 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
-              "drag_note": "Plan ceremony is dragging this down \u2014 0.4 planning sessions/session, target ~0.5.",
+              "drag_narrative": "Planning skill practice is the weakest contributor, scoring 80%. Your value: 0.4 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
+              "drag_note": "Planning skill practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.5.",
               "gloss": "Think before you build",
-              "score_out_of_10": "9.5 / 10",
+              "score_out_of_10": "9.4 / 10",
               "subs": [
                 {
                   "direction": "higher",
@@ -3397,7 +3396,7 @@
                   "target": 0.65,
                   "unit": "explore/doing ratio",
                   "verdict": "excellent",
-                  "weight": 0.45,
+                  "weight": 0.3529,
                   "your_value": 0.7
                 },
                 {
@@ -3412,7 +3411,7 @@
                   "target": 12.0,
                   "unit": "thinking blocks/session",
                   "verdict": "excellent",
-                  "weight": 0.3,
+                  "weight": 0.3529,
                   "your_value": 15.0
                 },
                 {
@@ -3420,18 +3419,18 @@
                   "display_target": "0.5 planning sessions/session",
                   "display_value": "0.4 planning sessions/session",
                   "is_drag": true,
-                  "label": "Plan ceremony",
-                  "narrative": "Plan ceremony is good (0.4 planning sessions/session, target 0.5 planning sessions/session \u2014 approaching target, scoring 80%).",
+                  "label": "Planning skill practice",
+                  "narrative": "Planning skill practice is good (0.4 planning sessions/session, target 0.5 planning sessions/session \u2014 approaching target, scoring 80%).",
                   "pct": 0.8,
                   "score_pct": 80,
                   "target": 0.5,
                   "unit": "planning sessions/session",
                   "verdict": "good",
-                  "weight": 0.25,
+                  "weight": 0.2941,
                   "your_value": 0.4
                 }
               ],
-              "value": 9.5
+              "value": 9.4
             }
           },
           "signature_moves": [
@@ -3600,17 +3599,17 @@
         }
       }
     },
-    "scoring_inputs_version": 4
+    "scoring_inputs_version": 5
   },
   {
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 8,
+          "aq_0_100": 9,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 12.1,
+              "score": 13.1,
               "weight": 30
             },
             {
@@ -3629,6 +3628,7 @@
               "weight": 15
             }
           ],
+          "score_contract_id": "5:3:3",
           "tier": "Novice"
         },
         "archetype": {
@@ -3817,7 +3817,7 @@
                 "target": 0.65,
                 "unit": "explore/doing ratio",
                 "verdict": "adequate",
-                "weight": 0.45,
+                "weight": 0.3,
                 "your_value": 0.0
               },
               {
@@ -3840,14 +3840,29 @@
                 "display_target": "0.5 planning sessions/session",
                 "display_value": "0 planning sessions/session",
                 "is_drag": false,
-                "label": "Plan ceremony",
-                "narrative": "No activity recorded for Plan ceremony.",
+                "label": "Planning skill practice",
+                "narrative": "No activity recorded for Planning skill practice.",
                 "pct": 0.5,
                 "score_pct": 50,
                 "target": 0.5,
                 "unit": "planning sessions/session",
                 "verdict": "adequate",
                 "weight": 0.25,
+                "your_value": 0.0
+              },
+              {
+                "direction": "higher",
+                "display_target": "0.6 eligible-session coverage",
+                "display_value": "0 eligible-session coverage",
+                "is_drag": false,
+                "label": "Ordered planning readiness",
+                "narrative": "No activity recorded for Ordered planning readiness.",
+                "pct": 0.5,
+                "score_pct": 50,
+                "target": 0.6,
+                "unit": "eligible-session coverage",
+                "verdict": "adequate",
+                "weight": 0.15,
                 "your_value": 0.0
               }
             ],
@@ -3864,7 +3879,7 @@
       "by_source": {
         "no-tool-activity": {
           "aq": {
-            "aq_0_100": 8,
+            "aq_0_100": 9,
             "mcp_vs_cli": {
               "cli_calls": 0,
               "cli_distinct": 0,
@@ -3907,7 +3922,7 @@
                   },
                   {
                     "name": "Discipline",
-                    "score": 4.1,
+                    "score": 5.1,
                     "signals": {
                       "task_tool_calls": 0
                     },
@@ -3915,7 +3930,7 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 12.1,
+                "score": 13.1,
                 "weight": 30
               },
               {
@@ -3985,7 +4000,14 @@
                     "score": 8.3,
                     "signals": {
                       "distinct_models": 1,
-                      "offload_share": 0.0
+                      "offload_share": 0.0,
+                      "routing": {
+                        "eligible_completed_substantive_pairs": 0,
+                        "excluded_reasons": {},
+                        "score": null,
+                        "state": "unsupported",
+                        "successful_lower_tier_pairs": 0
+                      }
                     },
                     "weight": 50
                   },
@@ -4004,6 +4026,7 @@
                 "weight": 15
               }
             ],
+            "score_contract_id": "5:3:3",
             "tier": "Novice",
             "tool_diversity": {
               "distinct": 0,
@@ -4197,7 +4220,7 @@
                   "target": 0.65,
                   "unit": "explore/doing ratio",
                   "verdict": "adequate",
-                  "weight": 0.45,
+                  "weight": 0.3,
                   "your_value": 0.0
                 },
                 {
@@ -4220,14 +4243,29 @@
                   "display_target": "0.5 planning sessions/session",
                   "display_value": "0 planning sessions/session",
                   "is_drag": false,
-                  "label": "Plan ceremony",
-                  "narrative": "No activity recorded for Plan ceremony.",
+                  "label": "Planning skill practice",
+                  "narrative": "No activity recorded for Planning skill practice.",
                   "pct": 0.5,
                   "score_pct": 50,
                   "target": 0.5,
                   "unit": "planning sessions/session",
                   "verdict": "adequate",
                   "weight": 0.25,
+                  "your_value": 0.0
+                },
+                {
+                  "direction": "higher",
+                  "display_target": "0.6 eligible-session coverage",
+                  "display_value": "0 eligible-session coverage",
+                  "is_drag": false,
+                  "label": "Ordered planning readiness",
+                  "narrative": "No activity recorded for Ordered planning readiness.",
+                  "pct": 0.5,
+                  "score_pct": 50,
+                  "target": 0.6,
+                  "unit": "eligible-session coverage",
+                  "verdict": "adequate",
+                  "weight": 0.15,
                   "your_value": 0.0
                 }
               ],
@@ -4314,7 +4352,7 @@
         }
       }
     },
-    "scoring_inputs_version": 4
+    "scoring_inputs_version": 5
   },
   {
     "bucket_metadata": [
@@ -4491,6 +4529,7 @@
               "weight": 15
             }
           ],
+          "score_contract_id": "5:3:3",
           "tier": "Elite"
         },
         "archetype": {
@@ -4646,18 +4685,18 @@
             "value": 7.8
           },
           "planning": {
-            "axis_narrative": "Planning scores 9.0/10 (excellent). Strongest: Reasoning depth (100%); weakest: Plan ceremony (100%).",
+            "axis_narrative": "Planning scores 9.2/10 (excellent). Strongest: Reasoning depth (100%); weakest: Explore-before-build (77%).",
             "axis_verdict": "excellent",
-            "drag_narrative": "Plan ceremony is the weakest contributor, scoring 100%. Your value: 0.53 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
-            "drag_note": "Plan ceremony is dragging this down \u2014 0.53 planning sessions/session, target ~0.5.",
+            "drag_narrative": "Explore-before-build is the weakest contributor, scoring 77%. Your value: 0.5 explore/doing ratio (target: 0.65 explore/doing ratio, higher is better).",
+            "drag_note": "Explore-before-build is dragging this down \u2014 0.5 explore/doing ratio, target ~0.65.",
             "gloss": "Think before you build",
-            "score_out_of_10": "9.0 / 10",
+            "score_out_of_10": "9.2 / 10",
             "subs": [
               {
                 "direction": "higher",
                 "display_target": "0.65 explore/doing ratio",
                 "display_value": "0.5 explore/doing ratio",
-                "is_drag": false,
+                "is_drag": true,
                 "label": "Explore-before-build",
                 "narrative": "Explore-before-build is good (0.5 explore/doing ratio, target 0.65 explore/doing ratio \u2014 approaching target, scoring 77%).",
                 "pct": 0.7692307692307692,
@@ -4665,7 +4704,7 @@
                 "target": 0.65,
                 "unit": "explore/doing ratio",
                 "verdict": "good",
-                "weight": 0.45,
+                "weight": 0.3529,
                 "your_value": 0.5
               },
               {
@@ -4680,26 +4719,26 @@
                 "target": 12.0,
                 "unit": "thinking blocks/session",
                 "verdict": "excellent",
-                "weight": 0.3,
+                "weight": 0.3529,
                 "your_value": 20.0
               },
               {
                 "direction": "higher",
                 "display_target": "0.5 planning sessions/session",
                 "display_value": "0.53 planning sessions/session",
-                "is_drag": true,
-                "label": "Plan ceremony",
-                "narrative": "Plan ceremony is excellent (0.53 planning sessions/session, target 0.5 planning sessions/session \u2014 well above target, scoring 100%).",
+                "is_drag": false,
+                "label": "Planning skill practice",
+                "narrative": "Planning skill practice is excellent (0.53 planning sessions/session, target 0.5 planning sessions/session \u2014 well above target, scoring 100%).",
                 "pct": 1.0,
                 "score_pct": 100,
                 "target": 0.5,
                 "unit": "planning sessions/session",
                 "verdict": "excellent",
-                "weight": 0.25,
+                "weight": 0.2941,
                 "your_value": 0.5333333333333333
               }
             ],
-            "value": 9.0
+            "value": 9.2
           }
         },
         "signature_moves": [
@@ -5105,7 +5144,14 @@
                         "score": 37.5,
                         "signals": {
                           "distinct_models": 2,
-                          "offload_share": 0.25
+                          "offload_share": 0.25,
+                          "routing": {
+                            "eligible_completed_substantive_pairs": 0,
+                            "excluded_reasons": {},
+                            "score": null,
+                            "state": "unsupported",
+                            "successful_lower_tier_pairs": 0
+                          }
                         }
                       },
                       {
@@ -5114,7 +5160,14 @@
                         "score": 37.5,
                         "signals": {
                           "distinct_models": 2,
-                          "offload_share": 0.25
+                          "offload_share": 0.25,
+                          "routing": {
+                            "eligible_completed_substantive_pairs": 0,
+                            "excluded_reasons": {},
+                            "score": null,
+                            "state": "unsupported",
+                            "successful_lower_tier_pairs": 0
+                          }
                         }
                       }
                     ],
@@ -5122,7 +5175,14 @@
                     "score": 37.5,
                     "signals": {
                       "distinct_models": 2,
-                      "offload_share": 0.25
+                      "offload_share": 0.25,
+                      "routing": {
+                        "eligible_completed_substantive_pairs": 0,
+                        "excluded_reasons": {},
+                        "score": null,
+                        "state": "unsupported",
+                        "successful_lower_tier_pairs": 0
+                      }
                     },
                     "weight": 50
                   },
@@ -5161,6 +5221,7 @@
                 "weight": 15
               }
             ],
+            "score_contract_id": "5:3:3",
             "tier": "Elite",
             "tool_diversity": {
               "distinct": 30,
@@ -5313,18 +5374,18 @@
               "value": 7.8
             },
             "planning": {
-              "axis_narrative": "Planning scores 9.0/10 (excellent). Strongest: Reasoning depth (100%); weakest: Plan ceremony (100%).",
+              "axis_narrative": "Planning scores 9.2/10 (excellent). Strongest: Reasoning depth (100%); weakest: Explore-before-build (77%).",
               "axis_verdict": "excellent",
-              "drag_narrative": "Plan ceremony is the weakest contributor, scoring 100%. Your value: 0.53 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
-              "drag_note": "Plan ceremony is dragging this down \u2014 0.53 planning sessions/session, target ~0.5.",
+              "drag_narrative": "Explore-before-build is the weakest contributor, scoring 77%. Your value: 0.5 explore/doing ratio (target: 0.65 explore/doing ratio, higher is better).",
+              "drag_note": "Explore-before-build is dragging this down \u2014 0.5 explore/doing ratio, target ~0.65.",
               "gloss": "Think before you build",
-              "score_out_of_10": "9.0 / 10",
+              "score_out_of_10": "9.2 / 10",
               "subs": [
                 {
                   "direction": "higher",
                   "display_target": "0.65 explore/doing ratio",
                   "display_value": "0.5 explore/doing ratio",
-                  "is_drag": false,
+                  "is_drag": true,
                   "label": "Explore-before-build",
                   "narrative": "Explore-before-build is good (0.5 explore/doing ratio, target 0.65 explore/doing ratio \u2014 approaching target, scoring 77%).",
                   "pct": 0.7692307692307692,
@@ -5332,7 +5393,7 @@
                   "target": 0.65,
                   "unit": "explore/doing ratio",
                   "verdict": "good",
-                  "weight": 0.45,
+                  "weight": 0.3529,
                   "your_value": 0.5
                 },
                 {
@@ -5347,26 +5408,26 @@
                   "target": 12.0,
                   "unit": "thinking blocks/session",
                   "verdict": "excellent",
-                  "weight": 0.3,
+                  "weight": 0.3529,
                   "your_value": 20.0
                 },
                 {
                   "direction": "higher",
                   "display_target": "0.5 planning sessions/session",
                   "display_value": "0.53 planning sessions/session",
-                  "is_drag": true,
-                  "label": "Plan ceremony",
-                  "narrative": "Plan ceremony is excellent (0.53 planning sessions/session, target 0.5 planning sessions/session \u2014 well above target, scoring 100%).",
+                  "is_drag": false,
+                  "label": "Planning skill practice",
+                  "narrative": "Planning skill practice is excellent (0.53 planning sessions/session, target 0.5 planning sessions/session \u2014 well above target, scoring 100%).",
                   "pct": 1.0,
                   "score_pct": 100,
                   "target": 0.5,
                   "unit": "planning sessions/session",
                   "verdict": "excellent",
-                  "weight": 0.25,
+                  "weight": 0.2941,
                   "your_value": 0.5333333333333333
                 }
               ],
-              "value": 9.0
+              "value": 9.2
             }
           },
           "signature_moves": [
@@ -5543,6 +5604,6 @@
         }
       }
     },
-    "scoring_inputs_version": 4
+    "scoring_inputs_version": 5
   }
 ]

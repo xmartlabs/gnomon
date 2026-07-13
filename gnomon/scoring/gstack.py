@@ -89,7 +89,8 @@ def _axis_value(terms, caps):
     emit and renormalize the remaining weights to sum 1.0 (so a source isn't scored 0 on a signal
     its backend can't record), then return the 0..10 axis score. With full caps (default / pooled
     corpus) nothing drops and this equals the plain weighted sum."""
-    live = [(w, v) for (w, v, cap) in terms if cap is None or cap in caps]
+    live = [(w, v) for (w, v, cap) in terms
+            if v is not None and (cap is None or cap in caps)]
     tot = sum(w for w, _ in live) or 1.0
     return round(10 * sum(w * v for w, v in live) / tot, 1)
 
@@ -265,13 +266,17 @@ def compute_scores(stats):
     # a planning Skill), NOT a raw plan-tool count. Counting distinct sessions stops
     # TodoWrite (fires many times/session) from saturating the term; target 0.5 = plan in
     # ~half your sessions. See accumulator.plan_sessions.
-    plan_ceremony = _clamp((b.get("plan_sessions", 0) / sess) / 0.5)
+    plan_ceremony = _clamp((b.get("planning_skill_sessions", b.get("plan_sessions", 0)) / sess) / 0.5)
+    eligible = b.get("eligible_change_sessions", 0) or 0
+    ordered_plan = (None if b.get("ordered_facts_state") != "measured" or not eligible
+                    else _clamp((b.get("planned_eligible_sessions", 0) / eligible) / 0.60))
     # reasoning depth needs a source that emits thinking blocks (Antigravity CLI doesn't);
     # explore-ratio is behavioral/source-agnostic; plan ceremony is per-session.
     planning = _axis_value([
-        (0.45, _clamp(b["planning_ratio_explore_to_doing"] / 0.65), None),
+        (0.30, _clamp(b["planning_ratio_explore_to_doing"] / 0.65), None),
         (0.30, _clamp((v["thinking_blocks"] / sess) / 12.0), "thinking"),
-        (0.25, plan_ceremony, None),
+        (0.25, plan_ceremony, "skills"),
+        (0.15, ordered_plan, None),
     ], caps)
 
     # STEERING IS NOT SCORED — it's DESCRIBED (see steering_reading). Hands-on cadence
@@ -335,9 +340,10 @@ def score_breakdown(stats):
                 ("Delegation & parallelism",  0.30, "agent-runs/prompt",  0.40, "higher"),
             ]),
             "planning": _zero_axis("Think before you build", [
-                ("Explore-before-build", 0.65, "explore/doing ratio", 0.45, "higher"),
+                ("Explore-before-build", 0.65, "explore/doing ratio", 0.30, "higher"),
                 ("Reasoning depth",     12.0, "thinking blocks/session", 0.30, "higher"),
-                ("Plan ceremony",        0.5, "planning sessions/session", 0.25, "higher"),
+                ("Planning skill practice", 0.5, "planning sessions/session", 0.25, "higher"),
+                ("Ordered planning readiness", 0.60, "eligible-session coverage", 0.15, "higher"),
             ]),
             "engineering": _zero_axis("Craft and low rework", [
                 ("Low rework",       2.0, "mean file-edit depth", 0.30, "lower"),
@@ -385,22 +391,31 @@ def score_breakdown(stats):
     thinking_pct      = _clamp(thinking_raw / 12.0)
     # Plan ceremony = fraction of sessions with a planning signal (see compute_scores);
     # per-session, so TodoWrite volume can't saturate it. Target 0.5.
-    plan_sess_raw     = b.get("plan_sessions", 0) / sess
+    plan_sess_raw     = b.get("planning_skill_sessions", b.get("plan_sessions", 0)) / sess
     plan_ceremony_pct = _clamp(plan_sess_raw / 0.5)
-    planning_val      = _axis_value([(0.45, explore_pct, None), (0.30, thinking_pct, "thinking"),
-                                     (0.25, plan_ceremony_pct, None)], caps)
+    eligible = b.get("eligible_change_sessions", 0) or 0
+    ordered_raw = b.get("planned_eligible_sessions", 0) / eligible if eligible else 0
+    ordered_pct = (None if b.get("ordered_facts_state") != "measured" or not eligible
+                   else _clamp(ordered_raw / 0.60))
+    planning_val      = _axis_value([(0.30, explore_pct, None), (0.30, thinking_pct, "thinking"),
+                                     (0.25, plan_ceremony_pct, "skills"),
+                                     (0.15, ordered_pct, None)], caps)
     plan_subs = [
         {"label": "Explore-before-build",
          "your_value": b.get("planning_ratio_explore_to_doing", 0),
-         "target": 0.65, "unit": "explore/doing ratio", "weight": 0.45, "pct": explore_pct,
+         "target": 0.65, "unit": "explore/doing ratio", "weight": 0.30, "pct": explore_pct,
          "direction": "higher", "is_drag": False, "_cap": None},
         {"label": "Reasoning depth", "your_value": thinking_raw,
          "target": 12.0, "unit": "thinking blocks/session", "weight": 0.30, "pct": thinking_pct,
          "direction": "higher", "is_drag": False, "_cap": "thinking"},
-        {"label": "Plan ceremony", "your_value": plan_sess_raw,
+        {"label": "Planning skill practice", "your_value": plan_sess_raw,
          "target": 0.5, "unit": "planning sessions/session", "weight": 0.25, "pct": plan_ceremony_pct,
-         "direction": "higher", "is_drag": False, "_cap": None},
+         "direction": "higher", "is_drag": False, "_cap": "skills"},
     ]
+    if ordered_pct is not None:
+        plan_subs.append({"label": "Ordered planning readiness", "your_value": ordered_raw,
+                          "target": 0.60, "unit": "eligible-session coverage", "weight": 0.15,
+                          "pct": ordered_pct, "direction": "higher", "is_drag": False, "_cap": None})
     plan_subs = [_enrich_sub(s) for s in _apply_sub_caps(plan_subs, caps)]
 
     # --- ENGINEERING ---

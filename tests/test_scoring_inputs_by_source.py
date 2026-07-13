@@ -88,7 +88,10 @@ class TestScoringInputsBySource(unittest.TestCase):
     _VELOCITY = {"active_hours", "tool_churn_edit_write", "shell_authored_lines_est"}
     _BEHAVIOR = {"planning_ratio_explore_to_doing", "actions_per_prompt", "questions_asked",
                  "error_recovery_ratio", "error_rate_per_100_tools", "api_errors_retries",
-                 "fanout_median", "shell_test_runs", "plan_sessions", "delegate_actions",
+                 "fanout_median", "shell_test_runs", "plan_sessions", "planning_skill_sessions",
+                 "eligible_change_sessions", "planned_eligible_sessions",
+                 "evidence_eligible_sessions", "ordered_facts_state", "delegate_actions",
+                 "linked_model_pairs", "linked_model_routing_state",
                  "background_tasks", "iteration_depth_mean", "iteration_depth_p90",
                  "iteration_depth_max", "files_hammered_over_15x", "no_tool_activity"}
     _STACK = {"skills_distinct", "skills_total", "compounding_writes",
@@ -98,8 +101,7 @@ class TestScoringInputsBySource(unittest.TestCase):
               "task_tool_calls", "cli_calls", "mcp_calls", "tool_diversity",
               "tool_entropy_normalized", "top_tools",
               "mcp_knowledge_calls", "mcp_knowledge_servers", "mcp_knowledge_server_names",
-              "mcp_subcategory_breakdown", "mcp_grounded_sessions", "mcp_write_sessions",
-              "mcp_grounded_session_names"}
+              "mcp_subcategory_breakdown", "mcp_grounded_sessions", "mcp_write_sessions"}
 
     def _stats(self):
         rows = []
@@ -114,7 +116,7 @@ class TestScoringInputsBySource(unittest.TestCase):
     def test_payload_has_version_and_by_source(self):
         stats = self._stats()
         summary = paxel.build_summary(stats)
-        self.assertEqual(summary["scoring_inputs_version"], 4)
+        self.assertEqual(summary["scoring_inputs_version"], 5)
         self.assertIn("claude", summary["scoring_inputs_by_source"])
 
     def test_block_field_set_window_and_monthly(self):

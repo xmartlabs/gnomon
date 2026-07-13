@@ -131,7 +131,8 @@ class TestPipeline(unittest.TestCase):
             "churn", "orchestration", "compounding_writes", "ecosystem",
             "progression_monthly", "noticed_stats_monthly", "profile",
             "scoring_inputs_version", "scoring_inputs_by_source",
-            "profiles_by_source", "source_usage", "source_usage_monthly", "token_usage",
+        "profiles_by_source", "source_usage", "source_usage_monthly", "token_usage",
+        "aq_version", "gstack_version", "score_contract_id", "comparison_policy",
             "timing"})
         # profile must have the expected sub-keys
         prof = summary["profile"]
@@ -145,7 +146,7 @@ class TestPipeline(unittest.TestCase):
         for banned in ("prompt_text",):
             self.assertNotIn(banned, raw, f"verbatim field leaked: {banned}")
         # scoring inputs are present and re-scorable
-        self.assertEqual(summary["scoring_inputs_version"], 4)
+        self.assertEqual(summary["scoring_inputs_version"], 5)
         self.assertIsInstance(summary["scoring_inputs_by_source"], dict)
 
     def test_no_summary_without_flag(self):
@@ -1063,7 +1064,7 @@ class TestCodexEventsFixture(unittest.TestCase):
 
 
 class TestCodexEventsSubagent(unittest.TestCase):
-    """A6: a session with source.subagent.thread_spawn must emit an Agent tool_use."""
+    """Child metadata must not synthesize a second parent Agent tool_use."""
 
     def _make_events(self, is_subagent):
         import tempfile, json as _json
@@ -1089,9 +1090,8 @@ class TestCodexEventsSubagent(unittest.TestCase):
                 fh.write(_json.dumps(row) + "\n")
             return fh.name
 
-    def test_subagent_session_credits_parent_not_child(self):
-        """The Agent (delegate) event must be keyed to the PARENT's session id, so
-        fan-out lands on the orchestrator — not on the spawned worker session."""
+    def test_subagent_session_does_not_duplicate_parent_spawn(self):
+        """The real parent spawn is authoritative; child metadata only links routing."""
         import tempfile
         fp = self._make_events(is_subagent=True)
         try:
@@ -1103,10 +1103,7 @@ class TestCodexEventsSubagent(unittest.TestCase):
             for b in (e.get("message", {}).get("content") or [])
             if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("name") == "Agent"
         ]
-        self.assertTrue(agent_events, "no Agent tool_use emitted for subagent session")
-        # attributed to the parent thread, NOT the child session "sub-sess-1"
-        self.assertEqual(agent_events[0].get("sessionId"), "parent-123")
-        self.assertNotEqual(agent_events[0].get("sessionId"), "sub-sess-1")
+        self.assertEqual(agent_events, [])
 
     def test_non_subagent_session_no_agent_tool_use(self):
         import tempfile
