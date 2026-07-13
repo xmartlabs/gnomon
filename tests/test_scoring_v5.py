@@ -1,5 +1,6 @@
 import unittest
 import json
+import math
 import os
 import tempfile
 from copy import deepcopy
@@ -277,6 +278,30 @@ class TestConditionalScoring(unittest.TestCase):
                     axis["score"],
                     round(axis["weight"] * axis["normalized_score"], 1),
                 )
+
+    def test_aq_normalized_score_is_canonical_across_summation_algorithms(self):
+        terms = [1 / 60, 1 / 3, 11 / 30]
+        naive = 0.0
+        for term in terms:
+            naive += term
+        compensated = math.fsum(terms)
+
+        self.assertEqual(naive, 0.7166666666666666)
+        self.assertEqual(compensated, 0.7166666666666667)
+
+        naive_stats = _v5_scoring_stats()
+        compensated_stats = deepcopy(naive_stats)
+        naive_stats["behavior"]["planning_ratio_explore_to_doing"] = naive
+        compensated_stats["behavior"]["planning_ratio_explore_to_doing"] = compensated
+
+        naive_axis = self._aq_axis(naive_stats, "Craft", "Grounding")
+        compensated_axis = self._aq_axis(compensated_stats, "Craft", "Grounding")
+
+        self.assertEqual(
+            naive_axis["normalized_score"],
+            compensated_axis["normalized_score"],
+        )
+        self.assertEqual(naive_axis["normalized_score"], 0.716666666666667)
 
     def test_ordered_terms_preserve_every_unaffected_aq_and_gstack_contribution(self):
         without_ordered_success = _v5_scoring_stats(planned=0, evidence=0)

@@ -288,7 +288,7 @@
                   {
                     "base_weight": 33,
                     "name": "Orchestration",
-                    "normalized_score": 0.7249999999999999,
+                    "normalized_score": 0.725,
                     "score": 23.9,
                     "signals": {
                       "agent_runs": 200,
@@ -301,7 +301,7 @@
                   {
                     "base_weight": 22,
                     "name": "Skill fluency",
-                    "normalized_score": 0.8500000000000001,
+                    "normalized_score": 0.85,
                     "score": 18.7,
                     "signals": {
                       "skills_distinct": 25,
@@ -312,7 +312,7 @@
                   {
                     "base_weight": 28,
                     "name": "Tool command (MCP + CLI)",
-                    "normalized_score": 0.7166666666666667,
+                    "normalized_score": 0.716666666666667,
                     "score": 20.1,
                     "signals": {
                       "clis": 25,
@@ -1133,7 +1133,7 @@
                   {
                     "base_weight": 28,
                     "name": "Tool command (MCP + CLI)",
-                    "normalized_score": 0.16666666666666669,
+                    "normalized_score": 0.166666666666667,
                     "score": 7.7,
                     "signals": {
                       "clis": 8,
@@ -1156,7 +1156,7 @@
                   {
                     "base_weight": 35,
                     "name": "Verification",
-                    "normalized_score": 0.3333333333333333,
+                    "normalized_score": 0.333333333333333,
                     "score": 11.7,
                     "signals": {
                       "review_skills": 0,
@@ -1220,7 +1220,7 @@
                   {
                     "base_weight": 50,
                     "name": "Recovery",
-                    "normalized_score": 0.5449999999999999,
+                    "normalized_score": 0.545,
                     "score": 27.2,
                     "signals": {
                       "api_per_100_tools": 0.4,
@@ -1239,7 +1239,7 @@
                   {
                     "base_weight": 50,
                     "name": "Model mix",
-                    "normalized_score": 0.16666666666666666,
+                    "normalized_score": 0.166666666666667,
                     "score": 8.3,
                     "signals": {
                       "distinct_models": 1,
@@ -1257,7 +1257,7 @@
                   {
                     "base_weight": 50,
                     "name": "Token economy",
-                    "normalized_score": 0.9523809523809524,
+                    "normalized_score": 0.952380952380952,
                     "score": 47.6,
                     "signals": {
                       "cli_share": 0.67,
@@ -1860,7 +1860,7 @@
                   {
                     "base_weight": 33,
                     "name": "Orchestration",
-                    "normalized_score": 0.7249999999999999,
+                    "normalized_score": 0.725,
                     "score": 23.9,
                     "signals": {
                       "agent_runs": 200,
@@ -1873,7 +1873,7 @@
                   {
                     "base_weight": 22,
                     "name": "Skill fluency",
-                    "normalized_score": 0.8500000000000001,
+                    "normalized_score": 0.85,
                     "score": 18.7,
                     "signals": {
                       "skills_distinct": 25,
@@ -1884,7 +1884,7 @@
                   {
                     "base_weight": 28,
                     "name": "Tool command (MCP + CLI)",
-                    "normalized_score": 0.7166666666666667,
+                    "normalized_score": 0.716666666666667,
                     "score": 20.1,
                     "signals": {
                       "clis": 25,
@@ -2299,7 +2299,7 @@
                   {
                     "base_weight": 28,
                     "name": "Tool command (MCP + CLI)",
-                    "normalized_score": 0.16666666666666669,
+                    "normalized_score": 0.166666666666667,
                     "score": 7.7,
                     "signals": {
                       "clis": 8,
@@ -2322,7 +2322,7 @@
                   {
                     "base_weight": 35,
                     "name": "Verification",
-                    "normalized_score": 0.3333333333333333,
+                    "normalized_score": 0.333333333333333,
                     "score": 11.7,
                     "signals": {
                       "review_skills": 0,
@@ -2386,7 +2386,7 @@
                   {
                     "base_weight": 50,
                     "name": "Recovery",
-                    "normalized_score": 0.5449999999999999,
+                    "normalized_score": 0.545,
                     "score": 27.2,
                     "signals": {
                       "api_per_100_tools": 0.4,
@@ -2405,7 +2405,7 @@
                   {
                     "base_weight": 50,
                     "name": "Model mix",
-                    "normalized_score": 0.16666666666666666,
+                    "normalized_score": 0.166666666666667,
                     "score": 8.3,
                     "signals": {
                       "distinct_models": 1,
@@ -2423,7 +2423,7 @@
                   {
                     "base_weight": 50,
                     "name": "Token economy",
-                    "normalized_score": 0.9523809523809524,
+                    "normalized_score": 0.952380952380952,
                     "score": 47.6,
                     "signals": {
                       "cli_share": 0.67,
@@ -3168,7 +3168,7 @@
                   {
                     "base_weight": 33,
                     "name": "Orchestration",
-                    "normalized_score": 0.7249999999999999,
+                    "normalized_score": 0.725,
                     "score": 23.9,
                     "signals": {
                       "agent_runs": 200,
@@ -3181,7 +3181,7 @@
                   {
                     "base_weight": 22,
                     "name": "Skill fluency",
-                    "normalized_score": 0.8500000000000001,
+                    "normalized_score": 0.85,
                     "score": 18.7,
                     "signals": {
                       "skills_distinct": 25,
@@ -3192,7 +3192,7 @@
                   {
                     "base_weight": 28,
                     "name": "Tool command (MCP + CLI)",
-                    "normalized_score": 0.7166666666666667,
+                    "normalized_score": 0.716666666666667,
                     "score": 20.1,
                     "signals": {
                       "clis": 25,
@@ -4128,7 +4128,7 @@
                   {
                     "base_weight": 50,
                     "name": "Model mix",
-                    "normalized_score": 0.16666666666666666,
+                    "normalized_score": 0.166666666666667,
                     "score": 8.3,
                     "signals": {
                       "distinct_models": 1,
@@ -4950,7 +4950,7 @@
                       {
                         "effective_weight": 0.65,
                         "id": "recent_30d",
-                        "normalized_score": 0.7249999999999999,
+                        "normalized_score": 0.725,
                         "score": 23.9,
                         "signals": {
                           "agent_runs": 200,
@@ -4962,7 +4962,7 @@
                       {
                         "effective_weight": 0.35,
                         "id": "full_window",
-                        "normalized_score": 0.7249999999999999,
+                        "normalized_score": 0.725,
                         "score": 23.9,
                         "signals": {
                           "agent_runs": 200,
@@ -4973,7 +4973,7 @@
                       }
                     ],
                     "name": "Orchestration",
-                    "normalized_score": 0.7249999999999999,
+                    "normalized_score": 0.725,
                     "score": 23.9,
                     "signals": {
                       "agent_runs": 200,
@@ -4989,7 +4989,7 @@
                       {
                         "effective_weight": 0.65,
                         "id": "recent_30d",
-                        "normalized_score": 0.8500000000000001,
+                        "normalized_score": 0.85,
                         "score": 18.7,
                         "signals": {
                           "skills_distinct": 25,
@@ -4999,7 +4999,7 @@
                       {
                         "effective_weight": 0.35,
                         "id": "full_window",
-                        "normalized_score": 0.8500000000000001,
+                        "normalized_score": 0.85,
                         "score": 18.7,
                         "signals": {
                           "skills_distinct": 25,
@@ -5008,7 +5008,7 @@
                       }
                     ],
                     "name": "Skill fluency",
-                    "normalized_score": 0.8500000000000001,
+                    "normalized_score": 0.85,
                     "score": 18.7,
                     "signals": {
                       "skills_distinct": 25,
@@ -5022,7 +5022,7 @@
                       {
                         "effective_weight": 0.65,
                         "id": "recent_30d",
-                        "normalized_score": 0.7166666666666667,
+                        "normalized_score": 0.716666666666667,
                         "score": 20.1,
                         "signals": {
                           "clis": 25,
@@ -5033,7 +5033,7 @@
                       {
                         "effective_weight": 0.35,
                         "id": "full_window",
-                        "normalized_score": 0.7166666666666667,
+                        "normalized_score": 0.716666666666667,
                         "score": 20.1,
                         "signals": {
                           "clis": 25,
@@ -5043,7 +5043,7 @@
                       }
                     ],
                     "name": "Tool command (MCP + CLI)",
-                    "normalized_score": 0.7166666666666667,
+                    "normalized_score": 0.716666666666667,
                     "score": 20.1,
                     "signals": {
                       "clis": 25,
@@ -5105,7 +5105,7 @@
                       {
                         "effective_weight": 0.35,
                         "id": "full_window",
-                        "normalized_score": 0.8333333333333333,
+                        "normalized_score": 0.833333333333333,
                         "score": 29.2,
                         "signals": {
                           "review_skills": 80,
@@ -5114,7 +5114,7 @@
                       }
                     ],
                     "name": "Verification",
-                    "normalized_score": 0.9416666666666667,
+                    "normalized_score": 0.9416666666666665,
                     "score": 33.0,
                     "signals": {
                       "review_skills": 80,
@@ -5173,7 +5173,7 @@
                       {
                         "effective_weight": 0.35,
                         "id": "full_window",
-                        "normalized_score": 0.6666666666666667,
+                        "normalized_score": 0.666666666666667,
                         "score": 13.3,
                         "signals": {
                           "coverage": 0.4,
@@ -5187,7 +5187,7 @@
                       }
                     ],
                     "name": "Context Intelligence",
-                    "normalized_score": 0.8833333333333333,
+                    "normalized_score": 0.8833333333333334,
                     "score": 17.7,
                     "signals": {
                       "coverage": 1.0,

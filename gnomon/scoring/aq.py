@@ -259,7 +259,10 @@ def compute_aq(stats):
         if effective_weights:
             effective_weights[-1] += 100 - sum(effective_weights)
         out = [{"name": a[0], "base_weight": a[1], "weight": effective_weight,
-                "normalized_score": a[2], "score": round(effective_weight * a[2], 1),
+                # Binary64 guarantees 15 portable significant decimal digits. Canonicalize
+                # only the exported diagnostic; keep scoring on the unrounded value below.
+                "normalized_score": float(format(a[2], ".15g")),
+                "score": round(effective_weight * a[2], 1),
                 "signals": a[3]}
                for a, effective_weight in zip(live, effective_weights)]
         pillar = {"name": name, "weight": weight, "score": round(sum(x["score"] for x in out), 1), "axes": out}
