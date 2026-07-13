@@ -273,9 +273,9 @@ class TestComputeAqV2(unittest.TestCase):
         self.assertEqual(names, ["Verification", "Grounding", "Context Intelligence", "Compounding"])
 
     def test_context_intelligence_full_credit_at_target(self):
-        # coverage = 40/100 = 0.40 == TARGET -> full credit (sat=1.0 -> axis score ==
+        # coverage = 60/100 = 0.60 == TARGET -> full credit (sat=1.0 -> axis score ==
         # its full renormalized weight).
-        aq = self._craft_ci(grounded=40, sessions=100)
+        aq = self._craft_ci(grounded=60, sessions=100)
         craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
         ci = next(a for a in craft["axes"] if a["name"] == "Context Intelligence")
         self.assertEqual(ci["score"], ci["weight"])
@@ -327,9 +327,9 @@ class TestComputeAqV2(unittest.TestCase):
         )
         self.assertEqual(
             ci["signals"]["score_formula"],
-            "coverage = grounded_sessions / write_sessions; score = min(1, coverage / 0.40)",
+            "coverage = grounded_sessions / write_sessions; score = min(1, coverage / 0.60)",
         )
-        self.assertEqual(ci["signals"]["target_coverage"], 0.4)
+        self.assertEqual(ci["signals"]["target_coverage"], 0.6)
 
     def test_verification_counts_real_review_skills(self):
         # Genuine *-review verification skills (caveman-review, security-review) must

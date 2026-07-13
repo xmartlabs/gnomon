@@ -5,7 +5,12 @@ import tempfile
 from copy import deepcopy
 
 from gnomon.cli.accumulator import Accumulator, derive_ordered_behavior
-from gnomon.scoring.aq import compute_aq, score_linked_routing
+from gnomon.scoring.aq import (
+    CONTEXT_INTELLIGENCE_TARGET,
+    PLANNING_TARGET,
+    compute_aq,
+    score_linked_routing,
+)
 from gnomon.scoring.versioning import SCORE_CONTRACT_ID
 from gnomon.scoring.aggregate import blend_model_mix_components
 from gnomon.scoring.aggregate import _blend_aq
@@ -222,12 +227,16 @@ class TestConditionalScoring(unittest.TestCase):
         pillar = next(p for p in aq["pillars"] if p["name"] == pillar_name)
         return next(a for a in pillar["axes"] if a["name"] == axis_name)
 
-    def test_aq_four_of_ten_is_full_credit_for_ordered_planning_and_context(self):
+    def test_aq_targets_four_of_ten_planning_and_six_of_ten_context(self):
         three = _v5_scoring_stats(planned=3, evidence=6)
         four = _v5_scoring_stats(planned=4, evidence=6)
         ten = _v5_scoring_stats(planned=10, evidence=10)
 
         ci = self._aq_axis(four, "Craft", "Context Intelligence")
+        self.assertEqual(PLANNING_TARGET, 0.40)
+        self.assertEqual(CONTEXT_INTELLIGENCE_TARGET, 0.60)
+        self.assertEqual(ci["signals"]["target_coverage"], CONTEXT_INTELLIGENCE_TARGET)
+        self.assertIn("coverage / 0.60", ci["signals"]["score_formula"])
         self.assertEqual(ci["score"], ci["weight"])
         self.assertEqual(
             self._aq_axis(four, "Breadth", "Discipline")["score"],
@@ -247,11 +256,27 @@ class TestConditionalScoring(unittest.TestCase):
         ten_plan = score_breakdown(ten)["planning"]["subs"]
         ordered = lambda subs: next(
             sub for sub in subs if sub["label"] == "Ordered planning readiness")
+        self.assertEqual(ordered(four_plan)["target"], PLANNING_TARGET)
         self.assertLess(ordered(three_plan)["pct"], 1.0)
         self.assertEqual(ordered(four_plan)["pct"], 1.0)
         self.assertEqual(ordered(ten_plan)["pct"], 1.0)
         self.assertEqual(compute_scores(four)["Planning"],
                          compute_scores(ten)["Planning"])
+
+    def test_aq_axes_expose_stable_base_weight_and_normalized_score(self):
+        aq = compute_aq(_v5_scoring_stats(planned=2, evidence=3))
+
+        for pillar in aq["pillars"]:
+            for axis in pillar["axes"]:
+                self.assertIn("base_weight", axis)
+                self.assertIn("normalized_score", axis)
+                self.assertGreater(axis["base_weight"], 0)
+                self.assertGreaterEqual(axis["normalized_score"], 0)
+                self.assertLessEqual(axis["normalized_score"], 1)
+                self.assertAlmostEqual(
+                    axis["score"],
+                    round(axis["weight"] * axis["normalized_score"], 1),
+                )
 
     def test_ordered_terms_preserve_every_unaffected_aq_and_gstack_contribution(self):
         without_ordered_success = _v5_scoring_stats(planned=0, evidence=0)

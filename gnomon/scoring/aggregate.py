@@ -371,31 +371,58 @@ def _blend_aq(full_aq, components):
 
             axis_weight_total = sum(component["effective_weight"]
                                     for component, _ in axis_components)
-            score = round(sum(component["effective_weight"] * axis["score"]
-                              for component, axis in axis_components) / axis_weight_total, 1)
             if axis_name == "Model mix":
-                mix = blend_model_mix_components([
+                normalized_score = blend_model_mix_components([
                     (component["effective_weight"], axis.get("signals", {}))
                     for component, axis in axis_components
                 ])
-                score = round((axis_components[0][1].get("weight", 50) or 50) * mix, 1)
+            else:
+                normalized_score = sum(
+                    component["effective_weight"] * axis.get(
+                        "normalized_score",
+                        axis["score"] / (axis.get("weight") or 1),
+                    )
+                    for component, axis in axis_components
+                ) / axis_weight_total
             _, source_axis = max(
                 axis_components,
                 key=lambda item: item[0]["effective_weight"],
             )
             blended_axis = dict(source_axis)
-            blended_axis["score"] = score
+            blended_axis["base_weight"] = source_axis.get(
+                "base_weight", source_axis.get("weight", 0))
+            blended_axis["normalized_score"] = min(1.0, max(0.0, normalized_score))
             blended_axis["signals"] = source_axis.get("signals", {})
             blended_axis["components"] = [
                 {
                     "id": component["id"],
                     "score": axis["score"],
+                    "normalized_score": axis.get(
+                        "normalized_score",
+                        axis["score"] / (axis.get("weight") or 1),
+                    ),
                     "signals": axis.get("signals", {}),
-                    "effective_weight": component["effective_weight"],
+                    "effective_weight": component["effective_weight"] / axis_weight_total,
                 }
                 for component, axis in axis_components
             ]
             blended_axes.append(blended_axis)
+
+        # Axis scores arriving from compute_aq are contributions that already include
+        # capability renormalization. Reusing those contributions would renormalize a
+        # second time when availability differs by window. Blend only each axis's
+        # normalized 0..1 score above, then derive effective weights once from its stable
+        # base weight across the union of measurable axes.
+        base_weight_total = sum(axis["base_weight"] for axis in blended_axes) or 1
+        effective_weights = [
+            round(100 * axis["base_weight"] / base_weight_total)
+            for axis in blended_axes
+        ]
+        if effective_weights:
+            effective_weights[-1] += 100 - sum(effective_weights)
+        for axis, effective_weight in zip(blended_axes, effective_weights):
+            axis["weight"] = effective_weight
+            axis["score"] = round(effective_weight * axis["normalized_score"], 1)
 
         primary_pillar = next(
             (p for p in primary["aq"].get("pillars", []) if p["name"] == pillar_name),

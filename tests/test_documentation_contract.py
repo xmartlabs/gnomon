@@ -2,6 +2,8 @@ import pathlib
 import unittest
 
 from gnomon.cli.insights import _HELP_TEXT
+from gnomon.scoring.aq import CONTEXT_INTELLIGENCE_TARGET
+from gnomon.scoring.gstack import AQ_AXIS_NOTES
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -10,6 +12,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 class TestPublicDocumentationContract(unittest.TestCase):
     def setUp(self):
         self.readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.philosophy = (ROOT / "docs" / "scoring-philosophy.md").read_text(
+            encoding="utf-8")
 
     def test_help_and_readme_both_publish_six_month_default(self):
         self.assertIn("default 6", _HELP_TEXT)
@@ -40,6 +44,23 @@ class TestPublicDocumentationContract(unittest.TestCase):
     def test_readme_model_mix_describes_explicit_provider_tiers(self):
         self.assertIn("explicit provider tier tables", self.readme)
         self.assertNotIn("no hard-coded model names", self.readme)
+
+    def test_philosophy_publishes_executable_targets_as_product_hypotheses(self):
+        normalized = " ".join(self.philosophy.split())
+        self.assertIn("Planning readiness | Grade ordered planning readiness only on "
+                      "eligible non-trivial changes and target 40% coverage",
+                      normalized)
+        self.assertIn("Context Intelligence | Target evidence gathering before the first "
+                      "write in 60% of eligible changes", normalized)
+        self.assertIn("40% Planning and 60% Context Intelligence targets are explicit, "
+                      "versioned product hypotheses", normalized)
+
+    def test_context_intelligence_note_matches_executable_contract(self):
+        note = AQ_AXIS_NOTES["Context Intelligence"]
+
+        self.assertIn("eligible change sessions", note)
+        self.assertIn(f"coverage / {CONTEXT_INTELLIGENCE_TARGET:.2f}", note)
+        self.assertNotIn("write-sessions", note)
 
 
 if __name__ == "__main__":

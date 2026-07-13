@@ -2,6 +2,9 @@ from gnomon.analysis.metrics import _review_skill_uses, _task_skill_uses
 from gnomon.config import available_caps
 from gnomon.scoring.versioning import SCORE_CONTRACT_ID
 
+PLANNING_TARGET = 0.40
+CONTEXT_INTELLIGENCE_TARGET = 0.60
+
 _MODEL_TIERS = {
     "anthropic": (("opus", 3), ("sonnet", 2), ("haiku", 1)),
     "openai": (("pro", 4), ("mini", 2), ("nano", 1), ("gpt-", 3), ("codex", 3)),
@@ -126,7 +129,8 @@ def compute_aq(stats):
     ordered_state = b.get("ordered_facts_state")
     eligible = b.get("eligible_change_sessions", 0) or 0
     ordered_planning = (None if ordered_state != "measured" or not eligible
-                        else sat(b.get("planned_eligible_sessions", 0) / eligible, 0.40))
+                        else sat(b.get("planned_eligible_sessions", 0) / eligible,
+                                 PLANNING_TARGET))
     planning_skill = 1.0 if has_skill(["writing-plans", "autoplan", "plan"]) else 0.6
     discipline = wsum((.40, rate(task_calls, 1.0), "tasktool"),
                       (.40, planning_skill, "skills"),
@@ -165,7 +169,6 @@ def compute_aq(stats):
     # (legacy/external block predating the accumulator, which always sets the field —
     # a missing field means backward-compat, so stay N/A instead of scoring a phantom 0).
     _v5_ordered = "ordered_facts_state" in b
-    TARGET_GROUNDED_COVERAGE = 0.60 if _v5_ordered else 0.40
     grounded = (b.get("evidence_eligible_sessions") if _v5_ordered
                 else t.get("mcp_grounded_sessions"))
     ci_denom = (b.get("eligible_change_sessions") if _v5_ordered
@@ -173,7 +176,7 @@ def compute_aq(stats):
     coverage = (grounded / ci_denom) if grounded is not None and ci_denom else None
     context_intel = (None if ((_v5_ordered and ordered_state != "measured")
                               or b.get("no_tool_activity") or grounded is None or not ci_denom)
-                     else sat(coverage, TARGET_GROUNDED_COVERAGE))
+                     else sat(coverage, CONTEXT_INTELLIGENCE_TARGET))
     # compounding writes -> per-session rate (rewards the habit, not raw volume)
     compounding = wsum((.6, rate(st.get("compounding_writes", 0), 0.25), None),
                        (.4, (1.0 if has_skill(["retro", "writing-plans", "brainstorm"]) else 0.6), "skills"))
@@ -184,11 +187,11 @@ def compute_aq(stats):
          {"grounded_sessions": grounded, "write_sessions": ci_denom,
           "total_sessions": sessions,
           "coverage": round(coverage, 3) if coverage is not None else None,
-          "target_coverage": TARGET_GROUNDED_COVERAGE,
+          "target_coverage": CONTEXT_INTELLIGENCE_TARGET,
           "grounded_session_rule": "knowledge-MCP call OR explore-class project/data/design MCP call before a later Edit/Write/MultiEdit/NotebookEdit in the same session",
-          "score_formula": ("coverage = evidence_eligible_sessions / eligible_change_sessions; score = min(1, coverage / 0.40)"
+          "score_formula": (f"coverage = evidence_eligible_sessions / eligible_change_sessions; score = min(1, coverage / {CONTEXT_INTELLIGENCE_TARGET:.2f})"
                             if _v5_ordered else
-                            "coverage = grounded_sessions / write_sessions; score = min(1, coverage / 0.40)")}),
+                            f"coverage = grounded_sessions / write_sessions; score = min(1, coverage / {CONTEXT_INTELLIGENCE_TARGET:.2f})")}),
         ("Compounding", 20, compounding, {"compounding_writes": st.get("compounding_writes", 0)}),
     ]
 
@@ -252,8 +255,13 @@ def compute_aq(stats):
         live = [a for a in axes if _live(a)]
         wlive = sum(a[1] for a in live) or 1
         scale = 100.0 / wlive
-        out = [{"name": a[0], "weight": round(a[1] * scale), "score": round(a[1] * scale * a[2], 1),
-                "signals": a[3]} for a in live]
+        effective_weights = [round(a[1] * scale) for a in live]
+        if effective_weights:
+            effective_weights[-1] += 100 - sum(effective_weights)
+        out = [{"name": a[0], "base_weight": a[1], "weight": effective_weight,
+                "normalized_score": a[2], "score": round(effective_weight * a[2], 1),
+                "signals": a[3]}
+               for a, effective_weight in zip(live, effective_weights)]
         pillar = {"name": name, "weight": weight, "score": round(sum(x["score"] for x in out), 1), "axes": out}
         dropped = [a[0] for a in axes if a not in live]
         if dropped:

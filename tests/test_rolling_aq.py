@@ -27,12 +27,16 @@ def _aq(first, second, first_signal, second_signal):
                     {
                         "name": "Verification",
                         "weight": 50,
+                        "base_weight": 50,
+                        "normalized_score": first / 50,
                         "score": first,
                         "signals": {"test_runs": first_signal},
                     },
                     {
                         "name": "Grounding",
                         "weight": 50,
+                        "base_weight": 50,
+                        "normalized_score": second / 50,
                         "score": second,
                         "signals": {"planning_ratio": second_signal},
                     },
@@ -187,6 +191,36 @@ class TestWeightedAQBlend(unittest.TestCase):
             ["recent_30d", "full_window"],
         )
 
+    def test_model_mix_blends_signals_instead_of_axis_contributions(self):
+        def model_mix_aq(distinct_models, offload_share, routing):
+            aq = _aq(50.0, 0.0, 0, 0)
+            aq["pillars"][0]["name"] = "Savvy"
+            aq["pillars"][0]["axes"] = [{
+                "name": "Model mix",
+                "base_weight": 50,
+                "weight": 100,
+                # Deliberately contradictory: the blend must derive from signals.
+                "normalized_score": 0.0,
+                "score": 0.0,
+                "signals": {
+                    "distinct_models": distinct_models,
+                    "offload_share": offload_share,
+                    "routing": routing,
+                },
+            }]
+            return aq
+
+        recent = model_mix_aq(3, 0.30, {"state": "unsupported", "score": None})
+        history = model_mix_aq(1, 0, {"state": "measured", "score": 1.0})
+        blended = aggregate._blend_aq(recent, [
+            _component("recent_30d", 0.65, recent, 0, 30),
+            _component("full_window", 0.35, history),
+        ])
+        axis = blended["pillars"][0]["axes"][0]
+
+        self.assertAlmostEqual(axis["normalized_score"], 0.7958333333)
+        self.assertEqual(axis["score"], 79.6)
+
 
 class TestRollingBucketAccumulation(unittest.TestCase):
     def test_current_partial_month_report_since_does_not_clip_30_day_aq_horizon(self):
@@ -338,6 +372,51 @@ class TestPerSourceRollingBlend(unittest.TestCase):
         ))
         self.assertEqual(profile["aq"]["aq_0_100"], expected_total)
         self.assertEqual(profile["aq"]["tier"], aggregate._aq_tier_for(expected_total))
+
+    def test_na_mismatch_blends_normalized_axes_and_renormalizes_once(self):
+        full = self._block(sessions=10, tests=10, planning_ratio=1)
+        full["behavior"].update({
+            "ordered_facts_state": "measured",
+            "eligible_change_sessions": 10,
+            "planned_eligible_sessions": 4,
+            "evidence_eligible_sessions": 6,
+            "planning_skill_sessions": 4,
+            "linked_model_routing_state": "unsupported",
+            "linked_model_pairs": [],
+            "no_tool_activity": False,
+        })
+        recent = copy.deepcopy(full)
+        recent["behavior"].update({
+            "ordered_facts_state": "unmeasured",
+            "eligible_change_sessions": 0,
+            "planned_eligible_sessions": 0,
+            "evidence_eligible_sessions": 0,
+        })
+        result = aggregate.score_by_source(
+            {"claude": {"window": full}},
+            {"recent_30d": {"claude": {"window": recent}}},
+            [{"id": "recent_30d", "configured_weight": 0.65,
+              "day_bounds": {"lower": 0, "upper": 30}}],
+        )["by_source"]["claude"]["aq"]
+
+        craft = next(p for p in result["pillars"] if p["name"] == "Craft")
+        self.assertLessEqual(craft["score"], 100)
+        self.assertTrue(all(0 <= p["score"] <= 100 for p in result["pillars"]))
+        self.assertTrue(0 <= result["aq_0_100"] <= 100)
+
+        # CI is measurable only in the 35% full-window component, so its normalized
+        # score comes from that component alone. Other axes retain the 65/35 blend.
+        axes = {axis["name"]: axis for axis in craft["axes"]}
+        self.assertEqual(axes["Context Intelligence"]["normalized_score"], 1.0)
+        self.assertEqual(sum(axis["weight"] for axis in craft["axes"]), 100)
+        expected_craft = round(sum(
+            axis["weight"] * axis["normalized_score"] for axis in craft["axes"]
+        ), 1)
+        self.assertEqual(craft["score"], expected_craft)
+        expected_total = round(sum(
+            pillar["weight"] / 100 * pillar["score"] for pillar in result["pillars"]
+        ))
+        self.assertEqual(result["aq_0_100"], expected_total)
 
     def test_aggregate_weights_recent_bucket_sources_by_recency_and_legacy_sources_by_full_window(self):
         full_inputs = {

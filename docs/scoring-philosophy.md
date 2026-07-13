@@ -17,15 +17,16 @@ The scoring review considered these external recommendations:
   as productivity, and favoring multidimensional outcomes and fast feedback loops.
 
 Those sources support the direction—conditional planning, relevant pre-write evidence,
-evaluated routing, and descriptive volume—but do not establish a universal 60% threshold.
-The 60% target is an explicit, versioned product hypothesis: trivial work is excluded and
-eligible work still has room for direct execution when a formal plan or retrieval adds no value.
+evaluated routing, and descriptive volume—but do not establish universal healthy thresholds.
+The 40% Planning and 60% Context Intelligence targets are explicit, versioned product
+hypotheses: trivial work is excluded and eligible work still has room for direct execution
+when a formal plan or retrieval adds no value.
 
 ## Decisions
 
 | Area | Decision | Why |
 |---|---|---|
-| Planning readiness | Grade ordered planning readiness only on eligible non-trivial changes and target 60% coverage | Small tasks should stay direct; larger work benefits from an explicit plan before editing. Planning Skill practice remains a separate educational term. |
+| Planning readiness | Grade ordered planning readiness only on eligible non-trivial changes and target 40% coverage | Small tasks should stay direct; larger work benefits from an explicit plan before editing. Planning Skill practice remains a separate educational term. |
 | Context Intelligence | Target evidence gathering before the first write in 60% of eligible changes | Grounding should inform implementation, not become after-the-fact ceremony. |
 | Model routing | Reward completed, substantive work routed to a lower-tier model when linkage is observable | This teaches efficient model selection without guessing from incomplete telemetry. |
 | Existing signals | Keep skills, MCPs, CLIs, ToolSearch, fanout, output, delegation, and model diversity scored | They are educational prompts for capabilities users should learn, not claims of output quality. |
@@ -37,8 +38,10 @@ contracts are versioned; changes between incompatible contracts are not labeled 
 or regression.
 
 Eligibility conditions the ordered readiness signal, not every planning-related metric. Actual
-planning Skill use remains separately scored to teach the reusable practice; plan/todo tools can
-prove ordered readiness but do not count as planning Skill practice.
+planning Skill use remains separately scored to teach the reusable practice. Only Plan Mode or
+at least two distinct plan/task steps before the first write prove ordered readiness; a
+planning-labelled Agent event does not. These readiness signals do not count as planning Skill
+practice.
 
 ## Volume is descriptive, not AQ
 
