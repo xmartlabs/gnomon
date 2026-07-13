@@ -222,35 +222,35 @@ class TestConditionalScoring(unittest.TestCase):
         pillar = next(p for p in aq["pillars"] if p["name"] == pillar_name)
         return next(a for a in pillar["axes"] if a["name"] == axis_name)
 
-    def test_aq_six_of_ten_is_full_credit_for_ordered_planning_and_context(self):
-        five = _v5_scoring_stats(planned=5, evidence=5)
-        six = _v5_scoring_stats(planned=6, evidence=6)
+    def test_aq_four_of_ten_is_full_credit_for_ordered_planning_and_context(self):
+        three = _v5_scoring_stats(planned=3, evidence=6)
+        four = _v5_scoring_stats(planned=4, evidence=6)
         ten = _v5_scoring_stats(planned=10, evidence=10)
 
-        ci = self._aq_axis(six, "Craft", "Context Intelligence")
+        ci = self._aq_axis(four, "Craft", "Context Intelligence")
         self.assertEqual(ci["score"], ci["weight"])
         self.assertEqual(
-            self._aq_axis(six, "Breadth", "Discipline")["score"],
+            self._aq_axis(four, "Breadth", "Discipline")["score"],
             self._aq_axis(ten, "Breadth", "Discipline")["score"],
         )
         self.assertLess(
-            self._aq_axis(five, "Breadth", "Discipline")["score"],
-            self._aq_axis(six, "Breadth", "Discipline")["score"],
+            self._aq_axis(three, "Breadth", "Discipline")["score"],
+            self._aq_axis(four, "Breadth", "Discipline")["score"],
         )
 
-    def test_gstack_six_of_ten_is_full_credit_for_ordered_planning(self):
-        five = _v5_scoring_stats(planned=5, evidence=5)
-        six = _v5_scoring_stats(planned=6, evidence=6)
+    def test_gstack_four_of_ten_is_full_credit_for_ordered_planning(self):
+        three = _v5_scoring_stats(planned=3, evidence=4)
+        four = _v5_scoring_stats(planned=4, evidence=4)
         ten = _v5_scoring_stats(planned=10, evidence=10)
-        five_plan = score_breakdown(five)["planning"]["subs"]
-        six_plan = score_breakdown(six)["planning"]["subs"]
+        three_plan = score_breakdown(three)["planning"]["subs"]
+        four_plan = score_breakdown(four)["planning"]["subs"]
         ten_plan = score_breakdown(ten)["planning"]["subs"]
         ordered = lambda subs: next(
             sub for sub in subs if sub["label"] == "Ordered planning readiness")
-        self.assertLess(ordered(five_plan)["pct"], 1.0)
-        self.assertEqual(ordered(six_plan)["pct"], 1.0)
+        self.assertLess(ordered(three_plan)["pct"], 1.0)
+        self.assertEqual(ordered(four_plan)["pct"], 1.0)
         self.assertEqual(ordered(ten_plan)["pct"], 1.0)
-        self.assertEqual(compute_scores(six)["Planning"],
+        self.assertEqual(compute_scores(four)["Planning"],
                          compute_scores(ten)["Planning"])
 
     def test_ordered_terms_preserve_every_unaffected_aq_and_gstack_contribution(self):

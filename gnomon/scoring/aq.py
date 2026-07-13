@@ -126,7 +126,7 @@ def compute_aq(stats):
     ordered_state = b.get("ordered_facts_state")
     eligible = b.get("eligible_change_sessions", 0) or 0
     ordered_planning = (None if ordered_state != "measured" or not eligible
-                        else sat(b.get("planned_eligible_sessions", 0) / eligible, 0.60))
+                        else sat(b.get("planned_eligible_sessions", 0) / eligible, 0.40))
     planning_skill = 1.0 if has_skill(["writing-plans", "autoplan", "plan"]) else 0.6
     discipline = wsum((.40, rate(task_calls, 1.0), "tasktool"),
                       (.40, planning_skill, "skills"),
@@ -186,7 +186,7 @@ def compute_aq(stats):
           "coverage": round(coverage, 3) if coverage is not None else None,
           "target_coverage": TARGET_GROUNDED_COVERAGE,
           "grounded_session_rule": "knowledge-MCP call OR explore-class project/data/design MCP call before a later Edit/Write/MultiEdit/NotebookEdit in the same session",
-          "score_formula": ("coverage = evidence_eligible_sessions / eligible_change_sessions; score = min(1, coverage / 0.60)"
+          "score_formula": ("coverage = evidence_eligible_sessions / eligible_change_sessions; score = min(1, coverage / 0.40)"
                             if _v5_ordered else
                             "coverage = grounded_sessions / write_sessions; score = min(1, coverage / 0.40)")}),
         ("Compounding", 20, compounding, {"compounding_writes": st.get("compounding_writes", 0)}),

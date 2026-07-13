@@ -182,12 +182,12 @@
             "value": 7.8
           },
           "planning": {
-            "axis_narrative": "Planning scores 9.4/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning skill practice (80%).",
+            "axis_narrative": "Planning scores 10.0/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning skill practice (100%).",
             "axis_verdict": "excellent",
-            "drag_narrative": "Planning skill practice is the weakest contributor, scoring 80%. Your value: 0.4 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
-            "drag_note": "Planning skill practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.5.",
+            "drag_narrative": "Planning skill practice is the weakest contributor, scoring 100%. Your value: 0.4 planning sessions/session (target: 0.4 planning sessions/session, higher is better).",
+            "drag_note": "Planning skill practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.4.",
             "gloss": "Think before you build",
-            "score_out_of_10": "9.4 / 10",
+            "score_out_of_10": "10.0 / 10",
             "subs": [
               {
                 "direction": "higher",
@@ -221,21 +221,21 @@
               },
               {
                 "direction": "higher",
-                "display_target": "0.5 planning sessions/session",
+                "display_target": "0.4 planning sessions/session",
                 "display_value": "0.4 planning sessions/session",
                 "is_drag": true,
                 "label": "Planning skill practice",
-                "narrative": "Planning skill practice is good (0.4 planning sessions/session, target 0.5 planning sessions/session \u2014 approaching target, scoring 80%).",
-                "pct": 0.8,
-                "score_pct": 80,
-                "target": 0.5,
+                "narrative": "Planning skill practice is excellent (0.4 planning sessions/session, target 0.4 planning sessions/session \u2014 well above target, scoring 100%).",
+                "pct": 1.0,
+                "score_pct": 100,
+                "target": 0.4,
                 "unit": "planning sessions/session",
-                "verdict": "good",
+                "verdict": "excellent",
                 "weight": 0.2941,
                 "your_value": 0.4
               }
             ],
-            "value": 9.4
+            "value": 10.0
           }
         },
         "signature_moves": [
@@ -585,12 +585,12 @@
               "value": 7.8
             },
             "planning": {
-              "axis_narrative": "Planning scores 9.4/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning skill practice (80%).",
+              "axis_narrative": "Planning scores 10.0/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning skill practice (100%).",
               "axis_verdict": "excellent",
-              "drag_narrative": "Planning skill practice is the weakest contributor, scoring 80%. Your value: 0.4 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
-              "drag_note": "Planning skill practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.5.",
+              "drag_narrative": "Planning skill practice is the weakest contributor, scoring 100%. Your value: 0.4 planning sessions/session (target: 0.4 planning sessions/session, higher is better).",
+              "drag_note": "Planning skill practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.4.",
               "gloss": "Think before you build",
-              "score_out_of_10": "9.4 / 10",
+              "score_out_of_10": "10.0 / 10",
               "subs": [
                 {
                   "direction": "higher",
@@ -624,21 +624,21 @@
                 },
                 {
                   "direction": "higher",
-                  "display_target": "0.5 planning sessions/session",
+                  "display_target": "0.4 planning sessions/session",
                   "display_value": "0.4 planning sessions/session",
                   "is_drag": true,
                   "label": "Planning skill practice",
-                  "narrative": "Planning skill practice is good (0.4 planning sessions/session, target 0.5 planning sessions/session \u2014 approaching target, scoring 80%).",
-                  "pct": 0.8,
-                  "score_pct": 80,
-                  "target": 0.5,
+                  "narrative": "Planning skill practice is excellent (0.4 planning sessions/session, target 0.4 planning sessions/session \u2014 well above target, scoring 100%).",
+                  "pct": 1.0,
+                  "score_pct": 100,
+                  "target": 0.4,
                   "unit": "planning sessions/session",
-                  "verdict": "good",
+                  "verdict": "excellent",
                   "weight": 0.2941,
                   "your_value": 0.4
                 }
               ],
-              "value": 9.4
+              "value": 10.0
             }
           },
           "signature_moves": [
@@ -1710,12 +1710,12 @@
             "value": 7.1
           },
           "planning": {
-            "axis_narrative": "Planning scores 8.6/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning skill practice (72%).",
+            "axis_narrative": "Planning scores 9.1/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning skill practice (90%).",
             "axis_verdict": "excellent",
-            "drag_narrative": "Planning skill practice is the weakest contributor, scoring 72%. Your value: 0.36 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
-            "drag_note": "Planning skill practice is dragging this down \u2014 0.36 planning sessions/session, target ~0.5.",
+            "drag_narrative": "Planning skill practice is the weakest contributor, scoring 90%. Your value: 0.36 planning sessions/session (target: 0.4 planning sessions/session, higher is better).",
+            "drag_note": "Planning skill practice is dragging this down \u2014 0.36 planning sessions/session, target ~0.4.",
             "gloss": "Think before you build",
-            "score_out_of_10": "8.6 / 10",
+            "score_out_of_10": "9.1 / 10",
             "subs": [
               {
                 "direction": "higher",
@@ -1749,21 +1749,21 @@
               },
               {
                 "direction": "higher",
-                "display_target": "0.5 planning sessions/session",
+                "display_target": "0.4 planning sessions/session",
                 "display_value": "0.36 planning sessions/session",
                 "is_drag": true,
                 "label": "Planning skill practice",
-                "narrative": "Planning skill practice is good (0.36 planning sessions/session, target 0.5 planning sessions/session \u2014 approaching target, scoring 72%).",
-                "pct": 0.72,
-                "score_pct": 72,
-                "target": 0.5,
+                "narrative": "Planning skill practice is good (0.36 planning sessions/session, target 0.4 planning sessions/session \u2014 well above target, scoring 90%).",
+                "pct": 0.8999999999999999,
+                "score_pct": 90,
+                "target": 0.4,
                 "unit": "planning sessions/session",
                 "verdict": "good",
                 "weight": 0.2941,
                 "your_value": 0.36
               }
             ],
-            "value": 8.6
+            "value": 9.1
           }
         },
         "signature_moves": [
@@ -2113,12 +2113,12 @@
               "value": 7.8
             },
             "planning": {
-              "axis_narrative": "Planning scores 9.4/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning skill practice (80%).",
+              "axis_narrative": "Planning scores 10.0/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning skill practice (100%).",
               "axis_verdict": "excellent",
-              "drag_narrative": "Planning skill practice is the weakest contributor, scoring 80%. Your value: 0.4 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
-              "drag_note": "Planning skill practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.5.",
+              "drag_narrative": "Planning skill practice is the weakest contributor, scoring 100%. Your value: 0.4 planning sessions/session (target: 0.4 planning sessions/session, higher is better).",
+              "drag_note": "Planning skill practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.4.",
               "gloss": "Think before you build",
-              "score_out_of_10": "9.4 / 10",
+              "score_out_of_10": "10.0 / 10",
               "subs": [
                 {
                   "direction": "higher",
@@ -2152,21 +2152,21 @@
                 },
                 {
                   "direction": "higher",
-                  "display_target": "0.5 planning sessions/session",
+                  "display_target": "0.4 planning sessions/session",
                   "display_value": "0.4 planning sessions/session",
                   "is_drag": true,
                   "label": "Planning skill practice",
-                  "narrative": "Planning skill practice is good (0.4 planning sessions/session, target 0.5 planning sessions/session \u2014 approaching target, scoring 80%).",
-                  "pct": 0.8,
-                  "score_pct": 80,
-                  "target": 0.5,
+                  "narrative": "Planning skill practice is excellent (0.4 planning sessions/session, target 0.4 planning sessions/session \u2014 well above target, scoring 100%).",
+                  "pct": 1.0,
+                  "score_pct": 100,
+                  "target": 0.4,
                   "unit": "planning sessions/session",
-                  "verdict": "good",
+                  "verdict": "excellent",
                   "weight": 0.2941,
                   "your_value": 0.4
                 }
               ],
-              "value": 9.4
+              "value": 10.0
             }
           },
           "signature_moves": [
@@ -2974,12 +2974,12 @@
             "value": 7.8
           },
           "planning": {
-            "axis_narrative": "Planning scores 9.4/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning skill practice (80%).",
+            "axis_narrative": "Planning scores 10.0/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning skill practice (100%).",
             "axis_verdict": "excellent",
-            "drag_narrative": "Planning skill practice is the weakest contributor, scoring 80%. Your value: 0.4 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
-            "drag_note": "Planning skill practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.5.",
+            "drag_narrative": "Planning skill practice is the weakest contributor, scoring 100%. Your value: 0.4 planning sessions/session (target: 0.4 planning sessions/session, higher is better).",
+            "drag_note": "Planning skill practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.4.",
             "gloss": "Think before you build",
-            "score_out_of_10": "9.4 / 10",
+            "score_out_of_10": "10.0 / 10",
             "subs": [
               {
                 "direction": "higher",
@@ -3013,21 +3013,21 @@
               },
               {
                 "direction": "higher",
-                "display_target": "0.5 planning sessions/session",
+                "display_target": "0.4 planning sessions/session",
                 "display_value": "0.4 planning sessions/session",
                 "is_drag": true,
                 "label": "Planning skill practice",
-                "narrative": "Planning skill practice is good (0.4 planning sessions/session, target 0.5 planning sessions/session \u2014 approaching target, scoring 80%).",
-                "pct": 0.8,
-                "score_pct": 80,
-                "target": 0.5,
+                "narrative": "Planning skill practice is excellent (0.4 planning sessions/session, target 0.4 planning sessions/session \u2014 well above target, scoring 100%).",
+                "pct": 1.0,
+                "score_pct": 100,
+                "target": 0.4,
                 "unit": "planning sessions/session",
-                "verdict": "good",
+                "verdict": "excellent",
                 "weight": 0.2941,
                 "your_value": 0.4
               }
             ],
-            "value": 9.4
+            "value": 10.0
           }
         },
         "signature_moves": [
@@ -3377,12 +3377,12 @@
               "value": 7.8
             },
             "planning": {
-              "axis_narrative": "Planning scores 9.4/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning skill practice (80%).",
+              "axis_narrative": "Planning scores 10.0/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning skill practice (100%).",
               "axis_verdict": "excellent",
-              "drag_narrative": "Planning skill practice is the weakest contributor, scoring 80%. Your value: 0.4 planning sessions/session (target: 0.5 planning sessions/session, higher is better).",
-              "drag_note": "Planning skill practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.5.",
+              "drag_narrative": "Planning skill practice is the weakest contributor, scoring 100%. Your value: 0.4 planning sessions/session (target: 0.4 planning sessions/session, higher is better).",
+              "drag_note": "Planning skill practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.4.",
               "gloss": "Think before you build",
-              "score_out_of_10": "9.4 / 10",
+              "score_out_of_10": "10.0 / 10",
               "subs": [
                 {
                   "direction": "higher",
@@ -3416,21 +3416,21 @@
                 },
                 {
                   "direction": "higher",
-                  "display_target": "0.5 planning sessions/session",
+                  "display_target": "0.4 planning sessions/session",
                   "display_value": "0.4 planning sessions/session",
                   "is_drag": true,
                   "label": "Planning skill practice",
-                  "narrative": "Planning skill practice is good (0.4 planning sessions/session, target 0.5 planning sessions/session \u2014 approaching target, scoring 80%).",
-                  "pct": 0.8,
-                  "score_pct": 80,
-                  "target": 0.5,
+                  "narrative": "Planning skill practice is excellent (0.4 planning sessions/session, target 0.4 planning sessions/session \u2014 well above target, scoring 100%).",
+                  "pct": 1.0,
+                  "score_pct": 100,
+                  "target": 0.4,
                   "unit": "planning sessions/session",
-                  "verdict": "good",
+                  "verdict": "excellent",
                   "weight": 0.2941,
                   "your_value": 0.4
                 }
               ],
-              "value": 9.4
+              "value": 10.0
             }
           },
           "signature_moves": [
@@ -3837,14 +3837,14 @@
               },
               {
                 "direction": "higher",
-                "display_target": "0.5 planning sessions/session",
+                "display_target": "0.4 planning sessions/session",
                 "display_value": "0 planning sessions/session",
                 "is_drag": false,
                 "label": "Planning skill practice",
                 "narrative": "No activity recorded for Planning skill practice.",
                 "pct": 0.5,
                 "score_pct": 50,
-                "target": 0.5,
+                "target": 0.4,
                 "unit": "planning sessions/session",
                 "verdict": "adequate",
                 "weight": 0.25,
@@ -3852,14 +3852,14 @@
               },
               {
                 "direction": "higher",
-                "display_target": "0.6 eligible-session coverage",
+                "display_target": "0.4 eligible-session coverage",
                 "display_value": "0 eligible-session coverage",
                 "is_drag": false,
                 "label": "Ordered planning readiness",
                 "narrative": "No activity recorded for Ordered planning readiness.",
                 "pct": 0.5,
                 "score_pct": 50,
-                "target": 0.6,
+                "target": 0.4,
                 "unit": "eligible-session coverage",
                 "verdict": "adequate",
                 "weight": 0.15,
@@ -4240,14 +4240,14 @@
                 },
                 {
                   "direction": "higher",
-                  "display_target": "0.5 planning sessions/session",
+                  "display_target": "0.4 planning sessions/session",
                   "display_value": "0 planning sessions/session",
                   "is_drag": false,
                   "label": "Planning skill practice",
                   "narrative": "No activity recorded for Planning skill practice.",
                   "pct": 0.5,
                   "score_pct": 50,
-                  "target": 0.5,
+                  "target": 0.4,
                   "unit": "planning sessions/session",
                   "verdict": "adequate",
                   "weight": 0.25,
@@ -4255,14 +4255,14 @@
                 },
                 {
                   "direction": "higher",
-                  "display_target": "0.6 eligible-session coverage",
+                  "display_target": "0.4 eligible-session coverage",
                   "display_value": "0 eligible-session coverage",
                   "is_drag": false,
                   "label": "Ordered planning readiness",
                   "narrative": "No activity recorded for Ordered planning readiness.",
                   "pct": 0.5,
                   "score_pct": 50,
-                  "target": 0.6,
+                  "target": 0.4,
                   "unit": "eligible-session coverage",
                   "verdict": "adequate",
                   "weight": 0.15,
@@ -4724,14 +4724,14 @@
               },
               {
                 "direction": "higher",
-                "display_target": "0.5 planning sessions/session",
+                "display_target": "0.4 planning sessions/session",
                 "display_value": "0.53 planning sessions/session",
                 "is_drag": false,
                 "label": "Planning skill practice",
-                "narrative": "Planning skill practice is excellent (0.53 planning sessions/session, target 0.5 planning sessions/session \u2014 well above target, scoring 100%).",
+                "narrative": "Planning skill practice is excellent (0.53 planning sessions/session, target 0.4 planning sessions/session \u2014 well above target, scoring 100%).",
                 "pct": 1.0,
                 "score_pct": 100,
-                "target": 0.5,
+                "target": 0.4,
                 "unit": "planning sessions/session",
                 "verdict": "excellent",
                 "weight": 0.2941,
@@ -5413,14 +5413,14 @@
                 },
                 {
                   "direction": "higher",
-                  "display_target": "0.5 planning sessions/session",
+                  "display_target": "0.4 planning sessions/session",
                   "display_value": "0.53 planning sessions/session",
                   "is_drag": false,
                   "label": "Planning skill practice",
-                  "narrative": "Planning skill practice is excellent (0.53 planning sessions/session, target 0.5 planning sessions/session \u2014 well above target, scoring 100%).",
+                  "narrative": "Planning skill practice is excellent (0.53 planning sessions/session, target 0.4 planning sessions/session \u2014 well above target, scoring 100%).",
                   "pct": 1.0,
                   "score_pct": 100,
-                  "target": 0.5,
+                  "target": 0.4,
                   "unit": "planning sessions/session",
                   "verdict": "excellent",
                   "weight": 0.2941,
