@@ -19,6 +19,7 @@ loop, fed from the small info tuple `observe` returns for each genuine prompt.
 
 import math
 import os
+import re
 import statistics
 import time
 from collections import Counter, defaultdict
@@ -29,6 +30,7 @@ from gnomon.taxonomy import (
     SCHEDULE_TOOLS, ASK_TOOLS, PLAN_SIGNAL_TOOLS, PLAN_SKILL_NEEDLES,
     KNOWLEDGE_SKILL_NEEDLES,
     classify_tool, classify_mcp_subcategory, CI_CONTEXT_SUBCATS,
+    is_substantive_tool,
     bash_writes_file, bash_runs_tests, bash_runs_knowledge, _extract_clis,
     _is_compounding_path, _SKILL_MD_RX,
 )
@@ -66,6 +68,11 @@ def _zero_tok():
     return {"input": 0, "output": 0, "cache_read": 0, "cache_creation": 0}
 
 
+def _notification_tag(text, tag):
+    match = re.search(rf"<{re.escape(tag)}>(.*?)</{re.escape(tag)}>", text or "", re.DOTALL)
+    return match.group(1).strip() if match else None
+
+
 class Accumulator:
     """Per-event signal accumulator for one partition (the whole corpus, or one source).
 
@@ -101,6 +108,14 @@ class Accumulator:
         self.native_calls = 0
 
         self.model_counter = Counter()
+        self.session_models = {}
+        self.codex_spawn_events = defaultdict(list)
+        self.routing_links = []
+        # Claude parent/child linkage is split across the parent transcript and
+        # subagent files. Keep raw join facts until shaping so file order is irrelevant.
+        self.claude_agent_attempts = {}
+        self.claude_child_facts = defaultdict(
+            lambda: {"models": set(), "substantive_calls": 0, "writes": 0})
         self.skill_counter = Counter()
         self.subagent_counter = Counter()
         self.agents_per_session = defaultdict(int)
@@ -140,6 +155,10 @@ class Accumulator:
         # planning Skill. Counting distinct sessions (not tool calls) stops TodoWrite,
         # which fires many times per session, from inflating the metric.
         self.plan_sessions = set()
+        self.planning_skill_sessions = set()
+        self.session_ordered_tools = defaultdict(list)
+        self.month_session_ordered_tools = defaultdict(lambda: defaultdict(list))
+        self.ordered_facts_complete = True
 
         self.hour_hist = Counter()
         self.weekday_hist = Counter()
@@ -183,6 +202,7 @@ class Accumulator:
         self.month_compounding = Counter()
         self.month_shell_test_runs = Counter()
         self.month_plan_sessions = defaultdict(set)   # "YYYY-MM" -> {sessionId with planning}
+        self.month_planning_skill_sessions = defaultdict(set)
         self.month_api_errors = Counter()
 
         self.model_tokens = defaultdict(_zero_tok)
@@ -245,6 +265,14 @@ class Accumulator:
         if mkey:
             self.month_plan_sessions[mkey].add(sid)
 
+    def _mark_planning_skill_session(self, sid, mkey):
+        """Record actual planning Skill use, separate from plan/todo ceremony."""
+        if not sid:
+            return
+        self.planning_skill_sessions.add(sid)
+        if mkey:
+            self.month_planning_skill_sessions[mkey].add(sid)
+
     def _counted_plan_sessions(self):
         """Plan sessions restricted to the same universe as total_sessions, so the
         plan_sessions / total_sessions fraction can never exceed 1 (a session that
@@ -252,6 +280,11 @@ class Accumulator:
         if self.session_ts:
             return len(self.plan_sessions & set(self.session_ts))
         return min(len(self.plan_sessions), len(self.session_files))
+
+    def _counted_planning_skill_sessions(self):
+        if self.session_ts:
+            return len(self.planning_skill_sessions & set(self.session_ts))
+        return min(len(self.planning_skill_sessions), len(self.session_files))
 
     # ---- Context Intelligence (behavioral grounding) helper ----------------
     def _consume_knowledge_grounding(self, sid, mkey):
@@ -282,6 +315,187 @@ class Accumulator:
         if self.session_ts:
             return len(self.write_sessions & set(self.session_ts))
         return min(len(self.write_sessions), len(self.session_files))
+
+    def _claude_attempt(self, tool_use_id):
+        return self.claude_agent_attempts.setdefault(tool_use_id, {
+            "tool_use_id": tool_use_id, "invocation_seen": False,
+            "result_seen": False,
+            "parent_session": None, "lead_model": None, "assistant_uuid": None,
+            "agent_id": None, "status": None, "resolved_model": None,
+            "substantive_calls": 0, "writes": 0, "ambiguous": False,
+        })
+
+    def _record_claude_agent_result(self, ev, block, sid):
+        result = ev.get("toolUseResult")
+        if self._cur_src != "claude" or not isinstance(result, dict):
+            return
+        tool_use_id = block.get("tool_use_id")
+        if not tool_use_id:
+            return
+        # Claude adds toolUseResult metadata to many native tool results. Only an
+        # already-observed Agent call or a result carrying agent identity belongs
+        # to the routing join.
+        if tool_use_id not in self.claude_agent_attempts and not result.get("agentId"):
+            return
+        attempt = self._claude_attempt(tool_use_id)
+        attempt["result_seen"] = True
+        agent_id = result.get("agentId")
+        status = result.get("status")
+        assistant_uuid = ev.get("sourceToolAssistantUUID")
+        if attempt["parent_session"] not in (None, sid):
+            attempt["ambiguous"] = True
+        if attempt["assistant_uuid"] and assistant_uuid and attempt["assistant_uuid"] != assistant_uuid:
+            attempt["ambiguous"] = True
+        if attempt["agent_id"] not in (None, agent_id):
+            attempt["ambiguous"] = True
+        if attempt["status"] not in (None, "async_launched", status):
+            attempt["ambiguous"] = True
+        attempt["parent_session"] = attempt["parent_session"] or sid
+        attempt["agent_id"] = attempt["agent_id"] or agent_id
+        attempt["status"] = status or attempt["status"]
+        attempt["resolved_model"] = result.get("resolvedModel") or attempt["resolved_model"]
+        tool_stats = result.get("toolStats") or {}
+        try:
+            attempt["writes"] = max(attempt["writes"], int(tool_stats.get("editFileCount") or 0))
+        except (ValueError, TypeError):
+            pass
+
+    def _record_claude_notification(self, ev, content):
+        if (self._cur_src != "claude" or not isinstance(content, str)
+                or (ev.get("origin") or {}).get("kind") != "task-notification"):
+            return
+        tool_use_id = _notification_tag(content, "tool-use-id")
+        agent_id = _notification_tag(content, "task-id")
+        status = _notification_tag(content, "status")
+        if not tool_use_id:
+            return
+        attempt = self._claude_attempt(tool_use_id)
+        if attempt["agent_id"] not in (None, agent_id):
+            attempt["ambiguous"] = True
+        if attempt["status"] not in (None, "async_launched", status):
+            attempt["ambiguous"] = True
+        attempt["agent_id"] = attempt["agent_id"] or agent_id
+        attempt["status"] = status or attempt["status"]
+
+    def _routing_snapshot(self, src_name=None):
+        supported = ({src_name} if src_name else set(self.source_sessions)) & {"claude", "codex"}
+        if not supported:
+            return [], "unsupported"
+
+        pairs = []
+        matched_spawns = set()
+        # Resolve Codex delegation identity at snapshot time so source file order
+        # cannot affect the join.  A reused child path is matched one-to-one in
+        # event order; if more than one same-identity call could own a turn, do
+        # not guess.
+        ordered_links = sorted(
+            enumerate(self.routing_links),
+            key=lambda item: (item[1].get("_order") is None,
+                              item[1].get("_order") or (float("inf"), 0), item[0]),
+        )
+        resolved = {}
+        ambiguous_links = set()
+        for link_index, link in ordered_links:
+            parent = link.get("parent_session")
+            link_order = link.get("_order")
+            identity = link.get("delegation_identity")
+            turn_id = link.get("turn_id")
+            exact_candidates = []
+            identity_candidates = []
+            for spawn_index, spawn in enumerate(self.codex_spawn_events.get(parent, [])):
+                key = (parent, spawn_index)
+                if key in matched_spawns:
+                    continue
+                exact_turn = bool(turn_id and spawn.get("turn_id") == turn_id)
+                exact_identity = bool(identity and spawn.get("identity") == identity)
+                spawn_order = spawn.get("order")
+                if exact_turn:
+                    exact_candidates.append((key, spawn))
+                elif exact_identity:
+                    if (link_order is not None and spawn_order is not None
+                            and spawn_order > link_order):
+                        continue
+                    identity_candidates.append((key, spawn))
+            # Submission/turn identity is authoritative. Stable child identity and
+            # event order are only a fallback when no exact submission exists.
+            candidates = exact_candidates or identity_candidates
+            if len(candidates) == 1:
+                key, spawn = candidates[0]
+                matched_spawns.add(key)
+                resolved[link_index] = spawn.get("model")
+            elif len(candidates) > 1:
+                ambiguous_links.add(link_index)
+
+        for link_index, link in enumerate(self.routing_links):
+            pair = dict(link)
+            pair.pop("_order", None)
+            if not pair.get("lead_model"):
+                pair["lead_model"] = resolved.get(link_index)
+            pairs.append(pair)
+        incomplete = any(not p.get("lifecycle_known", False) for p in pairs)
+        incomplete = incomplete or bool(ambiguous_links)
+        # Completed work requires a proven parent delegation.  Known aborts are
+        # still measured exclusions even when their parent call is outside the
+        # selected window, because they never enter the routing denominator.
+        incomplete = incomplete or any(
+            p.get("completed") and not p.get("lead_model") for p in pairs
+            if p.get("provider") == "openai"
+        )
+        unmatched_spawns = {
+            (parent, index)
+            for parent, spawns in self.codex_spawn_events.items()
+            for index, _spawn in enumerate(spawns)
+        } - matched_spawns
+        incomplete = incomplete or bool(unmatched_spawns)
+
+        if "claude" in supported:
+            referenced_children = set()
+            for attempt in self.claude_agent_attempts.values():
+                agent_id = attempt.get("agent_id")
+                child = self.claude_child_facts.get(agent_id) if agent_id else None
+                models = child.get("models", set()) if child else set()
+                child_model = attempt.get("resolved_model")
+                if not child_model and len(models) == 1:
+                    child_model = next(iter(models))
+                lifecycle_known = attempt.get("status") not in (None, "async_launched")
+                aborted = attempt.get("status") in {"killed", "cancelled", "stopped"}
+                if (aborted and attempt.get("invocation_seen") and attempt.get("result_seen")
+                        and not attempt.get("ambiguous") and lifecycle_known
+                        and attempt.get("lead_model")):
+                    if agent_id:
+                        referenced_children.add(agent_id)
+                    pairs.append({
+                        "provider": "anthropic",
+                        "parent_session": attempt.get("parent_session"),
+                        "child_session": agent_id,
+                        "lead_model": attempt.get("lead_model"),
+                        "child_model": child_model,
+                        "completed": False,
+                        "substantive_calls": 0,
+                        "writes": 0,
+                    })
+                    continue
+                valid = (attempt.get("invocation_seen") and not attempt.get("ambiguous")
+                         and agent_id and lifecycle_known and attempt.get("lead_model")
+                         and child_model and child is not None)
+                if not valid:
+                    incomplete = True
+                    continue
+                referenced_children.add(agent_id)
+                pairs.append({
+                    "provider": "anthropic",
+                    "parent_session": attempt.get("parent_session"),
+                    "child_session": agent_id,
+                    "lead_model": attempt.get("lead_model"),
+                    "child_model": child_model,
+                    "completed": attempt.get("status") == "completed",
+                    "substantive_calls": max(
+                        attempt.get("substantive_calls", 0), child["substantive_calls"]),
+                    "writes": max(attempt.get("writes", 0), child["writes"]),
+                })
+            if set(self.claude_child_facts) - referenced_children:
+                incomplete = True
+        return pairs, "unmeasured" if incomplete else "measured"
 
     def end_file(self):
         # flush any remaining edit runs as iteration-depth samples
@@ -348,6 +562,18 @@ class Accumulator:
 
         msg = ev.get("message") if isinstance(ev.get("message"), dict) else None
 
+        if self._cur_src == "claude" and ev.get("isSidechain") and ev.get("agentId"):
+            child = self.claude_child_facts[ev["agentId"]]
+            child_model = (msg or {}).get("model")
+            if child_model:
+                child["models"].add(child_model)
+
+        if etype == "routing_link":
+            link = dict(ev.get("routing") or {})
+            link["_order"] = (dt.timestamp(), ev.get("__ordinal__", 0)) if dt else None
+            self.routing_links.append(link)
+            return None
+
         # ---- API error / retry events (system + assistant) ----------
         if ev.get("isApiErrorMessage") or ev.get("apiErrorStatus"):
             self.api_errors += 1
@@ -360,6 +586,7 @@ class Accumulator:
 
         # ---- genuine user prompts -----------------------------------
         if etype == "user" and msg is not None:
+            self._record_claude_notification(ev, msg.get("content"))
             if (ev.get("isMeta") or ev.get("isCompactSummary")
                     or ev.get("isVisibleInTranscriptOnly") or ev.get("isSidechain")):
                 pass  # injected / non-human / subagent-dispatch instruction
@@ -402,6 +629,7 @@ class Accumulator:
             if isinstance(content, list):
                 for b in content:
                     if isinstance(b, dict) and b.get("type") == "tool_result":
+                        self._record_claude_agent_result(ev, b, sid)
                         if b.get("is_error"):
                             self.tool_errors += 1
                             if mkey:
@@ -422,6 +650,8 @@ class Accumulator:
                     self.month_assistant_turns[mkey] += 1
             mdl = msg.get("model")
             if mdl:
+                if sid:
+                    self.session_models[sid] = mdl
                 if not _is_codex_usage:
                     self.model_counter[mdl] += 1
                     if mkey:
@@ -451,6 +681,7 @@ class Accumulator:
                     self.month_skill_counter[mkey][ev["attributionSkill"]] += 1
                 if self._is_plan_skill(ev["attributionSkill"]):
                     self._mark_plan_session(sid, mkey)
+                    self._mark_planning_skill_session(sid, mkey)
                 if self._is_knowledge_skill(ev["attributionSkill"]):
                     self._pending_knowledge_grounding[sid] = True
             content = msg.get("content")
@@ -472,6 +703,45 @@ class Accumulator:
                         self.tool_use_total += 1
                         self.tool_counter[name] += 1
                         _cat = classify_tool(name)
+                        if (self._cur_src == "claude" and ev.get("isSidechain")
+                                and ev.get("agentId")):
+                            child = self.claude_child_facts[ev["agentId"]]
+                            if is_substantive_tool(name):
+                                child["substantive_calls"] += 1
+                            if name in {"Edit", "Write", "MultiEdit", "NotebookEdit"}:
+                                child["writes"] += 1
+                        if sid:
+                            _target = (inp.get("file_path") or inp.get("notebook_path")
+                                       or inp.get("path") or inp.get("pattern") or inp.get("query") or "")
+                            _items = (inp.get("todos") or inp.get("items") or inp.get("tasks")
+                                      or inp.get("plan") or [])
+                            if isinstance(_items, list):
+                                _items = [
+                                    (x.get("content") or x.get("step") or "")
+                                    if isinstance(x, dict) else x for x in _items
+                                ]
+                            _fact_sid = (self._cur_src, sid)
+                            _ordered_fact = {
+                                "name": name, "target": _target, "items": _items,
+                                "cwd": cwd,
+                                "order": dt.timestamp() if dt is not None else float("inf"),
+                                "ordinal": ev.get(
+                                    "__ordinal__", len(self.session_ordered_tools[_fact_sid])),
+                                "knowledge": bool(name.startswith("mcp__") and (
+                                    classify_mcp_subcategory(
+                                        name.split("__")[1] if len(name.split("__")) > 1 else "",
+                                        name.split("__")[-1]) == "knowledge" or (
+                                        classify_mcp_subcategory(
+                                            name.split("__")[1] if len(name.split("__")) > 1 else "",
+                                            name.split("__")[-1]) in CI_CONTEXT_SUBCATS
+                                        and _cat == "explore")))
+                                if name.startswith("mcp__") else bool(name == "Bash" and bash_runs_knowledge(inp.get("command", "") or "")),
+                            }
+                            self.session_ordered_tools[_fact_sid].append(_ordered_fact)
+                            if dt is None:
+                                self.ordered_facts_complete = False
+                            if mkey:
+                                self.month_session_ordered_tools[mkey][_fact_sid].append(_ordered_fact)
                         if mkey:
                             self.month_tools[mkey] += 1
                             self.month_tool_counter[mkey][name] += 1
@@ -526,6 +796,7 @@ class Accumulator:
                                 # a planning Skill also marks this a planning session
                                 if self._is_plan_skill(s):
                                     self._mark_plan_session(sid, mkey)
+                                    self._mark_planning_skill_session(sid, mkey)
                                 if self._is_knowledge_skill(s):
                                     self._pending_knowledge_grounding[sid] = True
                         # Plan-ceremony signal: mark this SESSION as a planning session.
@@ -538,6 +809,27 @@ class Accumulator:
                         if name in PLAN_SIGNAL_TOOLS:
                             self._mark_plan_session(sid, mkey)
                         if name == "Agent":
+                            if self._cur_src == "codex" and sid:
+                                self.codex_spawn_events[sid].append({
+                                    "order": ((dt.timestamp(), ev.get("__ordinal__", 0))
+                                              if dt is not None else None),
+                                    "model": mdl,
+                                    "identity": inp.get("_routing_identity"),
+                                    "turn_id": inp.get("_routing_turn_id"),
+                                })
+                            if self._cur_src == "claude":
+                                tool_use_id = b.get("id")
+                                if tool_use_id:
+                                    attempt = self._claude_attempt(tool_use_id)
+                                    invocation = (sid, mdl, ev.get("uuid"))
+                                    previous = (attempt.get("parent_session"), attempt.get("lead_model"),
+                                                attempt.get("assistant_uuid"))
+                                    if attempt["invocation_seen"] and previous != invocation:
+                                        attempt["ambiguous"] = True
+                                    attempt.update({
+                                        "invocation_seen": True, "parent_session": sid,
+                                        "lead_model": mdl, "assistant_uuid": ev.get("uuid"),
+                                    })
                             st = inp.get("subagent_type", "general-purpose")
                             self.subagent_counter[st] += 1
                             if self._is_plan_skill(st):
@@ -651,6 +943,7 @@ class Accumulator:
                                         self.month_skill_counter[mkey][_sm.group(1)] += 1
                                     if self._is_plan_skill(_sm.group(1)):
                                         self._mark_plan_session(sid, mkey)
+                                        self._mark_planning_skill_session(sid, mkey)
                                     if self._is_knowledge_skill(_sm.group(1)):
                                         self._pending_knowledge_grounding[sid] = True
                             if bash_writes_file(cmd):
@@ -686,6 +979,11 @@ class Accumulator:
         """Build the full corpus stats dict. Also stashes self.gc (the raw git_churn
         dict) for the narrative payload main() consumes."""
         # ---- derive ----------------------------------------------------------
+        _ordered = [derive_ordered_behavior(v) for v in self.session_ordered_tools.values()]
+        _eligible = sum(x["eligible"] for x in _ordered)
+        _planned = sum(x["planned"] for x in _ordered)
+        _evidence = sum(x["evidence"] for x in _ordered)
+        _routing_pairs, _routing_state = self._routing_snapshot()
         total_sessions = len(self.session_ts) or len(self.session_files)
         # Active time = sum of consecutive inter-event gaps, each capped at GAP_CAP_S,
         # so resumed-session reuse and overnight idle don't inflate engaged time.
@@ -899,6 +1197,14 @@ class Accumulator:
                 "scheduled_actions": self.scheduled_actions,
                 "shell_test_runs": self.shell_test_runs,
                 "plan_sessions": self._counted_plan_sessions(),
+                "planning_skill_sessions": self._counted_planning_skill_sessions(),
+                "eligible_change_sessions": _eligible,
+                "planned_eligible_sessions": _planned,
+                "evidence_eligible_sessions": _evidence,
+                "ordered_facts_state": ("measured" if self.tool_use_total
+                                        and self.ordered_facts_complete else "unmeasured"),
+                "linked_model_pairs": _routing_pairs,
+                "linked_model_routing_state": _routing_state,
                 "no_tool_activity": no_tool_activity,
             },
             "rhythm": {
@@ -1005,8 +1311,10 @@ class Accumulator:
             month_mcp_subcategory_servers=self.month_mcp_subcategory_servers,
             month_grounded_sessions=self.month_grounded_sessions,
             month_write_sessions=self.month_write_sessions,
+            month_session_ordered_tools=self.month_session_ordered_tools,
             month_compounding=self.month_compounding, month_shell_test_runs=self.month_shell_test_runs,
             month_plan_sessions=self.month_plan_sessions,
+            month_planning_skill_sessions=self.month_planning_skill_sessions,
             month_api_errors=self.month_api_errors,
             planning_ratio_window=planning_ratio,
             cwds=list(self.project_activity.keys()),
@@ -1024,6 +1332,9 @@ class Accumulator:
         (the pre-single-pass per-source path). Inheriting corpus-level flags here would
         flip a prompt-only source's null metrics from None to 0 and mis-bound its churn."""
         _s_tool_total = self.tool_use_total
+        _s_ordered = [derive_ordered_behavior(v) for v in self.session_ordered_tools.values()]
+        _s_eligible = sum(x["eligible"] for x in _s_ordered)
+        _s_routing_pairs, _s_routing_state = self._routing_snapshot(src_name)
         _s_all_no_agent = src_name in _AGENT_UNSUPPORTED_SOURCES
         # Null-honesty per source: a source slice with sessions but zero tool calls
         # cannot measure tool-level metrics → None (not a real 0).
@@ -1105,6 +1416,14 @@ class Accumulator:
                 "fanout_median": _s_fan_med,
                 "shell_test_runs": self.shell_test_runs,
                 "plan_sessions": self._counted_plan_sessions(),
+                "planning_skill_sessions": self._counted_planning_skill_sessions(),
+                "eligible_change_sessions": _s_eligible,
+                "planned_eligible_sessions": sum(x["planned"] for x in _s_ordered),
+                "evidence_eligible_sessions": sum(x["evidence"] for x in _s_ordered),
+                "ordered_facts_state": ("measured" if _s_tool_total
+                                        and self.ordered_facts_complete else "unmeasured"),
+                "linked_model_pairs": _s_routing_pairs,
+                "linked_model_routing_state": _s_routing_state,
                 "delegate_actions": _s_cats.get("delegate", 0),
                 "background_tasks": self.background_tasks,
                 "scheduled_actions": self.scheduled_actions,
@@ -1161,3 +1480,59 @@ class Accumulator:
         s_stats["_scoring_monthly_full"] = self.to_monthly(
             _s_planning_ratio, _s_no_tool, _s_all_no_agent)
         return s_stats
+_WRITE_TOOLS_V5 = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
+_EVIDENCE_TOOLS_V5 = {"Read", "Grep", "Glob", "NotebookRead"}
+
+
+def _normalized_ordered_target(event):
+    target = str(event.get("target") or "")
+    if not target:
+        return ""
+    cwd = str(event.get("cwd") or "")
+    if cwd and not os.path.isabs(target):
+        target = os.path.join(cwd, target)
+    return os.path.normpath(target)
+
+
+def derive_ordered_behavior(events):
+    """Derive v5 eligibility and pre-write behavior from canonical ordered tool facts."""
+    events = sorted(
+        enumerate(events or []),
+        key=lambda item: (
+            item[1].get("order", float("inf")),
+            item[1].get("ordinal", item[0]),
+        ),
+    )
+    events = [event for _, event in events]
+    written, substantive, seen_reads = set(), 0, set()
+    first_write = None
+    planned_before = evidence_before = False
+    actionable_plan_steps = set()
+    for index, event in enumerate(events):
+        name = str(event.get("name") or "")
+        target = _normalized_ordered_target(event)
+        if name in _WRITE_TOOLS_V5:
+            first_write = index if first_write is None else first_write
+            if target:
+                written.add(target)
+        if is_substantive_tool(name):
+            if name in _EVIDENCE_TOOLS_V5:
+                key = target
+                if key not in seen_reads:
+                    substantive += 1
+                    seen_reads.add(key)
+            else:
+                substantive += 1
+        if first_write is None:
+            items = event.get("items") or []
+            if name in {"TodoWrite", "TaskCreate"}:
+                actionable_plan_steps.update(
+                    str(item).strip() for item in items if str(item).strip())
+            if (name in {"EnterPlanMode", "ExitPlanMode"}
+                    or len(actionable_plan_steps) >= 2):
+                planned_before = True
+            if name in _EVIDENCE_TOOLS_V5 or event.get("knowledge"):
+                evidence_before = True
+    eligible = first_write is not None and (len(written) >= 2 or substantive >= 10)
+    return {"eligible": eligible, "planned": eligible and planned_before,
+            "evidence": eligible and evidence_before}

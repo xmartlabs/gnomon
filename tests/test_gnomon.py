@@ -273,9 +273,9 @@ class TestComputeAqV2(unittest.TestCase):
         self.assertEqual(names, ["Verification", "Grounding", "Context Intelligence", "Compounding"])
 
     def test_context_intelligence_full_credit_at_target(self):
-        # coverage = 40/100 = 0.40 == TARGET -> full credit (sat=1.0 -> axis score ==
+        # coverage = 60/100 = 0.60 == TARGET -> full credit (sat=1.0 -> axis score ==
         # its full renormalized weight).
-        aq = self._craft_ci(grounded=40, sessions=100)
+        aq = self._craft_ci(grounded=60, sessions=100)
         craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
         ci = next(a for a in craft["axes"] if a["name"] == "Context Intelligence")
         self.assertEqual(ci["score"], ci["weight"])
@@ -327,9 +327,9 @@ class TestComputeAqV2(unittest.TestCase):
         )
         self.assertEqual(
             ci["signals"]["score_formula"],
-            "coverage = grounded_sessions / write_sessions; score = min(1, coverage / 0.40)",
+            "coverage = grounded_sessions / write_sessions; score = min(1, coverage / 0.60)",
         )
-        self.assertEqual(ci["signals"]["target_coverage"], 0.4)
+        self.assertEqual(ci["signals"]["target_coverage"], 0.6)
 
     def test_verification_counts_real_review_skills(self):
         # Genuine *-review verification skills (caveman-review, security-review) must
@@ -708,7 +708,7 @@ class TestScoreBreakdown(unittest.TestCase):
         """The empty-corpus breakdown must show the SAME Plan ceremony target/unit as an
         active corpus — the zero-axis fallback drifted stale in a prior round."""
         def _pc(bd):
-            return next(s for s in bd["planning"]["subs"] if s["label"] == "Plan ceremony")
+            return next(s for s in bd["planning"]["subs"] if s["label"] == "Planning skill practice")
         live = _pc(paxel.score_breakdown(_full_stats()))
         zero = _pc(paxel.score_breakdown(_zero_stats()))
         self.assertEqual(zero["target"], live["target"])
@@ -720,7 +720,7 @@ class TestScoreBreakdown(unittest.TestCase):
         Claude Code's ExitPlanMode."""
         def _pc(stats):
             subs = paxel.score_breakdown(stats)["planning"]["subs"]
-            return next(s for s in subs if s["label"] == "Plan ceremony")["your_value"]
+            return next(s for s in subs if s["label"] == "Planning skill practice")["your_value"]
         cold = _full_stats()
         cold["behavior"]["plan_sessions"] = 0
         hot = _full_stats()
@@ -745,7 +745,7 @@ class TestScoreBreakdown(unittest.TestCase):
         hot["stack"]["top_skills"] = list(neutral_skills)
         hot["stack"]["skills_all"] = list(neutral_skills)
         hot["behavior"]["plan_sessions"] = 5
-        self.assertGreater(_discipline(hot), _discipline(cold))
+        self.assertEqual(_discipline(hot), _discipline(cold))
 
     def test_engineering_has_five_subs(self):
         self.assertEqual(len(self.bd["engineering"]["subs"]), 5)
@@ -806,7 +806,7 @@ class TestScoreBreakdown(unittest.TestCase):
         tol = 1e-6
         checked = {
             "execution": {"Tool output rate"},
-            "planning": {"Explore-before-build", "Plan ceremony"},
+            "planning": {"Explore-before-build", "Planning skill practice"},
         }
         for axis, labels in checked.items():
             for sub in self.bd[axis]["subs"]:
@@ -1393,21 +1393,34 @@ class TestScoringDoesNotPenalizeMissingCaps(unittest.TestCase):
     """A source must not be scored 0 on a signal its backend cannot emit — the axis/term is
     dropped and the rest renormalized (AQ build_pillar/wsum + gstack _axis_value)."""
 
-    def _gstack(self, source):
-        from gnomon.scoring.gstack import compute_scores
-        st = {"volume": {"total_sessions": 5, "total_prompts": 10, "tool_calls_total": 3000,
+    def _gstack_stats(self, source):
+        return {"volume": {"total_sessions": 5, "total_prompts": 10, "tool_calls_total": 3000,
                          "thinking_blocks": 0},
               "behavior": {"planning_ratio_explore_to_doing": 0.5, "delegate_actions": 0,
                            "background_tasks": 0, "iteration_depth_mean": 2, "iteration_depth_p90": 3,
                            "files_hammered_over_15x": 0, "error_rate_per_100_tools": 0, "shell_test_runs": 0},
               "velocity": {"tool_churn_edit_write": 2000, "active_hours": 2},
               "stack": {"top_skills": []}, "corpus": {"sources": {source: {}}}}
-        return compute_scores(st)
+
+    def _gstack(self, source):
+        from gnomon.scoring.gstack import compute_scores
+        return compute_scores(self._gstack_stats(source))
 
     def test_gstack_thinking_dropped_for_cli(self):
         # antigravity CLI emits no thinking -> reasoning-depth term drops -> Planning renormalizes
         # UP (not the 0-drag a full-caps source eats with thinking_blocks=0).
         self.assertGreater(self._gstack("antigravity")["Planning"], self._gstack("claude")["Planning"])
+
+    def test_gstack_planning_skill_dropped_for_cursor(self):
+        # Cursor cannot observe Skill use, so zero planning_skill_sessions is N/A,
+        # not evidence that the user skipped the educational practice.
+        self.assertGreater(self._gstack("cursor")["Planning"], self._gstack("claude")["Planning"])
+
+    def test_gstack_cursor_breakdown_marks_planning_skill_not_applicable(self):
+        from gnomon.scoring.gstack import score_breakdown
+        planning = score_breakdown(self._gstack_stats("cursor"))["planning"]["subs"]
+        self.assertNotIn("Planning skill practice", {sub["label"] for sub in planning})
+        self.assertAlmostEqual(sum(sub["weight"] for sub in planning), 1.0, places=3)
 
     def test_aq_drops_unsupported_axes_for_ide(self):
         from gnomon.scoring.aq import compute_aq

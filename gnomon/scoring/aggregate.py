@@ -42,6 +42,7 @@ from gnomon.scoring.insights import (
     steering_reading, growth_edges_structured, signature_moves_structured,
 )
 from gnomon.scoring.profiles import build_profile, stats_from_scoring_block
+from gnomon.scoring.versioning import SCORE_CONTRACT_ID, IncompatibleScoreContract
 
 
 RECENCY_BLEND_ENABLED = True
@@ -51,6 +52,26 @@ HISTORY_WEIGHT = 0.35
 AQ_BUCKETS = (
     {"id": "recent_30d", "configured_weight": RECENT_WEIGHT, "lower_days": 0, "upper_days": RECENT_WINDOW_DAYS},
 )
+
+
+def blend_model_mix_components(components):
+    """Blend Model Mix while treating unavailable routing as N/A, never as zero."""
+    if not components:
+        return 0.0
+    total = sum(weight for weight, _ in components) or 1.0
+    distinct = sum(weight * min(1.0, signals.get("distinct_models", 0) / 3)
+                   for weight, signals in components) / total
+    offload = sum(weight * min(1.0, signals.get("offload_share", 0) / 0.30)
+                  for weight, signals in components) / total
+    measured = [(weight, (signals.get("routing") or {}).get("score"))
+                for weight, signals in components
+                if (signals.get("routing") or {}).get("state") == "measured"
+                and (signals.get("routing") or {}).get("score") is not None]
+    if not measured:
+        return 0.5 * distinct + 0.5 * offload
+    routing_weight = sum(weight for weight, _ in measured) or 1.0
+    routing = sum(weight * score for weight, score in measured) / routing_weight
+    return 0.35 * distinct + 0.35 * offload + 0.30 * routing
 
 
 def _aq_tier_for(total):
@@ -112,6 +133,7 @@ def _aggregate_profile(per_source):
         "aq_0_100": aq_total,
         "tier": _aq_tier_for(aq_total),
         "pillars": agg_pillars,
+        "score_contract_id": SCORE_CONTRACT_ID,
     }
 
     # ---- gstack axes (Execution/Planning/Engineering) ----
@@ -298,6 +320,11 @@ def _blend_aq(full_aq, components):
     weighted component. Components with no AQ are omitted and the configured weights
     of the remaining components are renormalized to one.
     """
+    contracts = {component.get("aq", {}).get("score_contract_id")
+                 for component in components if component.get("aq")}
+    contracts.add(full_aq.get("score_contract_id"))
+    if contracts != {SCORE_CONTRACT_ID}:
+        raise IncompatibleScoreContract(f"cannot blend score contracts: {sorted(map(str, contracts))}")
     available = [dict(component) for component in components
                  if component.get("aq") and component.get("configured_weight", 0) > 0]
     if not available:
@@ -344,25 +371,58 @@ def _blend_aq(full_aq, components):
 
             axis_weight_total = sum(component["effective_weight"]
                                     for component, _ in axis_components)
-            score = round(sum(component["effective_weight"] * axis["score"]
-                              for component, axis in axis_components) / axis_weight_total, 1)
+            if axis_name == "Model mix":
+                normalized_score = blend_model_mix_components([
+                    (component["effective_weight"], axis.get("signals", {}))
+                    for component, axis in axis_components
+                ])
+            else:
+                normalized_score = sum(
+                    component["effective_weight"] * axis.get(
+                        "normalized_score",
+                        axis["score"] / (axis.get("weight") or 1),
+                    )
+                    for component, axis in axis_components
+                ) / axis_weight_total
             _, source_axis = max(
                 axis_components,
                 key=lambda item: item[0]["effective_weight"],
             )
             blended_axis = dict(source_axis)
-            blended_axis["score"] = score
+            blended_axis["base_weight"] = source_axis.get(
+                "base_weight", source_axis.get("weight", 0))
+            blended_axis["normalized_score"] = min(1.0, max(0.0, normalized_score))
             blended_axis["signals"] = source_axis.get("signals", {})
             blended_axis["components"] = [
                 {
                     "id": component["id"],
                     "score": axis["score"],
+                    "normalized_score": axis.get(
+                        "normalized_score",
+                        axis["score"] / (axis.get("weight") or 1),
+                    ),
                     "signals": axis.get("signals", {}),
-                    "effective_weight": component["effective_weight"],
+                    "effective_weight": component["effective_weight"] / axis_weight_total,
                 }
                 for component, axis in axis_components
             ]
             blended_axes.append(blended_axis)
+
+        # Axis scores arriving from compute_aq are contributions that already include
+        # capability renormalization. Reusing those contributions would renormalize a
+        # second time when availability differs by window. Blend only each axis's
+        # normalized 0..1 score above, then derive effective weights once from its stable
+        # base weight across the union of measurable axes.
+        base_weight_total = sum(axis["base_weight"] for axis in blended_axes) or 1
+        effective_weights = [
+            round(100 * axis["base_weight"] / base_weight_total)
+            for axis in blended_axes
+        ]
+        if effective_weights:
+            effective_weights[-1] += 100 - sum(effective_weights)
+        for axis, effective_weight in zip(blended_axes, effective_weights):
+            axis["weight"] = effective_weight
+            axis["score"] = round(effective_weight * axis["normalized_score"], 1)
 
         primary_pillar = next(
             (p for p in primary["aq"].get("pillars", []) if p["name"] == pillar_name),
@@ -393,6 +453,7 @@ def _blend_aq(full_aq, components):
     result["aq_0_100"] = total
     result["tier"] = _aq_tier_for(total)
     result["pillars"] = blended_pillars
+    result["score_contract_id"] = SCORE_CONTRACT_ID
     result["blend"] = {
         "full_aq": full_aq.get("aq_0_100", 0),
         "buckets": [

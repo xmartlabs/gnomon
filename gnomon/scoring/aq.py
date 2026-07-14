@@ -1,9 +1,55 @@
 from gnomon.analysis.metrics import _review_skill_uses, _task_skill_uses
 from gnomon.config import available_caps
+from gnomon.scoring.versioning import SCORE_CONTRACT_ID
+
+PLANNING_TARGET = 0.40
+CONTEXT_INTELLIGENCE_TARGET = 0.60
+
+_MODEL_TIERS = {
+    "anthropic": (("opus", 3), ("sonnet", 2), ("haiku", 1)),
+    "openai": (("pro", 4), ("mini", 2), ("nano", 1), ("gpt-", 3), ("codex", 3)),
+}
+
+
+def _model_tier(provider, model):
+    low = str(model or "").lower()
+    for needle, tier in _MODEL_TIERS.get(provider, ()):
+        if needle in low:
+            return tier
+    return None
+
+
+def score_linked_routing(pairs, state):
+    if state != "measured":
+        return {"state": state, "score": None,
+                "successful_lower_tier_pairs": 0, "eligible_completed_substantive_pairs": 0,
+                "excluded_reasons": {}}
+    successful = eligible = 0
+    excluded = {}
+    for pair in pairs or []:
+        if not pair.get("completed"):
+            excluded["incomplete"] = excluded.get("incomplete", 0) + 1
+            continue
+        lead = _model_tier(pair.get("provider"), pair.get("lead_model"))
+        child = _model_tier(pair.get("provider"), pair.get("child_model"))
+        if lead is None or child is None:
+            excluded["unknown_model"] = excluded.get("unknown_model", 0) + 1
+            continue
+        if not (pair.get("writes", 0) or pair.get("substantive_calls", 0) >= 5):
+            excluded["not_substantive"] = excluded.get("not_substantive", 0) + 1
+            continue
+        eligible += 1
+        successful += child < lead
+    if excluded and not eligible:
+        state = "unmeasured"
+    rate = successful / eligible if eligible else 0.0
+    return {"state": state, "score": min(1.0, rate / 0.40) if state == "measured" else None,
+            "successful_lower_tier_pairs": successful,
+            "eligible_completed_substantive_pairs": eligible, "excluded_reasons": excluded}
 
 
 def compute_aq(stats):
-    """Agentic Quotient v2 — 'how well you OPERATE AGENTS' (distinct from the gstack
+    """Agentic Quotient v3 — 'how well you OPERATE AGENTS' (distinct from the gstack
     scorecard, which grades how you BUILD). Four pillars: Breadth (how much machinery),
     Craft (how well), Efficiency (leverage per intervention), Savvy (smart choices).
     MCP-vs-CLI and tool diversity stay descriptive (not graded).
@@ -34,7 +80,8 @@ def compute_aq(stats):
         """Weighted mean of (coef, value, required_cap) terms, dropping terms whose cap is
         unavailable and renormalizing the remaining coefficients to sum 1. Returns None when
         NO term is measurable (the whole axis is unsupported -> build_pillar drops it)."""
-        live = [(c, v) for c, v, cap in terms if cap is None or cap in caps]
+        live = [(c, v) for c, v, cap in terms
+                if v is not None and (cap is None or cap in caps)]
         tot = sum(c for c, _ in live)
         return sum(c * v for c, v in live) / tot if tot else None
 
@@ -79,9 +126,15 @@ def compute_aq(stats):
     # task-tool -> per-session rate; TaskCreate/Update + SDD sdd-tasks skill invocations
     # both count as structured task planning. plan-skill term needs the Skill capability.
     task_calls = t.get("task_tool_calls", 0) + _task_skill_uses(skills)
-    discipline = wsum((.60, rate(task_calls, 1.0), "tasktool"),
-                      (.40, (1.0 if (has_skill(["writing-plans", "autoplan", "plan"])
-                                     or b.get("plan_sessions", 0) > 0) else 0.6), "skills"))
+    ordered_state = b.get("ordered_facts_state")
+    eligible = b.get("eligible_change_sessions", 0) or 0
+    ordered_planning = (None if ordered_state != "measured" or not eligible
+                        else sat(b.get("planned_eligible_sessions", 0) / eligible,
+                                 PLANNING_TARGET))
+    planning_skill = 1.0 if has_skill(["writing-plans", "autoplan", "plan"]) else 0.6
+    discipline = wsum((.40, rate(task_calls, 1.0), "tasktool"),
+                      (.40, planning_skill, "skills"),
+                      (.20, ordered_planning, None))
     breadth_axes = [
         # Orchestration needs subagent delegation; a source that can't fan out by design
         # (Gemini/Pi/opencode) drops this axis (renormalized) instead of scoring ~0.
@@ -115,14 +168,15 @@ def compute_aq(stats):
     # reconstruct ordered per-session tool sequences) OR the grounding field is absent
     # (legacy/external block predating the accumulator, which always sets the field —
     # a missing field means backward-compat, so stay N/A instead of scoring a phantom 0).
-    TARGET_GROUNDED_COVERAGE = 0.40   # PROVISIONAL — recalibrate w/ prod p40-50
-    grounded = t.get("mcp_grounded_sessions")
-    write_sessions = t.get("mcp_write_sessions")
-    ci_denom = write_sessions if write_sessions is not None else sessions
+    _v5_ordered = "ordered_facts_state" in b
+    grounded = (b.get("evidence_eligible_sessions") if _v5_ordered
+                else t.get("mcp_grounded_sessions"))
+    ci_denom = (b.get("eligible_change_sessions") if _v5_ordered
+                else t.get("mcp_write_sessions", sessions))
     coverage = (grounded / ci_denom) if grounded is not None and ci_denom else None
-    context_intel = (None if (b.get("no_tool_activity") or grounded is None
-                              or not ci_denom)
-                     else sat(coverage, TARGET_GROUNDED_COVERAGE))
+    context_intel = (None if ((_v5_ordered and ordered_state != "measured")
+                              or b.get("no_tool_activity") or grounded is None or not ci_denom)
+                     else sat(coverage, CONTEXT_INTELLIGENCE_TARGET))
     # compounding writes -> per-session rate (rewards the habit, not raw volume)
     compounding = wsum((.6, rate(st.get("compounding_writes", 0), 0.25), None),
                        (.4, (1.0 if has_skill(["retro", "writing-plans", "brainstorm"]) else 0.6), "skills"))
@@ -133,9 +187,11 @@ def compute_aq(stats):
          {"grounded_sessions": grounded, "write_sessions": ci_denom,
           "total_sessions": sessions,
           "coverage": round(coverage, 3) if coverage is not None else None,
-          "target_coverage": TARGET_GROUNDED_COVERAGE,
+          "target_coverage": CONTEXT_INTELLIGENCE_TARGET,
           "grounded_session_rule": "knowledge-MCP call OR explore-class project/data/design MCP call before a later Edit/Write/MultiEdit/NotebookEdit in the same session",
-          "score_formula": "coverage = grounded_sessions / write_sessions; score = min(1, coverage / 0.40)"}),
+          "score_formula": (f"coverage = evidence_eligible_sessions / eligible_change_sessions; score = min(1, coverage / {CONTEXT_INTELLIGENCE_TARGET:.2f})"
+                            if _v5_ordered else
+                            f"coverage = grounded_sessions / write_sessions; score = min(1, coverage / {CONTEXT_INTELLIGENCE_TARGET:.2f})")}),
         ("Compounding", 20, compounding, {"compounding_writes": st.get("compounding_writes", 0)}),
     ]
 
@@ -169,7 +225,10 @@ def compute_aq(stats):
     total_turns = sum(n for _, n in models)
     top_turns = max((n for _, n in models), default=0)
     offload_share = (1 - top_turns / total_turns) if total_turns else 0
-    model_mix = .5 * sat(len(models), 3) + .5 * sat(offload_share, 0.30)
+    routing = score_linked_routing(b.get("linked_model_pairs", []), b.get("linked_model_routing_state", "unsupported"))
+    model_mix = (.35 * sat(len(models), 3) + .35 * sat(offload_share, 0.30)
+                 + .30 * routing["score"] if routing["score"] is not None
+                 else .5 * sat(len(models), 3) + .5 * sat(offload_share, 0.30))
     cli_calls, mcp_calls = t.get("cli_calls", 0), t.get("mcp_calls", 0)
     cli_share = cli_calls / (cli_calls + mcp_calls) if (cli_calls + mcp_calls) else 0
     # toolsearch term drops out (renormalized) when unsupported, leaving CLI-share
@@ -178,7 +237,8 @@ def compute_aq(stats):
     savvy_axes = [
         # Model mix needs a real per-turn model id; a source that masks it (Antigravity IDE)
         # drops this axis (renormalized) instead of scoring 0.
-        ("Model mix", 50, model_mix, {"distinct_models": len(models), "offload_share": round(offload_share, 2)},
+        ("Model mix", 50, model_mix, {"distinct_models": len(models), "offload_share": round(offload_share, 2),
+         "routing": routing},
          "model"),
         ("Token economy", 50, token_economy, {"toolsearch": t.get("toolsearch_calls", 0), "cli_share": round(cli_share, 2)}),
     ]
@@ -195,8 +255,16 @@ def compute_aq(stats):
         live = [a for a in axes if _live(a)]
         wlive = sum(a[1] for a in live) or 1
         scale = 100.0 / wlive
-        out = [{"name": a[0], "weight": round(a[1] * scale), "score": round(a[1] * scale * a[2], 1),
-                "signals": a[3]} for a in live]
+        effective_weights = [round(a[1] * scale) for a in live]
+        if effective_weights:
+            effective_weights[-1] += 100 - sum(effective_weights)
+        out = [{"name": a[0], "base_weight": a[1], "weight": effective_weight,
+                # Binary64 guarantees 15 portable significant decimal digits. Canonicalize
+                # only the exported diagnostic; keep scoring on the unrounded value below.
+                "normalized_score": float(format(a[2], ".15g")),
+                "score": round(effective_weight * a[2], 1),
+                "signals": a[3]}
+               for a, effective_weight in zip(live, effective_weights)]
         pillar = {"name": name, "weight": weight, "score": round(sum(x["score"] for x in out), 1), "axes": out}
         dropped = [a[0] for a in axes if a not in live]
         if dropped:
@@ -212,6 +280,7 @@ def compute_aq(stats):
             else "Adequate" if total >= 45 else "Apprentice" if total >= 25 else "Novice")
     return {
         "aq_0_100": total, "tier": tier, "pillars": pillars,
+        "score_contract_id": SCORE_CONTRACT_ID,
         "mcp_vs_cli": {"cli_calls": cli_calls, "cli_distinct": t.get("clis_distinct", 0),
                        "mcp_calls": mcp_calls, "mcp_distinct": t.get("mcp_servers_distinct", 0),
                        "ratio": round(cli_calls / mcp_calls, 1) if mcp_calls else None},

@@ -19,6 +19,9 @@ from gnomon.scoring.profiles import (
     model_usage_from_models as _model_usage_from_models,
 )
 from gnomon.scoring.aggregate import score_by_source
+from gnomon.scoring.versioning import (
+    AQ_VERSION, GSTACK_VERSION, SCORE_CONTRACT_ID, COMPARISON_POLICY,
+)
 from gnomon.output.source_usage import (
     build_source_usage as _build_source_usage,
     build_source_usage_monthly as _build_source_usage_monthly,
@@ -324,6 +327,10 @@ def build_summary(stats):
         "noticed_stats_monthly": stats.get("monthly_noticed_stats", []),
         "profile": _build_profile(stats),
         "scoring_inputs_version": stats.get("scoring_inputs_version", SCORING_INPUTS_VERSION),
+        "aq_version": AQ_VERSION,
+        "gstack_version": GSTACK_VERSION,
+        "score_contract_id": SCORE_CONTRACT_ID,
+        "comparison_policy": COMPARISON_POLICY,
         "scoring_inputs_by_source": stats.get("scoring_inputs_by_source", {}),
         "profiles_by_source": _profiles_by_source(
             stats.get("scoring_inputs_by_source") or {},

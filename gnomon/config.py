@@ -25,8 +25,8 @@ OUT_DIR = os.getcwd()
 #                CLI doesn't, so that term drops there.
 # (errors are emitted by every source, so error_rate/recovery need no cap.)
 SOURCE_CAPS = {
-    "claude":   {"skills", "toolsearch", "tasktool", "delegate", "model", "thinking"},
-    "codex":    {"skills", "delegate", "model", "thinking"},   # SKILL.md shell-reads; thread_spawn = delegate
+    "claude":   {"skills", "toolsearch", "tasktool", "delegate", "model", "thinking", "linked_model_routing"},
+    "codex":    {"skills", "delegate", "model", "thinking", "linked_model_routing"},   # SKILL.md shell-reads; thread_spawn = delegate
     "gemini":   {"model", "thinking"},
     "antigravity": {"delegate", "skills", "model"},   # CLI: real model; no separate thinking block
     "antigravity-ide": {"skills", "thinking"},                 # IDE: masks model; no subagent/token
@@ -34,7 +34,7 @@ SOURCE_CAPS = {
     "opencode": {"model", "thinking"},
     "cursor":   {"delegate", "model", "thinking"},   # subagent sidechains; no Skill/ToolSearch/Task tool
 }
-_ALL_CAPS = {"skills", "toolsearch", "tasktool", "delegate", "model", "thinking"}
+_ALL_CAPS = {"skills", "toolsearch", "tasktool", "delegate", "model", "thinking", "linked_model_routing"}
 
 
 def available_caps(sources):

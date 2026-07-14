@@ -101,8 +101,9 @@ components — recent behavior dominates while the full window provides
 stability. When the recent window has no sessions the blend falls back to the
 unblended full-window AQ.
 
-This is **scoring contract version 4** and a **v0.4 methodology discontinuity**:
-AQ results produced before and after v0.4 are not directly comparable.
+This runtime emits **scoring inputs version 5**, **AQ version 3**, and
+**GStack version 3** (`score_contract_id = 5:3:3`). Scores from the previous
+contract must not be presented as an improvement or regression against v5.
 
 What happens when you run it (without `--local`):
 
@@ -258,7 +259,7 @@ Three 0–10 axes (Execution / Planning / Engineering) grounded in [gstack](http
 
 gnomon is multi-source, and metrics are provider-agnostic where possible:
 
-- **Provider-agnostic:** git churn, MCP/CLI tool command, grounding, recovery, steering leverage, compounding (matches `CLAUDE.md` / `AGENTS.md` / `GEMINI.md` / `memory/` / `docs/adr`), and **Model mix** (rewards using >1 model and routing work off your default — no hard-coded model names).
+- **Provider-agnostic where telemetry allows:** git churn, MCP/CLI tool command, grounding, recovery, steering leverage, and compounding (matches `CLAUDE.md` / `AGENTS.md` / `GEMINI.md` / `memory/` / `docs/adr`). **Model mix** rewards diversity and observable lower-tier routing using explicit provider tier tables for Anthropic and OpenAI; unsupported or ambiguous linkage is N/A rather than guessed.
 - **Codex parity fixes:** the active model is read from Codex's `turn_context` (so GPT usage shows up in Model mix instead of reading as model-less), `update_plan` counts as planning (TodoWrite), and shell reads of `skills/<name>/SKILL.md` count as skill usage — Codex has no first-class Skill tool, so that's how skills are actually consumed there.
 - **Claude-Code-specific signals** (still under-read for Codex/Gemini): `attributionSkill` precision and **ToolSearch** (part of Token economy). These reflect Claude Code's ecosystem, not universal capability.
 

@@ -30,7 +30,7 @@ directly — no external dependency). Both decode to the same normalized events.
 | fanout / delegate_actions | ✅ | ✅ | ✅ | ⛔ | ⚠️ invoke_subagent only | ❌ |
 | planning_ratio | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | model tokens | ✅ | ✅ | ✅ | ✅ | ✅ | ⛔ masked by server |
-| skills | ✅ | ✅ | ✅ | ✅ | ⚠️ via SKILL.md read | ⚠️ via SKILL.md read |
+| skills | ✅ | ✅ | ⛔ | ✅ | ⚠️ via SKILL.md read | ⚠️ via SKILL.md read |
 | mcp_calls | ✅ | ✅ | ✅ | ❌ | ✅ (`server::tool`) | ✅ (`server::tool`) |
 | compounding_writes | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | active_hours | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (real per-step ts) |
@@ -60,8 +60,10 @@ directly — no external dependency). Both decode to the same normalized events.
 
 ## Uploaded summary contract
 
-Current scoring contract: **version 4**. Version 4 is a methodology break from
-pre-v0.4 scores: AQ is blended as 65% recent (rolling 30-day) + 35%
+Current runtime contract: **scoring inputs version 5**, **AQ version 3**, and
+**GStack version 3** (`score_contract_id = 5:3:3`). Previous-contract scores
+must not be shown as improvement or regression against v5. AQ is blended as
+65% recent (rolling 30-day) + 35%
 full-window (cumulative). The full window includes recent activity, so
 improvements are reflected in both components. Empty recent windows fall back
 to the unblended full-window AQ.
