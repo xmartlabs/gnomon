@@ -198,6 +198,12 @@ def build_monthly_scoring_stats(
                 "error_rate_per_100_tools": round(err_rate, 1) if err_rate is not None else None,
                 "api_errors_retries": month_api_errors.get(mk, 0),
                 "fanout_median": fan_med,
+                "max_session_fanout": max(fanouts, default=0),
+                "parallel_dispatch_turns": None,
+                "delegating_sessions": len(fanouts),
+                "parallel_session_share": (
+                    round(sum(1 for n in fanouts if n >= 2) / len(fanouts), 3)
+                    if fanouts else 0.0),
                 "shell_test_runs": month_shell_test_runs.get(mk, 0),
                 "plan_sessions": len((month_plan_sessions or {}).get(mk, set()) & month_sessions.get(mk, set())),
                 "planning_skill_sessions": len(
