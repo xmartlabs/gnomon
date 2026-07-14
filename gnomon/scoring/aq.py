@@ -110,13 +110,6 @@ def compute_aq(stats):
     # ---- Pillar 1: Breadth (unchanged axes) ----
     agent_runs = t.get("agent_calls", 0)
     fanout = b.get("fanout_median") or 0  # None (unmeasured) treated as 0 for AQ
-    # Uploaded / hand-built blocks may omit max_session_fanout; fall back to median so
-    # the 50/50 blend does not silently halve orchestration vs the old formula.
-    max_fanout = b.get("max_session_fanout", fanout) or 0
-    fanout_signal = 0.5 * sat(fanout, 5) + 0.5 * sat(max_fanout, 5)
-    parallel_share = b.get("parallel_session_share") or 0
-    delegating_sessions = b.get("delegating_sessions") or 0
-    delegating_session_share = delegating_sessions / sessions if sessions else 0
     # Harness use = a SINGLE session coordinating a team of >=3 distinct subagent roles
     # (behavioral), not a subagent/skill NAMED "harness"/"trisel" (opaque), and not window-wide
     # role variety (subagent_types_distinct would credit 3 roles fired one-per-session, which
@@ -133,7 +126,7 @@ def compute_aq(stats):
     # "rule of 7") lands at 5-7 — 5 sits in the overlap.
     # agent_runs is a per-session rate (volume floor); subagent_types/fanout stay as-is
     # (distinct-count and per-session-median — already volume-independent).
-    orchestration = (.30 * sat(st.get("subagent_types_distinct", 0), 8) + .30 * fanout_signal
+    orchestration = (.30 * sat(st.get("subagent_types_distinct", 0), 8) + .30 * sat(fanout, 5)
                      + .20 * o_harn + .20 * rate(agent_runs, 1.0))
     # skills_total -> per-session rate; skills_distinct stays (diversity, correctly absolute)
     skill_fluency = (.40 * sat(st.get("skills_distinct", 0), 40) + .30 * rate(st.get("skills_total", 0), 10)
@@ -165,9 +158,6 @@ def compute_aq(stats):
         # (Gemini/Pi/opencode) drops this axis (renormalized) instead of scoring ~0.
         ("Orchestration", 33, orchestration, {"agent_runs": agent_runs,
          "subagent_types": st.get("subagent_types_distinct", 0), "fanout_median": fanout,
-         "max_session_fanout": max_fanout, "parallel_session_share": parallel_share,
-         "delegating_sessions": delegating_sessions,
-         "delegating_session_share": round(delegating_session_share, 3),
          "o_harn": o_harn},
          "delegate"),
         ("Skill fluency", 22, skill_fluency, {"skills_distinct": st.get("skills_distinct", 0),

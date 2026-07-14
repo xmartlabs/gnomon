@@ -204,18 +204,11 @@ def _growth_edges_pool(stats, scores):
     def _aq_advice(pillar, axis, sig):
         lead = f'<b>{pillar} · {axis}</b> is your thinnest AQ signal. '
         if axis == "Orchestration":
-            delegating = sig.get("delegating_sessions") or 0
-            if delegating < 2:
-                return None
-            max_fan = sig.get("max_session_fanout") or 0
-            par_share = sig.get("parallel_session_share") or 0
-            if par_share >= 0.3:
-                return None
-            return ("Multiply yourself", "Batch independent work into one session",
-                lead + f'<b>{sig.get("subagent_types", 0)}</b> distinct subagent types; median '
-                f'fan-out <b>{sig.get("fanout_median") or 0}</b>, peak <b>{max_fan}</b>. '
-                f'When independent pieces need investigation, dispatch multiple '
-                f'<code>Task</code> calls in one turn instead of one agent per chat.')
+            return ("Multiply yourself", "Run agents in parallel, not in series",
+                lead + f'<b>{sig.get("subagent_types", 0)}</b> distinct subagent types with a median '
+                f'fan-out of <b>{sig.get("fanout_median") or 0}</b>. When a task splits into independent '
+                f'pieces, hand them to parallel subagents in one orchestrating session instead of '
+                f'grinding through them serially.')
         if axis.startswith("Tool command"):
             return ("Widen the toolbelt", "Wire your daily services into the agent",
                 lead + f'<b>{sig.get("mcp_servers", 0)}</b> MCP servers and <b>{sig.get("clis", 0)}</b> '

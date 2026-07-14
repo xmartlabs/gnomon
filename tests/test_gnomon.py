@@ -153,12 +153,8 @@ class TestComputeAqV2(unittest.TestCase):
     def test_coordination_beats_volume(self):
         # Same agent_runs / variety / harness; only fan-out differs. A real orchestrator
         # (coordinates a team per session) must out-score a serial grinder (1 agent/session).
-        orchestrator = _sample_stats()
-        orchestrator["behavior"]["fanout_median"] = 6
-        orchestrator["behavior"]["max_session_fanout"] = 6
-        grinder = _sample_stats()
-        grinder["behavior"]["fanout_median"] = 1
-        grinder["behavior"]["max_session_fanout"] = 1
+        orchestrator = _sample_stats(); orchestrator["behavior"]["fanout_median"] = 6
+        grinder = _sample_stats(); grinder["behavior"]["fanout_median"] = 1
         self.assertGreater(self._orch(paxel.compute_aq(orchestrator)),
                            self._orch(paxel.compute_aq(grinder)))
 
@@ -447,20 +443,9 @@ class TestGrowthEdgesAq(unittest.TestCase):
         # gstack scorecard healthy but Orchestration thin -> AQ edge, not "balanced".
         agentic = {"pillars": [{"name": "Breadth", "weight": 30, "axes": [
             _axis("Orchestration", 33, 0.2,
-                  {"agent_runs": 3, "subagent_types": 1, "fanout_median": 1,
-                   "delegating_sessions": 3, "parallel_session_share": 0.1,
-                   "max_session_fanout": 1})]}]}
+                  {"agent_runs": 3, "subagent_types": 1, "fanout_median": 1})]}]}
         edges = paxel.growth_edges(_edge_stats(agentic), dict(HEALTHY_SCORES))
         self.assertTrue(any("Orchestration" in adv for _, _, adv in edges), edges)
-
-    def test_low_delegating_sessions_suppresses_orchestration_edge(self):
-        agentic = {"pillars": [{"name": "Breadth", "weight": 30, "axes": [
-            _axis("Orchestration", 33, 0.2,
-                  {"agent_runs": 3, "subagent_types": 1, "fanout_median": 1,
-                   "delegating_sessions": 1, "parallel_session_share": 0.0,
-                   "max_session_fanout": 1})]}]}
-        edges = paxel.growth_edges(_edge_stats(agentic), dict(HEALTHY_SCORES))
-        self.assertFalse(any("Orchestration" in adv for _, _, adv in edges), edges)
 
     def test_healthy_aq_falls_through_to_balanced(self):
         agentic = {"pillars": [{"name": "Breadth", "weight": 30, "axes": [
@@ -480,9 +465,7 @@ class TestGrowthEdgesAq(unittest.TestCase):
     def test_capped_at_three_most_urgent_first(self):
         agentic = {"pillars": [
             {"name": "Breadth", "weight": 30, "axes": [
-                _axis("Orchestration", 33, 0.1,
-                      {"delegating_sessions": 3, "parallel_session_share": 0.1,
-                       "max_session_fanout": 1, "fanout_median": 1}),
+                _axis("Orchestration", 33, 0.1),
                 _axis("Tool command (MCP + CLI)", 28, 0.3)]},
             {"name": "Savvy", "weight": 15, "axes": [
                 _axis("Model mix", 50, 0.2), _axis("Token economy", 50, 0.4)]},
