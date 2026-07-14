@@ -286,7 +286,12 @@ def compute_aq(stats):
         def _live(a):
             if a[2] is None:                               # wsum found no measurable term
                 return False
-            return len(a) < 5 or a[4] is None or a[4] in caps   # required cap available
+            if len(a) < 5 or a[4] is None:
+                return True
+            # Skill fluency is observable via first-class Skill tool or read/inject paths.
+            if a[0] == "Skill fluency" and a[4] == "skills":
+                return "skills" in caps or "skill_reads" in caps
+            return a[4] in caps
         live = [a for a in axes if _live(a)]
         wlive = sum(a[1] for a in live) or 1
         scale = 100.0 / wlive

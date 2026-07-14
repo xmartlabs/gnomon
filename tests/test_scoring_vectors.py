@@ -101,16 +101,14 @@ class TestScoringVectorsFile(unittest.TestCase):
 
 class TestCapabilityContract(unittest.TestCase):
     def test_cursor_only_drops_tasktool_terms(self):
-        """Cursor has no TaskCreate/TaskUpdate — Discipline's task-tool term drops and
-        renormalizes; Skill fluency stays (skills via Read / manually_attached)."""
+        """Cursor has no TaskCreate/TaskUpdate and no first-class Skill tool — Discipline
+        drops entirely; Skill fluency stays (skills via Read / manually_attached)."""
         out = score_by_source({"cursor": {"window": CURSOR_BLOCK, "monthly": []}})
         breadth = next(p for p in out["by_source"]["cursor"]["aq"]["pillars"]
                        if p["name"] == "Breadth")
         axis_names = {a["name"] for a in breadth["axes"]}
         self.assertIn("Skill fluency", axis_names)
-        self.assertIn("Discipline", axis_names)
-        discipline = next(a for a in breadth["axes"] if a["name"] == "Discipline")
-        self.assertEqual(discipline["signals"].get("task_tool_calls"), 0)
+        self.assertIn("Discipline", breadth.get("not_applicable", []))
 
     def test_claude_keeps_skills_terms(self):
         """A full-capability (claude) slice keeps every Breadth axis — no drops."""

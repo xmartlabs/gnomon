@@ -36,7 +36,7 @@ SOURCE_CAPS = {
     "antigravity-ide": {"skills", "skill_reads", "thinking"},                 # IDE: masks model; no subagent/token
     "pi":       {"model", "thinking"},
     "opencode": {"model", "thinking"},
-    "cursor":   {"delegate", "skills", "skill_reads", "thinking"},   # skills via Read/SKILL.md + manually_attached; no ToolSearch/Task tool; model id recorded but not scored (flat request billing)
+    "cursor":   {"delegate", "skill_reads", "thinking"},   # SKILL.md reads + manually_attached; no first-class Skill/ToolSearch/Task tool; model id recorded but not scored (flat request billing)
 }
 _ALL_CAPS = {"skills", "skill_reads", "toolsearch", "tasktool", "delegate", "model", "thinking", "linked_model_routing"}
 

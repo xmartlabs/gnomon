@@ -1442,15 +1442,15 @@ class TestScoringDoesNotPenalizeMissingCaps(unittest.TestCase):
         # UP (not the 0-drag a full-caps source eats with thinking_blocks=0).
         self.assertGreater(self._gstack("antigravity")["Planning"], self._gstack("claude")["Planning"])
 
-    def test_gstack_planning_skill_equal_for_cursor(self):
-        # Cursor now has the 'skills' cap, so planning_skill_sessions is scored
-        # the same as claude (both have zero skill sessions in the test stats).
-        self.assertEqual(self._gstack("cursor")["Planning"], self._gstack("claude")["Planning"])
+    def test_gstack_planning_skill_dropped_for_cursor(self):
+        # Cursor has no first-class Skill tool (only skill_reads), so planning_skill_sessions
+        # term is dropped and the rest of Planning renormalizes UP.
+        self.assertGreater(self._gstack("cursor")["Planning"], self._gstack("claude")["Planning"])
 
-    def test_gstack_cursor_breakdown_includes_planning_skill(self):
+    def test_gstack_cursor_breakdown_drops_planning_skill(self):
         from gnomon.scoring.gstack import score_breakdown
         planning = score_breakdown(self._gstack_stats("cursor"))["planning"]["subs"]
-        self.assertIn("Planning skill practice", {sub["label"] for sub in planning})
+        self.assertNotIn("Planning skill practice", {sub["label"] for sub in planning})
         self.assertAlmostEqual(sum(sub["weight"] for sub in planning), 1.0, places=3)
 
     def test_aq_drops_unsupported_axes_for_ide(self):

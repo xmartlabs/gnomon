@@ -399,8 +399,9 @@ class TestConditionalScoring(unittest.TestCase):
 
     def test_cursor_profile_drops_model_mix_while_routing_inputs_stay_na(self):
         stats = _v5_scoring_stats(source="cursor")
+        scoring_inputs = build_scoring_inputs(stats)
         profile = score_by_source({
-            "cursor": {"window": build_scoring_inputs(stats)},
+            "cursor": {"window": scoring_inputs},
         })["by_source"]["cursor"]
         savvy = next(p for p in profile["aq"]["pillars"] if p["name"] == "Savvy")
         na = set(savvy.get("not_applicable") or [])

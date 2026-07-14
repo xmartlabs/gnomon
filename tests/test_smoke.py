@@ -555,7 +555,7 @@ class TestCapabilityAwareScoring(unittest.TestCase):
         breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
         axis_names = {a["name"] for a in breadth["axes"]}
         self.assertIn("Skill fluency", axis_names)
-        self.assertIn("Discipline", axis_names)
+        self.assertIn("Discipline", breadth.get("not_applicable", []))
         # surviving axes renormalize to the full pillar weight (100)
         self.assertEqual(sum(a["weight"] for a in breadth["axes"]), 100)
         savvy = next(p for p in aq["pillars"] if p["name"] == "Savvy")
