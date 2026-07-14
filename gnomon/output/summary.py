@@ -288,6 +288,7 @@ def build_summary(stats):
             "client_version": _client_version(),
         },
         "planning_ratio_explore_to_doing": b["planning_ratio_explore_to_doing"],
+        **({"plan_sessions_degraded": True} if b.get("plan_sessions_degraded") else {}),
         "errors": {
             "error_recovery_ratio": b["error_recovery_ratio"],
             "error_rate_per_100_tools": b["error_rate_per_100_tools"],
@@ -302,15 +303,24 @@ def build_summary(stats):
             "tool_churn_edit_write": vel["tool_churn_edit_write"],
             "active_hours": vel["active_hours"],
             "actions_per_prompt": b["actions_per_prompt"],
+            **({"git_coverage_warning": (
+                "Tool-authored churn is high but no git repos were resolved — "
+                "run locally with access to your project directories and .git folders."
+            )} if vel.get("tool_churn_edit_write", 0) > 0 and vel.get("git_repos_seen", 0) == 0 else {}),
         },
         "orchestration": {
             "fanout_median": b["fanout_median"],
+            "max_session_fanout": b.get("max_session_fanout"),
+            "parallel_dispatch_turns": b.get("parallel_dispatch_turns", 0),
+            "parallel_session_share": b.get("parallel_session_share"),
+            "delegating_sessions": b.get("delegating_sessions", 0),
             "delegate_actions": b["delegate_actions"],
         },
         "compounding_writes": st["compounding_writes"],
         "ecosystem": {
             "skills_distinct": st["skills_distinct"],
             "skills_total": st["skills_total"],
+            **({"model_signal_missing": True} if st.get("model_signal_missing") else {}),
             "top_skills": [
                 {"name": str(name), "calls": int(calls)}
                 for name, calls in (st.get("top_skills") or [])

@@ -9,8 +9,8 @@ Three cases, chosen to exercise the contract:
   * claude_only  — full-capability source; every AQ term stays. Grounded-session coverage
                    (18/40 = 0.45) is ABOVE Context Intelligence's TARGET (0.40) -> the axis
                    is present and near-full credit.
-  * cursor_only  — no skills / toolsearch / tasktool caps; those terms DROP + renormalize.
-                   Grounded-session coverage (0/10 = 0.0) is a REAL measured zero (the block
+  * cursor_only  — no toolsearch / tasktool caps; those terms DROP + renormalize. Skills
+                   are scored via Read / manually_attached. Grounded-session coverage (0/10 = 0.0) is a REAL measured zero (the block
                    HAS the field and HAS tool activity) -> Context Intelligence is present and
                    scored 0 (monotonic, no floor), dragging Craft down rather than dropping.
   * mixed        — claude + cursor; proves the aggregate is the tool-volume WEIGHTED MEAN

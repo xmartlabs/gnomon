@@ -55,8 +55,19 @@ directly — no external dependency). Both decode to the same normalized events.
 - **MCP** is detected on both surfaces: the CLI names MCP tools `server::tool` (→ `mcp__server__tool`),
   the IDE emits a dedicated `MCP_TOOL` step (`mcpTool.serverName` + `toolCall.name`). Counted as
   `mcp_calls` + distinct servers.
-- **Skills** are detected when a skill file is read (`skills/<name>/SKILL.md` → `attributionSkill`),
-  on both surfaces — so only file-loaded/`/slash`-invoked skills are counted, not context-injected ones.
+- **Skills** (Cursor): counted when a skill file is read via `Read`/`Bash` (`skills/<name>/SKILL.md`),
+  or listed in injected `<manually_attached_skills>` on user turns (not the full `available_skills` catalog).
+- **Orchestration** (Cursor): measured from `Task`/`task_v2` dispatches in the parent Composer
+  session — not UI multitask tabs. `fanout_median` is the median agents-per-delegating-session;
+  `max_session_fanout` and `parallel_session_share` capture peak coordination and how often
+  multi-agent turns happen.
+- **Git churn** requires local repo access: if `git_repos_seen == 0` but tool churn is high,
+  `summary.json` includes `churn.git_coverage_warning` (common on upload/CI without `state.vscdb` + `.git`).
+- **Model mix** (AQ Savvy axis) is **not scored** for Cursor — every included model costs one
+  request, so routing between Composer 2.5 and cheaper models is not a cost signal. Model ids
+  are still collected for descriptive stats when `state.vscdb` (or CLI `~/.cursor/chats` sidecar)
+  is available; `stack.model_signal_missing` flags runs where assistant turns exist but no model
+  id was recovered.
 
 ## Uploaded summary contract
 

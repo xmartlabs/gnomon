@@ -397,19 +397,14 @@ class TestConditionalScoring(unittest.TestCase):
         self.assertNotIn("Ordered planning readiness", below_labels)
         self.assertIn("Ordered planning readiness", at_labels)
 
-    def test_cursor_profile_keeps_model_mix_inputs_while_linked_routing_is_na(self):
+    def test_cursor_profile_drops_model_mix_while_routing_inputs_stay_na(self):
         stats = _v5_scoring_stats(source="cursor")
         profile = score_by_source({
             "cursor": {"window": build_scoring_inputs(stats)},
         })["by_source"]["cursor"]
         savvy = next(p for p in profile["aq"]["pillars"] if p["name"] == "Savvy")
-        model_mix = next(a for a in savvy["axes"] if a["name"] == "Model mix")
-
-        self.assertEqual(model_mix["signals"]["routing"]["state"], "unsupported")
-        self.assertIsNone(model_mix["signals"]["routing"]["score"])
-        self.assertEqual(model_mix["signals"]["distinct_models"], 2)
-        self.assertEqual(model_mix["signals"]["offload_share"], 0.2)
-        self.assertGreater(model_mix["score"], 0)
+        na = set(savvy.get("not_applicable") or [])
+        self.assertIn("Model mix", na)
 
 
 class TestPlanningSkillSessions(unittest.TestCase):

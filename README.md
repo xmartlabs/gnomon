@@ -333,8 +333,9 @@ to different stores, and the CLI's transcript is leaner:
 
 The CLI transcript JSONL is lean (`role` + `content` + `turn_ended`), but its sibling
 `~/.cursor/chats/<workspaceHash>/<chatId>/` store backfills the real model and session date,
-so a CLI profile is scored on everything **except token economy** — tokens are the one signal
-the CLI never writes to disk. (If the `chats` dir is absent — e.g. a copied/mounted `projects`
+so a CLI profile is scored on everything **except token economy and model mix** — tokens are
+never written to disk, and model choice is flat-rate (one request per turn regardless of model).
+(If the `chats` dir is absent — e.g. a copied/mounted `projects`
 dir without it — the session falls back to file mtime and no model, as before.)
 
 **Overrides:** `--cursor-dir=PATH` points at a copied/mounted `projects` dir (root or the

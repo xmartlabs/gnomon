@@ -292,8 +292,12 @@
                     "score": 23.9,
                     "signals": {
                       "agent_runs": 200,
+                      "delegating_session_share": 0.0,
+                      "delegating_sessions": 0,
                       "fanout_median": 3,
+                      "max_session_fanout": 3,
                       "o_harn": 0.6,
+                      "parallel_session_share": 0,
                       "subagent_types": 6
                     },
                     "weight": 33
@@ -852,16 +856,16 @@
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 39,
+          "aq_0_100": 45,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 17.4,
+              "score": 24.8,
               "weight": 30
             },
             {
               "name": "Craft",
-              "score": 27.2,
+              "score": 22.9,
               "weight": 35
             },
             {
@@ -871,16 +875,16 @@
             },
             {
               "name": "Savvy",
-              "score": 55.9,
+              "score": 95.2,
               "weight": 15
             }
           ],
           "score_contract_id": "5:3:3",
-          "tier": "Apprentice"
+          "tier": "Adequate"
         },
         "archetype": {
-          "quote": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is breadth \u2014 that's where the next gain is.",
-          "title": "Apprentice"
+          "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is craft \u2014 that's where the next gain is.",
+          "title": "Adequate"
         },
         "combination": {
           "rule": "weighted_mean_of_per_source_scores",
@@ -901,7 +905,7 @@
             "title": "When a file fights back, root-cause it"
           },
           {
-            "advice": "Planning is 2.3. Sketch the plan and reframe the ask before writing code \u2014 it's the cheapest place to catch a wrong turn. (gstack front-loads this with /office-hours + /autoplan.)",
+            "advice": "Planning is 3.1. Sketch the plan and reframe the ask before writing code \u2014 it's the cheapest place to catch a wrong turn. (gstack front-loads this with /office-hours + /autoplan.)",
             "axis": null,
             "commands": [
               "/office-hours",
@@ -1055,12 +1059,12 @@
             "value": 1.5
           },
           "planning": {
-            "axis_narrative": "Planning scores 2.3/10 (poor). Strongest: Explore-before-build (46%); weakest: Reasoning depth (0%).",
-            "axis_verdict": "poor",
+            "axis_narrative": "Planning scores 3.1/10 (weak). Strongest: Planning skill practice (50%); weakest: Reasoning depth (0%).",
+            "axis_verdict": "weak",
             "drag_narrative": "Reasoning depth is the weakest contributor, scoring 0%. Your value: 0 thinking blocks/session (target: 12 thinking blocks/session, higher is better).",
             "drag_note": "Reasoning depth is dragging this down \u2014 0 thinking blocks/session, target ~12.",
             "gloss": "Think before you build",
-            "score_out_of_10": "2.3 / 10",
+            "score_out_of_10": "3.1 / 10",
             "subs": [
               {
                 "direction": "higher",
@@ -1074,7 +1078,7 @@
                 "target": 0.65,
                 "unit": "explore/doing ratio",
                 "verdict": "weak",
-                "weight": 0.5,
+                "weight": 0.3529,
                 "your_value": 0.3
               },
               {
@@ -1089,11 +1093,26 @@
                 "target": 12.0,
                 "unit": "thinking blocks/session",
                 "verdict": "poor",
-                "weight": 0.5,
+                "weight": 0.3529,
                 "your_value": 0.0
+              },
+              {
+                "direction": "higher",
+                "display_target": "0.4 planning sessions/session",
+                "display_value": "0.2 planning sessions/session",
+                "is_drag": false,
+                "label": "Planning skill practice",
+                "narrative": "Planning skill practice is adequate (0.2 planning sessions/session, target 0.4 planning sessions/session \u2014 approaching target, scoring 50%).",
+                "pct": 0.5,
+                "score_pct": 50,
+                "target": 0.4,
+                "unit": "planning sessions/session",
+                "verdict": "adequate",
+                "weight": 0.2941,
+                "your_value": 0.2
               }
             ],
-            "value": 2.3
+            "value": 3.1
           }
         },
         "signature_moves": [],
@@ -1106,7 +1125,7 @@
       "by_source": {
         "cursor": {
           "aq": {
-            "aq_0_100": 39,
+            "aq_0_100": 45,
             "mcp_vs_cli": {
               "cli_calls": 100,
               "cli_distinct": 8,
@@ -1121,34 +1140,55 @@
                     "base_weight": 33,
                     "name": "Orchestration",
                     "normalized_score": 0.18,
-                    "score": 9.7,
+                    "score": 5.9,
                     "signals": {
                       "agent_runs": 0,
+                      "delegating_session_share": 0.0,
+                      "delegating_sessions": 0,
                       "fanout_median": 1,
+                      "max_session_fanout": 1,
                       "o_harn": 0.6,
+                      "parallel_session_share": 0,
                       "subagent_types": 0
                     },
-                    "weight": 54
+                    "weight": 33
+                  },
+                  {
+                    "base_weight": 22,
+                    "name": "Skill fluency",
+                    "normalized_score": 0.18,
+                    "score": 4.0,
+                    "signals": {
+                      "skills_distinct": 0,
+                      "skills_total": 0
+                    },
+                    "weight": 22
                   },
                   {
                     "base_weight": 28,
                     "name": "Tool command (MCP + CLI)",
                     "normalized_score": 0.166666666666667,
-                    "score": 7.7,
+                    "score": 4.7,
                     "signals": {
                       "clis": 8,
                       "mcp_servers": 2,
                       "toolsearch": 0
                     },
-                    "weight": 46
+                    "weight": 28
+                  },
+                  {
+                    "base_weight": 17,
+                    "name": "Discipline",
+                    "normalized_score": 0.6,
+                    "score": 10.2,
+                    "signals": {
+                      "task_tool_calls": 0
+                    },
+                    "weight": 17
                   }
                 ],
                 "name": "Breadth",
-                "not_applicable": [
-                  "Skill fluency",
-                  "Discipline"
-                ],
-                "score": 17.4,
+                "score": 24.8,
                 "weight": 30
               },
               {
@@ -1156,8 +1196,8 @@
                   {
                     "base_weight": 35,
                     "name": "Verification",
-                    "normalized_score": 0.333333333333333,
-                    "score": 11.7,
+                    "normalized_score": 0.166666666666667,
+                    "score": 5.8,
                     "signals": {
                       "review_skills": 0,
                       "test_runs": 5
@@ -1193,8 +1233,8 @@
                   {
                     "base_weight": 20,
                     "name": "Compounding",
-                    "normalized_score": 0.4,
-                    "score": 8.0,
+                    "normalized_score": 0.48,
+                    "score": 9.6,
                     "signals": {
                       "compounding_writes": 1
                     },
@@ -1202,7 +1242,7 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 27.2,
+                "score": 22.9,
                 "weight": 35
               },
               {
@@ -1238,49 +1278,34 @@
                 "axes": [
                   {
                     "base_weight": 50,
-                    "name": "Model mix",
-                    "normalized_score": 0.166666666666667,
-                    "score": 8.3,
-                    "signals": {
-                      "distinct_models": 1,
-                      "offload_share": 0.0,
-                      "routing": {
-                        "eligible_completed_substantive_pairs": 0,
-                        "excluded_reasons": {},
-                        "score": null,
-                        "state": "unsupported",
-                        "successful_lower_tier_pairs": 0
-                      }
-                    },
-                    "weight": 50
-                  },
-                  {
-                    "base_weight": 50,
                     "name": "Token economy",
                     "normalized_score": 0.952380952380952,
-                    "score": 47.6,
+                    "score": 95.2,
                     "signals": {
                       "cli_share": 0.67,
                       "toolsearch": 0
                     },
-                    "weight": 50
+                    "weight": 100
                   }
                 ],
                 "name": "Savvy",
-                "score": 55.9,
+                "not_applicable": [
+                  "Model mix"
+                ],
+                "score": 95.2,
                 "weight": 15
               }
             ],
             "score_contract_id": "5:3:3",
-            "tier": "Apprentice",
+            "tier": "Adequate",
             "tool_diversity": {
               "distinct": 12,
               "entropy": 0.6
             }
           },
           "archetype": {
-            "quote": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is breadth \u2014 that's where the next gain is.",
-            "title": "Apprentice"
+            "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is craft \u2014 that's where the next gain is.",
+            "title": "Adequate"
           },
           "growth_edges": [
             {
@@ -1294,7 +1319,7 @@
               "title": "When a file fights back, root-cause it"
             },
             {
-              "advice": "Planning is 2.3. Sketch the plan and reframe the ask before writing code \u2014 it's the cheapest place to catch a wrong turn. (gstack front-loads this with /office-hours + /autoplan.)",
+              "advice": "Planning is 3.1. Sketch the plan and reframe the ask before writing code \u2014 it's the cheapest place to catch a wrong turn. (gstack front-loads this with /office-hours + /autoplan.)",
               "axis": null,
               "commands": [
                 "/office-hours",
@@ -1305,12 +1330,12 @@
               "title": "Spend more time in Think + Plan"
             },
             {
-              "advice": "Savvy \u00b7 Model mix is your thinnest AQ signal. 1 model(s), with only 0% of turns routed off your default. Send mechanical work \u2014 renames, bulk edits, summaries \u2014 to a faster model and save the heavyweight for design and review.",
-              "axis": "Model mix",
+              "advice": "Breadth \u00b7 Tool command (MCP + CLI) is your thinnest AQ signal. 2 MCP servers and 8 CLIs in evidence. Connect the things you touch every day \u2014 issue tracker, browser, cloud \u2014 as MCP servers or CLIs, so the agent reaches them directly instead of through you.",
+              "axis": "Tool command (MCP + CLI)",
               "commands": [],
-              "eyebrow": "Route the work",
+              "eyebrow": "Widen the toolbelt",
               "severity": "medium",
-              "title": "Match the model to the task"
+              "title": "Wire your daily services into the agent"
             }
           ],
           "model_usage": [],
@@ -1443,12 +1468,12 @@
               "value": 1.5
             },
             "planning": {
-              "axis_narrative": "Planning scores 2.3/10 (poor). Strongest: Explore-before-build (46%); weakest: Reasoning depth (0%).",
-              "axis_verdict": "poor",
+              "axis_narrative": "Planning scores 3.1/10 (weak). Strongest: Planning skill practice (50%); weakest: Reasoning depth (0%).",
+              "axis_verdict": "weak",
               "drag_narrative": "Reasoning depth is the weakest contributor, scoring 0%. Your value: 0 thinking blocks/session (target: 12 thinking blocks/session, higher is better).",
               "drag_note": "Reasoning depth is dragging this down \u2014 0 thinking blocks/session, target ~12.",
               "gloss": "Think before you build",
-              "score_out_of_10": "2.3 / 10",
+              "score_out_of_10": "3.1 / 10",
               "subs": [
                 {
                   "direction": "higher",
@@ -1462,7 +1487,7 @@
                   "target": 0.65,
                   "unit": "explore/doing ratio",
                   "verdict": "weak",
-                  "weight": 0.5,
+                  "weight": 0.3529,
                   "your_value": 0.3
                 },
                 {
@@ -1477,11 +1502,26 @@
                   "target": 12.0,
                   "unit": "thinking blocks/session",
                   "verdict": "poor",
-                  "weight": 0.5,
+                  "weight": 0.3529,
                   "your_value": 0.0
+                },
+                {
+                  "direction": "higher",
+                  "display_target": "0.4 planning sessions/session",
+                  "display_value": "0.2 planning sessions/session",
+                  "is_drag": false,
+                  "label": "Planning skill practice",
+                  "narrative": "Planning skill practice is adequate (0.2 planning sessions/session, target 0.4 planning sessions/session \u2014 approaching target, scoring 50%).",
+                  "pct": 0.5,
+                  "score_pct": 50,
+                  "target": 0.4,
+                  "unit": "planning sessions/session",
+                  "verdict": "adequate",
+                  "weight": 0.2941,
+                  "your_value": 0.2
                 }
               ],
-              "value": 2.3
+              "value": 3.1
             }
           },
           "signature_moves": [],
@@ -1578,12 +1618,12 @@
           "pillars": [
             {
               "name": "Breadth",
-              "score": 72.8,
+              "score": 73.6,
               "weight": 30
             },
             {
               "name": "Craft",
-              "score": 85.2,
+              "score": 84.8,
               "weight": 35
             },
             {
@@ -1593,7 +1633,7 @@
             },
             {
               "name": "Savvy",
-              "score": 84.0,
+              "score": 88.4,
               "weight": 15
             }
           ],
@@ -1754,12 +1794,12 @@
             "value": 7.1
           },
           "planning": {
-            "axis_narrative": "Planning scores 9.1/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning skill practice (90%).",
+            "axis_narrative": "Planning scores 9.2/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning skill practice (90%).",
             "axis_verdict": "excellent",
             "drag_narrative": "Planning skill practice is the weakest contributor, scoring 90%. Your value: 0.36 planning sessions/session (target: 0.4 planning sessions/session, higher is better).",
             "drag_note": "Planning skill practice is dragging this down \u2014 0.36 planning sessions/session, target ~0.4.",
             "gloss": "Think before you build",
-            "score_out_of_10": "9.1 / 10",
+            "score_out_of_10": "9.2 / 10",
             "subs": [
               {
                 "direction": "higher",
@@ -1807,7 +1847,7 @@
                 "your_value": 0.36
               }
             ],
-            "value": 9.1
+            "value": 9.2
           }
         },
         "signature_moves": [
@@ -1864,8 +1904,12 @@
                     "score": 23.9,
                     "signals": {
                       "agent_runs": 200,
+                      "delegating_session_share": 0.0,
+                      "delegating_sessions": 0,
                       "fanout_median": 3,
+                      "max_session_fanout": 3,
                       "o_harn": 0.6,
+                      "parallel_session_share": 0,
                       "subagent_types": 6
                     },
                     "weight": 33
@@ -2272,7 +2316,7 @@
         },
         "cursor": {
           "aq": {
-            "aq_0_100": 39,
+            "aq_0_100": 45,
             "mcp_vs_cli": {
               "cli_calls": 100,
               "cli_distinct": 8,
@@ -2287,34 +2331,55 @@
                     "base_weight": 33,
                     "name": "Orchestration",
                     "normalized_score": 0.18,
-                    "score": 9.7,
+                    "score": 5.9,
                     "signals": {
                       "agent_runs": 0,
+                      "delegating_session_share": 0.0,
+                      "delegating_sessions": 0,
                       "fanout_median": 1,
+                      "max_session_fanout": 1,
                       "o_harn": 0.6,
+                      "parallel_session_share": 0,
                       "subagent_types": 0
                     },
-                    "weight": 54
+                    "weight": 33
+                  },
+                  {
+                    "base_weight": 22,
+                    "name": "Skill fluency",
+                    "normalized_score": 0.18,
+                    "score": 4.0,
+                    "signals": {
+                      "skills_distinct": 0,
+                      "skills_total": 0
+                    },
+                    "weight": 22
                   },
                   {
                     "base_weight": 28,
                     "name": "Tool command (MCP + CLI)",
                     "normalized_score": 0.166666666666667,
-                    "score": 7.7,
+                    "score": 4.7,
                     "signals": {
                       "clis": 8,
                       "mcp_servers": 2,
                       "toolsearch": 0
                     },
-                    "weight": 46
+                    "weight": 28
+                  },
+                  {
+                    "base_weight": 17,
+                    "name": "Discipline",
+                    "normalized_score": 0.6,
+                    "score": 10.2,
+                    "signals": {
+                      "task_tool_calls": 0
+                    },
+                    "weight": 17
                   }
                 ],
                 "name": "Breadth",
-                "not_applicable": [
-                  "Skill fluency",
-                  "Discipline"
-                ],
-                "score": 17.4,
+                "score": 24.8,
                 "weight": 30
               },
               {
@@ -2322,8 +2387,8 @@
                   {
                     "base_weight": 35,
                     "name": "Verification",
-                    "normalized_score": 0.333333333333333,
-                    "score": 11.7,
+                    "normalized_score": 0.166666666666667,
+                    "score": 5.8,
                     "signals": {
                       "review_skills": 0,
                       "test_runs": 5
@@ -2359,8 +2424,8 @@
                   {
                     "base_weight": 20,
                     "name": "Compounding",
-                    "normalized_score": 0.4,
-                    "score": 8.0,
+                    "normalized_score": 0.48,
+                    "score": 9.6,
                     "signals": {
                       "compounding_writes": 1
                     },
@@ -2368,7 +2433,7 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 27.2,
+                "score": 22.9,
                 "weight": 35
               },
               {
@@ -2404,49 +2469,34 @@
                 "axes": [
                   {
                     "base_weight": 50,
-                    "name": "Model mix",
-                    "normalized_score": 0.166666666666667,
-                    "score": 8.3,
-                    "signals": {
-                      "distinct_models": 1,
-                      "offload_share": 0.0,
-                      "routing": {
-                        "eligible_completed_substantive_pairs": 0,
-                        "excluded_reasons": {},
-                        "score": null,
-                        "state": "unsupported",
-                        "successful_lower_tier_pairs": 0
-                      }
-                    },
-                    "weight": 50
-                  },
-                  {
-                    "base_weight": 50,
                     "name": "Token economy",
                     "normalized_score": 0.952380952380952,
-                    "score": 47.6,
+                    "score": 95.2,
                     "signals": {
                       "cli_share": 0.67,
                       "toolsearch": 0
                     },
-                    "weight": 50
+                    "weight": 100
                   }
                 ],
                 "name": "Savvy",
-                "score": 55.9,
+                "not_applicable": [
+                  "Model mix"
+                ],
+                "score": 95.2,
                 "weight": 15
               }
             ],
             "score_contract_id": "5:3:3",
-            "tier": "Apprentice",
+            "tier": "Adequate",
             "tool_diversity": {
               "distinct": 12,
               "entropy": 0.6
             }
           },
           "archetype": {
-            "quote": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is breadth \u2014 that's where the next gain is.",
-            "title": "Apprentice"
+            "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is craft \u2014 that's where the next gain is.",
+            "title": "Adequate"
           },
           "growth_edges": [
             {
@@ -2460,7 +2510,7 @@
               "title": "When a file fights back, root-cause it"
             },
             {
-              "advice": "Planning is 2.3. Sketch the plan and reframe the ask before writing code \u2014 it's the cheapest place to catch a wrong turn. (gstack front-loads this with /office-hours + /autoplan.)",
+              "advice": "Planning is 3.1. Sketch the plan and reframe the ask before writing code \u2014 it's the cheapest place to catch a wrong turn. (gstack front-loads this with /office-hours + /autoplan.)",
               "axis": null,
               "commands": [
                 "/office-hours",
@@ -2471,12 +2521,12 @@
               "title": "Spend more time in Think + Plan"
             },
             {
-              "advice": "Savvy \u00b7 Model mix is your thinnest AQ signal. 1 model(s), with only 0% of turns routed off your default. Send mechanical work \u2014 renames, bulk edits, summaries \u2014 to a faster model and save the heavyweight for design and review.",
-              "axis": "Model mix",
+              "advice": "Breadth \u00b7 Tool command (MCP + CLI) is your thinnest AQ signal. 2 MCP servers and 8 CLIs in evidence. Connect the things you touch every day \u2014 issue tracker, browser, cloud \u2014 as MCP servers or CLIs, so the agent reaches them directly instead of through you.",
+              "axis": "Tool command (MCP + CLI)",
               "commands": [],
-              "eyebrow": "Route the work",
+              "eyebrow": "Widen the toolbelt",
               "severity": "medium",
-              "title": "Match the model to the task"
+              "title": "Wire your daily services into the agent"
             }
           ],
           "model_usage": [],
@@ -2609,12 +2659,12 @@
               "value": 1.5
             },
             "planning": {
-              "axis_narrative": "Planning scores 2.3/10 (poor). Strongest: Explore-before-build (46%); weakest: Reasoning depth (0%).",
-              "axis_verdict": "poor",
+              "axis_narrative": "Planning scores 3.1/10 (weak). Strongest: Planning skill practice (50%); weakest: Reasoning depth (0%).",
+              "axis_verdict": "weak",
               "drag_narrative": "Reasoning depth is the weakest contributor, scoring 0%. Your value: 0 thinking blocks/session (target: 12 thinking blocks/session, higher is better).",
               "drag_note": "Reasoning depth is dragging this down \u2014 0 thinking blocks/session, target ~12.",
               "gloss": "Think before you build",
-              "score_out_of_10": "2.3 / 10",
+              "score_out_of_10": "3.1 / 10",
               "subs": [
                 {
                   "direction": "higher",
@@ -2628,7 +2678,7 @@
                   "target": 0.65,
                   "unit": "explore/doing ratio",
                   "verdict": "weak",
-                  "weight": 0.5,
+                  "weight": 0.3529,
                   "your_value": 0.3
                 },
                 {
@@ -2643,11 +2693,26 @@
                   "target": 12.0,
                   "unit": "thinking blocks/session",
                   "verdict": "poor",
-                  "weight": 0.5,
+                  "weight": 0.3529,
                   "your_value": 0.0
+                },
+                {
+                  "direction": "higher",
+                  "display_target": "0.4 planning sessions/session",
+                  "display_value": "0.2 planning sessions/session",
+                  "is_drag": false,
+                  "label": "Planning skill practice",
+                  "narrative": "Planning skill practice is adequate (0.2 planning sessions/session, target 0.4 planning sessions/session \u2014 approaching target, scoring 50%).",
+                  "pct": 0.5,
+                  "score_pct": 50,
+                  "target": 0.4,
+                  "unit": "planning sessions/session",
+                  "verdict": "adequate",
+                  "weight": 0.2941,
+                  "your_value": 0.2
                 }
               ],
-              "value": 2.3
+              "value": 3.1
             }
           },
           "signature_moves": [],
@@ -3172,8 +3237,12 @@
                     "score": 23.9,
                     "signals": {
                       "agent_runs": 200,
+                      "delegating_session_share": 0.0,
+                      "delegating_sessions": 0,
                       "fanout_median": 3,
+                      "max_session_fanout": 3,
                       "o_harn": 0.6,
+                      "parallel_session_share": 0,
                       "subagent_types": 6
                     },
                     "weight": 33
@@ -4009,8 +4078,12 @@
                     "score": 4.0,
                     "signals": {
                       "agent_runs": 0,
+                      "delegating_session_share": 0.0,
+                      "delegating_sessions": 0,
                       "fanout_median": 0,
+                      "max_session_fanout": 0,
                       "o_harn": 0.6,
+                      "parallel_session_share": 0,
                       "subagent_types": 0
                     },
                     "weight": 33
@@ -4954,8 +5027,12 @@
                         "score": 23.9,
                         "signals": {
                           "agent_runs": 200,
+                          "delegating_session_share": 0.0,
+                          "delegating_sessions": 0,
                           "fanout_median": 3,
+                          "max_session_fanout": 3,
                           "o_harn": 0.6,
+                          "parallel_session_share": 0,
                           "subagent_types": 6
                         }
                       },
@@ -4966,8 +5043,12 @@
                         "score": 23.9,
                         "signals": {
                           "agent_runs": 200,
+                          "delegating_session_share": 0.0,
+                          "delegating_sessions": 0,
                           "fanout_median": 3,
+                          "max_session_fanout": 3,
                           "o_harn": 0.6,
+                          "parallel_session_share": 0,
                           "subagent_types": 6
                         }
                       }
@@ -4977,8 +5058,12 @@
                     "score": 23.9,
                     "signals": {
                       "agent_runs": 200,
+                      "delegating_session_share": 0.0,
+                      "delegating_sessions": 0,
                       "fanout_median": 3,
+                      "max_session_fanout": 3,
                       "o_harn": 0.6,
+                      "parallel_session_share": 0,
                       "subagent_types": 6
                     },
                     "weight": 33

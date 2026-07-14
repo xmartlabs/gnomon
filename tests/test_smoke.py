@@ -553,10 +553,13 @@ class TestCapabilityAwareScoring(unittest.TestCase):
     def test_cursor_drops_unsupported_axes(self):
         aq = paxel.compute_aq(self._stats(["cursor"]))
         breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
-        self.assertIn("Skill fluency", breadth.get("not_applicable", []))
-        self.assertIn("Discipline", breadth.get("not_applicable", []))
+        axis_names = {a["name"] for a in breadth["axes"]}
+        self.assertIn("Skill fluency", axis_names)
+        self.assertIn("Discipline", axis_names)
         # surviving axes renormalize to the full pillar weight (100)
         self.assertEqual(sum(a["weight"] for a in breadth["axes"]), 100)
+        savvy = next(p for p in aq["pillars"] if p["name"] == "Savvy")
+        self.assertIn("Model mix", savvy.get("not_applicable", []))
 
     def test_claude_keeps_all_axes_noop(self):
         aq = paxel.compute_aq(self._stats(["claude"]))

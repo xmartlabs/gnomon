@@ -467,7 +467,7 @@ class TestPerSourceRollingBlend(unittest.TestCase):
             result["aggregate"]["combination"]["weights"],
             {"claude": 10, "cursor": 20},
         )
-        self.assertEqual(result["aggregate"]["aq"]["aq_0_100"], 53)
+        self.assertEqual(result["aggregate"]["aq"]["aq_0_100"], 58)
 
     def test_nonempty_bucket_without_metadata_uses_full_profile_and_legacy_weight(self):
         full_inputs = {"claude": {"window": self._block(

@@ -16,7 +16,7 @@ from gnomon.sources.discovery import (
     ALL_SOURCES, _DIR_FLAGS,
     discover_sources, parse_window, _resolve_source_dir,
 )
-from gnomon.sources.cursor import _cursor_dedup
+from gnomon.sources.cursor import _cursor_dedup, _cursor_build_workspace_index
 from gnomon.sources.antigravity import antigravity_summary, export_antigravity_ide, ide_window_overlaps
 from gnomon.analysis.churn import git_churn
 from gnomon.analysis.quotes import _safe_quote, _cryptic_score, _crashout_score, _RAGE_RE, _FILLER
@@ -378,6 +378,10 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
     corpus = Accumulator()
     _srcs_present = sorted({s for s, _, _ in sources})
     src_accums = {s: Accumulator() for s in _srcs_present}
+    _workspace_cwds = _cursor_build_workspace_index(sources)
+    corpus.seed_workspaces(_workspace_cwds)
+    if "cursor" in src_accums:
+        src_accums["cursor"].seed_workspaces(_workspace_cwds)
 
     bucket_windows = (_rolling_aq_bucket_windows(until_dt) if RECENCY_BLEND_ENABLED else [])
     bucket_corpora = {bucket["id"]: Accumulator() for bucket in bucket_windows}
@@ -385,9 +389,6 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
         bucket["id"]: {source: Accumulator() for source in _srcs_present}
         for bucket in bucket_windows
     }
-    # The report's calendar-month start can be newer than the rolling 180-day
-    # AQ horizon (especially during a partial current month). Scan far enough
-    # back for both consumers; each accumulator still applies its own bounds.
     file_scan_since = since_dt
     if since_dt is not None and bucket_windows:
         file_scan_since = min(since_dt, min(bucket["since"] for bucket in bucket_windows))
@@ -565,7 +566,7 @@ from gnomon.sources.codex import _codex_events, _patch_files, _patch_churn  # no
 from gnomon.sources.gemini import _gemini_events  # noqa: E402
 from gnomon.sources.pi import _pi_events  # noqa: E402
 from gnomon.sources.opencode import _opencode_events  # noqa: E402
-from gnomon.sources.cursor import _cursor_dedup, _cursor_sqlite_events, _cursor_jsonl_events  # noqa: E402,F811
+from gnomon.sources.cursor import _cursor_dedup, _cursor_build_workspace_index, _cursor_sqlite_events, _cursor_jsonl_events  # noqa: E402,F811
 from gnomon.sources.antigravity import antigravity_summary  # noqa: E402,F811
 from gnomon.analysis.churn import git_churn  # noqa: E402,F811
 from gnomon.analysis.metrics import *  # noqa: E402,F403

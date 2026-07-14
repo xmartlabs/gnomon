@@ -19,22 +19,26 @@ OUT_DIR = os.getcwd()
 #   tasktool   - TaskCreate/TaskUpdate task-tracking tools (Claude Code only)
 #   delegate   - subagent delegation (the source can spawn agents at all). Without it the
 #                Orchestration axis is DROPPED (not scored 0) so a no-fan-out source isn't penalized.
-#   model      - persists a real per-turn model id (gates Savvy "Model mix"). Antigravity IDE
-#                masks it (MODEL_PLACEHOLDER_*), so the axis drops there.
+#   model      - persists a real per-turn model id (gates Savvy "Model mix"). Dropped when the
+#                source masks it (Antigravity IDE) or when billing makes model choice irrelevant
+#                to cost (Cursor: Composer 2.5 and every other included model cost 1 request).
 #   thinking   - emits reasoning/thinking blocks (gates Planning "reasoning depth"). Antigravity
 #                CLI doesn't, so that term drops there.
+#   skill_reads - observable skill invocations without a first-class Skill tool (Cursor SKILL.md
+#                 reads + manually_attached_skills; Codex shell-reads). Gates Craft review/compounding
+#                 ceremony terms only — NOT Skill fluency / Discipline (those need `skills`).
 # (errors are emitted by every source, so error_rate/recovery need no cap.)
 SOURCE_CAPS = {
-    "claude":   {"skills", "toolsearch", "tasktool", "delegate", "model", "thinking", "linked_model_routing"},
-    "codex":    {"skills", "delegate", "model", "thinking", "linked_model_routing"},   # SKILL.md shell-reads; thread_spawn = delegate
+    "claude":   {"skills", "skill_reads", "toolsearch", "tasktool", "delegate", "model", "thinking", "linked_model_routing"},
+    "codex":    {"skills", "skill_reads", "delegate", "model", "thinking", "linked_model_routing"},   # SKILL.md shell-reads; thread_spawn = delegate
     "gemini":   {"model", "thinking"},
-    "antigravity": {"delegate", "skills", "model"},   # CLI: real model; no separate thinking block
-    "antigravity-ide": {"skills", "thinking"},                 # IDE: masks model; no subagent/token
+    "antigravity": {"delegate", "skills", "skill_reads", "model"},   # CLI: real model; no separate thinking block
+    "antigravity-ide": {"skills", "skill_reads", "thinking"},                 # IDE: masks model; no subagent/token
     "pi":       {"model", "thinking"},
     "opencode": {"model", "thinking"},
-    "cursor":   {"delegate", "model", "thinking"},   # subagent sidechains; no Skill/ToolSearch/Task tool
+    "cursor":   {"delegate", "skills", "skill_reads", "thinking"},   # skills via Read/SKILL.md + manually_attached; no ToolSearch/Task tool; model id recorded but not scored (flat request billing)
 }
-_ALL_CAPS = {"skills", "toolsearch", "tasktool", "delegate", "model", "thinking", "linked_model_routing"}
+_ALL_CAPS = {"skills", "skill_reads", "toolsearch", "tasktool", "delegate", "model", "thinking", "linked_model_routing"}
 
 
 def available_caps(sources):

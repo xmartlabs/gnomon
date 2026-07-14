@@ -38,8 +38,9 @@ AQ_PILLAR_NOTES = {
     "Savvy": "Smart choices — routing models to tasks and spending tokens lean.",
 }
 AQ_AXIS_NOTES = {
-    "Orchestration": "Coordination over volume: distinct subagent types, median fan-out per "
-                     "orchestrating session, and harness use — raw agent runs only count as a small floor.",
+    "Orchestration": "Coordination over volume: distinct subagent types, a 50/50 blend of "
+                     "median and peak fan-out per orchestrating session, and harness use — "
+                     "raw agent runs only count as a small floor.",
     "Skill fluency": "Range and volume of skills you invoke, plus whether process skills "
                      "(planning, debugging, brainstorming) are in the rotation.",
     "Tool command (MCP + CLI)": "External reach: distinct MCP servers, distinct CLIs, and "
@@ -62,6 +63,27 @@ AQ_AXIS_NOTES = {
     "Token economy": "Token-lean habits: on-demand schema loading (ToolSearch) and a CLI-first "
                      "share of tool traffic.",
 }
+
+# Shown in profile.html when Savvy's Model mix axis is dropped for Cursor-only (or
+# Cursor-mixed-without-model-cap) corpora — flat request billing makes model routing
+# irrelevant to cost.
+CURSOR_SAVVY_MODEL_MIX_NOTE = (
+    "Model mix — not graded for Cursor",
+    "On Cursor's billing plan every included model costs one request, so switching between "
+    "Composer 2.5 and other models isn't a cost signal. Savvy here reflects Token economy "
+    "only — your Cursor model choices don't move this score.",
+)
+
+
+def savvy_cursor_model_mix_note(stats, aq):
+    """Return the Cursor billing caveat when Model mix was dropped from Savvy, else None."""
+    sources = {(s or "").lower() for s in ((stats.get("corpus") or {}).get("sources") or {})}
+    if "cursor" not in sources:
+        return None
+    savvy = next((p for p in (aq or {}).get("pillars", []) if p.get("name") == "Savvy"), None)
+    if not savvy or "Model mix" not in (savvy.get("not_applicable") or []):
+        return None
+    return CURSOR_SAVVY_MODEL_MIX_NOTE
 
 
 def _clamp(x):
