@@ -40,7 +40,7 @@ def score_linked_routing(pairs, state):
             continue
         eligible += 1
         successful += child < lead
-    if excluded.get("unknown_model") and not eligible:
+    if excluded and not eligible:
         state = "unmeasured"
     rate = successful / eligible if eligible else 0.0
     return {"state": state, "score": min(1.0, rate / 0.40) if state == "measured" else None,

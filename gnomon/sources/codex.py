@@ -101,13 +101,18 @@ def _js_skip_ws(text, index):
     return index
 
 
-def _js_literal(text, index, variables=None):
+_JS_MAX_DEPTH = 64
+
+
+def _js_literal(text, index, variables=None, _depth=0):
     """Parse the small, data-only JS subset used by Codex compositor calls.
 
     This intentionally rejects expressions, template interpolation, functions, and
     unknown identifiers. Returning no tool is safer than inventing telemetry from an
     executable language we do not evaluate.
     """
+    if _depth > _JS_MAX_DEPTH:
+        raise _UnsupportedJsPayload()
     variables = variables or {}
     index = _js_skip_ws(text, index)
     if index >= len(text):
@@ -138,7 +143,7 @@ def _js_literal(text, index, variables=None):
         index = _js_skip_ws(text, index + 1)
         while index < len(text) and text[index] != "}":
             if text[index] in "\"'":
-                key, index = _js_literal(text, index, variables)
+                key, index = _js_literal(text, index, variables, _depth + 1)
             else:
                 match = re.match(r"[A-Za-z_$][A-Za-z0-9_$]*", text[index:])
                 if not match:
@@ -148,7 +153,7 @@ def _js_literal(text, index, variables=None):
             index = _js_skip_ws(text, index)
             if index >= len(text) or text[index] != ":":
                 raise _UnsupportedJsPayload()
-            value, index = _js_literal(text, index + 1, variables)
+            value, index = _js_literal(text, index + 1, variables, _depth + 1)
             out[str(key)] = value
             index = _js_skip_ws(text, index)
             if index < len(text) and text[index] == ",":
@@ -163,7 +168,7 @@ def _js_literal(text, index, variables=None):
         out = []
         index = _js_skip_ws(text, index + 1)
         while index < len(text) and text[index] != "]":
-            value, index = _js_literal(text, index, variables)
+            value, index = _js_literal(text, index, variables, _depth + 1)
             out.append(value)
             index = _js_skip_ws(text, index)
             if index < len(text) and text[index] == ",":
@@ -438,12 +443,18 @@ def _codex_events(fp):
             if pt not in {"function_call", "local_shell_call", "custom_tool_call",
                           "web_search_call"}:
                 continue
-            name, _ = _codex_tool(payload)
+            if pt == "custom_tool_call" and payload.get("name") == "exec":
+                tools = _codex_exec_tools(str(payload.get("input") or ""))
+                if not tools:
+                    tools = [_codex_tool(payload)]
+            else:
+                tools = [_codex_tool(payload)]
             turn = turns[current_turn]
-            if is_substantive_tool(name):
-                turn["substantive_calls"] += 1
-            if name in WRITE_TOOLS:
-                turn["writes"] += 1
+            for name, _ in tools:
+                if is_substantive_tool(name):
+                    turn["substantive_calls"] += 1
+                if name in WRITE_TOOLS:
+                    turn["writes"] += 1
 
         for turn_id, turn in turns.items():
             lifecycle_known = bool(turn["lifecycle"] and not turn["ambiguous_lifecycle"])

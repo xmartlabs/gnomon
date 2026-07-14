@@ -355,7 +355,10 @@ class Accumulator:
         attempt["status"] = status or attempt["status"]
         attempt["resolved_model"] = result.get("resolvedModel") or attempt["resolved_model"]
         tool_stats = result.get("toolStats") or {}
-        attempt["writes"] = max(attempt["writes"], int(tool_stats.get("editFileCount") or 0))
+        try:
+            attempt["writes"] = max(attempt["writes"], int(tool_stats.get("editFileCount") or 0))
+        except (ValueError, TypeError):
+            pass
 
     def _record_claude_notification(self, ev, content):
         if (self._cur_src != "claude" or not isinstance(content, str)
