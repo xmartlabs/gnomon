@@ -62,6 +62,22 @@ class TestPublicDocumentationContract(unittest.TestCase):
         self.assertIn(f"coverage / {CONTEXT_INTELLIGENCE_TARGET:.2f}", note)
         self.assertNotIn("write-sessions", note)
 
+    def test_philosophy_describes_ordered_planning_redesign(self):
+        # Ordered-planning eligibility redesign (C1-C7): the public doc must
+        # describe the CURRENT mechanics, not the pre-redesign baseline.
+        normalized = " ".join(self.philosophy.split())
+        self.assertIn(
+            "doc, config, lockfile, and test-only sessions are excluded",
+            normalized,
+        )
+        self.assertIn("at least three distinct plan/task steps", normalized)
+        self.assertIn("consume-once", normalized)
+        self.assertNotIn(
+            "Only Plan Mode or at least two distinct plan/task steps before "
+            "the first write prove ordered readiness",
+            normalized,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

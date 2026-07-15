@@ -32,16 +32,23 @@ when a formal plan or retrieval adds no value.
 | Existing signals | Keep skills, MCPs, CLIs, ToolSearch, fanout, output, delegation, and model diversity scored | They are educational prompts for capabilities users should learn, not claims of output quality. |
 | Recency | Keep the 65% recent / 35% full-window blend | Recent improvement stays visible while established habits retain influence. |
 
-Planning and evidence eligibility requires a write plus either two distinct written files or
-ten substantive tool calls. Unsupported or incomplete telemetry is `N/A`, not zero. Score
-contracts are versioned; changes between incompatible contracts are not labeled improvement
-or regression.
+Change-session eligibility requires at least one code write, together with either two distinct
+code files, code churn past a net-changed-lines floor, or ten substantive tool calls; doc,
+config, lockfile, and test-only sessions are excluded (a mixed code+test session stays eligible
+via its code files). Unsupported or incomplete telemetry is `N/A`, not zero. Score contracts are
+versioned; changes between incompatible contracts are not labeled improvement or regression.
 
 Eligibility conditions the ordered readiness signal, not every planning-related metric. Actual
-planning Skill use remains separately scored to teach the reusable practice. Only Plan Mode or
-at least two distinct plan/task steps before the first write prove ordered readiness; a
-planning-labelled Agent event does not. These readiness signals do not count as planning Skill
-practice.
+planning Skill use remains separately scored to teach the reusable practice. A substantive
+plan-file write, a planning-skill invocation paired with a plan-file, or at least three distinct
+plan/task steps before the first code write prove ordered readiness (raised from two steps). A
+bare Plan Mode toggle or a two-step throwaway todo, with no plan-file and no skill, does not
+count: planning theater isn't planning. A plan produced in one session can also credit a later
+session's eligible execution in the same working directory within a bounded time window
+(consume-once — one plan credits exactly one execution), so planning in one session and
+executing in another still counts. Below a minimum number of eligible sessions the signal is
+dropped (and the remaining terms renormalized) rather than scored on too little data. These
+readiness signals do not count as planning Skill practice.
 
 ## Volume is descriptive, not AQ
 
