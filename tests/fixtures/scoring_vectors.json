@@ -292,12 +292,8 @@
                     "score": 23.9,
                     "signals": {
                       "agent_runs": 200,
-                      "delegating_session_share": 0.0,
-                      "delegating_sessions": 0,
                       "fanout_median": 3,
-                      "max_session_fanout": 3,
                       "o_harn": 0.6,
-                      "parallel_session_share": 0,
                       "subagent_types": 6
                     },
                     "weight": 33
@@ -1128,12 +1124,8 @@
                     "score": 7.2,
                     "signals": {
                       "agent_runs": 0,
-                      "delegating_session_share": 0.0,
-                      "delegating_sessions": 0,
                       "fanout_median": 1,
-                      "max_session_fanout": 1,
                       "o_harn": 0.6,
-                      "parallel_session_share": 0,
                       "subagent_types": 0
                     },
                     "weight": 40
@@ -1867,12 +1859,8 @@
                     "score": 23.9,
                     "signals": {
                       "agent_runs": 200,
-                      "delegating_session_share": 0.0,
-                      "delegating_sessions": 0,
                       "fanout_median": 3,
-                      "max_session_fanout": 3,
                       "o_harn": 0.6,
-                      "parallel_session_share": 0,
                       "subagent_types": 6
                     },
                     "weight": 33
@@ -2297,12 +2285,8 @@
                     "score": 7.2,
                     "signals": {
                       "agent_runs": 0,
-                      "delegating_session_share": 0.0,
-                      "delegating_sessions": 0,
                       "fanout_median": 1,
-                      "max_session_fanout": 1,
                       "o_harn": 0.6,
-                      "parallel_session_share": 0,
                       "subagent_types": 0
                     },
                     "weight": 40
@@ -3178,12 +3162,8 @@
                     "score": 23.9,
                     "signals": {
                       "agent_runs": 200,
-                      "delegating_session_share": 0.0,
-                      "delegating_sessions": 0,
                       "fanout_median": 3,
-                      "max_session_fanout": 3,
                       "o_harn": 0.6,
-                      "parallel_session_share": 0,
                       "subagent_types": 6
                     },
                     "weight": 33
@@ -4019,12 +3999,8 @@
                     "score": 4.0,
                     "signals": {
                       "agent_runs": 0,
-                      "delegating_session_share": 0.0,
-                      "delegating_sessions": 0,
                       "fanout_median": 0,
-                      "max_session_fanout": 0,
                       "o_harn": 0.6,
-                      "parallel_session_share": 0,
                       "subagent_types": 0
                     },
                     "weight": 33
@@ -4968,12 +4944,8 @@
                         "score": 23.9,
                         "signals": {
                           "agent_runs": 200,
-                          "delegating_session_share": 0.0,
-                          "delegating_sessions": 0,
                           "fanout_median": 3,
-                          "max_session_fanout": 3,
                           "o_harn": 0.6,
-                          "parallel_session_share": 0,
                           "subagent_types": 6
                         }
                       },
@@ -4984,12 +4956,8 @@
                         "score": 23.9,
                         "signals": {
                           "agent_runs": 200,
-                          "delegating_session_share": 0.0,
-                          "delegating_sessions": 0,
                           "fanout_median": 3,
-                          "max_session_fanout": 3,
                           "o_harn": 0.6,
-                          "parallel_session_share": 0,
                           "subagent_types": 6
                         }
                       }
@@ -4999,12 +4967,8 @@
                     "score": 23.9,
                     "signals": {
                       "agent_runs": 200,
-                      "delegating_session_share": 0.0,
-                      "delegating_sessions": 0,
                       "fanout_median": 3,
-                      "max_session_fanout": 3,
                       "o_harn": 0.6,
-                      "parallel_session_share": 0,
                       "subagent_types": 6
                     },
                     "weight": 33

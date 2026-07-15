@@ -110,6 +110,10 @@ def compute_aq(stats):
     # ---- Pillar 1: Breadth (unchanged axes) ----
     agent_runs = t.get("agent_calls", 0)
     fanout = b.get("fanout_median") or 0  # None (unmeasured) treated as 0 for AQ
+    max_fanout = b.get("max_session_fanout") or 0
+    parallel_share = b.get("parallel_session_share") or 0
+    delegating_sessions = b.get("delegating_sessions") or 0
+    delegating_session_share = delegating_sessions / sessions if sessions else 0
     # Harness use = a SINGLE session coordinating a team of >=3 distinct subagent roles
     # (behavioral), not a subagent/skill NAMED "harness"/"trisel" (opaque), and not window-wide
     # role variety (subagent_types_distinct would credit 3 roles fired one-per-session, which

@@ -38,9 +38,9 @@ AQ_PILLAR_NOTES = {
     "Savvy": "Smart choices — routing models to tasks and spending tokens lean.",
 }
 AQ_AXIS_NOTES = {
-    "Orchestration": "Coordination over volume: distinct subagent types, a 50/50 blend of "
-                     "median and peak fan-out per orchestrating session, and harness use — "
-                     "raw agent runs only count as a small floor.",
+    "Orchestration": "Coordination over volume: distinct subagent types, median fan-out per "
+                     "orchestrating session, and harness use — raw agent runs only count as a "
+                     "small floor.",
     "Skill fluency": "Range and volume of skills you invoke, plus whether process skills "
                      "(planning, debugging, brainstorming) are in the rotation.",
     "Tool command (MCP + CLI)": "External reach: distinct MCP servers, distinct CLIs, and "
