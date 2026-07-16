@@ -2,7 +2,7 @@ from gnomon.analysis.metrics import _review_skill_uses, _task_skill_uses
 from gnomon.config import available_caps
 from gnomon.scoring.versioning import SCORE_CONTRACT_ID
 
-PLANNING_TARGET = 0.40
+PLANNING_TARGET = 0.50
 CONTEXT_INTELLIGENCE_TARGET = 0.60
 
 # ---- Ordered-planning redesign (C1-C7) calibration placeholders ------------

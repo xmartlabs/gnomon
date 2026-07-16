@@ -18,7 +18,7 @@ The scoring review considered these external recommendations:
 
 Those sources support the direction—conditional planning, relevant pre-write evidence,
 evaluated routing, and descriptive volume—but do not establish universal healthy thresholds.
-The 40% Planning and 60% Context Intelligence targets are explicit, versioned product
+The 50% Planning and 60% Context Intelligence targets are explicit, versioned product
 hypotheses: trivial work is excluded and eligible work still has room for direct execution
 when a formal plan or retrieval adds no value.
 
@@ -26,7 +26,7 @@ when a formal plan or retrieval adds no value.
 
 | Area | Decision | Why |
 |---|---|---|
-| Planning readiness | Grade ordered planning readiness only on eligible non-trivial changes and target 40% coverage | Small tasks should stay direct; larger work benefits from an explicit plan before editing. Planning Skill practice remains a separate educational term. |
+| Planning readiness | Grade ordered planning readiness only on eligible non-trivial changes and target 50% coverage | Small tasks should stay direct; larger work benefits from an explicit plan before editing. Planning Skill practice remains a separate educational term. |
 | Context Intelligence | Target evidence gathering before the first write in 60% of eligible changes | Grounding should inform implementation, not become after-the-fact ceremony. |
 | Model routing | Reward completed, substantive work routed to a lower-tier model when linkage is observable | This teaches efficient model selection without guessing from incomplete telemetry. |
 | Existing signals | Keep skills, MCPs, CLIs, ToolSearch, fanout, output, delegation, and model diversity scored | They are educational prompts for capabilities users should learn, not claims of output quality. |

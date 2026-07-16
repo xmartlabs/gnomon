@@ -268,40 +268,40 @@ class TestConditionalScoring(unittest.TestCase):
         pillar = next(p for p in aq["pillars"] if p["name"] == pillar_name)
         return next(a for a in pillar["axes"] if a["name"] == axis_name)
 
-    def test_aq_targets_four_of_ten_planning_and_six_of_ten_context(self):
+    def test_aq_targets_five_of_ten_planning_and_six_of_ten_context(self):
         three = _v5_scoring_stats(planned=3, evidence=6)
-        four = _v5_scoring_stats(planned=4, evidence=6)
+        five = _v5_scoring_stats(planned=5, evidence=6)
         ten = _v5_scoring_stats(planned=10, evidence=10)
 
-        ci = self._aq_axis(four, "Craft", "Context Intelligence")
-        self.assertEqual(PLANNING_TARGET, 0.40)
+        ci = self._aq_axis(five, "Craft", "Context Intelligence")
+        self.assertEqual(PLANNING_TARGET, 0.50)
         self.assertEqual(CONTEXT_INTELLIGENCE_TARGET, 0.60)
         self.assertEqual(ci["signals"]["target_coverage"], CONTEXT_INTELLIGENCE_TARGET)
         self.assertIn("coverage / 0.60", ci["signals"]["score_formula"])
         self.assertEqual(ci["score"], ci["weight"])
         self.assertEqual(
-            self._aq_axis(four, "Breadth", "Discipline")["score"],
+            self._aq_axis(five, "Breadth", "Discipline")["score"],
             self._aq_axis(ten, "Breadth", "Discipline")["score"],
         )
         self.assertLess(
             self._aq_axis(three, "Breadth", "Discipline")["score"],
-            self._aq_axis(four, "Breadth", "Discipline")["score"],
+            self._aq_axis(five, "Breadth", "Discipline")["score"],
         )
 
-    def test_gstack_four_of_ten_is_full_credit_for_ordered_planning(self):
+    def test_gstack_five_of_ten_is_full_credit_for_ordered_planning(self):
         three = _v5_scoring_stats(planned=3, evidence=4)
-        four = _v5_scoring_stats(planned=4, evidence=4)
+        five = _v5_scoring_stats(planned=5, evidence=4)
         ten = _v5_scoring_stats(planned=10, evidence=10)
         three_plan = score_breakdown(three)["planning"]["subs"]
-        four_plan = score_breakdown(four)["planning"]["subs"]
+        five_plan = score_breakdown(five)["planning"]["subs"]
         ten_plan = score_breakdown(ten)["planning"]["subs"]
         ordered = lambda subs: next(
             sub for sub in subs if sub["label"] == "Ordered planning readiness")
-        self.assertEqual(ordered(four_plan)["target"], PLANNING_TARGET)
+        self.assertEqual(ordered(five_plan)["target"], PLANNING_TARGET)
         self.assertLess(ordered(three_plan)["pct"], 1.0)
-        self.assertEqual(ordered(four_plan)["pct"], 1.0)
+        self.assertEqual(ordered(five_plan)["pct"], 1.0)
         self.assertEqual(ordered(ten_plan)["pct"], 1.0)
-        self.assertEqual(compute_scores(four)["Planning"],
+        self.assertEqual(compute_scores(five)["Planning"],
                          compute_scores(ten)["Planning"])
 
     def test_aq_axes_expose_stable_base_weight_and_normalized_score(self):
