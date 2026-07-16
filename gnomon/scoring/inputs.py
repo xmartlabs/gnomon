@@ -164,10 +164,13 @@ def build_monthly_scoring_stats(
         explore = cats.get("explore", 0) + month_thinking_blocks.get(mk, 0)
         doing = cats.get("produce", 0) + cats.get("execute", 0) + cats.get("delegate", 0)
         planning_ratio = (explore / doing) if doing else 0
-        from gnomon.cli.accumulator import derive_ordered_behavior
-        ordered = [derive_ordered_behavior(events)
-                   for events in (month_session_ordered_tools or {}).get(mk, {}).values()]
-        eligible = sum(item["eligible"] for item in ordered)
+        # C4: cross-session consume-once credit, scoped to this month's sessions
+        # (a plan artifact only credits an execution in the SAME calendar month
+        # bucket — matching the existing monthly-progression scoping).
+        from gnomon.cli.accumulator import aggregate_ordered
+        _month_agg = aggregate_ordered(
+            (month_session_ordered_tools or {}).get(mk, {}).values())
+        eligible = _month_agg["eligible"]
 
         stats_full = {
             "corpus": {"sources": {s: {} for s in sources_present}},
@@ -197,8 +200,8 @@ def build_monthly_scoring_stats(
                     (month_planning_skill_sessions or {}).get(mk, set())
                     & month_sessions.get(mk, set())),
                 "eligible_change_sessions": eligible,
-                "planned_eligible_sessions": sum(item["planned"] for item in ordered),
-                "evidence_eligible_sessions": sum(item["evidence"] for item in ordered),
+                "planned_eligible_sessions": _month_agg["planned"],
+                "evidence_eligible_sessions": _month_agg["evidence"],
                 "ordered_facts_state": "measured" if m_tool_total else "unmeasured",
                 "delegate_actions": delegate_m,
                 "background_tasks": background_m,

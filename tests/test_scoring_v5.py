@@ -9,6 +9,7 @@ from gnomon.cli.accumulator import Accumulator, derive_ordered_behavior
 from gnomon.scoring.aq import (
     CONTEXT_INTELLIGENCE_TARGET,
     PLANNING_TARGET,
+    MIN_ELIGIBLE_SESSIONS,
     compute_aq,
     score_linked_routing,
 )
@@ -65,9 +66,11 @@ def _v5_scoring_stats(source="claude", planned=6, evidence=6):
 
 class TestOrderedBehavior(unittest.TestCase):
     def test_requires_write_and_two_files_or_ten_substantive_calls(self):
+        # C6 raised the todo-step floor from >=2 to >=3 (anti-theater); use 3
+        # distinct steps here so this stays a "planned" fixture.
         facts = derive_ordered_behavior([
             {"name": "Read", "target": "a.py"},
-            {"name": "TodoWrite", "items": ["inspect", "change"]},
+            {"name": "TodoWrite", "items": ["inspect", "change", "verify"]},
             {"name": "Edit", "target": "a.py"},
             {"name": "Write", "target": "b.py"},
         ])
@@ -105,7 +108,7 @@ class TestOrderedBehavior(unittest.TestCase):
             {"name": "Edit", "target": "a.py", "order": 3},
             {"name": "Write", "target": "b.py", "order": 4},
             {"name": "Read", "target": "a.py", "order": 1},
-            {"name": "TodoWrite", "items": ["inspect", "change"], "order": 2},
+            {"name": "TodoWrite", "items": ["inspect", "change", "verify"], "order": 2},
         ])
         self.assertEqual(facts, {"eligible": True, "planned": True, "evidence": True})
 
@@ -137,6 +140,43 @@ class TestOrderedBehavior(unittest.TestCase):
         self.assertTrue(derive_ordered_behavior(substantive)["eligible"])
 
     def test_codex_update_plan_steps_accumulate_before_first_write(self):
+        # 3 distinct update_plan steps clears the C6 floor (raised from 2 to
+        # PLAN_MIN_STEPS=3); see test_two_codex_plan_steps_no_longer_planned
+        # below for the below-floor case.
+        rows = [
+            {"type": "session_meta", "payload": {"id": "s1", "cwd": "/repo"}},
+            {"type": "turn_context", "payload": {"turn_id": "t1", "model": "gpt-5.4"}},
+            {"type": "response_item", "timestamp": "2026-01-01T00:00:01Z",
+             "payload": {"type": "function_call", "name": "update_plan",
+                         "arguments": json.dumps({"plan": [{"step": "inspect"}]})}},
+            {"type": "response_item", "timestamp": "2026-01-01T00:00:02Z",
+             "payload": {"type": "function_call", "name": "update_plan",
+                         "arguments": json.dumps({"plan": [{"step": "change"}]})}},
+            {"type": "response_item", "timestamp": "2026-01-01T00:00:03Z",
+             "payload": {"type": "function_call", "name": "update_plan",
+                         "arguments": json.dumps({"plan": [{"step": "verify"}]})}},
+            {"type": "response_item", "timestamp": "2026-01-01T00:00:04Z",
+             "payload": {"type": "function_call", "name": "write_file",
+                         "arguments": json.dumps({"path": "a.py", "content": "a"})}},
+            {"type": "response_item", "timestamp": "2026-01-01T00:00:05Z",
+             "payload": {"type": "function_call", "name": "write_file",
+                         "arguments": json.dumps({"path": "b.py", "content": "b"})}},
+        ]
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as handle:
+            handle.write("\n".join(json.dumps(row) for row in rows))
+            path = handle.name
+        self.addCleanup(lambda: os.path.exists(path) and os.unlink(path))
+        acc = Accumulator()
+        acc.begin_file("codex", path)
+        for event in _codex_events(path):
+            acc.observe(event, None, None)
+        stats = acc.to_source_stats("codex", None, None)
+        self.assertEqual(stats["behavior"]["eligible_change_sessions"], 1)
+        self.assertEqual(stats["behavior"]["planned_eligible_sessions"], 1)
+
+    def test_two_codex_plan_steps_no_longer_planned(self):
+        # C6: the substance floor was raised from >=2 to >=3 distinct steps —
+        # a 2-step plan is no longer "planned" (anti-theater).
         rows = [
             {"type": "session_meta", "payload": {"id": "s1", "cwd": "/repo"}},
             {"type": "turn_context", "payload": {"turn_id": "t1", "model": "gpt-5.4"}},
@@ -163,7 +203,7 @@ class TestOrderedBehavior(unittest.TestCase):
             acc.observe(event, None, None)
         stats = acc.to_source_stats("codex", None, None)
         self.assertEqual(stats["behavior"]["eligible_change_sessions"], 1)
-        self.assertEqual(stats["behavior"]["planned_eligible_sessions"], 1)
+        self.assertEqual(stats["behavior"]["planned_eligible_sessions"], 0)
 
     def test_repeated_plan_step_updates_do_not_become_two_actionable_steps(self):
         facts = derive_ordered_behavior([
@@ -179,7 +219,7 @@ class TestOrderedBehavior(unittest.TestCase):
             {"name": "Edit", "target": "a.py", "order": 1, "ordinal": 3},
             {"name": "Write", "target": "b.py", "order": 1, "ordinal": 4},
             {"name": "Read", "target": "a.py", "order": 1, "ordinal": 1},
-            {"name": "TodoWrite", "items": ["inspect", "change"],
+            {"name": "TodoWrite", "items": ["inspect", "change", "verify"],
              "order": 1, "ordinal": 2},
         ])
         self.assertEqual(facts, {"eligible": True, "planned": True, "evidence": True})
@@ -228,40 +268,40 @@ class TestConditionalScoring(unittest.TestCase):
         pillar = next(p for p in aq["pillars"] if p["name"] == pillar_name)
         return next(a for a in pillar["axes"] if a["name"] == axis_name)
 
-    def test_aq_targets_four_of_ten_planning_and_six_of_ten_context(self):
+    def test_aq_targets_five_of_ten_planning_and_six_of_ten_context(self):
         three = _v5_scoring_stats(planned=3, evidence=6)
-        four = _v5_scoring_stats(planned=4, evidence=6)
+        five = _v5_scoring_stats(planned=5, evidence=6)
         ten = _v5_scoring_stats(planned=10, evidence=10)
 
-        ci = self._aq_axis(four, "Craft", "Context Intelligence")
-        self.assertEqual(PLANNING_TARGET, 0.40)
+        ci = self._aq_axis(five, "Craft", "Context Intelligence")
+        self.assertEqual(PLANNING_TARGET, 0.50)
         self.assertEqual(CONTEXT_INTELLIGENCE_TARGET, 0.60)
         self.assertEqual(ci["signals"]["target_coverage"], CONTEXT_INTELLIGENCE_TARGET)
         self.assertIn("coverage / 0.60", ci["signals"]["score_formula"])
         self.assertEqual(ci["score"], ci["weight"])
         self.assertEqual(
-            self._aq_axis(four, "Breadth", "Discipline")["score"],
+            self._aq_axis(five, "Breadth", "Discipline")["score"],
             self._aq_axis(ten, "Breadth", "Discipline")["score"],
         )
         self.assertLess(
             self._aq_axis(three, "Breadth", "Discipline")["score"],
-            self._aq_axis(four, "Breadth", "Discipline")["score"],
+            self._aq_axis(five, "Breadth", "Discipline")["score"],
         )
 
-    def test_gstack_four_of_ten_is_full_credit_for_ordered_planning(self):
+    def test_gstack_five_of_ten_is_full_credit_for_ordered_planning(self):
         three = _v5_scoring_stats(planned=3, evidence=4)
-        four = _v5_scoring_stats(planned=4, evidence=4)
+        five = _v5_scoring_stats(planned=5, evidence=4)
         ten = _v5_scoring_stats(planned=10, evidence=10)
         three_plan = score_breakdown(three)["planning"]["subs"]
-        four_plan = score_breakdown(four)["planning"]["subs"]
+        five_plan = score_breakdown(five)["planning"]["subs"]
         ten_plan = score_breakdown(ten)["planning"]["subs"]
         ordered = lambda subs: next(
             sub for sub in subs if sub["label"] == "Ordered planning readiness")
-        self.assertEqual(ordered(four_plan)["target"], PLANNING_TARGET)
+        self.assertEqual(ordered(five_plan)["target"], PLANNING_TARGET)
         self.assertLess(ordered(three_plan)["pct"], 1.0)
-        self.assertEqual(ordered(four_plan)["pct"], 1.0)
+        self.assertEqual(ordered(five_plan)["pct"], 1.0)
         self.assertEqual(ordered(ten_plan)["pct"], 1.0)
-        self.assertEqual(compute_scores(four)["Planning"],
+        self.assertEqual(compute_scores(five)["Planning"],
                          compute_scores(ten)["Planning"])
 
     def test_aq_axes_expose_stable_base_weight_and_normalized_score(self):
@@ -337,6 +377,25 @@ class TestConditionalScoring(unittest.TestCase):
         old_terms = {"Explore-before-build", "Reasoning depth", "Planning skill practice"}
         self.assertEqual({name: before_subs[name] for name in old_terms},
                          {name: after_subs[name] for name in old_terms})
+
+    def test_below_eligible_floor_drops_ordered_term_and_renormalizes(self):
+        # C7: eligible_change_sessions < MIN_ELIGIBLE_SESSIONS(5) drops the
+        # ordered-planning term (None -> renormalized), not just eligible == 0.
+        below_floor = _v5_scoring_stats(planned=4, evidence=4)
+        below_floor["behavior"]["eligible_change_sessions"] = MIN_ELIGIBLE_SESSIONS - 1
+        at_floor = _v5_scoring_stats(planned=4, evidence=4)
+        at_floor["behavior"]["eligible_change_sessions"] = MIN_ELIGIBLE_SESSIONS
+
+        discipline_below = self._aq_axis(below_floor, "Breadth", "Discipline")
+        discipline_at = self._aq_axis(at_floor, "Breadth", "Discipline")
+        self.assertNotEqual(discipline_below["score"], discipline_at["score"])
+
+        below_plan_subs = score_breakdown(below_floor)["planning"]["subs"]
+        at_plan_subs = score_breakdown(at_floor)["planning"]["subs"]
+        below_labels = {sub["label"] for sub in below_plan_subs}
+        at_labels = {sub["label"] for sub in at_plan_subs}
+        self.assertNotIn("Ordered planning readiness", below_labels)
+        self.assertIn("Ordered planning readiness", at_labels)
 
     def test_cursor_profile_keeps_model_mix_inputs_while_linked_routing_is_na(self):
         stats = _v5_scoring_stats(source="cursor")

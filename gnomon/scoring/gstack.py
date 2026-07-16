@@ -1,6 +1,8 @@
 import json
 
-from gnomon.scoring.aq import CONTEXT_INTELLIGENCE_TARGET, PLANNING_TARGET
+from gnomon.scoring.aq import (
+    CONTEXT_INTELLIGENCE_TARGET, PLANNING_TARGET, MIN_ELIGIBLE_SESSIONS,
+)
 
 
 REPO_URL = "https://github.com/Photobombastic/paxel-local"
@@ -270,7 +272,10 @@ def compute_scores(stats):
     # ~40% of sessions. See accumulator.plan_sessions.
     plan_ceremony = _clamp((b.get("planning_skill_sessions", b.get("plan_sessions", 0)) / sess) / 0.4)
     eligible = b.get("eligible_change_sessions", 0) or 0
-    ordered_plan = (None if b.get("ordered_facts_state") != "measured" or not eligible
+    # C7 — significance floor: drop below MIN_ELIGIBLE_SESSIONS (noise, not a
+    # real signal), mirroring the aq.py guard.
+    ordered_plan = (None if b.get("ordered_facts_state") != "measured"
+                    or eligible < MIN_ELIGIBLE_SESSIONS
                     else _clamp((b.get("planned_eligible_sessions", 0) / eligible)
                                 / PLANNING_TARGET))
     # reasoning depth needs a source that emits thinking blocks (Antigravity CLI doesn't);
@@ -399,7 +404,9 @@ def score_breakdown(stats):
     plan_ceremony_pct = _clamp(plan_sess_raw / 0.4)
     eligible = b.get("eligible_change_sessions", 0) or 0
     ordered_raw = b.get("planned_eligible_sessions", 0) / eligible if eligible else 0
-    ordered_pct = (None if b.get("ordered_facts_state") != "measured" or not eligible
+    # C7 — significance floor (see compute_scores above for rationale).
+    ordered_pct = (None if b.get("ordered_facts_state") != "measured"
+                   or eligible < MIN_ELIGIBLE_SESSIONS
                    else _clamp(ordered_raw / PLANNING_TARGET))
     planning_val      = _axis_value([(0.30, explore_pct, None), (0.30, thinking_pct, "thinking"),
                                      (0.25, plan_ceremony_pct, "skills"),

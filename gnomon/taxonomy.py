@@ -120,6 +120,83 @@ MCP_TOOL_HINTS = {
 # Knowledge MCPs arm unconditionally (handled separately in accumulator.py).
 CI_CONTEXT_SUBCATS = frozenset({"project", "data", "design"})
 
+# ---- Ordered-planning file taxonomy (C1/C2/C3) -----------------------------
+# classify_change_target/is_plan_file_target back the ordered-planning eligibility
+# and plan-detection redesign: a write's file TYPE decides whether it counts toward
+# change-session eligibility (C2) and whether it counts as a plan artifact (C3).
+_LOCKFILE_NAMES = frozenset({
+    "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "npm-shrinkwrap.json",
+    "cargo.lock", "poetry.lock", "pipfile.lock", "gemfile.lock", "go.sum",
+    "composer.lock", "mix.lock", "flake.lock", "packages.lock.json",
+})
+_CODE_EXTS = frozenset({
+    ".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".go", ".rb", ".java",
+    ".kt", ".kts", ".swift", ".c", ".h", ".cpp", ".cc", ".hpp", ".rs", ".php",
+    ".cs", ".scala", ".m", ".mm", ".vue", ".svelte", ".dart", ".ex", ".exs",
+    ".sh", ".bash", ".zsh", ".sql", ".lua", ".r", ".pl", ".clj", ".elm",
+})
+_TEST_NAME_RX = re.compile(
+    r'(^|[/_.-])tests?([/_.-]|$)|\.test\.[a-z]+$|\.spec\.[a-z]+$|_test\.[a-z]+$|'
+    r'_spec\.[a-z]+$|^test_|(^|/)__tests__(/|$)|(^|/)spec(/|$)',
+    re.I,
+)
+_DOC_EXTS = frozenset({".md", ".mdx", ".rst", ".txt", ".adoc"})
+_DOC_NAMES = frozenset({"readme", "changelog", "license", "contributing", "authors"})
+_CONFIG_EXTS = frozenset({
+    ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".env",
+    ".properties", ".xml",
+})
+_CONFIG_NAMES = frozenset({
+    "dockerfile", "makefile", "vagrantfile", "procfile", "gemfile",
+    ".gitignore", ".dockerignore", ".editorconfig", ".eslintrc",
+    ".eslintrc.json", ".eslintrc.js", ".prettierrc",
+})
+
+
+def classify_change_target(path):
+    """Classify a write target into code/test/doc/config/lockfile/other for
+    change-session eligibility (C2) and file-type semantics (P1/P2 fixes).
+    Order matters: lockfile and test checks run before the generic extension/
+    name maps, since e.g. package-lock.json is a .json (config-looking) file
+    and foo.test.ts has a code extension."""
+    if not path:
+        return "other"
+    name = str(path).rsplit("/", 1)[-1]
+    low = name.lower()
+    if low in _LOCKFILE_NAMES:
+        return "lockfile"
+    ext = ""
+    if "." in name:
+        ext = "." + name.rsplit(".", 1)[-1].lower()
+    if _TEST_NAME_RX.search(str(path)):
+        return "test"
+    if ext in _CODE_EXTS:
+        return "code"
+    if ext in _DOC_EXTS or low.split(".")[0] in _DOC_NAMES:
+        return "doc"
+    if ext in _CONFIG_EXTS or low in _CONFIG_NAMES:
+        return "config"
+    return "other"
+
+
+_PLAN_FILE_RX = re.compile(
+    r'(^|/)\.claude/plans/[^/]*\.md$|(^|/)\.cursor/plans/|(^|/)\.context/[^/]*plan[^/]*$|'
+    r'(^|/)plans/[^/]+\.(md|mdx|txt)$',
+    re.I,
+)
+
+
+def is_plan_file_target(path):
+    """True when a write target is a durable plan artifact on disk (C3/C4):
+    `.claude/plans/*.md`, `.cursor/plans/`, `.context/*plan*`, or any
+    `.md`/`.mdx`/`.txt` file directly inside a `plans/` directory at any depth
+    (e.g. the superpowers `docs/**/plans/<n>-<name>.md` convention), regardless
+    of filename — matched by taxonomy so cross-session credit (C4) can recognize
+    hand-off plan files regardless of source CLI."""
+    if not path:
+        return False
+    return bool(_PLAN_FILE_RX.search(str(path)))
+
 
 def classify_mcp_subcategory(server_name, tool_name=""):
     low = server_name.lower()

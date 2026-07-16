@@ -30,7 +30,7 @@ from gnomon.taxonomy import (
     SCHEDULE_TOOLS, ASK_TOOLS, PLAN_SIGNAL_TOOLS, PLAN_SKILL_NEEDLES,
     KNOWLEDGE_SKILL_NEEDLES,
     classify_tool, classify_mcp_subcategory, CI_CONTEXT_SUBCATS,
-    is_substantive_tool,
+    is_substantive_tool, classify_change_target, is_plan_file_target,
     bash_writes_file, bash_runs_tests, bash_runs_knowledge, _extract_clis,
     _is_compounding_path, _SKILL_MD_RX,
 )
@@ -41,7 +41,10 @@ from gnomon.analysis.metrics import (
     _fanout_median, _peak_hours, _preferred_days, _active_hours_and_longest_run,
     _token_usage_block, _usage_int,
 )
-from gnomon.scoring.aq import compute_aq
+from gnomon.scoring.aq import (
+    compute_aq, CHURN_MIN, WINDOW, PLAN_MIN_LINES, PLAN_MIN_STEPS,
+    MIN_ELIGIBLE_SESSIONS,
+)
 from gnomon.scoring.inputs import build_monthly_scoring_stats
 from gnomon.output.summary import _build_monthly_noticed_stats
 from gnomon.analysis.quotes import _POLITE_RE
@@ -251,6 +254,50 @@ class Accumulator:
     def _is_plan_skill(name):
         sl = str(name).lower()
         return any(nd in sl for nd in PLAN_SKILL_NEEDLES)
+
+    # ---- ordered-fact enrichment helpers (C1) ------------------------------
+    @staticmethod
+    def _write_loc(name, inp):
+        """Net changed lines for a write-tool call; None for non-write tools.
+        NEVER used to flip ordered_facts_complete — that flag is timestamp-
+        completeness only (C1 risk: a missing loc must degrade gracefully)."""
+        if name == "Edit":
+            return line_count(inp.get("new_string", "")) + line_count(inp.get("old_string", ""))
+        if name == "Write":
+            return line_count(inp.get("content", ""))
+        if name == "MultiEdit":
+            total = 0
+            for e in inp.get("edits", []) or []:
+                if isinstance(e, dict):
+                    total += (line_count(e.get("new_string", ""))
+                              + line_count(e.get("old_string", "")))
+            return total
+        if name == "NotebookEdit":
+            return line_count(inp.get("new_source", ""))
+        return None
+
+    @classmethod
+    def _fact_plan_skill(cls, name, inp, ev):
+        """Whether THIS tool_use event signals a planning skill (C1/C3): a
+        Skill invocation, an Agent subagent_type, an attributionSkill on the
+        surrounding assistant turn (attributionSkill is per-turn, so it applies
+        to every tool_use block within that turn, not just Skill/Agent calls),
+        or a codex-style shell SKILL.md read. All checked via PLAN_SKILL_NEEDLES
+        (the same needles that drive plan_sessions/planning_skill_sessions)."""
+        if name == "Skill" and cls._is_plan_skill(inp.get("skill")):
+            return True
+        if name == "Agent" and cls._is_plan_skill(inp.get("subagent_type", "general-purpose")):
+            return True
+        if ev.get("attributionSkill") and cls._is_plan_skill(ev["attributionSkill"]):
+            return True
+        if name == "Bash":
+            cmd = inp.get("command", "") or ""
+            if isinstance(cmd, list):
+                cmd = " && ".join(str(c) for c in cmd)
+            for m in _SKILL_MD_RX.finditer(cmd):
+                if cls._is_plan_skill(m.group(1)):
+                    return True
+        return False
 
     def _is_knowledge_skill(self, name):
         low = (name or "").lower()
@@ -736,6 +783,17 @@ class Accumulator:
                                             name.split("__")[-1]) in CI_CONTEXT_SUBCATS
                                         and _cat == "explore")))
                                 if name.startswith("mcp__") else bool(name == "Bash" and bash_runs_knowledge(inp.get("command", "") or "")),
+                                # C1 — write-fact enrichment (ordered-planning redesign):
+                                # file_class/plan_file are computed from the target for
+                                # every fact (harmless no-op for non-file tools); loc is
+                                # only meaningful for write tools and MUST stay None
+                                # otherwise — a missing loc never flips
+                                # ordered_facts_complete (see the `dt is None` check below,
+                                # which is the ONLY thing that flips it).
+                                "file_class": classify_change_target(_target),
+                                "loc": self._write_loc(name, inp),
+                                "plan_file": is_plan_file_target(_target),
+                                "plan_skill": self._fact_plan_skill(name, inp, ev),
                             }
                             self.session_ordered_tools[_fact_sid].append(_ordered_fact)
                             if dt is None:
@@ -979,10 +1037,12 @@ class Accumulator:
         """Build the full corpus stats dict. Also stashes self.gc (the raw git_churn
         dict) for the narrative payload main() consumes."""
         # ---- derive ----------------------------------------------------------
-        _ordered = [derive_ordered_behavior(v) for v in self.session_ordered_tools.values()]
-        _eligible = sum(x["eligible"] for x in _ordered)
-        _planned = sum(x["planned"] for x in _ordered)
-        _evidence = sum(x["evidence"] for x in _ordered)
+        # C4: aggregate_ordered applies cross-session consume-once plan credit
+        # across the WHOLE corpus (not per-session derive_ordered_behavior).
+        _agg = aggregate_ordered(self.session_ordered_tools.values())
+        _eligible = _agg["eligible"]
+        _planned = _agg["planned"]
+        _evidence = _agg["evidence"]
         _routing_pairs, _routing_state = self._routing_snapshot()
         total_sessions = len(self.session_ts) or len(self.session_files)
         # Active time = sum of consecutive inter-event gaps, each capped at GAP_CAP_S,
@@ -1332,8 +1392,9 @@ class Accumulator:
         (the pre-single-pass per-source path). Inheriting corpus-level flags here would
         flip a prompt-only source's null metrics from None to 0 and mis-bound its churn."""
         _s_tool_total = self.tool_use_total
-        _s_ordered = [derive_ordered_behavior(v) for v in self.session_ordered_tools.values()]
-        _s_eligible = sum(x["eligible"] for x in _s_ordered)
+        # C4: cross-session consume-once credit, scoped to this source's sessions.
+        _s_agg = aggregate_ordered(self.session_ordered_tools.values())
+        _s_eligible = _s_agg["eligible"]
         _s_routing_pairs, _s_routing_state = self._routing_snapshot(src_name)
         _s_all_no_agent = src_name in _AGENT_UNSUPPORTED_SOURCES
         # Null-honesty per source: a source slice with sessions but zero tool calls
@@ -1418,8 +1479,8 @@ class Accumulator:
                 "plan_sessions": self._counted_plan_sessions(),
                 "planning_skill_sessions": self._counted_planning_skill_sessions(),
                 "eligible_change_sessions": _s_eligible,
-                "planned_eligible_sessions": sum(x["planned"] for x in _s_ordered),
-                "evidence_eligible_sessions": sum(x["evidence"] for x in _s_ordered),
+                "planned_eligible_sessions": _s_agg["planned"],
+                "evidence_eligible_sessions": _s_agg["evidence"],
                 "ordered_facts_state": ("measured" if _s_tool_total
                                         and self.ordered_facts_complete else "unmeasured"),
                 "linked_model_pairs": _s_routing_pairs,
@@ -1494,8 +1555,31 @@ def _normalized_ordered_target(event):
     return os.path.normpath(target)
 
 
-def derive_ordered_behavior(events):
-    """Derive v5 eligibility and pre-write behavior from canonical ordered tool facts."""
+def derive_session_ordered_facts(events):
+    """Rich per-session ordered-planning facts (ordered-planning redesign C2/C3/C6).
+
+    Facts are expected to already carry the C1 enrichment (file_class/loc/
+    plan_file/plan_skill) from accumulator.py's per-write construction; raw
+    facts missing that enrichment are handled by derive_ordered_behavior's
+    back-compat fallback, not here.
+
+    C2 — eligible iff there is at least one CODE write AND (>=2 distinct code
+    files, OR code_churn >= CHURN_MIN, OR substantive >= 10). Doc/config/
+    lockfile/test-only sessions are excluded; mixed code+test stays eligible
+    via the code files.
+
+    C3/C6 — "planned" signals (plan-file write, >=PLAN_MIN_STEPS todo/task
+    steps, or a planning-skill accompanied by a plan-file) are only evaluated
+    BEFORE the first CODE write (not just any write — a doc/test write must
+    not close the planning window), and only count if they clear the C6
+    substance floor. A plan-file write with unmeasurable `loc` (None) still
+    counts (ceremony fallback); a short plan-file with no accompanying
+    planning-skill does not.
+
+    Returns eligible/planned_intra/evidence plus first_write_order/cwd and
+    plan_artifacts — the latter two feed aggregate_ordered's cross-session
+    consume-once credit (C4), which is NOT applied here (this function is
+    single-session only)."""
     events = sorted(
         enumerate(events or []),
         key=lambda item: (
@@ -1504,17 +1588,33 @@ def derive_ordered_behavior(events):
         ),
     )
     events = [event for _, event in events]
-    written, substantive, seen_reads = set(), 0, set()
-    first_write = None
-    planned_before = evidence_before = False
+
+    code_written, substantive, seen_reads = set(), 0, set()
+    code_churn = 0
+    first_code_write = None
+    first_write_order = None
+    first_write_cwd = None
+    evidence_before = False
     actionable_plan_steps = set()
+    todo_threshold_hit = None       # (cwd, order) once >=PLAN_MIN_STEPS is first reached
+    plan_file_events = []           # (cwd, order, loc) for plan-file writes before the cutoff
+    saw_plan_skill = False
+
     for index, event in enumerate(events):
         name = str(event.get("name") or "")
         target = _normalized_ordered_target(event)
-        if name in _WRITE_TOOLS_V5:
-            first_write = index if first_write is None else first_write
+        is_write = name in _WRITE_TOOLS_V5
+        file_class = event.get("file_class")
+        if is_write and file_class == "code":
+            if first_code_write is None:
+                first_code_write = index
+                first_write_order = event.get("order")
+                first_write_cwd = event.get("cwd")
             if target:
-                written.add(target)
+                code_written.add(target)
+            loc = event.get("loc")
+            if loc:
+                code_churn += loc
         if is_substantive_tool(name):
             if name in _EVIDENCE_TOOLS_V5:
                 key = target
@@ -1523,16 +1623,113 @@ def derive_ordered_behavior(events):
                     seen_reads.add(key)
             else:
                 substantive += 1
-        if first_write is None:
+        if first_code_write is None:
             items = event.get("items") or []
             if name in {"TodoWrite", "TaskCreate"}:
+                before_n = len(actionable_plan_steps)
                 actionable_plan_steps.update(
                     str(item).strip() for item in items if str(item).strip())
-            if (name in {"EnterPlanMode", "ExitPlanMode"}
-                    or len(actionable_plan_steps) >= 2):
-                planned_before = True
+                if (before_n < PLAN_MIN_STEPS <= len(actionable_plan_steps)
+                        and todo_threshold_hit is None):
+                    todo_threshold_hit = (event.get("cwd"), event.get("order"))
+            if is_write and event.get("plan_file"):
+                plan_file_events.append(
+                    (event.get("cwd"), event.get("order"), event.get("loc")))
+            if event.get("plan_skill"):
+                saw_plan_skill = True
             if name in _EVIDENCE_TOOLS_V5 or event.get("knowledge"):
                 evidence_before = True
-    eligible = first_write is not None and (len(written) >= 2 or substantive >= 10)
-    return {"eligible": eligible, "planned": eligible and planned_before,
-            "evidence": eligible and evidence_before}
+
+    eligible = bool(code_written) and (
+        len(code_written) >= 2 or code_churn >= CHURN_MIN or substantive >= 10)
+
+    plan_artifacts = []
+    planned_intra = False
+    if todo_threshold_hit is not None:
+        planned_intra = True
+        plan_artifacts.append(todo_threshold_hit)
+    for cwd, order, loc in plan_file_events:
+        substantive_plan_file = loc is None or loc >= PLAN_MIN_LINES or saw_plan_skill
+        if substantive_plan_file:
+            planned_intra = True
+            plan_artifacts.append((cwd, order))
+
+    # A planning-skill invocation before the first code write is itself the
+    # planning act and counts on its own, even without a plan-file. It does NOT
+    # become a shared plan_artifact, so cross-session (C4) credit is unchanged.
+    if saw_plan_skill:
+        planned_intra = True
+
+    return {
+        "eligible": eligible,
+        "planned_intra": planned_intra,
+        "evidence": eligible and evidence_before,
+        "first_write_order": first_write_order,
+        "cwd": first_write_cwd,
+        "plan_artifacts": plan_artifacts,
+    }
+
+
+def derive_ordered_behavior(events):
+    """Thin back-compat wrapper around derive_session_ordered_facts (single
+    session, no cross-session credit — see aggregate_ordered for C4). Callers
+    that pass raw facts predating the C1 enrichment (missing file_class) get
+    a classify_change_target(target) fallback so eligibility keeps working;
+    already-enriched facts pass through unchanged."""
+    enriched = []
+    for event in events or []:
+        if "file_class" in event:
+            enriched.append(event)
+        else:
+            fallback = dict(event)
+            fallback["file_class"] = classify_change_target(fallback.get("target") or "")
+            fallback.setdefault("loc", None)
+            fallback.setdefault("plan_file", False)
+            fallback.setdefault("plan_skill", False)
+            enriched.append(fallback)
+    facts = derive_session_ordered_facts(enriched)
+    return {
+        "eligible": facts["eligible"],
+        "planned": facts["eligible"] and facts["planned_intra"],
+        "evidence": facts["evidence"],
+    }
+
+
+def aggregate_ordered(sessions):
+    """C4 — cross-session consume-once plan credit. `sessions` is an iterable
+    of per-session ordered-fact lists (values of session_ordered_tools, or a
+    single month's bucket of the same shape). Each session is derived via
+    derive_session_ordered_facts; an eligible, not-yet-planned session's first
+    CODE write then consumes the earliest still-unconsumed plan artifact from
+    the SAME cwd within [T - WINDOW, T]. Executions are matched in ascending
+    first-code-write order so the earliest execution gets first claim on a
+    shared artifact (one plan credits exactly one execution)."""
+    derived = [derive_session_ordered_facts(facts) for facts in sessions]
+
+    artifacts = [
+        {"cwd": cwd, "order": order, "consumed": False}
+        for d in derived for cwd, order in d["plan_artifacts"]
+    ]
+
+    pending = [d for d in derived
+               if d["eligible"] and not d["planned_intra"]
+               and d["first_write_order"] is not None]
+    pending.sort(key=lambda d: d["first_write_order"])
+    for d in pending:
+        t = d["first_write_order"]
+        cwd = d["cwd"]
+        candidates = [
+            a for a in artifacts
+            if not a["consumed"] and a["cwd"] == cwd and a["order"] is not None
+            and t - WINDOW <= a["order"] <= t
+        ]
+        if candidates:
+            chosen = min(candidates, key=lambda a: a["order"])
+            chosen["consumed"] = True
+            d["planned_final"] = True
+
+    eligible = sum(1 for d in derived if d["eligible"])
+    planned = sum(1 for d in derived
+                  if d["eligible"] and (d["planned_intra"] or d.get("planned_final")))
+    evidence = sum(1 for d in derived if d["evidence"])
+    return {"eligible": eligible, "planned": planned, "evidence": evidence}

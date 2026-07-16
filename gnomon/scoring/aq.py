@@ -2,8 +2,22 @@ from gnomon.analysis.metrics import _review_skill_uses, _task_skill_uses
 from gnomon.config import available_caps
 from gnomon.scoring.versioning import SCORE_CONTRACT_ID
 
-PLANNING_TARGET = 0.40
+PLANNING_TARGET = 0.50
 CONTEXT_INTELLIGENCE_TARGET = 0.60
+
+# ---- Ordered-planning redesign (C1-C7) calibration placeholders ------------
+# All five constants below are PROVISIONAL calibration placeholders (proposal C5):
+# picked from qualitative guidance (Anthropic plan-mode guidance, Fowler's Design
+# Stamina Hypothesis), NOT yet fit against a real corpus. Recalibrate all of them
+# together once eligible/planned counts are available from production data —
+# do not tune one in isolation, they interact (a lower CHURN_MIN admits more
+# sessions as eligible, which shifts the denominator PLANNING_TARGET is judged
+# against).
+CHURN_MIN = 80              # net changed lines (C2): single-file eligibility via churn
+WINDOW = 72 * 3600           # seconds (C4): cross-session plan-credit lookback window
+PLAN_MIN_LINES = 8          # net lines (C6): minimum substantive plan-file size
+PLAN_MIN_STEPS = 3          # distinct todo/task steps (C6): raised from 2 (anti-theater)
+MIN_ELIGIBLE_SESSIONS = 5   # sessions (C7): below this, drop+renormalize (noise floor)
 
 _MODEL_TIERS = {
     "anthropic": (("opus", 3), ("sonnet", 2), ("haiku", 1)),
@@ -128,7 +142,11 @@ def compute_aq(stats):
     task_calls = t.get("task_tool_calls", 0) + _task_skill_uses(skills)
     ordered_state = b.get("ordered_facts_state")
     eligible = b.get("eligible_change_sessions", 0) or 0
-    ordered_planning = (None if ordered_state != "measured" or not eligible
+    # C7 — significance floor: below MIN_ELIGIBLE_SESSIONS the ratio is noise
+    # (e.g. 40% over 2 sessions), so drop the term (None -> renormalized)
+    # rather than score it. Placeholder constant, see aq.py's MIN_ELIGIBLE_SESSIONS.
+    ordered_planning = (None if ordered_state != "measured"
+                        or eligible < MIN_ELIGIBLE_SESSIONS
                         else sat(b.get("planned_eligible_sessions", 0) / eligible,
                                  PLANNING_TARGET))
     planning_skill = 1.0 if has_skill(["writing-plans", "autoplan", "plan"]) else 0.6
