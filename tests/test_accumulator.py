@@ -141,6 +141,20 @@ class TestPlannedC3C6(unittest.TestCase):
         ]
         self.assertFalse(derive_session_ordered_facts(facts)["planned_intra"])
 
+    def test_planning_skill_alone_before_code_is_planned(self):
+        facts = [
+            _fact("Skill", "", order=1, plan_skill=True),
+            _fact("Edit", "src/a.py", order=2, file_class="code", loc=90),
+        ]
+        self.assertTrue(derive_session_ordered_facts(facts)["planned_intra"])
+
+    def test_planning_skill_after_first_code_write_is_not_planned(self):
+        facts = [
+            _fact("Edit", "src/a.py", order=1, file_class="code", loc=90),
+            _fact("Skill", "", order=2, plan_skill=True),
+        ]
+        self.assertFalse(derive_session_ordered_facts(facts)["planned_intra"])
+
     def test_plan_artifacts_exposed_for_cross_session_credit(self):
         facts = [
             _fact("Write", ".claude/plans/feature.md", order=1, cwd="/repo",
@@ -408,14 +422,18 @@ class TestSessionOrderedDetail(unittest.TestCase):
         self.assertTrue(detail["plan_mode_present"])
         self.assertFalse(detail["planned_intra"])
 
-    def test_near_miss_plan_skill_without_plan_file(self):
+    def test_plan_skill_alone_before_code_is_planned_signal_skill(self):
+        # A planning-skill invocation before the first code write now counts as
+        # planned ON ITS OWN (signal "skill"), even without a plan-file.
         facts = [
             _fact("Skill", "", order=1, plan_skill=True),
             _fact("Edit", "src/a.py", order=2, file_class="code", loc=90),
         ]
         detail = session_ordered_detail(facts)
         self.assertTrue(detail["plan_skill_present"])
-        self.assertFalse(detail["planned_intra"])
+        self.assertTrue(detail["planned_intra"])
+        self.assertIn("skill", detail["signals"])
+        self.assertNotIn("skill+plan-file", detail["signals"])
 
     def test_skill_plus_short_plan_file_signal(self):
         facts = [

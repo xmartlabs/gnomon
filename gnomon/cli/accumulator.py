@@ -1680,6 +1680,12 @@ def session_ordered_detail(events):
         if substantive_plan_file:
             planned_intra = True
             plan_artifacts.append((cwd, order))
+    # A planning-skill invocation before the first CODE write counts as a
+    # planned signal on its own (nico's heavy planners often invoke a planning
+    # skill without ever writing a detected plan-file). It is NOT a consumable
+    # cross-session artifact, so it does not extend plan_artifacts.
+    if saw_plan_skill:
+        planned_intra = True
 
     # Which signal(s) actually fired (for the diagnostic breakdown).
     signals = []
@@ -1687,6 +1693,8 @@ def session_ordered_detail(events):
         signals.append("todo>=3")
     if any(loc is None or loc >= PLAN_MIN_LINES for _c, _o, loc in plan_file_events):
         signals.append("plan-file")
+    if saw_plan_skill:
+        signals.append("skill")
     if saw_plan_skill and any(
             loc is not None and loc < PLAN_MIN_LINES for _c, _o, loc in plan_file_events):
         signals.append("skill+plan-file")

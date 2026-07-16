@@ -85,5 +85,21 @@ class TestBuildPlanningExplain(unittest.TestCase):
         self.assertEqual(rows["exec"]["prompt"], "please build the thing")
 
 
+class TestSkillOnlySignal(unittest.TestCase):
+    def test_plan_skill_alone_surfaces_skill_signal(self):
+        sessions = {
+            ("claude", "skl"): [
+                _fact("Skill", "", order=1, cwd="/z", plan_skill=True),
+                _fact("Edit", "src/e.py", order=2, cwd="/z", file_class="code", loc=90),
+            ],
+        }
+        result = build_planning_explain(sessions, Counter(), {})
+        row = result["rows"][0]
+        self.assertTrue(row["planned"])
+        self.assertIn("skill", row["signals"])
+        self.assertTrue(result["summary"]["reconciles"])
+        self.assertEqual(result["summary"]["planned_signals"].get("skill"), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

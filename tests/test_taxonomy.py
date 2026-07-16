@@ -45,8 +45,21 @@ class TestIsPlanFileTarget(unittest.TestCase):
     def test_matches_generic_plans_directory_with_plan_in_name(self):
         self.assertTrue(is_plan_file_target("docs/plans/rollout-plan.md"))
 
+    def test_matches_any_markdown_directly_in_plans_dir_at_any_depth(self):
+        # superpowers writing-plans convention: filename need NOT contain "plan"
+        for path in ("docs/superpowers/plans/2-stadium.md",
+                     "docs/plans/roadmap.md",
+                     "plans/2-feature.md",
+                     ".claude/plans/foo.md",
+                     ".context/session-plan.md"):
+            self.assertTrue(is_plan_file_target(path), path)
+
     def test_rejects_unrelated_paths(self):
-        for path in ("src/app.py", "README.md", "docs/plans/notes.md", ""):
+        for path in ("src/app.py", "README.md", "",
+                     # segment must be exactly `plans`, not a suffix/prefix
+                     "deployment-plans/notes.md", "plansomething/x.md",
+                     # inside plans/ but not a markdown-ish file
+                     "src/plans/config.json"):
             self.assertFalse(is_plan_file_target(path), path)
 
 

@@ -181,16 +181,19 @@ def classify_change_target(path):
 
 _PLAN_FILE_RX = re.compile(
     r'(^|/)\.claude/plans/[^/]*\.md$|(^|/)\.cursor/plans/|(^|/)\.context/[^/]*plan[^/]*$|'
-    r'(^|/)plans/[^/]*plan[^/]*$',
+    r'(^|/)plans/[^/]+\.(md|mdx|txt)$',
     re.I,
 )
 
 
 def is_plan_file_target(path):
     """True when a write target is a durable plan artifact on disk (C3/C4):
-    `.claude/plans/*.md`, `.cursor/plans/`, `.context/*plan*`, or any
-    `*/plans/*plan*` path — matched by taxonomy so cross-session credit (C4)
-    can recognize hand-off plan files regardless of source CLI."""
+    `.claude/plans/*.md`, `.cursor/plans/`, `.context/*plan*`, or ANY
+    markdown-ish file (`.md`/`.mdx`/`.txt`) directly inside a `plans/`
+    directory at any depth regardless of filename (e.g. the superpowers
+    writing-plans convention `docs/superpowers/plans/2-stadium.md`) — matched by
+    taxonomy so cross-session credit (C4) can recognize hand-off plan files
+    regardless of source CLI."""
     if not path:
         return False
     return bool(_PLAN_FILE_RX.search(str(path)))
