@@ -357,6 +357,48 @@ def main(argv=None, output_dir=None):
             print("    " + _l)
         print("  json: " + json.dumps(_trec))
 
+    if "--explain-planning" in argv:
+        from gnomon.output.planning_explain import build_planning_explain
+        _explain = build_planning_explain(
+            narrative["_session_ordered_tools"],
+            narrative["_session_thinking_blocks"],
+            narrative["_session_first_prompt"])
+        _es = _explain["summary"]
+        print("\n  ordered-planning explain (LOCAL only — nothing uploaded):")
+        print(f"    eligible={_es['eligible']} planned={_es['planned']} "
+              f"coverage={_es['coverage']:.2f}  reconciles={_es['reconciles']}")
+        if _es["ineligible_reasons"]:
+            print("    ineligible: " + ", ".join(
+                f"{k}={v}" for k, v in sorted(_es["ineligible_reasons"].items())))
+        if _es["planned_signals"]:
+            print("    signals: " + ", ".join(
+                f"{k}={v}" for k, v in sorted(_es["planned_signals"].items())))
+        print("    eligible sessions:")
+        for _r in sorted(_explain["rows"], key=lambda r: (r["date"], r["session"])):
+            if not _r["eligible"]:
+                continue
+            _verdict = ("PLANNED[" + ",".join(_r["signals"] or (
+                ["cross-session"] if _r["cross_session"] else [])) + "]"
+                if _r["planned"] else "NOT")
+            _near = (f"todo={_r['todo_steps_max']} "
+                     f"planfile={_r['plan_file_locs']} "
+                     f"planmode={'Y' if _r['plan_mode_present'] else 'N'} "
+                     f"skill={'Y' if _r['plan_skill_present'] else 'N'} "
+                     f"reads={_r['evidence_reads_before_write']} "
+                     f"think={_r['thinking_blocks']}")
+            _pr = (_r["prompt"] or "").replace("\n", " ")[:80]
+            print(f"    # {_r['date']} {_r['source']}/{_r['session']} "
+                  f"{_r['cwd']} {_verdict}  near:[{_near}]  prompt:\"{_pr}\"")
+        _out_path = "./ordered-planning-explain.json"
+        for _a in argv:
+            _m = re.match(r"--out=(.+)$", _a)
+            if _m:
+                _out_path = _m.group(1)
+        _out_path = os.path.abspath(os.path.expanduser(_out_path))
+        with open(_out_path, "w", encoding="utf-8") as _fh:
+            json.dump(_explain, _fh, indent=2, default=str)
+        print(f"    wrote full JSON to {_out_path}")
+
 
 def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
                 total_file_count=None, verbose=True):
@@ -552,6 +594,11 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
         "_aq_bucket_windows": bucket_windows,
         "_aq_bucket_per_source_stats": bucket_per_source_stats,
         "_aq_bucket_stats": bucket_stats,
+        # Per-session ordered-planning diagnostic inputs (local --explain-planning
+        # only; never serialized to stats.json, never uploaded).
+        "_session_ordered_tools": corpus.session_ordered_tools,
+        "_session_thinking_blocks": corpus.session_thinking_blocks,
+        "_session_first_prompt": corpus.session_first_prompt,
     }
     return stats, narrative
 

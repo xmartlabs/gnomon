@@ -162,6 +162,12 @@ class Accumulator:
         self.session_ordered_tools = defaultdict(list)
         self.month_session_ordered_tools = defaultdict(lambda: defaultdict(list))
         self.ordered_facts_complete = True
+        # Per-(source, sid) diagnostic context for the local --explain-planning
+        # readout (never scored, never uploaded): thinking-block count and the
+        # first genuine prompt snippet. Kept separate from the corpus/month
+        # thinking counters so those stay byte-identical.
+        self.session_thinking_blocks = Counter()
+        self.session_first_prompt = {}
 
         self.hour_hist = Counter()
         self.weekday_hist = Counter()
@@ -670,6 +676,9 @@ class Accumulator:
                         # are corpus-only and never serialized; the caller collects
                         # them from this return value.
                         prompt_info = (cleaned, dt, sid, cwd)
+                        if sid:
+                            self.session_first_prompt.setdefault(
+                                (self._cur_src, sid), (cleaned or "")[:300])
 
             # ---- tool results inside user turns ---------------------
             content = msg.get("content")
@@ -743,6 +752,8 @@ class Accumulator:
                         self.thinking_blocks += 1
                         if mkey:
                             self.month_thinking_blocks[mkey] += 1
+                        if sid:
+                            self.session_thinking_blocks[(self._cur_src, sid)] += 1
                         self.thinking_chars += len(b.get("thinking", "") or "")
                     elif bt == "tool_use":
                         name = b.get("name", "?")
@@ -1555,8 +1566,12 @@ def _normalized_ordered_target(event):
     return os.path.normpath(target)
 
 
-def derive_session_ordered_facts(events):
-    """Rich per-session ordered-planning facts (ordered-planning redesign C2/C3/C6).
+def session_ordered_detail(events):
+    """Single source of truth for per-session ordered-planning facts
+    (ordered-planning redesign C2/C3/C6) — rich locals plus the near-miss
+    fields the local `--explain-planning` diagnostic surfaces. The scored
+    booleans are projected out of this by derive_session_ordered_facts /
+    derive_ordered_behavior, so nothing here can drift from the score.
 
     Facts are expected to already carry the C1 enrichment (file_class/loc/
     plan_file/plan_skill) from accumulator.py's per-write construction; raw
@@ -1576,10 +1591,16 @@ def derive_session_ordered_facts(events):
     counts (ceremony fallback); a short plan-file with no accompanying
     planning-skill does not.
 
-    Returns eligible/planned_intra/evidence plus first_write_order/cwd and
-    plan_artifacts — the latter two feed aggregate_ordered's cross-session
-    consume-once credit (C4), which is NOT applied here (this function is
-    single-session only)."""
+    NEAR-MISS fields (`todo_steps_max`, `plan_file_locs`, `plan_mode_present`,
+    `plan_skill_present`, `evidence_reads_before_write`) record what fell short
+    of a signal so a low score can be told apart from a detector blindspot.
+    `plan_mode_present` (EnterPlanMode/ExitPlanMode before the first code
+    write) is NEVER counted by the detector — it is reported for diagnosis
+    only. `reason` is the ineligibility bucket (null when eligible).
+
+    first_write_order/cwd and plan_artifacts feed aggregate_ordered's
+    cross-session consume-once credit (C4), which is NOT applied here (this
+    function is single-session only)."""
     events = sorted(
         enumerate(events or []),
         key=lambda item: (
@@ -1594,7 +1615,9 @@ def derive_session_ordered_facts(events):
     first_code_write = None
     first_write_order = None
     first_write_cwd = None
-    evidence_before = False
+    evidence_reads_before = 0
+    write_classes = []              # file_class of every write (for the reason bucket)
+    plan_mode_present = False       # EnterPlanMode/ExitPlanMode pre-write (NOT scored)
     actionable_plan_steps = set()
     todo_threshold_hit = None       # (cwd, order) once >=PLAN_MIN_STEPS is first reached
     plan_file_events = []           # (cwd, order, loc) for plan-file writes before the cutoff
@@ -1605,6 +1628,8 @@ def derive_session_ordered_facts(events):
         target = _normalized_ordered_target(event)
         is_write = name in _WRITE_TOOLS_V5
         file_class = event.get("file_class")
+        if is_write:
+            write_classes.append(file_class)
         if is_write and file_class == "code":
             if first_code_write is None:
                 first_code_write = index
@@ -1632,13 +1657,15 @@ def derive_session_ordered_facts(events):
                 if (before_n < PLAN_MIN_STEPS <= len(actionable_plan_steps)
                         and todo_threshold_hit is None):
                     todo_threshold_hit = (event.get("cwd"), event.get("order"))
+            if name in {"EnterPlanMode", "ExitPlanMode"}:
+                plan_mode_present = True
             if is_write and event.get("plan_file"):
                 plan_file_events.append(
                     (event.get("cwd"), event.get("order"), event.get("loc")))
             if event.get("plan_skill"):
                 saw_plan_skill = True
             if name in _EVIDENCE_TOOLS_V5 or event.get("knowledge"):
-                evidence_before = True
+                evidence_reads_before += 1
 
     eligible = bool(code_written) and (
         len(code_written) >= 2 or code_churn >= CHURN_MIN or substantive >= 10)
@@ -1654,13 +1681,64 @@ def derive_session_ordered_facts(events):
             planned_intra = True
             plan_artifacts.append((cwd, order))
 
+    # Which signal(s) actually fired (for the diagnostic breakdown).
+    signals = []
+    if todo_threshold_hit is not None:
+        signals.append("todo>=3")
+    if any(loc is None or loc >= PLAN_MIN_LINES for _c, _o, loc in plan_file_events):
+        signals.append("plan-file")
+    if saw_plan_skill and any(
+            loc is not None and loc < PLAN_MIN_LINES for _c, _o, loc in plan_file_events):
+        signals.append("skill+plan-file")
+
+    # Ineligibility bucket (null when eligible).
+    if eligible:
+        reason = None
+    elif not write_classes:
+        reason = "no-write"
+    elif "code" in write_classes:
+        reason = "trivial"
+    else:
+        distinct = set(write_classes)
+        reason = {
+            frozenset({"test"}): "test-only",
+            frozenset({"doc"}): "doc-only",
+            frozenset({"config"}): "config-only",
+            frozenset({"lockfile"}): "lockfile-only",
+        }.get(frozenset(distinct), "no-code-write")
+
     return {
         "eligible": eligible,
         "planned_intra": planned_intra,
-        "evidence": eligible and evidence_before,
+        "signals": signals,
+        "reason": reason,
+        "evidence": eligible and evidence_reads_before > 0,
+        "n_code_files": len(code_written),
+        "code_churn": code_churn,
+        "substantive": substantive,
+        "todo_steps_max": len(actionable_plan_steps),
+        "plan_file_locs": [loc for _c, _o, loc in plan_file_events],
+        "plan_mode_present": plan_mode_present,
+        "plan_skill_present": saw_plan_skill,
+        "evidence_reads_before_write": evidence_reads_before,
         "first_write_order": first_write_order,
         "cwd": first_write_cwd,
         "plan_artifacts": plan_artifacts,
+    }
+
+
+def derive_session_ordered_facts(events):
+    """Thin projection of session_ordered_detail down to the legacy 6-key
+    scored shape (eligible/planned_intra/evidence + the C4 credit inputs).
+    Kept byte-identical so every existing caller and test stays unchanged."""
+    d = session_ordered_detail(events)
+    return {
+        "eligible": d["eligible"],
+        "planned_intra": d["planned_intra"],
+        "evidence": d["evidence"],
+        "first_write_order": d["first_write_order"],
+        "cwd": d["cwd"],
+        "plan_artifacts": d["plan_artifacts"],
     }
 
 
@@ -1699,7 +1777,21 @@ def aggregate_ordered(sessions):
     first-code-write order so the earliest execution gets first claim on a
     shared artifact (one plan credits exactly one execution)."""
     derived = [derive_session_ordered_facts(facts) for facts in sessions]
+    apply_cross_session_credit(derived)
 
+    eligible = sum(1 for d in derived if d["eligible"])
+    planned = sum(1 for d in derived
+                  if d["eligible"] and (d["planned_intra"] or d.get("planned_final")))
+    evidence = sum(1 for d in derived if d["evidence"])
+    return {"eligible": eligible, "planned": planned, "evidence": evidence}
+
+
+def apply_cross_session_credit(derived):
+    """C4 credit, factored so the per-session planning-explain diagnostic gets
+    the SAME consume-once matching the scored aggregate uses. `derived` is a
+    list of derive_session_ordered_facts / session_ordered_detail dicts; each
+    credited execution is mutated in place with planned_final=True. Order of
+    `derived` is preserved so callers can zip it back to their session keys."""
     artifacts = [
         {"cwd": cwd, "order": order, "consumed": False}
         for d in derived for cwd, order in d["plan_artifacts"]
@@ -1721,9 +1813,4 @@ def aggregate_ordered(sessions):
             chosen = min(candidates, key=lambda a: a["order"])
             chosen["consumed"] = True
             d["planned_final"] = True
-
-    eligible = sum(1 for d in derived if d["eligible"])
-    planned = sum(1 for d in derived
-                  if d["eligible"] and (d["planned_intra"] or d.get("planned_final")))
-    evidence = sum(1 for d in derived if d["evidence"])
-    return {"eligible": eligible, "planned": planned, "evidence": evidence}
+    return derived

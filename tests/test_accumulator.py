@@ -2,6 +2,7 @@ import unittest
 
 from gnomon.cli.accumulator import (
     Accumulator, derive_session_ordered_facts, aggregate_ordered,
+    session_ordered_detail, derive_ordered_behavior,
 )
 
 
@@ -304,6 +305,171 @@ class TestAggregateOrderedC4(unittest.TestCase):
         ])
         self.assertEqual(result["eligible"], 2)
         self.assertEqual(result["planned"], 1)
+
+
+class TestSessionOrderedDetail(unittest.TestCase):
+    """session_ordered_detail is the single source of truth: its booleans must
+    match the projected derive_session_ordered_facts / derive_ordered_behavior
+    (no scoring drift), and its near-miss fields must populate for diagnosis."""
+
+    def _representative_fixtures(self):
+        return [
+            # eligible + planned via todo>=3
+            [
+                _fact("TodoWrite", order=1, items=["a", "b", "c"]),
+                _fact("Edit", "src/a.py", order=2, file_class="code", loc=90),
+            ],
+            # eligible, not planned (bare execution)
+            [_fact("Write", "src/app.py", order=1, file_class="code", loc=90)],
+            # not eligible (doc only)
+            [_fact("Write", "README.md", order=1, file_class="doc", loc=50)],
+            # eligible + evidence (read before write)
+            [
+                _fact("Read", "src/a.py", order=1, file_class="code"),
+                _fact("Edit", "src/a.py", order=2, file_class="code", loc=90),
+            ],
+            # not eligible (trivial single low-churn code write)
+            [_fact("Edit", "src/a.py", order=1, file_class="code", loc=10)],
+        ]
+
+    def test_booleans_match_derive_functions_no_drift(self):
+        for facts in self._representative_fixtures():
+            detail = session_ordered_detail(facts)
+            projected = derive_session_ordered_facts(facts)
+            behavior = derive_ordered_behavior(facts)
+            self.assertEqual(detail["eligible"], projected["eligible"])
+            self.assertEqual(detail["planned_intra"], projected["planned_intra"])
+            self.assertEqual(detail["evidence"], projected["evidence"])
+            self.assertEqual(behavior["eligible"], detail["eligible"])
+            self.assertEqual(
+                behavior["planned"], detail["eligible"] and detail["planned_intra"])
+            self.assertEqual(behavior["evidence"], detail["evidence"])
+            # the projected dict is byte-identical to the legacy 6-key shape
+            self.assertEqual(set(projected.keys()), {
+                "eligible", "planned_intra", "evidence",
+                "first_write_order", "cwd", "plan_artifacts"})
+
+    def test_reason_buckets(self):
+        cases = {
+            "no-write": [_fact("Read", "src/a.py", order=1, file_class="code")],
+            "doc-only": [_fact("Write", "README.md", order=1, file_class="doc", loc=50)],
+            "test-only": [_fact("Write", "tests/t.py", order=1, file_class="test", loc=20)],
+            "config-only": [_fact("Write", "c.yaml", order=1, file_class="config", loc=9)],
+            "lockfile-only": [_fact("Write", "package-lock.json", order=1,
+                                    file_class="lockfile", loc=5)],
+            "trivial": [_fact("Edit", "src/a.py", order=1, file_class="code", loc=10)],
+        }
+        for expected, facts in cases.items():
+            detail = session_ordered_detail(facts)
+            self.assertFalse(detail["eligible"], expected)
+            self.assertEqual(detail["reason"], expected)
+        # eligible sessions have no ineligibility reason
+        eligible = session_ordered_detail(
+            [_fact("Write", "src/app.py", order=1, file_class="code", loc=90)])
+        self.assertTrue(eligible["eligible"])
+        self.assertIsNone(eligible["reason"])
+
+    def test_near_miss_todo_two_steps(self):
+        facts = [
+            _fact("TodoWrite", order=1, items=["inspect", "change"]),
+            _fact("Edit", "src/a.py", order=2, file_class="code", loc=90),
+        ]
+        detail = session_ordered_detail(facts)
+        self.assertEqual(detail["todo_steps_max"], 2)
+        self.assertFalse(detail["planned_intra"])
+
+    def test_near_miss_short_plan_file_not_planned(self):
+        facts = [
+            _fact("Write", ".claude/plans/f.md", order=1, file_class="other",
+                  loc=5, plan_file=True),
+            _fact("Edit", "src/a.py", order=2, file_class="code", loc=90),
+        ]
+        detail = session_ordered_detail(facts)
+        self.assertEqual(detail["plan_file_locs"], [5])
+        self.assertFalse(detail["planned_intra"])
+
+    def test_plan_file_none_loc_fallback_is_planned(self):
+        facts = [
+            _fact("Write", ".claude/plans/f.md", order=1, file_class="other",
+                  loc=None, plan_file=True),
+            _fact("Edit", "src/a.py", order=2, file_class="code", loc=90),
+        ]
+        detail = session_ordered_detail(facts)
+        self.assertEqual(detail["plan_file_locs"], [None])
+        self.assertTrue(detail["planned_intra"])
+        self.assertIn("plan-file", detail["signals"])
+
+    def test_near_miss_plan_mode_present_not_planned(self):
+        facts = [
+            _fact("EnterPlanMode", order=1),
+            _fact("Edit", "src/a.py", order=2, file_class="code", loc=90),
+        ]
+        detail = session_ordered_detail(facts)
+        self.assertTrue(detail["plan_mode_present"])
+        self.assertFalse(detail["planned_intra"])
+
+    def test_near_miss_plan_skill_without_plan_file(self):
+        facts = [
+            _fact("Skill", "", order=1, plan_skill=True),
+            _fact("Edit", "src/a.py", order=2, file_class="code", loc=90),
+        ]
+        detail = session_ordered_detail(facts)
+        self.assertTrue(detail["plan_skill_present"])
+        self.assertFalse(detail["planned_intra"])
+
+    def test_skill_plus_short_plan_file_signal(self):
+        facts = [
+            _fact("Skill", "", order=1, plan_skill=True),
+            _fact("Write", ".claude/plans/f.md", order=2, file_class="other",
+                  loc=2, plan_file=True),
+            _fact("Edit", "src/a.py", order=3, file_class="code", loc=90),
+        ]
+        detail = session_ordered_detail(facts)
+        self.assertTrue(detail["planned_intra"])
+        self.assertIn("skill+plan-file", detail["signals"])
+
+    def test_evidence_reads_counted_before_write(self):
+        facts = [
+            _fact("Read", "a.py", order=1, file_class="code"),
+            _fact("Grep", "x", order=2, file_class="other"),
+            _fact("Edit", "src/a.py", order=3, file_class="code", loc=90),
+        ]
+        detail = session_ordered_detail(facts)
+        self.assertEqual(detail["evidence_reads_before_write"], 2)
+
+
+class TestSessionThinkingAndPrompt(unittest.TestCase):
+    """Per-session thinking-block count and first-prompt snippet plumbing."""
+
+    def _thinking_event(self, sid, ts):
+        return {"type": "assistant", "sessionId": sid, "timestamp": ts,
+                "message": {"role": "assistant", "model": "claude-sonnet-4-6",
+                            "content": [{"type": "thinking", "thinking": "reasoning"}]}}
+
+    def _prompt_event(self, sid, ts, text, cwd="/repo"):
+        return {"type": "user", "sessionId": sid, "timestamp": ts, "cwd": cwd,
+                "message": {"role": "user", "content": text}}
+
+    def test_session_thinking_blocks_per_source_sid(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(self._thinking_event("s1", "2026-01-01T00:00:00Z"), None, None)
+        acc.observe(self._thinking_event("s1", "2026-01-01T00:00:01Z"), None, None)
+        acc.observe(self._thinking_event("s2", "2026-01-01T00:00:02Z"), None, None)
+        self.assertEqual(acc.session_thinking_blocks[("claude", "s1")], 2)
+        self.assertEqual(acc.session_thinking_blocks[("claude", "s2")], 1)
+        # corpus counter unchanged in behavior
+        self.assertEqual(acc.thinking_blocks, 3)
+
+    def test_session_first_prompt_snippet(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(self._prompt_event("s1", "2026-01-01T00:00:00Z",
+                                       "Implement the feature please"), None, None)
+        acc.observe(self._prompt_event("s1", "2026-01-01T00:00:05Z",
+                                       "second prompt should not overwrite"), None, None)
+        self.assertEqual(acc.session_first_prompt[("claude", "s1")],
+                         "Implement the feature please")
 
 
 if __name__ == "__main__":

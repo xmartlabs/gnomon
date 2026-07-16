@@ -45,6 +45,12 @@ _HELP_TEXT = """Usage:
     --verbose     also show paxel's full stdout/stderr
     --console     show progress in the terminal instead of the browser
     --tools       print per-session tool usage (self-check + rate calibration)
+    --explain-planning
+                  (local only) list every eligible ordered-planning session,
+                  whether it was detected PLANNED and via which signal, plus
+                  near-misses for the rest -- nothing is uploaded
+    --out=PATH    where --explain-planning writes its full JSON
+                  (default ./ordered-planning-explain.json)
     --output-dir=PATH
                   copy final artifacts into PATH (use . for current directory)
 
