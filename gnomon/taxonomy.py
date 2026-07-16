@@ -181,7 +181,7 @@ def classify_change_target(path):
 
 _PLAN_FILE_RX = re.compile(
     r'(^|/)\.claude/plans/[^/]*\.md$|(^|/)\.cursor/plans/|(^|/)\.context/[^/]*plan[^/]*$|'
-    r'(^|/)plans/[^/]*plan[^/]*$',
+    r'(^|/)plans/[^/]+\.(md|mdx|txt)$',
     re.I,
 )
 
@@ -189,8 +189,10 @@ _PLAN_FILE_RX = re.compile(
 def is_plan_file_target(path):
     """True when a write target is a durable plan artifact on disk (C3/C4):
     `.claude/plans/*.md`, `.cursor/plans/`, `.context/*plan*`, or any
-    `*/plans/*plan*` path — matched by taxonomy so cross-session credit (C4)
-    can recognize hand-off plan files regardless of source CLI."""
+    `.md`/`.mdx`/`.txt` file directly inside a `plans/` directory at any depth
+    (e.g. the superpowers `docs/**/plans/<n>-<name>.md` convention), regardless
+    of filename — matched by taxonomy so cross-session credit (C4) can recognize
+    hand-off plan files regardless of source CLI."""
     if not path:
         return False
     return bool(_PLAN_FILE_RX.search(str(path)))

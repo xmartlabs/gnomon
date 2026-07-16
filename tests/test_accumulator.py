@@ -102,6 +102,23 @@ class TestPlannedC3C6(unittest.TestCase):
         result = derive_session_ordered_facts(facts)
         self.assertTrue(result["planned_intra"])
 
+    def test_planning_skill_alone_before_code_is_planned(self):
+        facts = [
+            _fact("Skill", "", order=1, plan_skill=True),
+            _fact("Edit", "src/a.py", order=2, file_class="code", loc=90),
+        ]
+        result = derive_session_ordered_facts(facts)
+        self.assertTrue(result["planned_intra"])
+        # skill-only does not create a shared cross-session artifact
+        self.assertEqual(result["plan_artifacts"], [])
+
+    def test_planning_skill_after_first_code_write_is_not_planned(self):
+        facts = [
+            _fact("Edit", "src/a.py", order=1, file_class="code", loc=90),
+            _fact("Skill", "", order=2, plan_skill=True),
+        ]
+        self.assertFalse(derive_session_ordered_facts(facts)["planned_intra"])
+
     def test_bare_plan_mode_toggle_alone_is_not_planned(self):
         facts = [
             _fact("EnterPlanMode", order=1),

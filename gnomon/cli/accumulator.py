@@ -1654,6 +1654,12 @@ def derive_session_ordered_facts(events):
             planned_intra = True
             plan_artifacts.append((cwd, order))
 
+    # A planning-skill invocation before the first code write is itself the
+    # planning act and counts on its own, even without a plan-file. It does NOT
+    # become a shared plan_artifact, so cross-session (C4) credit is unchanged.
+    if saw_plan_skill:
+        planned_intra = True
+
     return {
         "eligible": eligible,
         "planned_intra": planned_intra,
