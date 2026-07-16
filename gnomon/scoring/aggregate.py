@@ -262,6 +262,8 @@ def _synth_stats_for_aggregate(items, agg_aq):
             "error_rate_per_100_tools": wmean(lambda blk: b(blk).get("error_rate_per_100_tools")),
             "error_recovery_ratio": wmean(lambda blk: b(blk).get("error_recovery_ratio")),
             "api_errors_retries": wsum(lambda blk: b(blk).get("api_errors_retries")),
+            "orchestratable_sessions": wsum(lambda blk: b(blk).get("orchestratable_sessions")),
+            "delegated_orchestratable_sessions": wsum(lambda blk: b(blk).get("delegated_orchestratable_sessions")),
         },
         "stack": {
             "top_skills": sorted(merged_skills.items(), key=lambda kv: -kv[1]),

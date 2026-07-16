@@ -3,11 +3,11 @@
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 88,
+          "aq_0_100": 87,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 79.7,
+              "score": 77.6,
               "weight": 30
             },
             {
@@ -26,12 +26,12 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "5:3:3",
-          "tier": "Elite"
+          "score_contract_id": "5:4:3",
+          "tier": "Advanced"
         },
         "archetype": {
           "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is breadth \u2014 that's where the next gain is.",
-          "title": "Elite"
+          "title": "Advanced"
         },
         "combination": {
           "rule": "weighted_mean_of_per_source_scores",
@@ -274,7 +274,7 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 88,
+            "aq_0_100": 87,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -288,12 +288,15 @@
                   {
                     "base_weight": 33,
                     "name": "Orchestration",
-                    "normalized_score": 0.725,
-                    "score": 23.9,
+                    "normalized_score": 0.66,
+                    "score": 21.8,
                     "signals": {
-                      "agent_runs": 200,
+                      "delegated_orchestratable_sessions": 0,
                       "fanout_median": 3,
+                      "frequency": null,
                       "o_harn": 0.6,
+                      "orchestratable_sessions": 0,
+                      "quality": 0.66,
                       "subagent_types": 6
                     },
                     "weight": 33
@@ -333,7 +336,7 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 79.7,
+                "score": 77.6,
                 "weight": 30
               },
               {
@@ -456,8 +459,8 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:3:3",
-            "tier": "Elite",
+            "score_contract_id": "5:4:3",
+            "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
               "entropy": 0.8
@@ -465,7 +468,7 @@
           },
           "archetype": {
             "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is breadth \u2014 that's where the next gain is.",
-            "title": "Elite"
+            "title": "Advanced"
           },
           "growth_edges": [
             {
@@ -856,7 +859,7 @@
           "pillars": [
             {
               "name": "Breadth",
-              "score": 17.6,
+              "score": 18.4,
               "weight": 30
             },
             {
@@ -875,7 +878,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "5:3:3",
+          "score_contract_id": "5:4:3",
           "tier": "Apprentice"
         },
         "archetype": {
@@ -1120,12 +1123,15 @@
                   {
                     "base_weight": 33,
                     "name": "Orchestration",
-                    "normalized_score": 0.18,
-                    "score": 7.2,
+                    "normalized_score": 0.2,
+                    "score": 8.0,
                     "signals": {
-                      "agent_runs": 0,
+                      "delegated_orchestratable_sessions": 0,
                       "fanout_median": 1,
+                      "frequency": null,
                       "o_harn": 0.6,
+                      "orchestratable_sessions": 0,
+                      "quality": 0.2,
                       "subagent_types": 0
                     },
                     "weight": 40
@@ -1158,7 +1164,7 @@
                 "not_applicable": [
                   "Discipline"
                 ],
-                "score": 17.6,
+                "score": 18.4,
                 "weight": 30
               },
               {
@@ -1266,7 +1272,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:3:3",
+            "score_contract_id": "5:4:3",
             "tier": "Apprentice",
             "tool_diversity": {
               "distinct": 12,
@@ -1569,11 +1575,11 @@
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 83,
+          "aq_0_100": 82,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 72.8,
+              "score": 71.0,
               "weight": 30
             },
             {
@@ -1592,7 +1598,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "5:3:3",
+          "score_contract_id": "5:4:3",
           "tier": "Advanced"
         },
         "archetype": {
@@ -1841,7 +1847,7 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 88,
+            "aq_0_100": 87,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -1855,12 +1861,15 @@
                   {
                     "base_weight": 33,
                     "name": "Orchestration",
-                    "normalized_score": 0.725,
-                    "score": 23.9,
+                    "normalized_score": 0.66,
+                    "score": 21.8,
                     "signals": {
-                      "agent_runs": 200,
+                      "delegated_orchestratable_sessions": 0,
                       "fanout_median": 3,
+                      "frequency": null,
                       "o_harn": 0.6,
+                      "orchestratable_sessions": 0,
+                      "quality": 0.66,
                       "subagent_types": 6
                     },
                     "weight": 33
@@ -1900,7 +1909,7 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 79.7,
+                "score": 77.6,
                 "weight": 30
               },
               {
@@ -2023,8 +2032,8 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:3:3",
-            "tier": "Elite",
+            "score_contract_id": "5:4:3",
+            "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
               "entropy": 0.8
@@ -2032,7 +2041,7 @@
           },
           "archetype": {
             "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is breadth \u2014 that's where the next gain is.",
-            "title": "Elite"
+            "title": "Advanced"
           },
           "growth_edges": [
             {
@@ -2281,12 +2290,15 @@
                   {
                     "base_weight": 33,
                     "name": "Orchestration",
-                    "normalized_score": 0.18,
-                    "score": 7.2,
+                    "normalized_score": 0.2,
+                    "score": 8.0,
                     "signals": {
-                      "agent_runs": 0,
+                      "delegated_orchestratable_sessions": 0,
                       "fanout_median": 1,
+                      "frequency": null,
                       "o_harn": 0.6,
+                      "orchestratable_sessions": 0,
+                      "quality": 0.2,
                       "subagent_types": 0
                     },
                     "weight": 40
@@ -2319,7 +2331,7 @@
                 "not_applicable": [
                   "Discipline"
                 ],
-                "score": 17.6,
+                "score": 18.4,
                 "weight": 30
               },
               {
@@ -2427,7 +2439,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:3:3",
+            "score_contract_id": "5:4:3",
             "tier": "Apprentice",
             "tool_diversity": {
               "distinct": 12,
@@ -2873,11 +2885,11 @@
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 82,
+          "aq_0_100": 81,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 79.7,
+              "score": 77.6,
               "weight": 30
             },
             {
@@ -2896,7 +2908,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "5:3:3",
+          "score_contract_id": "5:4:3",
           "tier": "Advanced"
         },
         "archetype": {
@@ -3144,7 +3156,7 @@
       "by_source": {
         "claude-boundary": {
           "aq": {
-            "aq_0_100": 82,
+            "aq_0_100": 81,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -3158,12 +3170,15 @@
                   {
                     "base_weight": 33,
                     "name": "Orchestration",
-                    "normalized_score": 0.725,
-                    "score": 23.9,
+                    "normalized_score": 0.66,
+                    "score": 21.8,
                     "signals": {
-                      "agent_runs": 200,
+                      "delegated_orchestratable_sessions": 0,
                       "fanout_median": 3,
+                      "frequency": null,
                       "o_harn": 0.6,
+                      "orchestratable_sessions": 0,
+                      "quality": 0.66,
                       "subagent_types": 6
                     },
                     "weight": 33
@@ -3203,7 +3218,7 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 79.7,
+                "score": 77.6,
                 "weight": 30
               },
               {
@@ -3326,7 +3341,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:3:3",
+            "score_contract_id": "5:4:3",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -3730,7 +3745,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "5:3:3",
+          "score_contract_id": "5:4:3",
           "tier": "Novice"
         },
         "archetype": {
@@ -3998,9 +4013,12 @@
                     "normalized_score": 0.12,
                     "score": 4.0,
                     "signals": {
-                      "agent_runs": 0,
+                      "delegated_orchestratable_sessions": 0,
                       "fanout_median": 0,
+                      "frequency": null,
                       "o_harn": 0.6,
+                      "orchestratable_sessions": 0,
+                      "quality": 0.12,
                       "subagent_types": 0
                     },
                     "weight": 33
@@ -4150,7 +4168,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:3:3",
+            "score_contract_id": "5:4:3",
             "tier": "Novice",
             "tool_diversity": {
               "distinct": 0,
@@ -4634,7 +4652,7 @@
           "pillars": [
             {
               "name": "Breadth",
-              "score": 79.7,
+              "score": 77.6,
               "weight": 30
             },
             {
@@ -4653,7 +4671,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "5:3:3",
+          "score_contract_id": "5:4:3",
           "tier": "Advanced"
         },
         "archetype": {
@@ -4915,14 +4933,14 @@
                   "id": "recent_30d"
                 },
                 {
-                  "component_aq": 82,
+                  "component_aq": 81,
                   "configured_weight": 0.35,
                   "day_bounds": null,
                   "effective_weight": 0.35,
                   "id": "full_window"
                 }
               ],
-              "full_aq": 82
+              "full_aq": 81
             },
             "mcp_vs_cli": {
               "cli_calls": 1500,
@@ -4940,35 +4958,44 @@
                       {
                         "effective_weight": 0.65,
                         "id": "recent_30d",
-                        "normalized_score": 0.725,
-                        "score": 23.9,
+                        "normalized_score": 0.66,
+                        "score": 21.8,
                         "signals": {
-                          "agent_runs": 200,
+                          "delegated_orchestratable_sessions": 0,
                           "fanout_median": 3,
+                          "frequency": null,
                           "o_harn": 0.6,
+                          "orchestratable_sessions": 0,
+                          "quality": 0.66,
                           "subagent_types": 6
                         }
                       },
                       {
                         "effective_weight": 0.35,
                         "id": "full_window",
-                        "normalized_score": 0.725,
-                        "score": 23.9,
+                        "normalized_score": 0.66,
+                        "score": 21.8,
                         "signals": {
-                          "agent_runs": 200,
+                          "delegated_orchestratable_sessions": 0,
                           "fanout_median": 3,
+                          "frequency": null,
                           "o_harn": 0.6,
+                          "orchestratable_sessions": 0,
+                          "quality": 0.66,
                           "subagent_types": 6
                         }
                       }
                     ],
                     "name": "Orchestration",
-                    "normalized_score": 0.725,
-                    "score": 23.9,
+                    "normalized_score": 0.66,
+                    "score": 21.8,
                     "signals": {
-                      "agent_runs": 200,
+                      "delegated_orchestratable_sessions": 0,
                       "fanout_median": 3,
+                      "frequency": null,
                       "o_harn": 0.6,
+                      "orchestratable_sessions": 0,
+                      "quality": 0.66,
                       "subagent_types": 6
                     },
                     "weight": 33
@@ -5074,7 +5101,7 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 79.7,
+                "score": 77.6,
                 "weight": 30
               },
               {
@@ -5393,7 +5420,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:3:3",
+            "score_contract_id": "5:4:3",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,

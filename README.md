@@ -101,8 +101,8 @@ components — recent behavior dominates while the full window provides
 stability. When the recent window has no sessions the blend falls back to the
 unblended full-window AQ.
 
-This runtime emits **scoring inputs version 5**, **AQ version 3**, and
-**GStack version 3** (`score_contract_id = 5:3:3`). Scores from the previous
+This runtime emits **scoring inputs version 5**, **AQ version 4**, and
+**GStack version 3** (`score_contract_id = 5:4:3`). Scores from the previous
 contract must not be presented as an improvement or regression against v5.
 
 What happens when you run it (without `--local`):

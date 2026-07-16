@@ -43,7 +43,7 @@ from gnomon.analysis.metrics import (
 )
 from gnomon.scoring.aq import (
     compute_aq, CHURN_MIN, WINDOW, PLAN_MIN_LINES, PLAN_MIN_STEPS,
-    MIN_ELIGIBLE_SESSIONS,
+    MIN_ELIGIBLE_SESSIONS, ORCHESTRATABLE_CODE_FILES, ORCHESTRATABLE_SUBSTANTIVE,
 )
 from gnomon.scoring.inputs import build_monthly_scoring_stats
 from gnomon.output.summary import _build_monthly_noticed_stats
@@ -1084,6 +1084,16 @@ class Accumulator:
         _eligible = _agg["eligible"]
         _planned = _agg["planned"]
         _evidence = _agg["evidence"]
+        # Orchestratable: per-session cross-ref with agents_per_session
+        _orchestratable = _agg["orchestratable"]
+        _orchestratable_sids = set()
+        for (src, sid), facts in self.session_ordered_tools.items():
+            d = derive_session_ordered_facts(facts)
+            if d["orchestratable"]:
+                _orchestratable_sids.add(sid)
+        _delegated_orchestratable = sum(
+            1 for sid in _orchestratable_sids
+            if self.agents_per_session.get(sid, 0) > 0)
         _routing_pairs, _routing_state = self._routing_snapshot()
         total_sessions = len(self.session_ts) or len(self.session_files)
         # Active time = sum of consecutive inter-event gaps, each capped at GAP_CAP_S,
@@ -1312,6 +1322,8 @@ class Accumulator:
                 "eligible_change_sessions": _eligible,
                 "planned_eligible_sessions": _planned,
                 "evidence_eligible_sessions": _evidence,
+                "orchestratable_sessions": _orchestratable,
+                "delegated_orchestratable_sessions": _delegated_orchestratable,
                 "ordered_facts_state": ("measured" if self.tool_use_total
                                         and self.ordered_facts_complete else "unmeasured"),
                 "linked_model_pairs": _routing_pairs,
@@ -1448,6 +1460,15 @@ class Accumulator:
         # C4: cross-session consume-once credit, scoped to this source's sessions.
         _s_agg = aggregate_ordered(self.session_ordered_tools.values())
         _s_eligible = _s_agg["eligible"]
+        _s_orchestratable = _s_agg["orchestratable"]
+        _s_orchestratable_sids = set()
+        for (src, sid), facts in self.session_ordered_tools.items():
+            d = derive_session_ordered_facts(facts)
+            if d["orchestratable"]:
+                _s_orchestratable_sids.add(sid)
+        _s_delegated_orchestratable = sum(
+            1 for sid in _s_orchestratable_sids
+            if self.agents_per_session.get(sid, 0) > 0)
         _s_routing_pairs, _s_routing_state = self._routing_snapshot(src_name)
         _s_all_no_agent = src_name in _AGENT_UNSUPPORTED_SOURCES
         # Null-honesty per source: a source slice with sessions but zero tool calls
@@ -1544,6 +1565,8 @@ class Accumulator:
                 "eligible_change_sessions": _s_eligible,
                 "planned_eligible_sessions": _s_agg["planned"],
                 "evidence_eligible_sessions": _s_agg["evidence"],
+                "orchestratable_sessions": _s_orchestratable,
+                "delegated_orchestratable_sessions": _s_delegated_orchestratable,
                 "ordered_facts_state": ("measured" if _s_tool_total
                                         and self.ordered_facts_complete else "unmeasured"),
                 "linked_model_pairs": _s_routing_pairs,
@@ -1705,6 +1728,9 @@ def derive_session_ordered_facts(events):
 
     eligible = bool(code_written) and (
         len(code_written) >= 2 or code_churn >= CHURN_MIN or substantive >= 10)
+    orchestratable = bool(code_written) and (
+        len(code_written) >= ORCHESTRATABLE_CODE_FILES
+        or substantive >= ORCHESTRATABLE_SUBSTANTIVE)
 
     plan_artifacts = []
     planned_intra = False
@@ -1725,6 +1751,7 @@ def derive_session_ordered_facts(events):
 
     return {
         "eligible": eligible,
+        "orchestratable": orchestratable,
         "planned_intra": planned_intra,
         "evidence": eligible and evidence_before,
         "first_write_order": first_write_order,
@@ -1795,4 +1822,6 @@ def aggregate_ordered(sessions):
     planned = sum(1 for d in derived
                   if d["eligible"] and (d["planned_intra"] or d.get("planned_final")))
     evidence = sum(1 for d in derived if d["evidence"])
-    return {"eligible": eligible, "planned": planned, "evidence": evidence}
+    orchestratable = sum(1 for d in derived if d.get("orchestratable"))
+    return {"eligible": eligible, "planned": planned, "evidence": evidence,
+            "orchestratable": orchestratable}

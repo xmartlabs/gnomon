@@ -19,6 +19,11 @@ PLAN_MIN_LINES = 8          # net lines (C6): minimum substantive plan-file size
 PLAN_MIN_STEPS = 3          # distinct todo/task steps (C6): raised from 2 (anti-theater)
 MIN_ELIGIBLE_SESSIONS = 5   # sessions (C7): below this, drop+renormalize (noise floor)
 
+# ---- Orchestration v2 — frequency + quality compound -------------------------
+ORCHESTRATABLE_CODE_FILES = 3    # code files written (stricter than eligible's 2)
+ORCHESTRATABLE_SUBSTANTIVE = 20  # substantive tool calls (stricter than eligible's 10)
+ORCHESTRATION_FREQUENCY_TARGET = 0.78  # 78% of orchestratable sessions should delegate
+
 _MODEL_TIERS = {
     "anthropic": (("opus", 3), ("sonnet", 2), ("haiku", 1)),
     "openai": (("pro", 4), ("mini", 2), ("nano", 1), ("gpt-", 3), ("codex", 3)),
@@ -63,7 +68,7 @@ def score_linked_routing(pairs, state):
 
 
 def compute_aq(stats):
-    """Agentic Quotient v3 — 'how well you OPERATE AGENTS' (distinct from the gstack
+    """Agentic Quotient v4 — 'how well you OPERATE AGENTS' (distinct from the gstack
     scorecard, which grades how you BUILD). Four pillars: Breadth (how much machinery),
     Craft (how well), Efficiency (leverage per intervention), Savvy (smart choices).
     MCP-vs-CLI and tool diversity stay descriptive (not graded).
@@ -108,12 +113,7 @@ def compute_aq(stats):
         return any(any(nd in str(k).lower() for nd in needles) for k, _ in skills)
 
     # ---- Pillar 1: Breadth (unchanged axes) ----
-    agent_runs = t.get("agent_calls", 0)
     fanout = b.get("fanout_median") or 0  # None (unmeasured) treated as 0 for AQ
-    max_fanout = b.get("max_session_fanout") or 0
-    parallel_share = b.get("parallel_session_share") or 0
-    delegating_sessions = b.get("delegating_sessions") or 0
-    delegating_session_share = delegating_sessions / sessions if sessions else 0
     # Harness use = a SINGLE session coordinating a team of >=3 distinct subagent roles
     # (behavioral), not a subagent/skill NAMED "harness"/"trisel" (opaque), and not window-wide
     # role variety (subagent_types_distinct would credit 3 roles fired one-per-session, which
@@ -130,8 +130,14 @@ def compute_aq(stats):
     # "rule of 7") lands at 5-7 — 5 sits in the overlap.
     # agent_runs is a per-session rate (volume floor); subagent_types/fanout stay as-is
     # (distinct-count and per-session-median — already volume-independent).
-    orchestration = (.30 * sat(st.get("subagent_types_distinct", 0), 8) + .30 * sat(fanout, 5)
-                     + .20 * o_harn + .20 * rate(agent_runs, 1.0))
+    o_quality = (0.40 * sat(st.get("subagent_types_distinct", 0), 8)
+               + 0.40 * sat(fanout, 5)
+               + 0.20 * o_harn)
+    _o_orchestratable = b.get("orchestratable_sessions") or 0
+    _o_delegated = b.get("delegated_orchestratable_sessions") or 0
+    o_frequency = (None if _o_orchestratable < MIN_ELIGIBLE_SESSIONS
+                   else sat(_o_delegated / _o_orchestratable, ORCHESTRATION_FREQUENCY_TARGET))
+    orchestration = (0.30 * o_frequency + 0.70 * o_quality) if o_frequency is not None else o_quality
     # skills_total -> per-session rate; skills_distinct stays (diversity, correctly absolute)
     skill_fluency = (.40 * sat(st.get("skills_distinct", 0), 40) + .30 * rate(st.get("skills_total", 0), 10)
                      + .30 * (1.0 if has_skill(["subagent-driven", "brainstorm", "writing-plans",
@@ -160,9 +166,12 @@ def compute_aq(stats):
     breadth_axes = [
         # Orchestration needs subagent delegation; a source that can't fan out by design
         # (Gemini/Pi/opencode) drops this axis (renormalized) instead of scoring ~0.
-        ("Orchestration", 33, orchestration, {"agent_runs": agent_runs,
-         "subagent_types": st.get("subagent_types_distinct", 0), "fanout_median": fanout,
-         "o_harn": o_harn},
+        ("Orchestration", 33, orchestration, {"subagent_types": st.get("subagent_types_distinct", 0),
+         "fanout_median": fanout, "o_harn": o_harn,
+         "frequency": round(o_frequency, 3) if o_frequency is not None else None,
+         "quality": round(o_quality, 3),
+         "orchestratable_sessions": _o_orchestratable,
+         "delegated_orchestratable_sessions": _o_delegated},
          "delegate"),
         ("Skill fluency", 22, skill_fluency, {"skills_distinct": st.get("skills_distinct", 0),
          "skills_total": st.get("skills_total", 0)}, "skills"),

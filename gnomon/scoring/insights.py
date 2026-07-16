@@ -204,11 +204,14 @@ def _growth_edges_pool(stats, scores):
     def _aq_advice(pillar, axis, sig):
         lead = f'<b>{pillar} · {axis}</b> is your thinnest AQ signal. '
         if axis == "Orchestration":
+            freq = sig.get("frequency")
+            freq_note = (f' Frequency: <b>{round(freq * 100)}%</b> of orchestratable sessions delegated.'
+                         if freq is not None else '')
             return ("Multiply yourself", "Run agents in parallel, not in series",
                 lead + f'<b>{sig.get("subagent_types", 0)}</b> distinct subagent types with a median '
-                f'fan-out of <b>{sig.get("fanout_median") or 0}</b>. When a task splits into independent '
-                f'pieces, hand them to parallel subagents in one orchestrating session instead of '
-                f'grinding through them serially.')
+                f'fan-out of <b>{sig.get("fanout_median") or 0}</b>.{freq_note} When a task splits into '
+                f'independent pieces, hand them to parallel subagents in one orchestrating session '
+                f'instead of grinding through them serially.')
         if axis.startswith("Tool command"):
             return ("Widen the toolbelt", "Wire your daily services into the agent",
                 lead + f'<b>{sig.get("mcp_servers", 0)}</b> MCP servers and <b>{sig.get("clis", 0)}</b> '

@@ -74,6 +74,8 @@ def build_scoring_inputs(stats):
             "iteration_depth_max": b.get("iteration_depth_max"),
             "files_hammered_over_15x": b.get("files_hammered_over_15x", 0),
             "no_tool_activity": b.get("no_tool_activity", False),
+            "orchestratable_sessions": b.get("orchestratable_sessions", 0),
+            "delegated_orchestratable_sessions": b.get("delegated_orchestratable_sessions", 0),
         },
         "stack": {
             "skills_distinct": st.get("skills_distinct", 0),
@@ -175,6 +177,15 @@ def build_monthly_scoring_stats(
         _month_agg = aggregate_ordered(
             (month_session_ordered_tools or {}).get(mk, {}).values())
         eligible = _month_agg["eligible"]
+        _month_orchestratable = _month_agg["orchestratable"]
+
+        _month_delegated_orch_sids = set()
+        for (src, sid), facts in (month_session_ordered_tools or {}).get(mk, {}).items():
+            from gnomon.cli.accumulator import derive_session_ordered_facts
+            d = derive_session_ordered_facts(facts)
+            if d["orchestratable"] and month_fanouts.get(mk, {}).get(sid, 0) > 0:
+                _month_delegated_orch_sids.add(sid)
+        _month_delegated_orchestratable = len(_month_delegated_orch_sids)
 
         stats_full = {
             "corpus": {"sources": {s: {} for s in sources_present}},
@@ -221,6 +232,8 @@ def build_monthly_scoring_stats(
                 "iteration_depth_max": ids["max"],
                 "files_hammered_over_15x": ids["heavy_files"],
                 "no_tool_activity": m_no_tool,
+                "orchestratable_sessions": _month_orchestratable,
+                "delegated_orchestratable_sessions": _month_delegated_orchestratable,
             },
             "stack": {
                 "models": month_models.get(mk, Counter()).most_common(),

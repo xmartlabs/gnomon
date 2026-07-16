@@ -315,6 +315,8 @@ def build_summary(stats):
             "parallel_session_share": b.get("parallel_session_share"),
             "delegating_sessions": b.get("delegating_sessions", 0),
             "delegate_actions": b["delegate_actions"],
+            "orchestratable_sessions": b.get("orchestratable_sessions", 0),
+            "delegated_orchestratable_sessions": b.get("delegated_orchestratable_sessions", 0),
         },
         "compounding_writes": st["compounding_writes"],
         "ecosystem": {
