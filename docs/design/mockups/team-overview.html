@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>gnomon dashboard — team overview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg-base: #14181f;
+    --bg-surface: #1b212b;
+    --bg-elev: #232b37;
+    --text-primary: #f2f4f7;
+    --text-secondary: #c2c8d2;
+    --text-muted: #7d8698;
+    --border: rgba(255,255,255,.07);
+    --border-strong: rgba(255,255,255,.12);
+    --accent: #ee1a64;
+    --purple: #6d6ff2;
+    --teal: #2dd4bf;
+    --amber: #f5b642;
+    --slate: #8b93a7;
+    --good: #34d399;
+    --font-ui: "Space Grotesk", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg-base);
+    color: var(--text-primary);
+    font-family: var(--font-ui);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.45;
+    /* faint top glow, single source, not a gradient wash */
+    background-image: radial-gradient(1200px 380px at 50% -180px, rgba(109,111,242,.10), transparent 70%);
+    background-repeat: no-repeat;
+  }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 28px 24px 80px; }
+
+  /* ---- top bar ---- */
+  .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 32px; }
+  .brand { display: flex; align-items: center; gap: 11px; }
+  .brand .dot {
+    width: 13px; height: 13px; border-radius: 50%;
+    background: conic-gradient(from 210deg, var(--accent), var(--purple), var(--accent));
+    box-shadow: 0 0 14px rgba(238,26,100,.5);
+  }
+  .brand .name { font-weight: 700; font-size: 17px; letter-spacing: -.01em; }
+  .brand .sub { color: var(--text-muted); font-size: 13px; font-weight: 500; padding-left: 10px; margin-left: 4px; border-left: 1px solid var(--border-strong); }
+  .topmeta { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-secondary); }
+  .pill {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: var(--bg-surface); border: 1px solid var(--border);
+    border-radius: 999px; padding: 6px 13px; font-size: 13px; font-weight: 500;
+  }
+  .pill .g { width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 8px var(--good); }
+
+  /* ---- stat cards ---- */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 28px; }
+  .stat {
+    background: var(--bg-surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 20px;
+    position: relative; overflow: hidden;
+  }
+  .stat .label { font-size: 11.5px; text-transform: uppercase; letter-spacing: .14em; color: var(--text-muted); font-weight: 600; margin-bottom: 12px; }
+  .stat .value { font-family: var(--font-mono); font-size: 34px; font-weight: 600; letter-spacing: -.02em; line-height: 1; }
+  .stat .value .unit { font-size: 16px; color: var(--text-muted); font-weight: 500; }
+  .stat .foot { margin-top: 10px; font-size: 12.5px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
+  .stat .delta.up { color: var(--good); }
+  .stat .accentbar { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
+  .stat:nth-child(1) .accentbar { background: var(--accent); }
+  .stat:nth-child(2) .accentbar { background: var(--purple); }
+  .stat:nth-child(3) .accentbar { background: var(--teal); }
+  .stat:nth-child(4) .accentbar { background: var(--amber); }
+
+  /* ---- section head ---- */
+  .sec-head { display: flex; align-items: baseline; justify-content: space-between; margin: 4px 0 14px; }
+  .sec-head h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .16em; color: var(--text-muted); font-weight: 600; }
+  .sec-head .hint { font-size: 12px; color: var(--text-muted); }
+
+  /* ---- table ---- */
+  .card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  thead th {
+    text-align: left; padding: 13px 18px; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .12em; color: var(--text-muted); font-weight: 600; white-space: nowrap;
+    border-bottom: 1px solid var(--border);
+  }
+  thead th.sortable { cursor: pointer; }
+  thead th .arrow { color: var(--accent); margin-left: 4px; }
+  thead th.num, tbody td.num { text-align: right; font-family: var(--font-mono); }
+  tbody td { padding: 15px 18px; border-top: 1px solid var(--border); vertical-align: middle; }
+  tbody tr:hover { background: rgba(255,255,255,.018); }
+  tbody tr:first-child td { border-top: none; }
+  .who { display: flex; align-items: center; gap: 12px; }
+  .ava { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; font-size: 12px; font-weight: 600; color: #fff; }
+  .name-link { font-weight: 600; letter-spacing: -.01em; }
+  .name-link:hover { text-decoration: underline; }
+  .aq { font-family: var(--font-mono); font-size: 19px; font-weight: 600; }
+  .tier {
+    display: inline-block; font-size: 10.5px; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; padding: 3px 9px; border-radius: 999px; border: 1px solid;
+  }
+  .tier.elite { color: var(--accent); border-color: rgba(238,26,100,.45); background: rgba(238,26,100,.09); }
+  .tier.advanced { color: var(--purple); border-color: rgba(109,111,242,.45); background: rgba(109,111,242,.09); }
+  .tier.proficient { color: var(--slate); border-color: rgba(139,147,167,.4); background: rgba(139,147,167,.08); }
+  .delta { font-family: var(--font-mono); font-size: 13px; }
+  .delta.up { color: var(--good); } .delta.down { color: var(--accent); } .delta.flat { color: var(--text-muted); }
+  .muted { color: var(--text-muted); }
+
+  /* ---- usage chart ---- */
+  .toggle { display: inline-flex; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 999px; padding: 3px; }
+  .toggle button { border: none; background: none; color: var(--text-muted); font-family: var(--font-ui); font-size: 12px; font-weight: 600; padding: 5px 14px; border-radius: 999px; cursor: pointer; }
+  .toggle button.on { background: var(--accent); color: #fff; }
+  .chart { padding: 24px 22px 18px; }
+  .bars { display: flex; align-items: flex-end; gap: 26px; height: 200px; padding-top: 8px; }
+  .barcol { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 10px; height: 100%; justify-content: flex-end; }
+  .stack { width: 100%; max-width: 70px; border-radius: 6px 6px 3px 3px; overflow: hidden; display: flex; flex-direction: column-reverse; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+  .seg { width: 100%; }
+  .xlab { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
+  .legend { display: flex; gap: 18px; margin-top: 16px; padding-top: 15px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-secondary); }
+  .legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+  /* sparkline */
+  .spark { display: block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div class="brand">
+      <span class="dot"></span>
+      <span class="name">gnomon</span>
+      <span class="sub">team dashboard</span>
+    </div>
+    <div class="topmeta">
+      <span class="pill"><span class="g"></span>4 engineers · current window 2026&#8209;06</span>
+    </div>
+  </div>
+
+  <!-- STAT CARDS -->
+  <div class="stats">
+    <div class="stat"><span class="accentbar"></span>
+      <div class="label">Team avg AQ</div>
+      <div class="value">81<span class="unit">/100</span></div>
+      <div class="foot"><span class="delta up">▲ +4</span><span class="muted">vs last month</span></div>
+    </div>
+    <div class="stat"><span class="accentbar"></span>
+      <div class="label">Ingest coverage</div>
+      <div class="value">4<span class="unit">/4</span></div>
+      <div class="foot"><span class="muted">people with a 2026&#8209;06 upload</span></div>
+    </div>
+    <div class="stat"><span class="accentbar"></span>
+      <div class="label">Tokens / mo</div>
+      <div class="value">18.9<span class="unit">B</span></div>
+      <div class="foot"><span class="muted">across all models</span></div>
+    </div>
+    <div class="stat"><span class="accentbar"></span>
+      <div class="label">Est. cost / mo</div>
+      <div class="value">$1,284</div>
+      <div class="foot"><span class="muted">list prices · editable</span></div>
+    </div>
+  </div>
+
+  <!-- PEOPLE TABLE -->
+  <div class="sec-head">
+    <h2>Team ranking</h2>
+    <span class="hint">click a column to sort · click a name for the profile</span>
+  </div>
+  <div class="card" style="margin-bottom: 28px;">
+    <table>
+      <thead>
+        <tr>
+          <th class="sortable">Name</th>
+          <th class="sortable num">AQ <span class="arrow">↓</span></th>
+          <th>Tier</th>
+          <th>Trend</th>
+          <th class="sortable num">Delta</th>
+          <th class="sortable">Top pillar</th>
+          <th class="sortable num">Tokens</th>
+          <th class="sortable num">Cost</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><div class="who"><span class="ava" style="background:linear-gradient(135deg,#ee1a64,#b0134c)">AL</span><a class="name-link">Ada Lovelace</a></div></td>
+          <td class="num"><span class="aq">93</span></td>
+          <td><span class="tier elite">Elite</span></td>
+          <td><svg class="spark" width="92" height="26" viewBox="0 0 92 26"><polyline points="0,20 30,15 60,11 92,4" fill="none" stroke="#ee1a64" stroke-width="2" stroke-linecap="round"/><circle cx="92" cy="4" r="2.6" fill="#ee1a64"/></svg></td>
+          <td class="num"><span class="delta up">+14</span></td>
+          <td>Craft</td>
+          <td class="num">5.7B</td>
+          <td class="num">$392</td>
+        </tr>
+        <tr>
+          <td><div class="who"><span class="ava" style="background:linear-gradient(135deg,#6d6ff2,#4a4cc0)">AT</span><a class="name-link">Alan Turing</a></div></td>
+          <td class="num"><span class="aq">85</span></td>
+          <td><span class="tier advanced">Advanced</span></td>
+          <td><svg class="spark" width="92" height="26" viewBox="0 0 92 26"><polyline points="0,6 46,4 92,12" fill="none" stroke="#6d6ff2" stroke-width="2" stroke-linecap="round"/><circle cx="92" cy="12" r="2.6" fill="#6d6ff2"/></svg></td>
+          <td class="num"><span class="delta down">−3</span></td>
+          <td>Efficiency</td>
+          <td class="num">4.9B</td>
+          <td class="num">$338</td>
+        </tr>
+        <tr>
+          <td><div class="who"><span class="ava" style="background:linear-gradient(135deg,#2dd4bf,#1c9e8f)">GH</span><a class="name-link">Grace Hopper</a></div></td>
+          <td class="num"><span class="aq">81</span></td>
+          <td><span class="tier advanced">Advanced</span></td>
+          <td><svg class="spark" width="92" height="26" viewBox="0 0 92 26"><polyline points="0,22 31,17 62,12 92,7" fill="none" stroke="#2dd4bf" stroke-width="2" stroke-linecap="round"/><circle cx="92" cy="7" r="2.6" fill="#2dd4bf"/></svg></td>
+          <td class="num"><span class="delta up">+7</span></td>
+          <td>Breadth</td>
+          <td class="num">4.6B</td>
+          <td class="num">$318</td>
+        </tr>
+        <tr>
+          <td><div class="who"><span class="ava" style="background:linear-gradient(135deg,#f5b642,#c98f28)">KJ</span><a class="name-link">Katherine J.</a></div></td>
+          <td class="num"><span class="aq">66</span></td>
+          <td><span class="tier proficient">Proficient</span></td>
+          <td><svg class="spark" width="92" height="26" viewBox="0 0 92 26"><polyline points="0,13 92,13" fill="none" stroke="#7d8698" stroke-width="2" stroke-linecap="round" stroke-dasharray="2 4"/><circle cx="92" cy="13" r="2.6" fill="#7d8698"/></svg></td>
+          <td class="num"><span class="delta flat">—</span></td>
+          <td>Savvy</td>
+          <td class="num">3.7B</td>
+          <td class="num">$236</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- USAGE OVER TIME -->
+  <div class="sec-head">
+    <h2>Company usage over time</h2>
+    <div class="toggle"><button class="on">Tokens</button><button>Cost</button></div>
+  </div>
+  <div class="card">
+    <div class="chart">
+      <div class="bars">
+        <div class="barcol"><div class="stack" style="height:44%"><div class="seg" style="height:70%;background:#ee1a64"></div><div class="seg" style="height:22%;background:#6d6ff2"></div><div class="seg" style="height:8%;background:#2dd4bf"></div></div><div class="xlab">04</div></div>
+        <div class="barcol"><div class="stack" style="height:63%"><div class="seg" style="height:66%;background:#ee1a64"></div><div class="seg" style="height:24%;background:#6d6ff2"></div><div class="seg" style="height:10%;background:#2dd4bf"></div></div><div class="xlab">05</div></div>
+        <div class="barcol"><div class="stack" style="height:96%"><div class="seg" style="height:62%;background:#ee1a64"></div><div class="seg" style="height:26%;background:#6d6ff2"></div><div class="seg" style="height:12%;background:#2dd4bf"></div></div><div class="xlab">06</div></div>
+      </div>
+      <div class="legend">
+        <span><i style="background:#ee1a64"></i>Opus 4.8</span>
+        <span><i style="background:#6d6ff2"></i>Fable 5</span>
+        <span><i style="background:#2dd4bf"></i>Haiku 4.5</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

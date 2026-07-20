@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>gnomon dashboard — CLI sign-in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg-base:#14181f; --bg-surface:#1b212b; --bg-elev:#232b37;
+    --text-primary:#f2f4f7; --text-secondary:#c2c8d2; --text-muted:#7d8698;
+    --border:rgba(255,255,255,.07); --border-strong:rgba(255,255,255,.14);
+    --accent:#ee1a64; --purple:#6d6ff2; --good:#34d399;
+    --font-ui:"Space Grotesk",system-ui,sans-serif; --font-mono:"IBM Plex Mono",ui-monospace,monospace;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body {
+    background:var(--bg-base); color:var(--text-primary); font-family:var(--font-ui);
+    -webkit-font-smoothing:antialiased; line-height:1.5;
+    min-height:100vh; display:grid; place-items:center; padding:24px;
+    background-image:radial-gradient(760px 460px at 50% -60px, rgba(238,26,100,.13), transparent 65%);
+    background-repeat:no-repeat;
+  }
+  .card {
+    width:100%; max-width:428px; background:var(--bg-surface);
+    border:1px solid var(--border); border-radius:22px; padding:34px 34px 30px;
+    box-shadow:0 30px 70px rgba(0,0,0,.45);
+  }
+  .brand { display:flex; align-items:center; gap:10px; font-size:13px; font-weight:600; color:var(--text-secondary); margin-bottom:26px; }
+  .brand .dot { width:11px; height:11px; border-radius:50%; background:conic-gradient(from 210deg,var(--accent),var(--purple),var(--accent)); box-shadow:0 0 12px rgba(238,26,100,.5); }
+  .brand .sub { color:var(--text-muted); font-weight:500; }
+  h1 { font-size:23px; font-weight:700; letter-spacing:-.02em; margin-bottom:9px; }
+  .lead { font-size:13.5px; color:var(--text-secondary); margin-bottom:8px; }
+  .privacy { font-size:12.5px; color:var(--text-muted); display:flex; gap:8px; align-items:flex-start; margin-bottom:24px; padding:11px 13px; background:var(--bg-elev); border:1px solid var(--border); border-radius:11px; }
+  .privacy .ic { color:var(--good); flex-shrink:0; }
+  form { display:flex; flex-direction:column; gap:15px; }
+  label { display:flex; flex-direction:column; gap:6px; font-size:12.5px; color:var(--text-secondary); font-weight:500; }
+  input {
+    background:var(--bg-elev); border:1px solid var(--border-strong); border-radius:11px;
+    padding:11px 13px; font-size:14.5px; color:var(--text-primary); font-family:var(--font-ui); outline:none;
+    transition:border-color .15s;
+  }
+  input::placeholder { color:var(--text-muted); }
+  input:focus { border-color:var(--accent); }
+  input.mono { font-family:var(--font-mono); letter-spacing:.06em; }
+  button {
+    margin-top:8px; background:var(--accent); color:#fff; border:none; border-radius:12px;
+    padding:12px; font-family:var(--font-ui); font-size:15px; font-weight:600; cursor:pointer;
+    box-shadow:0 8px 22px rgba(238,26,100,.32); transition:transform .1s;
+  }
+  button:hover { transform:translateY(-1px); }
+  .foot { margin-top:20px; padding-top:18px; border-top:1px solid var(--border); font-size:11.5px; color:var(--text-muted); font-family:var(--font-mono); display:flex; align-items:center; justify-content:space-between; }
+  .foot .cb { color:var(--text-secondary); }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand"><span class="dot"></span>gnomon dashboard<span class="sub">· CLI sign-in</span></div>
+    <h1>Authorize upload</h1>
+    <p class="lead">Enter your team token to let the gnomon CLI upload your build profile.</p>
+    <div class="privacy"><span class="ic">◆</span><span>Only <b>summary statistics</b> are uploaded — prompts and file contents never leave your machine.</span></div>
+
+    <form>
+      <label>Name<input type="text" placeholder="Grace Hopper" /></label>
+      <label>Email<input type="email" placeholder="grace@company.com" /></label>
+      <label>Team token<input class="mono" type="password" placeholder="••••••••••••" /></label>
+      <button type="submit">Authorize</button>
+    </form>
+
+    <div class="foot">
+      <span>callback</span>
+      <span class="cb">127.0.0.1:8799</span>
+    </div>
+  </div>
+</body>
+</html>
