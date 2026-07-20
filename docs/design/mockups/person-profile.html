@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>gnomon dashboard — profile</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg-base:#14181f; --bg-surface:#1b212b; --bg-elev:#232b37;
+    --text-primary:#f2f4f7; --text-secondary:#c2c8d2; --text-muted:#7d8698;
+    --border:rgba(255,255,255,.07); --border-strong:rgba(255,255,255,.12);
+    --accent:#ee1a64; --purple:#6d6ff2; --teal:#2dd4bf; --amber:#f5b642; --good:#34d399;
+    --font-ui:"Space Grotesk",system-ui,sans-serif; --font-mono:"IBM Plex Mono",ui-monospace,monospace;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body {
+    background:var(--bg-base); color:var(--text-primary); font-family:var(--font-ui);
+    -webkit-font-smoothing:antialiased; line-height:1.45;
+    background-image:radial-gradient(1100px 340px at 78% -160px, rgba(238,26,100,.10), transparent 70%);
+    background-repeat:no-repeat;
+  }
+  .wrap { max-width:1120px; margin:0 auto; padding:26px 24px 90px; }
+  a { color:inherit; text-decoration:none; }
+
+  /* nav */
+  .nav { display:flex; align-items:center; justify-content:space-between; margin-bottom:26px; }
+  .back { font-size:13.5px; color:var(--text-muted); font-weight:500; }
+  .back:hover { color:var(--text-secondary); }
+  .monthnav { display:flex; align-items:center; gap:14px; font-size:14px; }
+  .monthnav .arw { width:28px; height:28px; border-radius:8px; display:grid; place-items:center; background:var(--bg-surface); border:1px solid var(--border); color:var(--text-secondary); }
+  .monthnav .arw.off { opacity:.35; }
+  .monthnav .cur { font-family:var(--font-mono); font-weight:600; }
+
+  /* header */
+  .head { display:flex; align-items:flex-end; justify-content:space-between; gap:24px; flex-wrap:wrap; margin-bottom:14px; }
+  .who { display:flex; align-items:center; gap:16px; }
+  .ava { width:56px; height:56px; border-radius:16px; display:grid; place-items:center; font-size:20px; font-weight:700; color:#fff; background:linear-gradient(135deg,#2dd4bf,#1c9e8f); box-shadow:0 8px 22px rgba(45,212,191,.28); }
+  .who h1 { font-size:26px; font-weight:700; letter-spacing:-.02em; }
+  .who .email { color:var(--text-muted); font-size:13.5px; font-family:var(--font-mono); }
+  .score { display:flex; align-items:center; gap:18px; }
+  .score .big { font-family:var(--font-mono); font-size:56px; font-weight:600; line-height:.9; letter-spacing:-.03em; }
+  .score .big .u { font-size:20px; color:var(--text-muted); }
+  .score .meta { display:flex; flex-direction:column; gap:7px; align-items:flex-start; }
+  .tier { font-size:11px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; padding:4px 11px; border-radius:999px; color:var(--purple); border:1px solid rgba(109,111,242,.45); background:rgba(109,111,242,.09); }
+  .dl { font-family:var(--font-mono); font-size:13px; color:var(--good); }
+  .archetype { font-size:14.5px; color:var(--text-secondary); font-style:italic; margin-bottom:26px; }
+  .archetype b { color:var(--text-primary); font-style:normal; font-weight:600; }
+
+  .sec { margin-bottom:22px; }
+  .sec > h2 { font-size:11.5px; text-transform:uppercase; letter-spacing:.16em; color:var(--text-muted); font-weight:600; margin-bottom:13px; }
+  .card { background:var(--bg-surface); border:1px solid var(--border); border-radius:16px; }
+
+  /* level bars */
+  .levels { padding:22px 24px; display:flex; align-items:flex-end; gap:14px; height:132px; }
+  .lvcol { flex:1; display:flex; flex-direction:column; align-items:center; gap:8px; justify-content:flex-end; height:100%; }
+  .lvval { font-family:var(--font-mono); font-size:13px; font-weight:600; }
+  .lvbar { width:100%; max-width:64px; border-radius:7px 7px 3px 3px; }
+  .lvlab { font-family:var(--font-mono); font-size:11px; color:var(--text-muted); }
+
+  /* pillars */
+  .grid4 { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+  .pillar { padding:18px; }
+  .pillar .top { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:11px; }
+  .pillar .pn { font-size:14px; font-weight:600; }
+  .pillar .ps { font-family:var(--font-mono); font-size:13px; } .pillar .ps .u { color:var(--text-muted); }
+  .track { height:6px; border-radius:999px; background:var(--bg-elev); overflow:hidden; }
+  .fill { height:6px; border-radius:999px; background:var(--accent); }
+  .axes { margin-top:14px; display:flex; flex-direction:column; gap:7px; }
+  .axis { display:flex; justify-content:space-between; font-size:12px; color:var(--text-muted); }
+  .axis .av { font-family:var(--font-mono); color:var(--text-secondary); }
+
+  /* scorecard */
+  .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+  .score-c { padding:20px; }
+  .score-c .k { font-size:11px; text-transform:uppercase; letter-spacing:.14em; color:var(--text-muted); font-weight:600; margin-bottom:10px; }
+  .score-c .v { font-family:var(--font-mono); font-size:30px; font-weight:600; } .score-c .v .u { font-size:15px; color:var(--text-muted); }
+  .score-c .g { font-size:12.5px; color:var(--text-muted); margin:7px 0 12px; min-height:32px; }
+
+  /* explore grid */
+  .grid-explore { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+  .metric { background:var(--bg-surface); border:1px solid var(--border); border-radius:14px; padding:15px 16px; }
+  .metric .ml { font-size:10.5px; text-transform:uppercase; letter-spacing:.12em; color:var(--text-muted); font-weight:600; margin-bottom:7px; }
+  .metric .mv { font-family:var(--font-mono); font-size:20px; font-weight:600; } .metric .mv .u { font-size:12px; color:var(--text-muted); }
+
+  /* usage + mix */
+  .usage { padding:22px 24px; display:flex; flex-direction:column; gap:20px; }
+  .u3 { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; text-align:center; }
+  .u3 .ul { font-size:11px; text-transform:uppercase; letter-spacing:.12em; color:var(--text-muted); font-weight:600; }
+  .u3 .uv { font-family:var(--font-mono); font-size:26px; font-weight:600; margin-top:5px; }
+  .mixbar { display:flex; height:12px; border-radius:999px; overflow:hidden; background:var(--bg-elev); margin-bottom:11px; }
+  .mixlegend { display:flex; flex-wrap:wrap; gap:16px; font-size:12.5px; color:var(--text-secondary); }
+  .mixlegend span { display:inline-flex; align-items:center; gap:7px; } .mixlegend i { width:9px; height:9px; border-radius:3px; }
+
+  /* coach */
+  .coach { padding:20px 22px; border:1px solid rgba(109,111,242,.4); background:linear-gradient(180deg, rgba(109,111,242,.06), rgba(109,111,242,.01)); }
+  .coach .ch { font-size:11px; text-transform:uppercase; letter-spacing:.14em; color:var(--purple); font-weight:700; margin-bottom:9px; display:flex; align-items:center; gap:7px; }
+  .coach p { font-size:13.5px; color:var(--text-secondary); line-height:1.6; }
+  .coach .badge { font-size:10px; font-weight:600; color:var(--text-muted); border:1px solid var(--border-strong); border-radius:999px; padding:2px 8px; letter-spacing:.06em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="nav">
+    <a class="back">← Team</a>
+    <div class="monthnav">
+      <span class="arw">‹</span>
+      <span class="cur">2026&#8209;06</span>
+      <span class="arw off">›</span>
+    </div>
+  </div>
+
+  <div class="head">
+    <div class="who">
+      <span class="ava">GH</span>
+      <div>
+        <h1>Grace Hopper</h1>
+        <div class="email">grace@example.com</div>
+      </div>
+    </div>
+    <div class="score">
+      <div class="big">81<span class="u">/100</span></div>
+      <div class="meta">
+        <span class="tier">Advanced</span>
+        <span class="dl">↗ +7 pts vs May</span>
+      </div>
+    </div>
+  </div>
+
+  <p class="archetype"><b>Blueprint, then bulldozer</b> — “Plan wide, then grind narrow.”</p>
+
+  <div class="sec">
+    <h2>Level over time</h2>
+    <div class="card levels">
+      <div class="lvcol"><span class="lvval">70</span><div class="lvbar" style="height:52%;background:var(--purple);opacity:.5"></div><span class="lvlab">26&#8209;04</span></div>
+      <div class="lvcol"><span class="lvval">74</span><div class="lvbar" style="height:60%;background:var(--purple);opacity:.5"></div><span class="lvlab">26&#8209;05</span></div>
+      <div class="lvcol"><span class="lvval">81</span><div class="lvbar" style="height:74%;background:var(--accent)"></div><span class="lvlab">26&#8209;06</span></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>How you operate agents</h2>
+    <div class="grid4">
+      <div class="card pillar">
+        <div class="top"><span class="pn">Breadth</span><span class="ps">24<span class="u">/30</span></span></div>
+        <div class="track"><div class="fill" style="width:80%"></div></div>
+        <div class="axes">
+          <div class="axis"><span>Tool range</span><span class="av">8.2/10</span></div>
+          <div class="axis"><span>Skill use</span><span class="av">7.9/10</span></div>
+          <div class="axis"><span>MCP reach</span><span class="av">7.6/10</span></div>
+        </div>
+      </div>
+      <div class="card pillar">
+        <div class="top"><span class="pn">Craft</span><span class="ps">29<span class="u">/35</span></span></div>
+        <div class="track"><div class="fill" style="width:83%"></div></div>
+        <div class="axes">
+          <div class="axis"><span>Verification</span><span class="av">8.6/10</span></div>
+          <div class="axis"><span>Error recovery</span><span class="av">9.1/10</span></div>
+          <div class="axis"><span>Iteration</span><span class="av">7.4/10</span></div>
+        </div>
+      </div>
+      <div class="card pillar">
+        <div class="top"><span class="pn">Efficiency</span><span class="ps">16<span class="u">/20</span></span></div>
+        <div class="track"><div class="fill" style="width:80%"></div></div>
+        <div class="axes">
+          <div class="axis"><span>Actions/prompt</span><span class="av">7.8/10</span></div>
+          <div class="axis"><span>Fanout</span><span class="av">8.3/10</span></div>
+        </div>
+      </div>
+      <div class="card pillar">
+        <div class="top"><span class="pn">Savvy</span><span class="ps">12<span class="u">/15</span></span></div>
+        <div class="track"><div class="fill" style="width:80%"></div></div>
+        <div class="axes">
+          <div class="axis"><span>Planning</span><span class="av">8.0/10</span></div>
+          <div class="axis"><span>Compounding</span><span class="av">7.7/10</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>Scorecard</h2>
+    <div class="grid3">
+      <div class="card score-c">
+        <div class="k">Execution</div>
+        <div class="v">8.5<span class="u">/10</span></div>
+        <div class="g">How much you ship, how fast</div>
+        <svg width="100%" height="40" viewBox="0 0 180 40" preserveAspectRatio="none"><polyline points="0,30 60,26 120,20 180,14" fill="none" stroke="#ee1a64" stroke-width="2"/></svg>
+      </div>
+      <div class="card score-c">
+        <div class="k">Planning</div>
+        <div class="v">9.2<span class="u">/10</span></div>
+        <div class="g">Think before you build</div>
+        <svg width="100%" height="40" viewBox="0 0 180 40" preserveAspectRatio="none"><polyline points="0,24 60,18 120,16 180,8" fill="none" stroke="#6d6ff2" stroke-width="2"/></svg>
+      </div>
+      <div class="card score-c">
+        <div class="k">Engineering</div>
+        <div class="v">7.9<span class="u">/10</span></div>
+        <div class="g">How clean your work is</div>
+        <svg width="100%" height="40" viewBox="0 0 180 40" preserveAspectRatio="none"><polyline points="0,20 60,22 120,17 180,16" fill="none" stroke="#2dd4bf" stroke-width="2"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>Explore</h2>
+    <div class="grid-explore">
+      <div class="metric"><div class="ml">Planning ratio</div><div class="mv">82<span class="u">%</span></div></div>
+      <div class="metric"><div class="ml">Error recovery</div><div class="mv">98<span class="u">%</span></div></div>
+      <div class="metric"><div class="ml">Error rate</div><div class="mv">2.6<span class="u">/100</span></div></div>
+      <div class="metric"><div class="ml">Iter depth</div><div class="mv">2.3<span class="u">×</span></div></div>
+      <div class="metric"><div class="ml">Git churn</div><div class="mv">8.2<span class="u">M lines</span></div></div>
+      <div class="metric"><div class="ml">Fanout median</div><div class="mv">3.5<span class="u"> tasks</span></div></div>
+      <div class="metric"><div class="ml">Compounding writes</div><div class="mv">91</div></div>
+      <div class="metric"><div class="ml">Active days</div><div class="mv">14</div></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>Usage</h2>
+    <div class="card usage">
+      <div class="u3">
+        <div><div class="ul">Sessions</div><div class="uv">157</div></div>
+        <div><div class="ul">Prompts</div><div class="uv">1,077</div></div>
+        <div><div class="ul">Actions / prompt</div><div class="uv">14</div></div>
+      </div>
+      <div>
+        <div class="ul" style="font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--text-muted);font-weight:600;margin-bottom:9px">Model mix</div>
+        <div class="mixbar"><div style="width:80%;background:#ee1a64"></div><div style="width:14%;background:#6d6ff2"></div><div style="width:6%;background:#2dd4bf"></div></div>
+        <div class="mixlegend">
+          <span><i style="background:#ee1a64"></i>Opus 4.8 · 80%</span>
+          <span><i style="background:#6d6ff2"></i>Fable 5 · 14%</span>
+          <span><i style="background:#2dd4bf"></i>Haiku 4.5 · 6%</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="card coach">
+      <div class="ch">✦ AI coach <span class="badge">optional · LLM_API_KEY</span></div>
+      <p>Your strongest area is <b style="color:var(--text-primary)">Craft</b> — error recovery at 9.1 shows you rarely leave a broken state behind. The highest-leverage move is iteration depth: you re-touch a handful of files 15×+, so tightening your plan-before-edit loop would convert raw churn into shipped work faster.</p>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
