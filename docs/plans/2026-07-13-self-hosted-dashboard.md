@@ -6,7 +6,9 @@
 
 **Architecture:** Next.js (App Router) serves both the UI and the CLI-facing HTTP contract (`GET /cli-auth`, `POST /api/gnomon/ingest`). SQLite (better-sqlite3) on a mounted `/data` volume stores raw `summary.json` uploads keyed on `(person, monthKey)`; all metrics are derived at read time. Docker image published to ghcr; `docker-compose.yml` at repo root runs it.
 
-**Tech Stack:** Next.js 15 (App Router, TypeScript), better-sqlite3, jose (JWT HS256), Recharts, Tailwind CSS 4, Vitest. Node 22.
+**Tech Stack:** Next.js 16 (App Router, TypeScript), better-sqlite3, jose (JWT HS256), Recharts, Tailwind CSS 4, Vitest (unit), Playwright (visual e2e), tsx (seed). Node 22.
+
+**Every task clears the [Per-task gate](#per-task-gate-mandatory--applies-to-every-task-below): tests green → `/simplify` → Codex validation (no BLOCKER/HIGH) → commit.** Task 13 is a final Playwright visual gate over seeded data.
 
 **Spec:** `docs/specs/2026-07-13-self-hosted-dashboard-design.md`
 
@@ -20,6 +22,19 @@
 - Raw `summary_json` stored verbatim; derive on read; unknown fields tolerated everywhere (`?.` + fallbacks).
 - All work on branch `feat/self-hosted-dashboard`. Commit after every task.
 - Run all dashboard commands from `dashboard/` unless stated otherwise.
+
+## Per-task gate (MANDATORY — applies to every task below)
+
+No task counts as "done" until it clears this gate. Do NOT start the next task, and do NOT commit, until the gate passes. The gate runs **after** the task's own "verify tests pass" step:
+
+1. **Tests green** — the task's own `npm test` (and `npm run build` where the task specifies it) all pass. Evidence: paste the passing output.
+2. **Simplify** — run `/simplify` on the task's diff (quality-only: reuse, dedup, dead code, clarity, altitude). Apply what it surfaces. Re-run the task's tests after — they MUST still be green.
+3. **Codex validation** — hand the task's diff + its acceptance criteria (the task's **Interfaces** block) to Codex (`codex:codex-rescue`) with the instruction: *"Validate this diff against these acceptance criteria and the CLI contract. Report BLOCKER/HIGH/MED/LOW findings. Do not rewrite — judge."* 
+   - **Pass** = zero BLOCKER and zero HIGH findings.
+   - **Fail** (any BLOCKER/HIGH) = **do not advance**. Fix the findings **in this same task**, re-run steps 1–3, and only move on once Codex returns clean. MED/LOW may be deferred with an explicit `// TODO(task-N):` note.
+4. **Commit** — only now run the task's commit step. Include a one-line `Gate: simplify+codex clean` trailer in the commit body.
+
+Loop steps 1–3 until clean; a task can take multiple iterations. The final Task (Playwright visual gate) validates the whole system end-to-end on top of these per-task gates.
 
 ## summary.json fields the dashboard reads (reference)
 
@@ -96,7 +111,9 @@ From `gnomon/output/summary.py` (`build_summary`) — the upload body shape:
     "build": "next build",
     "start": "next start",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "seed": "tsx scripts/seed.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.0",
@@ -111,10 +128,12 @@ From `gnomon/output/summary.py` (`build_summary`) — the upload body shape:
     "@tailwindcss/postcss": "^4.1.0",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.0",
+    "@playwright/test": "^1.50.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "postcss": "^8.5.0",
     "tailwindcss": "^4.1.0",
+    "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "vitest": "^4.1.0"
   }
@@ -3070,9 +3089,187 @@ git commit -m "ci(dashboard): gated ghcr publish, real CLI contract test, docume
 
 ---
 
+### Task 13: Final visual gate — seed + Playwright
+
+**Runs LAST, after every other task has cleared its per-task gate.** Seeds the DB with realistic fake data, launches the real app, and drives it with Playwright to confirm the whole system renders and works end-to-end — the check the per-task unit gates can't give.
+
+**Files:**
+- Create: `dashboard/scripts/seed.ts`
+- Create: `dashboard/playwright.config.ts`
+- Create: `dashboard/e2e/dashboard.spec.ts`
+- Modify: `dashboard/.gitignore` (add `test-results/`, `playwright-report/`)
+
+**Interfaces:**
+- Consumes: `getDb`, `upsertPerson`, `upsertUpload` (Task 2); `makeSummary` fixture (Task 4) reused as the seed shape.
+- Produces: `npm run seed` populates a DB at `GNOMON_DB_PATH`; `npm run test:e2e` boots the app against that DB and asserts overview + profile + cli-auth render with the seeded data.
+
+- [ ] **Step 1: Seed script**
+
+Reuse the test fixture so seed data and unit tests never drift. Insert several people across multiple months with varied AQ so the ranking, deltas, and usage-over-time chart all have something to show.
+
+`dashboard/scripts/seed.ts`:
+
+```ts
+import { getDb, upsertPerson, upsertUpload } from "../src/lib/db";
+import { makeSummary } from "../tests/fixtures/summary";
+
+// Deterministic fake team — no randomness (keeps runs reproducible).
+const PEOPLE = [
+  { email: "ada@example.com",  name: "Ada Lovelace",   aq: { "2026-05": 79, "2026-06": 93 } },
+  { email: "alan@example.com", name: "Alan Turing",    aq: { "2026-05": 88, "2026-06": 85 } },
+  { email: "grace@example.com",name: "Grace Hopper",   aq: { "2026-04": 70, "2026-05": 74, "2026-06": 81 } },
+  { email: "kat@example.com",  name: "Katherine J.",   aq: { "2026-06": 66 } },
+];
+
+function summaryFor(monthKey: string, aq: number) {
+  // date_range end must be in monthKey so validation/monthKey derivation agree.
+  const end = `${monthKey}-28`;
+  const start = `${monthKey.slice(0, 4)}-01-01`;
+  return makeSummary({
+    context: { date_range: [start, end] },
+    profile: { aq: { aq_0_100: aq, tier: aq >= 90 ? "Elite" : aq >= 80 ? "Advanced" : "Proficient" } },
+  });
+}
+
+function main() {
+  const db = getDb();
+  for (const p of PEOPLE) {
+    const person = upsertPerson(db, p.email, p.name);
+    for (const [monthKey, aq] of Object.entries(p.aq)) {
+      upsertUpload(db, {
+        personId: person.id, monthKey, windowMonths: 6,
+        summaryJson: JSON.stringify(summaryFor(monthKey, aq)),
+      });
+    }
+  }
+  console.log(`Seeded ${PEOPLE.length} people.`);
+}
+
+main();
+```
+
+Run to sanity-check: `GNOMON_DB_PATH=$(mktemp -d)/seed.db npm run seed` → prints `Seeded 4 people.`
+
+- [ ] **Step 2: Playwright config**
+
+Playwright boots the app itself (via `webServer`) against a freshly seeded temp DB, so the gate is hermetic — no leftover state.
+
+`dashboard/playwright.config.ts`:
+
+```ts
+import { defineConfig } from "@playwright/test";
+
+const DB = process.env.GNOMON_DB_PATH ?? "/tmp/gnomon-e2e.db";
+
+export default defineConfig({
+  testDir: "./e2e",
+  timeout: 30_000,
+  use: { baseURL: "http://localhost:3100" },
+  webServer: {
+    // Seed, then start the prod server against the same DB.
+    command: `GNOMON_DB_PATH=${DB} npm run seed && GNOMON_DB_PATH=${DB} PORT=3100 npm run start`,
+    url: "http://localhost:3100",
+    timeout: 120_000,
+    reuseExistingServer: false,
+    env: { TEAM_TOKEN: "e2e-token", JWT_SECRET: "e2e-secret-at-least-32-bytes-long!!", GNOMON_DB_PATH: DB },
+  },
+});
+```
+
+> Requires a production build first (`npm run build`) since `npm run start` serves `.next`. The e2e step below runs build before Playwright.
+
+- [ ] **Step 3: Playwright spec**
+
+`dashboard/e2e/dashboard.spec.ts`:
+
+```ts
+import { test, expect } from "@playwright/test";
+
+test("overview ranks the seeded team", async ({ page }) => {
+  await page.goto("/");
+  // All seeded people appear.
+  for (const name of ["Ada Lovelace", "Alan Turing", "Grace Hopper", "Katherine J."]) {
+    await expect(page.getByText(name)).toBeVisible();
+  }
+  // Default sort is AQ desc → Ada (93) ranks above Katherine (66).
+  const body = await page.locator("table tbody").innerText();
+  expect(body.indexOf("Ada Lovelace")).toBeLessThan(body.indexOf("Katherine J."));
+});
+
+test("people table is sortable by a column header", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /^Name/ }).click();
+  const first = await page.locator("table tbody tr").first().innerText();
+  expect(first).toContain("Ada"); // Name asc → Ada first
+});
+
+test("profile page renders AQ, pillars, and level-over-time bars", async ({ page }) => {
+  await page.goto("/");
+  await page.getByText("Grace Hopper").click();
+  await expect(page).toHaveURL(/\/p\/\d+\/2026-06/);
+  await expect(page.getByText("Level over time")).toBeVisible();
+  await expect(page.getByText("How you operate agents")).toBeVisible();
+  await expect(page.getByText("Scorecard")).toBeVisible();
+  // Grace has 3 months seeded (2026-04/05/06); LevelBars labels months as
+  // monthKey.slice(2), so the oldest bar's "26-04" label is present.
+  await expect(page.getByText("26-04")).toBeVisible();
+});
+
+test("cli-auth page renders the sign-in form", async ({ page }) => {
+  await page.goto("/cli-auth?redirect_uri=http://127.0.0.1:9/callback&count=1");
+  await expect(page.getByText("Authorize upload")).toBeVisible();
+  await expect(page.getByLabel("Team token")).toBeVisible();
+});
+```
+
+> Keep assertions resilient to copy tweaks — assert on stable section headings and seeded names, not on exact numbers that later tuning may shift.
+
+- [ ] **Step 4: Run the gate**
+
+```bash
+cd dashboard
+npm run build
+GNOMON_DB_PATH=$(mktemp -d)/e2e.db npm run test:e2e
+```
+
+Expected: all Playwright tests PASS. On failure, open `playwright-report/` (`npx playwright show-report`) to see the screenshot/trace, fix, re-run. This is a hard gate — the branch is not done until it is green.
+
+- [ ] **Step 5: CI job (optional but recommended)**
+
+Add to `dashboard-image.yml`, gating publish on it too:
+
+```yaml
+  dashboard-e2e:
+    needs: dashboard-tests
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: dashboard } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: dashboard/package-lock.json }
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: GNOMON_DB_PATH=$RUNNER_TEMP/e2e.db npm run test:e2e
+```
+
+Then extend the publish gate: `needs: [dashboard-tests, dashboard-contract, dashboard-e2e]`.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add dashboard/scripts/seed.ts dashboard/playwright.config.ts dashboard/e2e dashboard/.gitignore .github/workflows/dashboard-image.yml
+git commit -m "test(dashboard): seed fake data + Playwright visual gate for the full app
+
+Gate: simplify+codex clean"
+```
+
+---
+
 ## Self-review notes
 
-- Spec coverage: CLI contract (Tasks 3–6), data model (Task 2), team overview + usage chart (Tasks 7–8), person profile (Task 9), AI coach (Task 10), deploy/DX + smoke e2e (Task 11), ghcr publish + real CLI contract test + README (Task 12). Roster explicitly out of scope. Coexistence handled by not touching `gnomon/` and documenting `--mirdash-base`.
+- Spec coverage: CLI contract (Tasks 3–6), data model (Task 2), team overview + usage chart (Tasks 7–8), person profile (Task 9), AI coach (Task 10), deploy/DX + smoke e2e (Task 11), ghcr publish + real CLI contract test + README (Task 12), seed + Playwright visual gate (Task 13). Roster explicitly out of scope. Coexistence handled by not touching `gnomon/` and documenting `--mirdash-base`.
+- Every task passes the per-task gate (tests → `/simplify` → Codex clean) before commit; the branch also passes the Task 13 Playwright visual gate before it's done.
 - Per-model monthly tokens are read **exactly** from `noticed_stats_monthly[].token_usage.by_model`; the invocation-share split is a fallback for older summaries lacking that block (documented in `metrics.ts` header).
 - Phase-2 candidates (not in this plan): cost pricing config via `settings`, roster metadata.
 
