@@ -99,24 +99,29 @@ From `gnomon/output/summary.py` (`build_summary`) — the upload body shape:
     "test:watch": "vitest"
   },
   "dependencies": {
-    "better-sqlite3": "^11.9.0",
-    "jose": "^5.9.6",
-    "next": "^15.3.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "recharts": "^2.15.0"
+    "better-sqlite3": "^12.11.0",
+    "jose": "^6.2.0",
+    "next": "^16.2.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-is": "^19.2.0",
+    "recharts": "^3.9.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.0",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "postcss": "^8.5.0",
     "tailwindcss": "^4.1.0",
     "typescript": "^5.7.0",
-    "vitest": "^3.0.0"
+    "vitest": "^4.1.0"
   }
 }
 ```
+
+> **Dep notes (validated 2026-07-20):** current major lines are Next 16.2.x, better-sqlite3 12.x, jose 6.x, recharts 3.x, vitest 4.x. Next 16 needs Node ≥20.9 (we use 22, OK) and React 18.2+/19 (we use 19.2). `recharts` v3 requires a matching `react-is`; `@tailwindcss/postcss` needs a direct `postcss` dep. Review each major's migration notes on install; jose 6 and vitest 4 have breaking changes vs the previously-pinned 5/3 lines.
 
 - [ ] **Step 2: Create tsconfig.json**
 
@@ -325,6 +330,16 @@ describe("db", () => {
     expect(ups[0].summary.v).toBe(2);
   });
 
+  it("upsertUpload invalidates the stale coach cache for that person-month", () => {
+    const p = upsertPerson(db, "ada@example.com", "Ada");
+    upsertUpload(db, { personId: p.id, monthKey: "2026-06", windowMonths: 6, summaryJson: '{"v":1}' });
+    db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`)
+      .run(`coach:${p.id}:2026-06`, "old coaching text");
+    upsertUpload(db, { personId: p.id, monthKey: "2026-06", windowMonths: 6, summaryJson: '{"v":2}' });
+    const cached = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(`coach:${p.id}:2026-06`);
+    expect(cached).toBeUndefined();
+  });
+
   it("uploadedMonths returns monthKey + ms epoch uploadedAt", () => {
     const p = upsertPerson(db, "ada@example.com", "Ada");
     upsertUpload(db, { personId: p.id, monthKey: "2026-05", windowMonths: 6, summaryJson: "{}" });
@@ -417,6 +432,10 @@ export function upsertUpload(
        summary_json = excluded.summary_json,
        uploaded_at = unixepoch() * 1000`
   ).run(args);
+  // Re-uploading a month supersedes its metrics, so any cached AI-coach text
+  // for that (person, month) is stale — drop it so it regenerates on next view.
+  db.prepare(`DELETE FROM settings WHERE key = ?`)
+    .run(`coach:${args.personId}:${args.monthKey}`);
 }
 
 export function uploadedMonths(db: Db, personId: number) {
@@ -453,7 +472,7 @@ export function latestUploads(db: Db) {
 - [ ] **Step 4: Run tests, verify pass**
 
 Run: `npm test -- tests/db.test.ts`
-Expected: 4 PASS.
+Expected: 5 PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -474,8 +493,8 @@ git commit -m "feat(dashboard): SQLite layer with people/uploads upserts"
 - Produces:
   - `checkTeamToken(input: string): boolean` — constant-time compare against `process.env.TEAM_TOKEN`; false when env unset.
   - `issueTokens(person: { id: number; email: string; name: string }, count: number): Promise<string[]>` — `count` clamped to `[1, 12]` (mirdash `_MAX_BACKFILL`), HS256 JWTs, `exp` 2h, claims `{ sub: String(id), email, name }`.
-  - `verifyToken(token: string): Promise<{ personId: number; email: string; name: string } | null>` — null on any failure.
-  - `isLoopbackRedirect(uri: string): boolean` — true only for `http://127.0.0.1:PORT/...` or `http://localhost:PORT/...`.
+  - `verifyToken(token: string): Promise<{ personId: number; email: string; name: string } | null>` — null on any failure; verification is **pinned to HS256** (`algorithms: ["HS256"]`) and `sub` must be a positive integer.
+  - `isLoopbackRedirect(uri: string): boolean` — true only for `http://127.0.0.1:PORT/...` or `http://localhost:PORT/...`, **explicit port required**.
 - JWT secret: `process.env.JWT_SECRET`, else generated once and persisted at `${DATA_DIR ?? "/data"}/jwt-secret` (tests set `JWT_SECRET`).
 
 - [ ] **Step 1: Write failing tests**
@@ -484,6 +503,7 @@ git commit -m "feat(dashboard): SQLite layer with people/uploads upserts"
 
 ```ts
 import { describe, it, expect, beforeEach } from "vitest";
+import { SignJWT } from "jose";
 import { checkTeamToken, issueTokens, verifyToken, isLoopbackRedirect } from "@/lib/auth";
 
 describe("auth", () => {
@@ -517,11 +537,43 @@ describe("auth", () => {
 
   it("verifyToken rejects garbage and wrong-secret tokens", async () => {
     expect(await verifyToken("not-a-jwt")).toBeNull();
+    // Correctly-formed HS256 token signed with a DIFFERENT secret.
+    const wrong = await new SignJWT({ email: "a@b.c", name: "A" })
+      .setProtectedHeader({ alg: "HS256" })
+      .setSubject("1")
+      .setExpirationTime("2h")
+      .sign(new TextEncoder().encode("some-other-secret-at-least-32-byte!"));
+    expect(await verifyToken(wrong)).toBeNull();
   });
 
-  it("isLoopbackRedirect only allows localhost http", () => {
+  it("verifyToken rejects non-HS256 algorithms", async () => {
+    const secret = new TextEncoder().encode(process.env.JWT_SECRET!);
+    for (const alg of ["HS384", "HS512"]) {
+      const t = await new SignJWT({ email: "a@b.c", name: "A" })
+        .setProtectedHeader({ alg })
+        .setSubject("1")
+        .setExpirationTime("2h")
+        .sign(secret);
+      expect(await verifyToken(t)).toBeNull();
+    }
+  });
+
+  it("verifyToken rejects non-positive-integer subjects", async () => {
+    const secret = new TextEncoder().encode(process.env.JWT_SECRET!);
+    for (const sub of ["0", "-3", "abc", "1.5"]) {
+      const t = await new SignJWT({ email: "a@b.c", name: "A" })
+        .setProtectedHeader({ alg: "HS256" })
+        .setSubject(sub)
+        .setExpirationTime("2h")
+        .sign(secret);
+      expect(await verifyToken(t)).toBeNull();
+    }
+  });
+
+  it("isLoopbackRedirect only allows loopback http with explicit port", () => {
     expect(isLoopbackRedirect("http://127.0.0.1:8799/callback")).toBe(true);
     expect(isLoopbackRedirect("http://localhost:8799/callback")).toBe(true);
+    expect(isLoopbackRedirect("http://localhost/callback")).toBe(false); // no port
     expect(isLoopbackRedirect("https://evil.com/callback")).toBe(false);
     expect(isLoopbackRedirect("http://127.0.0.1.evil.com/cb")).toBe(false);
     expect(isLoopbackRedirect("not a url")).toBe(false);
@@ -547,9 +599,10 @@ const MAX_TOKENS = 12; // mirror _MAX_BACKFILL in gnomon/upload/mirdash.py
 export function checkTeamToken(input: string): boolean {
   const expected = process.env.TEAM_TOKEN ?? "";
   if (!expected || !input) return false;
-  const a = Buffer.from(input);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length) return false;
+  // Hash both to fixed-length digests so the compare is constant-time
+  // regardless of input length (no early length-based return leak).
+  const a = crypto.createHash("sha256").update(input).digest();
+  const b = crypto.createHash("sha256").update(expected).digest();
   return crypto.timingSafeEqual(a, b);
 }
 
@@ -592,10 +645,14 @@ export async function verifyToken(
   token: string
 ): Promise<{ personId: number; email: string; name: string } | null> {
   try {
-    const { payload } = await jwtVerify(token, jwtSecret());
-    if (!payload.sub || typeof payload.email !== "string") return null;
+    // Pin the accepted algorithm to HS256 — without this, jose accepts any
+    // alg the token header declares, defeating the HS256 contract.
+    const { payload } = await jwtVerify(token, jwtSecret(), { algorithms: ["HS256"] });
+    if (typeof payload.email !== "string") return null;
+    const personId = Number(payload.sub);
+    if (!Number.isInteger(personId) || personId <= 0) return null;
     return {
-      personId: Number(payload.sub),
+      personId,
       email: payload.email,
       name: typeof payload.name === "string" ? payload.name : "",
     };
@@ -607,7 +664,13 @@ export async function verifyToken(
 export function isLoopbackRedirect(uri: string): boolean {
   try {
     const u = new URL(uri);
-    return u.protocol === "http:" && (u.hostname === "127.0.0.1" || u.hostname === "localhost");
+    // Require an explicit port so a bare `http://localhost/callback` (which the
+    // CLI never sends) is rejected — narrows the redirect surface.
+    return (
+      u.protocol === "http:" &&
+      (u.hostname === "127.0.0.1" || u.hostname === "localhost") &&
+      u.port !== ""
+    );
   } catch {
     return false;
   }
@@ -617,7 +680,7 @@ export function isLoopbackRedirect(uri: string): boolean {
 - [ ] **Step 4: Run tests, verify pass**
 
 Run: `npm test -- tests/auth.test.ts`
-Expected: 6 PASS.
+Expected: 9 PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -638,8 +701,8 @@ git commit -m "feat(dashboard): team-token check, JWT issue/verify, loopback red
 **Interfaces:**
 - Consumes: `upsertUpload`, `Db` from `@/lib/db`.
 - Produces:
-  - `validateSummary(body: unknown): { ok: true; monthKey: string; windowMonths: number } | { ok: false; error: string }` — requires `context.date_range` as `[string, string]` with parseable ISO dates and `context.total_sessions > 0`; monthKey = `date_range[1].slice(0, 7)`; windowMonths = `context.window_months ?? 6`.
-  - `ingestSummary(db: Db, personId: number, body: any): { reportUrl: string }` — validates, upserts, returns `{ reportUrl: "/p/<personId>/<monthKey>" }`; throws `IngestError` (with `.message`) on invalid body.
+  - `validateSummary(body: unknown): { ok: true; monthKey: string; windowMonths: number } | { ok: false; error: string }` — requires `context.date_range` as `[string, string]` with **both** values strict `YYYY-MM-DD` calendar dates and `start <= end`, plus `context.total_sessions > 0`; monthKey = `date_range[1].slice(0, 7)` (derived only after strict validation); windowMonths = `context.window_months ?? 6`.
+  - `ingestSummary(db: Db, personId: number, body: any, rawJson?: string): { reportUrl: string }` — validates the parsed `body`, stores `rawJson` **verbatim** when provided (falls back to `JSON.stringify(body)`), returns `{ reportUrl: "/p/<personId>/<monthKey>" }`; throws `IngestError` (with `.message`) on invalid body.
   - Fixture: `makeSummary(overrides?)` returning a minimal-but-complete summary object (context, profile.aq with 4 pillars, profile.scores, progression_monthly, token_usage, metric blocks) that both ingest and metrics tests reuse.
 
 - [ ] **Step 1: Write the fixture builder**
@@ -673,6 +736,21 @@ export function makeSummary(overrides: Record<string, any> = {}) {
         models: [["claude-opus-4-8", 24849], ["claude-fable-5", 1794]], top_model: "claude-opus-4-8",
         tokens_input: 9_643_595, tokens_output: 21_017_872, tokens_cache_read: 5_575_354_211,
         tokens_cache_creation: 117_107_983, tokens_total: 5_723_123_661 },
+    ],
+    // Exact per-model monthly tokens (summary.py `monthly_noticed_stats`). Newer
+    // summaries carry this; metrics prefer it over the invocation-share estimate.
+    noticed_stats_monthly: [
+      { month: "2026-05", range_start: "2026-05-01", range_end: "2026-05-31",
+        token_usage: { total_input: 1e6, total_output: 2e6, total_cache_read: 5e8, total_cache_creation: 1e7,
+          by_model: [
+            { model_id: "claude-opus-4-8", model: "Opus 4.8", input: 1e6, output: 2e6, cache_read: 5e8, cache_creation: 1e7 },
+          ] } },
+      { month: "2026-06", range_start: "2026-06-01", range_end: "2026-06-30",
+        token_usage: { total_input: 9_643_595, total_output: 21_017_872, total_cache_read: 5_575_354_211, total_cache_creation: 117_107_983,
+          by_model: [
+            { model_id: "claude-opus-4-8", model: "Opus 4.8", input: 9_000_000, output: 20_000_000, cache_read: 5.5e9, cache_creation: 1.1e8 },
+            { model_id: "claude-fable-5", model: "Fable 5", input: 643_595, output: 1_017_872, cache_read: 75_354_211, cache_creation: 7_107_983 },
+          ] } },
     ],
     profile: {
       aq: {
@@ -743,6 +821,14 @@ describe("validateSummary", () => {
     expect(validateSummary(makeSummary({ context: { date_range: ["bad", "worse"] } })).ok).toBe(false);
   });
 
+  it("rejects non-strict and impossible calendar dates and reversed ranges", () => {
+    // Date.parse would accept these; strict validation must not.
+    expect(validateSummary(makeSummary({ context: { date_range: ["2026-01-01", "June 30 2026"] } })).ok).toBe(false);
+    expect(validateSummary(makeSummary({ context: { date_range: ["2026-01-01", "2026-06-31"] } })).ok).toBe(false); // no June 31
+    expect(validateSummary(makeSummary({ context: { date_range: ["2026-6-3", "2026-06-30"] } })).ok).toBe(false); // not zero-padded
+    expect(validateSummary(makeSummary({ context: { date_range: ["2026-06-30", "2026-01-01"] } })).ok).toBe(false); // start > end
+  });
+
   it("defaults window_months to 6 when absent", () => {
     const s = makeSummary();
     delete s.context.window_months;
@@ -785,6 +871,21 @@ export class IngestError extends Error {}
 type Valid = { ok: true; monthKey: string; windowMonths: number };
 type Invalid = { ok: false; error: string };
 
+// Strict `YYYY-MM-DD` calendar-date check — `Date.parse` alone accepts
+// "June 30 2026" and rolls over impossible dates like 2026-06-31.
+function parseIsoDate(s: unknown): Date | null {
+  if (typeof s !== "string") return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return null;
+  const [, y, mo, d] = m.map(Number);
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  // Reject rollovers: the round-trip must equal the input components.
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) {
+    return null;
+  }
+  return dt;
+}
+
 export function validateSummary(body: unknown): Valid | Invalid {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
     return { ok: false, error: "body must be a JSON object (summary.json)" };
@@ -794,25 +895,40 @@ export function validateSummary(body: unknown): Valid | Invalid {
     return { ok: false, error: "missing context block" };
   }
   const dr = ctx.date_range;
-  if (!Array.isArray(dr) || dr.length < 2 || typeof dr[1] !== "string" ||
-      Number.isNaN(Date.parse(dr[1]))) {
-    return { ok: false, error: "context.date_range must be [start, end] ISO dates" };
+  if (!Array.isArray(dr) || dr.length < 2) {
+    return { ok: false, error: "context.date_range must be [start, end]" };
+  }
+  const start = parseIsoDate(dr[0]);
+  const end = parseIsoDate(dr[1]);
+  if (!start || !end) {
+    return { ok: false, error: "context.date_range must be [start, end] as YYYY-MM-DD dates" };
+  }
+  if (start.getTime() > end.getTime()) {
+    return { ok: false, error: "context.date_range start must be <= end" };
   }
   if (!(Number(ctx.total_sessions) > 0)) {
     return { ok: false, error: "context.total_sessions must be > 0" };
   }
   const windowMonths = Number(ctx.window_months) >= 1 ? Number(ctx.window_months) : 6;
-  return { ok: true, monthKey: dr[1].slice(0, 7), windowMonths };
+  // monthKey derived only after strict validation, from the validated end date.
+  return { ok: true, monthKey: (dr[1] as string).slice(0, 7), windowMonths };
 }
 
-export function ingestSummary(db: Db, personId: number, body: any): { reportUrl: string } {
+// `rawJson` is the original request text — stored verbatim so the bytes are
+// preserved. `body` is the parsed copy used only for validation.
+export function ingestSummary(
+  db: Db,
+  personId: number,
+  body: any,
+  rawJson?: string
+): { reportUrl: string } {
   const v = validateSummary(body);
   if (!v.ok) throw new IngestError(v.error);
   upsertUpload(db, {
     personId,
     monthKey: v.monthKey,
     windowMonths: v.windowMonths,
-    summaryJson: JSON.stringify(body),
+    summaryJson: rawJson ?? JSON.stringify(body),
   });
   return { reportUrl: `/p/${personId}/${v.monthKey}` };
 }
@@ -842,8 +958,10 @@ git commit -m "feat(dashboard): summary validation, monthKey derivation, ingest 
 - Consumes: `verifyToken` (Task 3), `ingestSummary`/`IngestError` (Task 4), `getDb` (Task 2).
 - Produces: route handler `POST(req: Request): Promise<Response>` —
   - `401` `{"error": "..."}` when Authorization header missing/invalid;
+  - `413` `{"error": "payload too large"}` when the body exceeds `MAX_INGEST_BYTES` (default 5 MiB);
   - `400` `{"error": "..."}` on invalid JSON or failed validation;
   - `200` `{"reportUrl": "/p/<id>/<monthKey>"}` on success.
+  - Reads the raw request text **once**, stores it verbatim, and validates a parsed copy.
   - Matches CLI expectations in `gnomon/upload/mirdash.py:_upload_summary` (reads `data["reportUrl"]`; on HTTPError prints response body).
 
 - [ ] **Step 1: Write failing tests** (invoke the handler directly with `Request` objects; inject a test DB via `GNOMON_DB_PATH` pointing at a temp file)
@@ -899,6 +1017,17 @@ describe("POST /api/gnomon/ingest", () => {
     expect(res.status).toBe(200);
     expect((await res.json()).reportUrl).toBe(`/p/${p.id}/2026-06`);
   });
+
+  it("413 when body exceeds the size cap", async () => {
+    process.env.MAX_INGEST_BYTES = "1024";
+    const db = getDb();
+    const p = upsertPerson(db, "ada@example.com", "Ada");
+    const [token] = await issueTokens(p, 1);
+    const big = makeSummary({ context: { client_version: "x".repeat(4096) } });
+    const res = await POST(req(big, token));
+    expect(res.status).toBe(413);
+    delete process.env.MAX_INGEST_BYTES;
+  });
 });
 ```
 
@@ -927,6 +1056,13 @@ import { verifyToken } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { ingestSummary, IngestError } from "@/lib/ingest";
 
+// Cap the accepted body so a valid token can't exhaust memory/disk with a
+// giant upload. Real summaries are well under this. Read at call time so the
+// env override is honored per-request (and testable).
+function maxBodyBytes(): number {
+  return Number(process.env.MAX_INGEST_BYTES) || 5 * 1024 * 1024;
+}
+
 export async function POST(req: Request): Promise<Response> {
   const auth = req.headers.get("authorization") ?? "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
@@ -935,15 +1071,29 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: "invalid or missing token" }, { status: 401 });
   }
 
+  const cap = maxBodyBytes();
+  // Reject early on a declared oversize length.
+  const declared = Number(req.headers.get("content-length"));
+  if (declared > cap) {
+    return NextResponse.json({ error: "payload too large" }, { status: 413 });
+  }
+
+  // Read the raw text ONCE so we can both validate a parsed copy and store the
+  // original bytes verbatim. Enforce the byte cap on the actual body too.
+  const raw = await req.text();
+  if (Buffer.byteLength(raw, "utf8") > cap) {
+    return NextResponse.json({ error: "payload too large" }, { status: 413 });
+  }
+
   let body: unknown;
   try {
-    body = await req.json();
+    body = JSON.parse(raw);
   } catch {
     return NextResponse.json({ error: "body must be valid JSON" }, { status: 400 });
   }
 
   try {
-    const result = ingestSummary(getDb(), claims.personId, body);
+    const result = ingestSummary(getDb(), claims.personId, body, raw);
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof IngestError) {
@@ -957,7 +1107,7 @@ export async function POST(req: Request): Promise<Response> {
 - [ ] **Step 4: Run tests, verify pass**
 
 Run: `npm test -- tests/ingest-route.test.ts`
-Expected: 3 PASS.
+Expected: 4 PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -977,7 +1127,7 @@ git commit -m "feat(dashboard): /api/gnomon/ingest route matching CLI contract"
 
 **Interfaces:**
 - Consumes: `checkTeamToken`, `issueTokens`, `isLoopbackRedirect` (Task 3); `getDb`, `upsertPerson`, `uploadedMonths` (Task 2).
-- Produces: `POST /api/cli-auth` accepting `application/x-www-form-urlencoded` fields `team_token`, `name`, `email`, `redirect_uri`, `count`. On success: `302` redirect to `redirect_uri` + `?tokens=<urlencoded JSON array>&uploaded=<urlencoded JSON array>` — the exact query shape `gnomon/upload/auth.py:_tokens_from_query` and `_uploaded_from_query` parse. On failure: `303` back to `/cli-auth?error=...&redirect_uri=...&count=...`.
+- Produces: `POST /api/cli-auth` accepting `application/x-www-form-urlencoded` fields `team_token`, `name`, `email`, `redirect_uri`, `count`. On success: `302` redirect to `redirect_uri` + `?tokens=<urlencoded JSON array>&uploaded=<urlencoded JSON array>` — the exact query shape `gnomon/upload/auth.py:_tokens_from_query` and `_uploaded_from_query` parse. On failure: `303` back to `/cli-auth?error=...&redirect_uri=...&count=...`. Failed team-token attempts are throttled per client IP (`429` after 5 fails/60s); failed-auth logging records only the outcome and IP, **never** the submitted token.
 - CLI flow reference: CLI opens `{base}/cli-auth?redirect_uri=http://127.0.0.1:PORT/callback&count=N` in a browser and waits on the localhost callback.
 
 - [ ] **Step 1: Write failing tests**
@@ -989,7 +1139,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { POST } from "@/app/api/cli-auth/route";
+import { POST, _resetRateLimitForTests } from "@/app/api/cli-auth/route";
 import { verifyToken } from "@/lib/auth";
 import { getDb, upsertPerson, upsertUpload, _resetDbForTests } from "@/lib/db";
 
@@ -1009,6 +1159,7 @@ describe("POST /api/cli-auth", () => {
     process.env.JWT_SECRET = "test-jwt-secret-at-least-32-bytes!!";
     process.env.GNOMON_DB_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "gnomon-")), "t.db");
     _resetDbForTests();
+    _resetRateLimitForTests();
   });
 
   it("redirects to callback with N valid tokens and uploaded months", async () => {
@@ -1056,8 +1207,22 @@ describe("POST /api/cli-auth", () => {
     }));
     expect(res.status).toBe(303);
   });
+
+  it("throttles repeated wrong team tokens with 429", async () => {
+    const bad = () => POST(formReq({
+      team_token: "wrong", name: "Ada", email: "ada@example.com",
+      redirect_uri: CB, count: "1",
+    }));
+    // Distinct source so the module-scope counter isn't polluted by prior tests
+    // — the loopback redirect keeps the same IP header ("unknown") across calls.
+    let last!: Response;
+    for (let i = 0; i < 6; i++) last = await bad();
+    expect(last.status).toBe(429);
+  });
 });
 ```
+
+> Note: `_resetRateLimitForTests` clears the module-scope failed-attempt map between tests (all requests share the `"unknown"` IP header under a loopback callback).
 
 - [ ] **Step 2: Run tests, verify fail**
 
@@ -1071,6 +1236,32 @@ import { NextResponse } from "next/server";
 import { checkTeamToken, issueTokens, isLoopbackRedirect } from "@/lib/auth";
 import { getDb, upsertPerson, uploadedMonths } from "@/lib/db";
 
+// In-memory failed-attempt throttle for the shared TEAM_TOKEN endpoint. Single
+// container, so a module-scope map is sufficient; keyed by client IP.
+const MAX_FAILS = 5;
+const WINDOW_MS = 60_000;
+const fails = new Map<string, { n: number; first: number }>();
+
+function clientIp(req: Request): string {
+  const xff = req.headers.get("x-forwarded-for") ?? "";
+  return xff.split(",")[0].trim() || req.headers.get("x-real-ip") || "unknown";
+}
+
+// `now` is injectable so tests don't depend on the wall clock.
+function isRateLimited(ip: string, now: number): boolean {
+  const rec = fails.get(ip);
+  if (!rec) return false;
+  if (now - rec.first > WINDOW_MS) { fails.delete(ip); return false; }
+  return rec.n >= MAX_FAILS;
+}
+function recordFail(ip: string, now: number): void {
+  const rec = fails.get(ip);
+  if (!rec || now - rec.first > WINDOW_MS) fails.set(ip, { n: 1, first: now });
+  else rec.n += 1;
+}
+
+export function _resetRateLimitForTests(): void { fails.clear(); }
+
 export async function POST(req: Request): Promise<Response> {
   const form = new URLSearchParams(await req.text());
   const teamToken = form.get("team_token") ?? "";
@@ -1078,12 +1269,20 @@ export async function POST(req: Request): Promise<Response> {
   const email = (form.get("email") ?? "").trim().toLowerCase();
   const redirectUri = form.get("redirect_uri") ?? "";
   const count = Number(form.get("count") ?? "1");
+  const ip = clientIp(req);
+  const now = Date.now();
 
   if (!isLoopbackRedirect(redirectUri)) {
     return NextResponse.json(
       { error: "redirect_uri must be a http://127.0.0.1 or http://localhost URL" },
       { status: 400 }
     );
+  }
+
+  if (isRateLimited(ip, now)) {
+    // Never log the submitted token — only the outcome and source.
+    console.warn(`[cli-auth] rate-limited failed auth from ${ip}`);
+    return NextResponse.json({ error: "too many attempts, try again later" }, { status: 429 });
   }
 
   const backToForm = (error: string) => {
@@ -1094,8 +1293,13 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.redirect(back, 303);
   };
 
-  if (!checkTeamToken(teamToken)) return backToForm("Invalid team token");
+  if (!checkTeamToken(teamToken)) {
+    recordFail(ip, now);
+    console.warn(`[cli-auth] invalid team token from ${ip}`);
+    return backToForm("Invalid team token");
+  }
   if (!name || !/.+@.+\..+/.test(email)) return backToForm("Name and a valid email are required");
+  fails.delete(ip); // success clears the counter
 
   const db = getDb();
   const person = upsertPerson(db, email, name);
@@ -1112,7 +1316,7 @@ export async function POST(req: Request): Promise<Response> {
 - [ ] **Step 4: Run tests, verify pass**
 
 Run: `npm test -- tests/cli-auth-route.test.ts`
-Expected: 4 PASS.
+Expected: 5 PASS.
 
 - [ ] **Step 5: Implement the form page** (no test — static server component; covered by smoke e2e in Task 11)
 
@@ -1203,7 +1407,7 @@ git commit -m "feat(dashboard): /cli-auth login flow issuing CLI tokens + upload
 - Produces (all pure functions over summaries — no DB access except the two `build*` entry points):
   - `pricing.ts`: `costUsd(tokens: { input: number; output: number; cacheRead: number; cacheCreation: number }, modelId: string): number` — per-MTok pricing map keyed by substring match (`opus`, `sonnet`, `haiku`, `fable`, `gpt`, `gemini`, default), e.g. opus `{in: 15, out: 75, cacheRead: 1.5, cacheWrite: 18.75}`; unknown models use default `{in: 3, out: 15, cacheRead: 0.3, cacheWrite: 3.75}`. Exact table lives in the file with a comment "approximate list prices — edit freely".
   - `monthEntry(summary: any, monthKey: string): any | null` — the `progression_monthly` entry with `month === monthKey`.
-  - `monthTokensByModel(summary, monthKey): { modelId: string; tokens: number; cost: number }[]` — distributes the entry's `tokens_total` by model invocation share (approximation documented in header comment), cost via `costUsd` on the same proportional split of input/output/cache fields.
+  - `monthTokensByModel(summary, monthKey): { modelId: string; tokens: number; cost: number }[]` — reads **exact** per-model tokens from `noticed_stats_monthly[monthKey].token_usage.by_model` (input/output/cache_read/cache_creation) and prices each via `costUsd`. Falls back to the invocation-share approximation over `progression_monthly` only when the exact block is absent (older summaries).
   - `personRow(personId, name, monthKey, summaries: {monthKey: string; summary: any}[]): PersonRow` where
 
     ```ts
@@ -1285,12 +1489,21 @@ describe("metrics", () => {
     expect(monthEntry(makeSummary(), "2019-01")).toBeNull();
   });
 
-  it("monthTokensByModel splits tokens_total by invocation share", () => {
+  it("monthTokensByModel reads exact per-model tokens from noticed_stats_monthly", () => {
     const split = monthTokensByModel(makeSummary(), "2026-06");
     const total = split.reduce((s, m) => s + m.tokens, 0);
-    expect(total).toBeCloseTo(5_723_123_661, -2);
-    expect(split[0].tokens).toBeGreaterThan(split[1].tokens); // opus share > fable share
+    expect(total).toBe(5_723_123_661); // exact, not approximated
+    expect(split[0].tokens).toBeGreaterThan(split[1].tokens); // opus > fable
     expect(split[0].cost).toBeGreaterThan(0);
+  });
+
+  it("monthTokensByModel falls back to invocation-share when noticed block absent", () => {
+    const legacy = makeSummary();
+    delete legacy.noticed_stats_monthly; // simulate an older summary
+    const split = monthTokensByModel(legacy, "2026-06");
+    const total = split.reduce((s, m) => s + m.tokens, 0);
+    expect(total).toBeCloseTo(5_723_123_661, -2);
+    expect(split[0].tokens).toBeGreaterThan(split[1].tokens);
   });
 
   it("personRow computes aq, delta vs previous month, trend, tokens", () => {
@@ -1309,6 +1522,34 @@ describe("metrics", () => {
     expect(o.avgAq).toBe(93);
     expect(o.coverage).toEqual({ withCurrentMonth: 1, total: 1 });
     expect(o.usageOverTime.map((u) => u.monthKey)).toEqual(["2026-05", "2026-06"]);
+  });
+
+  it("usageOverTime keeps months only an OLDER window covered (no truncation)", () => {
+    const p = upsertPerson(db, "ada@example.com", "Ada");
+    // Older upload's window uniquely covers 2026-01; newer upload's window does not.
+    const jan = makeSummary({
+      context: { date_range: ["2025-08-01", "2026-01-31"] },
+      noticed_stats_monthly: [
+        { month: "2026-01", token_usage: { by_model: [
+          { model_id: "claude-opus-4-8", input: 1e6, output: 1e6, cache_read: 0, cache_creation: 0 } ] } },
+      ],
+      progression_monthly: [{ month: "2026-01", models: [["claude-opus-4-8", 100]], tokens_total: 2e6 }],
+    });
+    upsertUpload(db, { personId: p.id, monthKey: "2026-01", windowMonths: 6, summaryJson: JSON.stringify(jan) });
+    upsertUpload(db, { personId: p.id, monthKey: "2026-06", windowMonths: 6, summaryJson: JSON.stringify(makeSummary()) });
+    const o = buildTeamOverview(db);
+    expect(o.usageOverTime.map((u) => u.monthKey)).toContain("2026-01");
+  });
+
+  it("usageOverTime counts each person-month once across overlapping windows", () => {
+    // Two uploads whose windows both cover 2026-06 must not double-count it.
+    const p = upsertPerson(db, "ada@example.com", "Ada");
+    upsertUpload(db, { personId: p.id, monthKey: "2026-05", windowMonths: 6, summaryJson: JSON.stringify(makeSummary()) });
+    upsertUpload(db, { personId: p.id, monthKey: "2026-06", windowMonths: 6, summaryJson: JSON.stringify(makeSummary()) });
+    const o = buildTeamOverview(db);
+    const jun = o.usageOverTime.find((u) => u.monthKey === "2026-06")!;
+    const tokens = jun.byModel.reduce((s, m) => s + m.tokens, 0);
+    expect(tokens).toBe(5_723_123_661); // single window's total, not doubled
   });
 
   it("buildPersonProfile returns profile view or null", () => {
@@ -1374,13 +1615,22 @@ export function costUsd(
 - [ ] **Step 4: Implement metrics.ts**
 
 ```ts
-// Read-time derivation over raw stored summary.json blobs. Per-model monthly
-// tokens are APPROXIMATED by distributing the month's tokens_total across
-// models proportionally to invocation counts (exact per-model monthly tokens
-// are not present in the summary payload).
+// Read-time derivation over raw stored summary.json blobs.
+//
+// Per-model monthly tokens are read EXACTLY from `noticed_stats_monthly`
+// (summary.py `monthly_noticed_stats`), whose entries carry
+// `token_usage.by_model` with per-model input/output/cache_read/cache_creation.
+// Only when that block is absent (older summaries) do we fall back to
+// APPROXIMATING the split by distributing the progression entry's tokens_total
+// across models proportionally to invocation counts.
 import type { Db } from "@/lib/db";
 import { latestUploads, listPeople, uploadsForPerson } from "@/lib/db";
 import { costUsd } from "@/lib/pricing";
+
+// Tolerate malformed known fields everywhere: coerce anything non-array to [].
+function arr<T = any>(v: unknown): T[] {
+  return Array.isArray(v) ? (v as T[]) : [];
+}
 
 export function monthEntry(summary: any, monthKey: string): any | null {
   const list = summary?.progression_monthly;
@@ -1388,7 +1638,34 @@ export function monthEntry(summary: any, monthKey: string): any | null {
   return list.find((e: any) => e?.month === monthKey) ?? null;
 }
 
+// Exact per-month token block, when present.
+function noticedMonth(summary: any, monthKey: string): any | null {
+  const list = summary?.noticed_stats_monthly;
+  if (!Array.isArray(list)) return null;
+  return list.find((e: any) => e?.month === monthKey) ?? null;
+}
+
 export function monthTokensByModel(summary: any, monthKey: string) {
+  // Preferred path: exact per-model tokens from noticed_stats_monthly.
+  const byModel = noticedMonth(summary, monthKey)?.token_usage?.by_model;
+  if (Array.isArray(byModel) && byModel.length) {
+    return byModel.map((m: any) => {
+      const t = {
+        input: Number(m?.input) || 0,
+        output: Number(m?.output) || 0,
+        cacheRead: Number(m?.cache_read) || 0,
+        cacheCreation: Number(m?.cache_creation) || 0,
+      };
+      const modelId = String(m?.model_id ?? m?.model ?? "unknown");
+      return {
+        modelId,
+        tokens: t.input + t.output + t.cacheRead + t.cacheCreation,
+        cost: costUsd(t, modelId),
+      };
+    });
+  }
+
+  // Fallback: invocation-share approximation for legacy summaries.
   const e = monthEntry(summary, monthKey);
   if (!e) return [];
   const models: [string, number][] = Array.isArray(e.models) ? e.models : [];
@@ -1477,23 +1754,41 @@ export function buildTeamOverview(db: Db): TeamOverview {
   const usageAgg = new Map<string, Map<string, { tokens: number; cost: number }>>();
 
   for (const p of people) {
-    const ups = uploadsForPerson(db, p.id);
+    const ups = uploadsForPerson(db, p.id); // ascending by monthKey
     if (!ups.length) continue;
     const lastMonth = ups.at(-1)!.monthKey;
     rows.push(personRow(p.id, p.name, lastMonth, ups));
 
-    // usage over time: each person's LATEST summary carries their whole
-    // progression_monthly history; use it once per person.
-    const latestSummary = ups.at(-1)!.summary;
-    for (const e of latestSummary?.progression_monthly ?? []) {
-      if (!e?.month) continue;
-      for (const m of monthTokensByModel(latestSummary, e.month)) {
-        const byModel = usageAgg.get(e.month) ?? new Map();
-        const cur = byModel.get(m.modelId) ?? { tokens: 0, cost: 0 };
+    // Usage over time: a single summary only covers a trailing `window_months`
+    // window, so the latest upload alone TRUNCATES older months. Iterate ALL of
+    // the person's uploads and record each month once — the most recent upload
+    // that still covers a month wins (ups is ascending, so later writes clobber
+    // earlier ones for the same month). This dedups the overlap between windows.
+    const personMonth = new Map<string, { model: string; tokens: number; cost: number }[]>();
+    for (const up of ups) {
+      const months = new Set<string>([
+        ...(Array.isArray(up.summary?.noticed_stats_monthly)
+          ? up.summary.noticed_stats_monthly.map((e: any) => e?.month) : []),
+        ...(Array.isArray(up.summary?.progression_monthly)
+          ? up.summary.progression_monthly.map((e: any) => e?.month) : []),
+      ].filter(Boolean));
+      for (const month of months) {
+        personMonth.set(
+          month,
+          monthTokensByModel(up.summary, month).map((m) => ({ model: m.modelId, tokens: m.tokens, cost: m.cost }))
+        );
+      }
+    }
+
+    // Merge this person's deduped per-month totals into the team aggregate.
+    for (const [month, list] of personMonth) {
+      for (const m of list) {
+        const byModel = usageAgg.get(month) ?? new Map();
+        const cur = byModel.get(m.model) ?? { tokens: 0, cost: 0 };
         cur.tokens += m.tokens;
         cur.cost += m.cost;
-        byModel.set(m.modelId, cur);
-        usageAgg.set(e.month, byModel);
+        byModel.set(m.model, cur);
+        usageAgg.set(month, byModel);
       }
     }
   }
@@ -1584,9 +1879,9 @@ export function buildPersonProfile(db: Db, personId: number, monthKey: string): 
     prevMonthKey: idx > 0 ? ups[idx - 1].monthKey : null,
     nextMonthKey: idx < ups.length - 1 ? ups[idx + 1].monthKey : null,
     aq, tier: String(s?.profile?.aq?.tier ?? ""), delta, levelOverTime,
-    pillars: (s?.profile?.aq?.pillars ?? []).map((p: any) => ({
+    pillars: arr(s?.profile?.aq?.pillars).map((p: any) => ({
       name: String(p?.name ?? ""), weight: Number(p?.weight) || 0, score: Number(p?.score) || 0,
-      axes: (p?.axes ?? []).map((a: any) => ({
+      axes: arr(p?.axes).map((a: any) => ({
         name: String(a?.name ?? ""), weight: Number(a?.weight) || 0, score: Number(a?.score) || 0,
       })),
     })),
@@ -1595,7 +1890,7 @@ export function buildPersonProfile(db: Db, personId: number, monthKey: string): 
       sessions, prompts,
       actionsPerPrompt: prompts > 0 ? Math.round(toolCalls / prompts) : 0,
     },
-    modelMix: (s?.profile?.model_usage ?? []).map((m: any) => ({
+    modelMix: arr(s?.profile?.model_usage).map((m: any) => ({
       model: String(m?.model ?? m?.model_id ?? "?"),
       pct: Number(m?.pct) || 0,
     })),
@@ -1686,26 +1981,60 @@ export function Card({ title, value, sub }: { title: string; value: string; sub?
 
 `dashboard/src/components/PeopleTable.tsx`:
 
+The design spec requires a **sortable** people table, so this is a client component with clickable column headers (default sort: AQ desc, matching the server order).
+
 ```tsx
+"use client";
 import Link from "next/link";
+import { useState } from "react";
 import type { PersonRow } from "@/lib/metrics";
 import { fmtTokens, fmtUsd } from "@/lib/metrics";
 import { Sparkline } from "./Sparkline";
 
+type SortKey = "name" | "aq" | "tier" | "delta" | "topPillar" | "tokens" | "cost";
+const COLS: { key: SortKey | null; label: string }[] = [
+  { key: "name", label: "Name" }, { key: "aq", label: "AQ" }, { key: "tier", label: "Tier" },
+  { key: null, label: "Trend" }, { key: "delta", label: "Delta" }, { key: "topPillar", label: "Top pillar" },
+  { key: "tokens", label: "Tokens" }, { key: "cost", label: "Cost" },
+];
+
+// Nulls always sort last regardless of direction.
+function cmp(a: PersonRow, b: PersonRow, key: SortKey, dir: 1 | -1): number {
+  const av = a[key] as string | number | null;
+  const bv = b[key] as string | number | null;
+  if (av === null && bv === null) return 0;
+  if (av === null) return 1;
+  if (bv === null) return -1;
+  if (typeof av === "string" && typeof bv === "string") return dir * av.localeCompare(bv);
+  return dir * ((av as number) - (bv as number));
+}
+
 export function PeopleTable({ people }: { people: PersonRow[] }) {
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "aq", dir: -1 });
+  const rows = [...people].sort((a, b) => cmp(a, b, sort.key, sort.dir));
+  const onSort = (key: SortKey) =>
+    setSort((s) => (s.key === key ? { key, dir: (s.dir * -1) as 1 | -1 } : { key, dir: -1 }));
+
   return (
     <div className="rounded-2xl border overflow-x-auto"
          style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
       <table className="w-full text-sm">
         <thead>
           <tr className="text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
-            {["Name", "AQ", "Tier", "Trend", "Delta", "Top pillar", "Tokens", "Cost"].map((h) => (
-              <th key={h} className="text-left px-4 py-3 font-semibold">{h}</th>
+            {COLS.map((c) => (
+              <th key={c.label} className="text-left px-4 py-3 font-semibold">
+                {c.key ? (
+                  <button type="button" onClick={() => onSort(c.key!)}
+                          className="uppercase tracking-widest hover:text-white">
+                    {c.label}{sort.key === c.key ? (sort.dir === -1 ? " ↓" : " ↑") : ""}
+                  </button>
+                ) : c.label}
+              </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {people.map((p) => (
+          {rows.map((p) => (
             <tr key={p.personId} className="border-t" style={{ borderColor: "var(--border)" }}>
               <td className="px-4 py-3 font-semibold">
                 <Link href={`/p/${p.personId}/${p.monthKey}`} className="hover:underline">
@@ -1880,7 +2209,7 @@ git commit -m "feat(dashboard): team overview — cards, people table, usage cha
 
 **Interfaces:**
 - Consumes: `buildPersonProfile`, `fmtTokens` (Task 7); `getDb` (Task 2); `Sparkline` (Task 8).
-- Produces: `/p/<personId>/<monthKey>` server-rendered page; `notFound()` when profile is null.
+- Produces: `/p/<personId>/<monthKey>` server-rendered page (+ `LevelBars` for level-over-time, per design spec); `notFound()` when profile is null.
 
 - [ ] **Step 1: PillarBar component**
 
@@ -1970,6 +2299,40 @@ export function ModelMixBar({ mix }: { mix: { model: string; pct: number }[] }) 
 }
 ```
 
+- [ ] **Step 3b: LevelBars component**
+
+The design spec calls for **level-over-time bars** on the profile (not a sparkline). One bar per uploaded month, height ∝ AQ, most recent highlighted.
+
+`dashboard/src/components/LevelBars.tsx`:
+
+```tsx
+export function LevelBars({ points }: { points: { monthKey: string; aq: number }[] }) {
+  if (!points.length) {
+    return <p className="text-sm" style={{ color: "var(--text-muted)" }}>No history yet.</p>;
+  }
+  const max = Math.max(100, ...points.map((p) => p.aq));
+  return (
+    <div className="flex items-end gap-2" style={{ height: 80 }}>
+      {points.map((p, i) => {
+        const isLast = i === points.length - 1;
+        return (
+          <div key={p.monthKey} className="flex-1 flex flex-col items-center gap-1 justify-end">
+            <span className="text-xs font-semibold">{p.aq}</span>
+            <div className="w-full rounded-t"
+                 style={{
+                   height: `${Math.max(4, (p.aq / max) * 56)}px`,
+                   background: isLast ? "var(--accent)" : "var(--purple)",
+                   opacity: isLast ? 1 : 0.55,
+                 }} />
+            <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{p.monthKey.slice(2)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+```
+
 - [ ] **Step 4: Profile page**
 
 `dashboard/src/app/p/[personId]/[monthKey]/page.tsx`:
@@ -1982,7 +2345,7 @@ import { buildPersonProfile } from "@/lib/metrics";
 import { PillarBar } from "@/components/PillarBar";
 import { ScoreCard } from "@/components/ScoreCard";
 import { ModelMixBar } from "@/components/ModelMixBar";
-import { Sparkline } from "@/components/Sparkline";
+import { LevelBars } from "@/components/LevelBars";
 
 export const dynamic = "force-dynamic";
 
@@ -2043,7 +2406,7 @@ export default async function ProfilePage({
                style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
         <h2 className="text-xs font-semibold tracking-widest uppercase mb-3"
             style={{ color: "var(--text-muted)" }}>Level over time</h2>
-        <Sparkline points={prof.levelOverTime.map((t) => t.aq)} width={600} height={60} />
+        <LevelBars points={prof.levelOverTime} />
       </section>
 
       <section>
@@ -2112,7 +2475,7 @@ Expected: build OK, all tests PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add dashboard/src/app/p dashboard/src/components/PillarBar.tsx dashboard/src/components/ScoreCard.tsx dashboard/src/components/ModelMixBar.tsx
+git add dashboard/src/app/p dashboard/src/components/PillarBar.tsx dashboard/src/components/ScoreCard.tsx dashboard/src/components/ModelMixBar.tsx dashboard/src/components/LevelBars.tsx
 git commit -m "feat(dashboard): person profile page — AQ, pillars, scorecard, explore, usage"
 ```
 
@@ -2318,14 +2681,17 @@ ENV NODE_ENV=production DATA_DIR=/data PORT=3000 HOSTNAME=0.0.0.0
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/scripts/docker-entrypoint.sh ./docker-entrypoint.sh
 RUN mkdir -p /data && chown node:node /data
 USER node
 VOLUME /data
 EXPOSE 3000
-CMD ["node", "server.js"]
+# TEAM_TOKEN is enforced at container start by the entrypoint (Step 5), NOT at
+# build time — the builder has no runtime secrets.
+ENTRYPOINT ["./docker-entrypoint.sh"]
 ```
 
-Note: create an empty `dashboard/public/.gitkeep` so the `COPY` doesn't fail if no public assets exist yet.
+Note: create an empty `dashboard/public/.gitkeep` so the `COPY` doesn't fail if no public assets exist yet. The entrypoint script is created in Step 5.
 
 - [ ] **Step 2: dashboard/.dockerignore**
 
@@ -2374,14 +2740,39 @@ TEAM_TOKEN=change-me
 # PUBLIC_URL=https://gnomon.your-company.com
 ```
 
-- [ ] **Step 5: TEAM_TOKEN boot guard**
+- [ ] **Step 5: TEAM_TOKEN boot guard (container entrypoint)**
 
-Add to `dashboard/src/app/layout.tsx` top (module scope, server-only):
+The guard MUST NOT live in `layout.tsx`: module-scope code there is evaluated during `npm run build`, which runs in the Docker builder **without** runtime secrets — a build-time throw would break the image build, and it is not a reliable process-start check anyway. Enforce it in a build-safe startup wrapper that runs only when the container starts.
 
-```tsx
-if (process.env.NODE_ENV === "production" && !process.env.TEAM_TOKEN) {
-  throw new Error("TEAM_TOKEN env var is required — set it in .env (see .env.example)");
-}
+`dashboard/scripts/docker-entrypoint.sh`:
+
+```sh
+#!/usr/bin/env sh
+set -e
+if [ -z "${TEAM_TOKEN:-}" ]; then
+  echo "FATAL: TEAM_TOKEN env var is required — set it in .env (see .env.example)" >&2
+  exit 1
+fi
+exec node server.js
+```
+
+This runs at container start (not build), and a missing `TEAM_TOKEN` makes the container exit non-zero immediately. `chmod +x dashboard/scripts/docker-entrypoint.sh`.
+
+Update the Dockerfile runner stage (Step 1) to use it instead of `CMD ["node", "server.js"]`:
+
+```dockerfile
+COPY --from=builder /app/scripts/docker-entrypoint.sh ./docker-entrypoint.sh
+ENTRYPOINT ["./docker-entrypoint.sh"]
+```
+
+**Verify both properties:**
+
+```bash
+# a) image builds with NO runtime secrets present
+cd dashboard && docker build -t gnomon-dashboard:local .   # must succeed
+
+# b) container exits immediately (non-zero) when TEAM_TOKEN is absent
+docker run --rm gnomon-dashboard:local; echo "exit=$?"      # exit=1, logs the FATAL line
 ```
 
 - [ ] **Step 6: Smoke e2e script**
@@ -2474,8 +2865,8 @@ Browser opens `/cli-auth` → enter `dev` token + name/email → CLI uploads →
 - [ ] **Step 9: Commit**
 
 ```bash
-git add dashboard/Dockerfile dashboard/.dockerignore dashboard/public/.gitkeep dashboard/scripts docker-compose.yml .env.example dashboard/src/app/layout.tsx
-git commit -m "feat(dashboard): Dockerfile, compose, env template, smoke e2e"
+git add dashboard/Dockerfile dashboard/.dockerignore dashboard/public/.gitkeep dashboard/scripts docker-compose.yml .env.example
+git commit -m "feat(dashboard): Dockerfile, compose, env template, TEAM_TOKEN entrypoint guard, smoke e2e"
 ```
 
 ---
@@ -2503,7 +2894,20 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Tests gate the publish — an image never ships on a red suite.
+  dashboard-tests:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: dashboard } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: dashboard/package-lock.json }
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
   publish:
+    needs: [dashboard-tests, dashboard-contract]  # tests + real CLI contract must pass
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -2531,22 +2935,92 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 ```
 
-- [ ] **Step 2: Run dashboard unit tests in CI**
+Both jobs live in **the same workflow** so the `needs:` gate applies on every tag push. Also add the `dashboard-tests` job to the repo's PR CI workflow (following its conventions) so the suite runs on pull requests too, not only on tags.
 
-Check `.github/workflows/` for the existing test workflow; add a job (same file or the existing CI file, following its conventions):
+- [ ] **Step 2b: Real Python CLI contract test (v1 — the primary constraint, not deferred)**
+
+Exact CLI compatibility is the plan's top global constraint, so it must be exercised against the **real** `gnomon/upload/auth.py` + `mirdash.py` code — not re-implemented in TypeScript unit tests. Add a pytest that drives the actual CLI modules against a running dashboard container.
+
+`tests/dashboard_contract_test.py` (repo-root test suite):
+
+```python
+import os, urllib.request, urllib.parse, urllib.error
+import pytest
+# REAL CLI modules — the contract must hold against these, not a reimplementation.
+from gnomon.upload.auth import _tokens_from_query          # auth.py
+from gnomon.upload.mirdash import _uploaded_from_query, _upload_summary  # mirdash.py
+
+BASE = os.environ.get("DASHBOARD_BASE", "http://localhost:3000")
+TEAM_TOKEN = os.environ.get("TEAM_TOKEN", "dev")
+
+def _post_login(count=2):
+    """Submit what the CLI's browser step submits, capture the redirect, and
+    parse it with the REAL CLI query parsers so any query-shape drift fails."""
+    cb = "http://127.0.0.1:9/callback"
+    data = urllib.parse.urlencode({
+        "team_token": TEAM_TOKEN, "name": "Contract Bot",
+        "email": "contract@example.com", "redirect_uri": cb, "count": str(count),
+    }).encode()
+    req = urllib.request.Request(f"{BASE}/api/cli-auth", data=data, method="POST")
+
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **k): return None  # keep the Location header
+    opener = urllib.request.build_opener(NoRedirect)
+    try:
+        opener.open(req)
+        pytest.fail("expected a 302 redirect")
+    except urllib.error.HTTPError as e:
+        assert e.code == 302
+        loc = e.headers["Location"]
+
+    # Both parsers take a parse_qs() result dict (exactly as the CLI feeds them).
+    parsed = urllib.parse.parse_qs(urllib.parse.urlparse(loc).query)
+    return _tokens_from_query(parsed), _uploaded_from_query(parsed)
+
+def test_auth_callback_shape_matches_cli_parsers():
+    tokens, uploaded = _post_login(count=2)
+    assert isinstance(tokens, list) and len(tokens) == 2
+    assert all(isinstance(t, str) and t for t in tokens)
+    assert isinstance(uploaded, list)  # possibly empty on first run
+
+def test_real_uploader_ingests_summary():
+    tokens, _ = _post_login(count=1)
+    summary = {
+        "context": {"date_range": ["2026-01-01", "2026-06-30"], "total_sessions": 10,
+                    "total_prompts": 100, "window_months": 6},
+        "profile": {"aq": {"aq_0_100": 88, "tier": "Advanced", "pillars": []},
+                    "scores": {}, "model_usage": []},
+        "progression_monthly": [{"month": "2026-06", "models": [["claude-opus-4-8", 500]],
+                                 "tokens_total": 1_000_000}],
+    }
+    # Drive the REAL uploader: bearer header, JSON body, and reportUrl parsing
+    # all come from mirdash._upload_summary itself.
+    report_url = _upload_summary(BASE, tokens[0], summary)
+    assert isinstance(report_url, str) and report_url.startswith("/p/")
+```
+
+> This imports the CLI's own `_tokens_from_query`, `_uploaded_from_query`, and `_upload_summary` — so a contract drift (query keys, bearer scheme, `reportUrl` key, 302 status) fails here rather than silently in production. Confirm the `_upload_summary(base, token, summary)` signature against `gnomon/upload/mirdash.py` when wiring this up (it returns the `reportUrl` string or raises).
+
+Add this job **to `dashboard-image.yml`** (same workflow as `dashboard-tests`/`publish`, so the `publish` gate above resolves) — it boots the container and runs the suite:
 
 ```yaml
-  dashboard-tests:
+  dashboard-contract:
+    needs: dashboard-tests
     runs-on: ubuntu-latest
-    defaults: { run: { working-directory: dashboard } }
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm, cache-dependency-path: dashboard/package-lock.json }
-      - run: npm ci
-      - run: npm test
-      - run: npm run build
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e . pytest
+      - run: docker build -t gnomon-dashboard:ci ./dashboard
+      - run: docker run -d --rm --name dash -p 3000:3000 -e TEAM_TOKEN=dev -e JWT_SECRET=ci-secret-32-bytes-minimum-please gnomon-dashboard:ci
+      - run: |
+          for i in $(seq 1 30); do curl -fsS http://localhost:3000/ >/dev/null && break; sleep 1; done
+      - run: TEAM_TOKEN=dev DASHBOARD_BASE=http://localhost:3000 pytest tests/dashboard_contract_test.py -v
+      - run: docker stop dash
 ```
+
+Make `publish` also `needs: [dashboard-tests, dashboard-contract]` so a contract break blocks the image too.
 
 - [ ] **Step 3: README section**
 
@@ -2590,14 +3064,25 @@ Expected: all green.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add .github/workflows/dashboard-image.yml README.md
-git commit -m "ci(dashboard): publish ghcr image on release tags; document self-hosting"
+git add .github/workflows/dashboard-image.yml tests/dashboard_contract_test.py README.md
+git commit -m "ci(dashboard): gated ghcr publish, real CLI contract test, document self-hosting"
 ```
 
 ---
 
 ## Self-review notes
 
-- Spec coverage: CLI contract (Tasks 3–6), data model (Task 2), team overview + usage chart (Tasks 7–8), person profile (Task 9), AI coach (Task 10), deploy/DX + smoke e2e (Task 11), ghcr publish + README (Task 12). Roster explicitly out of scope. Coexistence handled by not touching `gnomon/` and documenting `--mirdash-base`.
-- Known approximation: per-model monthly token split by invocation share (documented in `metrics.ts` header and in the plan preamble).
-- Phase-2 candidates (not in this plan): Python CLI contract test in CI, cost pricing config via `settings`, roster metadata.
+- Spec coverage: CLI contract (Tasks 3–6), data model (Task 2), team overview + usage chart (Tasks 7–8), person profile (Task 9), AI coach (Task 10), deploy/DX + smoke e2e (Task 11), ghcr publish + real CLI contract test + README (Task 12). Roster explicitly out of scope. Coexistence handled by not touching `gnomon/` and documenting `--mirdash-base`.
+- Per-model monthly tokens are read **exactly** from `noticed_stats_monthly[].token_usage.by_model`; the invocation-share split is a fallback for older summaries lacking that block (documented in `metrics.ts` header).
+- Phase-2 candidates (not in this plan): cost pricing config via `settings`, roster metadata.
+
+## Validation notes (2026-07-20)
+
+Plan reviewed with Codex against the real CLI sources. Fixes folded in:
+- **Deps bumped to current majors:** Next 16.2, better-sqlite3 12, jose 6, recharts 3 (+`react-is`), vitest 4, added `postcss` and `@types/react-dom` (Task 1).
+- **TEAM_TOKEN guard moved out of `layout.tsx`** into a container entrypoint — the build no longer needs the secret and a missing token exits the container non-zero (Task 11).
+- **Exact per-model monthly tokens** from `noticed_stats_monthly`, approximation only as legacy fallback; **usage-over-time no longer truncates** older months (iterates all uploads, dedups per person-month) (Task 7).
+- **Strict `YYYY-MM-DD` date validation** (both ends, start ≤ end) and **verbatim raw-JSON storage** (Task 4/5).
+- **Security:** JWT verification pinned to HS256 + positive-integer `sub`; constant-time team-token compare via fixed-length digests; loopback redirect requires explicit port; ingest body size cap (413); per-IP throttle on the shared team-token endpoint (429) with token-free audit logging (Tasks 3, 5, 6).
+- **CI:** image publish gated on `dashboard-tests` **and** a real Python CLI contract test that drives `_tokens_from_query`/`_uploaded_from_query`/`_upload_summary` against a running container (Task 12).
+- Array-shape guards on `pillars`/`axes`/`model_usage` for malformed-field tolerance (Task 7).
