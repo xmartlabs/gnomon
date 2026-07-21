@@ -13,6 +13,7 @@ import json
 import re
 import glob
 import shutil
+import sqlite3
 import tempfile
 import subprocess
 import contextlib
@@ -71,6 +72,55 @@ class TestDiscovery(unittest.TestCase):
         fmts = {fmt for _, _, fmt in found}
         self.assertEqual(fmts, EXPECTED_FMTS,
                          f"a source fixture stopped being discovered: got {fmts}")
+
+    def test_opencode_sqlite_discovered_and_parsed(self):
+        root = tempfile.mkdtemp(prefix="paxel-opencode-db-")
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        db = os.path.join(root, "opencode.db")
+        conn = sqlite3.connect(db)
+        conn.execute(
+            "CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT, time_created INTEGER)")
+        conn.execute(
+            "CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, "
+            "time_created INTEGER, data TEXT)")
+        conn.execute(
+            "CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT, "
+            "time_created INTEGER, data TEXT)")
+        sid = "ses_sqlite_demo"
+        user_msg, assistant_msg = "msg_user", "msg_assistant"
+        conn.execute("INSERT INTO session VALUES (?, ?, ?)", (sid, "/tmp/opencode-demo", 1))
+        conn.execute(
+            "INSERT INTO message VALUES (?, ?, ?, ?)",
+            (user_msg, sid, 1000, json.dumps(
+                {"id": user_msg, "role": "user", "time": {"created": 1000}})))
+        conn.execute(
+            "INSERT INTO message VALUES (?, ?, ?, ?)",
+            (assistant_msg, sid, 2000, json.dumps({
+                "id": assistant_msg, "role": "assistant", "time": {"created": 2000},
+                "modelID": "qwen-demo"})))
+        conn.execute(
+            "INSERT INTO part VALUES (?, ?, ?, ?, ?)",
+            ("prt_user", user_msg, sid, 1001, json.dumps(
+                {"type": "text", "text": "build it"})))
+        conn.execute(
+            "INSERT INTO part VALUES (?, ?, ?, ?, ?)",
+            ("prt_tool", assistant_msg, sid, 2001, json.dumps({
+                "type": "tool", "tool": "bash",
+                "state": {"status": "completed", "input": {"command": "pytest -q"}}})))
+        conn.commit()
+        conn.close()
+
+        with mock.patch.object(paxel, "OPENCODE_DIR", root):
+            found = paxel.discover_sources(["opencode"])
+            self.assertEqual(found, [("opencode", db, "opencode-sqlite")])
+            events = list(paxel.iter_events(db, "opencode-sqlite"))
+        self.assertEqual(events[0]["message"]["content"], "build it")
+        blocks = [ev["message"]["content"] for ev in events
+                  if isinstance(ev["message"].get("content"), list)]
+        tools = [b for content in blocks for b in content
+                 if b.get("type") == "tool_use"]
+        self.assertEqual(tools[0]["name"], "Bash")
+        self.assertEqual(tools[0]["input"]["command"], "pytest -q")
 
 
 class TestPipeline(unittest.TestCase):

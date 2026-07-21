@@ -12,8 +12,15 @@ GEMINI_DIR = os.path.expanduser("~/.gemini/tmp")
 ANTIGRAVITY_CLI_DIR = os.path.expanduser("~/.gemini/antigravity-cli/conversations")
 # IDE: full per-step transcripts are encrypted *.pb; this state DB holds the unencrypted
 # trajectory index used for a volume/time-only summary (see antigravity_summary).
-ANTIGRAVITY_DB = os.path.expanduser(
-    "~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb")
+_ANTIGRAVITY_DB_CANDIDATES = (
+    "~/Library/Application Support/Antigravity IDE/User/globalStorage/state.vscdb",
+    "~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb",
+)
+ANTIGRAVITY_DB = next(
+    (os.path.expanduser(p) for p in _ANTIGRAVITY_DB_CANDIDATES
+     if os.path.exists(os.path.expanduser(p))),
+    os.path.expanduser(_ANTIGRAVITY_DB_CANDIDATES[0]),
+)
 PI_DIR = os.path.expanduser("~/.pi/agent/sessions")
 OPENCODE_DIR = os.path.expanduser("~/.local/share/opencode")
 CURSOR_DIR = os.path.expanduser("~/.cursor/projects")
@@ -150,6 +157,9 @@ def discover_sources(selected):
         session_glob = os.path.join(OPENCODE_DIR, "storage", "session", "*", "*.json")
         for fp in sorted(glob.glob(session_glob)):
             out.append(("opencode", fp, "opencode"))
+        db_path = os.path.join(OPENCODE_DIR, "opencode.db")
+        if os.path.isfile(db_path):
+            out.append(("opencode", db_path, "opencode-sqlite"))
     if "cursor" in selected and os.path.isdir(CURSOR_DIR):
         for fp in sorted(_cursor_jsonl_files()):
             out.append(("cursor", fp, "cursor-jsonl"))

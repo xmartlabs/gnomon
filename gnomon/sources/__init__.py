@@ -4,7 +4,7 @@ from gnomon.sources._util import _texts, _iso_ms
 from gnomon.sources.codex import _codex_events
 from gnomon.sources.gemini import _gemini_events
 from gnomon.sources.pi import _pi_events
-from gnomon.sources.opencode import _opencode_events
+from gnomon.sources.opencode import _opencode_events, _opencode_sqlite_events
 from gnomon.sources.cursor import _cursor_jsonl_events, _cursor_sqlite_events
 from gnomon.sources.antigravity import _antigravity_cli_events, _antigravity_ide_export_events
 
@@ -35,6 +35,8 @@ def _iter_events_raw(fp, fmt, cursor_twins=None):
         yield from _pi_events(fp)
     elif fmt == "opencode":
         yield from _opencode_events(fp)
+    elif fmt == "opencode-sqlite":
+        yield from _opencode_sqlite_events(fp)
     elif fmt == "cursor-jsonl":
         yield from _cursor_jsonl_events(fp)
     elif fmt == "cursor-sqlite":
