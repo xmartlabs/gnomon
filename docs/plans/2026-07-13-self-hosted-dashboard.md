@@ -13,6 +13,24 @@
 **Spec:** `docs/specs/2026-07-13-self-hosted-dashboard-design.md`
 **UI / design system:** "The Ledger" — editorial/warm print-report look (cream paper, espresso ink, terracotta accent, Fraunces + Archivo, hairline rules). Codified in `docs/design/design-system.md` + Playwright-verified hi-fi mockups in `docs/design/mockups/` (chosen from `/design-directions`; the three explorations are kept in `docs/design/directions/`). Tasks 6/8/9 implement React to match those mockups — do not hand-invent visuals. **Note:** any inline `style`/color in the Task 6/8/9 JSX blocks is pre-redesign scaffolding for structure/logic only; the mockups + design-system tokens are authoritative for all visuals (styling is applied during each task's build, verified by the Task 13 Playwright gate).
 
+## Session handoff — start here (fresh session)
+
+This plan is self-contained; a cleared session can execute it top-to-bottom. Current state as of this handoff:
+
+- **Branch:** `feat/self-hosted-dashboard`. All planning + design work is committed; **no app code exists yet** (`dashboard/` not created). Next action = **Task 1**.
+- **Done so far (committed):** design spec, this plan (validated with Codex, all BLOCKER/HIGH folded in), the "The Ledger" design system + 3 Playwright-verified mockups (`docs/design/mockups/`), and the 3 `/design-directions` explorations (`docs/design/directions/`).
+- **How to execute:** invoke `superpowers:subagent-driven-development` (or `superpowers:executing-plans`) and work Task 1 → Task 13 in order. Each task ends with the **[Per-task gate](#per-task-gate-mandatory--applies-to-every-task-below)** (tests green → `/simplify` → Codex validation with zero BLOCKER/HIGH → commit). Do not advance a task until its gate is clean.
+- **UI:** implement Tasks 6/8/9 to match `docs/design/mockups/*.html` (The Ledger). The JSX in those tasks is structural scaffolding — the mockups + `docs/design/design-system.md` tokens are authoritative for all visuals.
+- **Verify before "done":** never claim a step passes without running it (`npm test`, `npm run build`, `npm run test:e2e`) and pasting the output. Task 13 (seed + Playwright) is the final whole-system visual gate.
+
+### ⚠️ Infra gotcha — parallel agents / teammates
+
+The native teammate/subagent spawn broke this session: it exec'd a **stale Claude binary path** (`.../claude-code@latest/2.1.207/claude`) after an in-place update to `2.1.215`, so every spawned teammate died with `status 127` ("No such file or directory") and silently wrote nothing.
+
+- **Fix:** a fresh session (after `/clear` or restart) re-resolves the binary — the native spawn should work again. Verify with `readlink -f "$(which claude)"` (should point at the current version).
+- **Fallback if it recurs:** launch fresh independent agents yourself as background processes — `claude -p "$(cat prompt.txt)" --dangerously-skip-permissions` — using the real resolved binary. This is how the `/design-directions` run in this plan's history was actually produced (3 independent fresh-context processes, one per design skill). Confirmed working.
+- Don't trust a "spawned successfully" metadata line as proof an agent ran — confirm it wrote its expected output file.
+
 ## Global Constraints
 
 - The Python CLI (`gnomon/`) is **not modified**. The server must match the contract in `gnomon/upload/mirdash.py` and `gnomon/upload/auth.py` exactly.
