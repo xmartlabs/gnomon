@@ -101,8 +101,7 @@ components — recent behavior dominates while the full window provides
 stability. When the recent window has no sessions the blend falls back to the
 unblended full-window AQ.
 
-This runtime emits **scoring inputs version 5**, **AQ version 4**, and
-**GStack version 3** (`score_contract_id = 5:4:3`). Scores from the previous
+This runtime emits **scoring inputs version 5**, **AQ version 5**, and **GStack version 3** (`score_contract_id = 5:5:3`). Scores from the previous
 contract must not be presented as an improvement or regression against v5.
 
 What happens when you run it (without `--local`):
@@ -342,7 +341,8 @@ dir without it — the session falls back to file mtime and no model, as before.
 `projects` subdir both work). The `state.vscdb` path is fixed per platform — there's no
 flag for it, so DB-backed sessions are only read from the local Cursor install.
 
-**Known caveats:** CLI transcripts carry no per-event timestamps (single file-mtime stamp) and
-no tokens/model; if a `projects` dir is copied/synced to a new machine, mtimes reset and the
-monthly timeline compresses; `ApplyPatch` churn counts raw patch lines (slight over-estimate).
-Workspace slugs encode `.`/`-` ambiguously, so cwd is recovered from real tool-input paths.
+**Known caveats:** CLI transcript JSONL carries no per-event timestamps (single file-mtime
+stamp), token data, or model field. The chats sidecar may recover the model, but tokens remain
+unavailable. If a `projects` dir is copied/synced to a new machine, mtimes reset and the monthly
+timeline compresses; `ApplyPatch` churn counts raw patch lines (slight over-estimate). Workspace
+slugs encode `.`/`-` ambiguously, so cwd is recovered from real tool-input paths.

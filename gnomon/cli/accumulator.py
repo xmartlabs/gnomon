@@ -216,7 +216,6 @@ class Accumulator:
         self.source_files = Counter()
         self.source_sessions = defaultdict(set)
         self.source_prompts = Counter()
-        self._seeded_workspaces = set()
         self._plan_sessions_degraded = False
 
         # per-file transient state (reset in begin_file, flushed in end_file)
@@ -252,14 +251,8 @@ class Accumulator:
         self.source_files[self._cur_src] -= 1
         self.files_parsed -= 1
 
-    def seed_workspaces(self, cwds):
-        """Register workspace roots for git_churn even when per-event cwd is missing."""
-        for cwd in cwds or ():
-            if cwd and os.path.isdir(cwd):
-                self._seeded_workspaces.add(cwd)
-
     def _git_cwds(self):
-        return list(set(self.project_activity.keys()) | self._seeded_workspaces)
+        return list(self.project_activity.keys())
 
     def _record_skill(self, name, sid, mkey):
         if not name:
@@ -1676,7 +1669,7 @@ def derive_session_ordered_facts(events):
     )
     events = [event for _, event in events]
 
-    code_written, substantive, seen_reads = set(), 0, set()
+    code_written, substantive, orchestration_substantive, seen_reads = set(), 0, 0, set()
     code_churn = 0
     first_code_write = None
     first_write_order = None
@@ -1707,9 +1700,12 @@ def derive_session_ordered_facts(events):
                 key = target
                 if key not in seen_reads:
                     substantive += 1
+                    orchestration_substantive += 1
                     seen_reads.add(key)
             else:
                 substantive += 1
+                if classify_tool(name) != "delegate":
+                    orchestration_substantive += 1
         if first_code_write is None:
             items = event.get("items") or []
             if name in {"TodoWrite", "TaskCreate"}:
@@ -1731,7 +1727,7 @@ def derive_session_ordered_facts(events):
         len(code_written) >= 2 or code_churn >= CHURN_MIN or substantive >= 10)
     orchestratable = bool(code_written) and (
         len(code_written) >= ORCHESTRATABLE_CODE_FILES
-        or substantive >= ORCHESTRATABLE_SUBSTANTIVE)
+        or orchestration_substantive >= ORCHESTRATABLE_SUBSTANTIVE)
 
     plan_artifacts = []
     planned_intra = False

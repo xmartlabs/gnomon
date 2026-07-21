@@ -77,6 +77,38 @@ class TestEligibilityC2(unittest.TestCase):
         self.assertTrue(derive_session_ordered_facts(facts)["eligible"])
 
 
+class TestOrchestratableEligibility(unittest.TestCase):
+    def test_delegate_calls_do_not_inflate_orchestration_denominator(self):
+        nineteen_work_calls_plus_delegate = (
+            [_fact("Bash", order=i) for i in range(1, 19)]
+            + [_fact("Edit", "src/app.py", order=19, file_class="code", loc=1)]
+            + [_fact("Agent", order=20)]
+        )
+        result = derive_session_ordered_facts(nineteen_work_calls_plus_delegate)
+
+        self.assertTrue(result["eligible"])
+        self.assertFalse(result["orchestratable"])
+
+        # Ordered planning keeps its established substantive-work contract,
+        # where delegation is still one of ten substantive calls.
+        ordered_planning_boundary = (
+            [_fact("Bash", order=i) for i in range(1, 9)]
+            + [_fact("Edit", "src/app.py", order=9, file_class="code", loc=1)]
+            + [_fact("Agent", order=10)]
+        )
+        self.assertTrue(
+            derive_session_ordered_facts(ordered_planning_boundary)["eligible"]
+        )
+
+        twenty_work_calls = (
+            [_fact("Bash", order=i) for i in range(1, 20)]
+            + [_fact("Edit", "src/app.py", order=20, file_class="code", loc=1)]
+        )
+        self.assertTrue(
+            derive_session_ordered_facts(twenty_work_calls)["orchestratable"]
+        )
+
+
 class TestPlannedC3C6(unittest.TestCase):
     """C3 (broadened planned) + C6 (substance floor): plan-file/skill signals
     count, but only above the substance floor; bare plan-mode toggles and

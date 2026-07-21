@@ -26,7 +26,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "5:4:3",
+          "score_contract_id": "5:5:3",
           "tier": "Advanced"
         },
         "archetype": {
@@ -291,12 +291,15 @@
                     "normalized_score": 0.66,
                     "score": 21.8,
                     "signals": {
+                      "coordination_quality": 0.66,
                       "delegated_orchestratable_sessions": 0,
                       "fanout_median": 3,
                       "frequency": null,
+                      "frequency_confidence": 0.0,
+                      "frequency_score": null,
+                      "frequency_weight": 0.0,
                       "o_harn": 0.6,
                       "orchestratable_sessions": 0,
-                      "quality": 0.66,
                       "subagent_types": 6
                     },
                     "weight": 33
@@ -459,7 +462,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:4:3",
+            "score_contract_id": "5:5:3",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -878,7 +881,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "5:4:3",
+          "score_contract_id": "5:5:3",
           "tier": "Apprentice"
         },
         "archetype": {
@@ -1126,12 +1129,15 @@
                     "normalized_score": 0.2,
                     "score": 8.0,
                     "signals": {
+                      "coordination_quality": 0.2,
                       "delegated_orchestratable_sessions": 0,
                       "fanout_median": 1,
                       "frequency": null,
+                      "frequency_confidence": 0.0,
+                      "frequency_score": null,
+                      "frequency_weight": 0.0,
                       "o_harn": 0.6,
                       "orchestratable_sessions": 0,
-                      "quality": 0.2,
                       "subagent_types": 0
                     },
                     "weight": 40
@@ -1272,7 +1278,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:4:3",
+            "score_contract_id": "5:5:3",
             "tier": "Apprentice",
             "tool_diversity": {
               "distinct": 12,
@@ -1598,7 +1604,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "5:4:3",
+          "score_contract_id": "5:5:3",
           "tier": "Advanced"
         },
         "archetype": {
@@ -1864,12 +1870,15 @@
                     "normalized_score": 0.66,
                     "score": 21.8,
                     "signals": {
+                      "coordination_quality": 0.66,
                       "delegated_orchestratable_sessions": 0,
                       "fanout_median": 3,
                       "frequency": null,
+                      "frequency_confidence": 0.0,
+                      "frequency_score": null,
+                      "frequency_weight": 0.0,
                       "o_harn": 0.6,
                       "orchestratable_sessions": 0,
-                      "quality": 0.66,
                       "subagent_types": 6
                     },
                     "weight": 33
@@ -2032,7 +2041,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:4:3",
+            "score_contract_id": "5:5:3",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -2293,12 +2302,15 @@
                     "normalized_score": 0.2,
                     "score": 8.0,
                     "signals": {
+                      "coordination_quality": 0.2,
                       "delegated_orchestratable_sessions": 0,
                       "fanout_median": 1,
                       "frequency": null,
+                      "frequency_confidence": 0.0,
+                      "frequency_score": null,
+                      "frequency_weight": 0.0,
                       "o_harn": 0.6,
                       "orchestratable_sessions": 0,
-                      "quality": 0.2,
                       "subagent_types": 0
                     },
                     "weight": 40
@@ -2439,7 +2451,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:4:3",
+            "score_contract_id": "5:5:3",
             "tier": "Apprentice",
             "tool_diversity": {
               "distinct": 12,
@@ -2908,7 +2920,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "5:4:3",
+          "score_contract_id": "5:5:3",
           "tier": "Advanced"
         },
         "archetype": {
@@ -3173,12 +3185,15 @@
                     "normalized_score": 0.66,
                     "score": 21.8,
                     "signals": {
+                      "coordination_quality": 0.66,
                       "delegated_orchestratable_sessions": 0,
                       "fanout_median": 3,
                       "frequency": null,
+                      "frequency_confidence": 0.0,
+                      "frequency_score": null,
+                      "frequency_weight": 0.0,
                       "o_harn": 0.6,
                       "orchestratable_sessions": 0,
-                      "quality": 0.66,
                       "subagent_types": 6
                     },
                     "weight": 33
@@ -3341,7 +3356,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:4:3",
+            "score_contract_id": "5:5:3",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -3745,7 +3760,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "5:4:3",
+          "score_contract_id": "5:5:3",
           "tier": "Novice"
         },
         "archetype": {
@@ -4013,12 +4028,15 @@
                     "normalized_score": 0.12,
                     "score": 4.0,
                     "signals": {
+                      "coordination_quality": 0.12,
                       "delegated_orchestratable_sessions": 0,
                       "fanout_median": 0,
                       "frequency": null,
+                      "frequency_confidence": 0.0,
+                      "frequency_score": null,
+                      "frequency_weight": 0.0,
                       "o_harn": 0.6,
                       "orchestratable_sessions": 0,
-                      "quality": 0.12,
                       "subagent_types": 0
                     },
                     "weight": 33
@@ -4168,7 +4186,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:4:3",
+            "score_contract_id": "5:5:3",
             "tier": "Novice",
             "tool_diversity": {
               "distinct": 0,
@@ -4671,7 +4689,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "5:4:3",
+          "score_contract_id": "5:5:3",
           "tier": "Advanced"
         },
         "archetype": {
@@ -4961,12 +4979,15 @@
                         "normalized_score": 0.66,
                         "score": 21.8,
                         "signals": {
+                          "coordination_quality": 0.66,
                           "delegated_orchestratable_sessions": 0,
                           "fanout_median": 3,
                           "frequency": null,
+                          "frequency_confidence": 0.0,
+                          "frequency_score": null,
+                          "frequency_weight": 0.0,
                           "o_harn": 0.6,
                           "orchestratable_sessions": 0,
-                          "quality": 0.66,
                           "subagent_types": 6
                         }
                       },
@@ -4976,12 +4997,15 @@
                         "normalized_score": 0.66,
                         "score": 21.8,
                         "signals": {
+                          "coordination_quality": 0.66,
                           "delegated_orchestratable_sessions": 0,
                           "fanout_median": 3,
                           "frequency": null,
+                          "frequency_confidence": 0.0,
+                          "frequency_score": null,
+                          "frequency_weight": 0.0,
                           "o_harn": 0.6,
                           "orchestratable_sessions": 0,
-                          "quality": 0.66,
                           "subagent_types": 6
                         }
                       }
@@ -4990,12 +5014,15 @@
                     "normalized_score": 0.66,
                     "score": 21.8,
                     "signals": {
+                      "coordination_quality": 0.66,
                       "delegated_orchestratable_sessions": 0,
                       "fanout_median": 3,
                       "frequency": null,
+                      "frequency_confidence": 0.0,
+                      "frequency_score": null,
+                      "frequency_weight": 0.0,
                       "o_harn": 0.6,
                       "orchestratable_sessions": 0,
-                      "quality": 0.66,
                       "subagent_types": 6
                     },
                     "weight": 33
@@ -5420,7 +5447,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:4:3",
+            "score_contract_id": "5:5:3",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,

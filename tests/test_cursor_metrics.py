@@ -269,7 +269,7 @@ class TestCursorThinkingBlocks(unittest.TestCase):
         self.assertEqual(stats["volume"]["thinking_blocks"], 1)
 
 
-class TestCursorGitCwdSeeding(unittest.TestCase):
+class TestCursorGitCwdDiscovery(unittest.TestCase):
     def test_path_inferred_cwd_from_tool_paths(self):
         from gnomon.sources.cursor import _cursor_cwd_from_paths
         paths = ["/Users/belen.carozo/projects/gnomon/gnomon/cli/local.py"]

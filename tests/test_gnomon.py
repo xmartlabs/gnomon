@@ -447,6 +447,22 @@ class TestGrowthEdgesAq(unittest.TestCase):
         edges = paxel.growth_edges(_edge_stats(agentic), dict(HEALTHY_SCORES))
         self.assertTrue(any("Orchestration" in adv for _, _, adv in edges), edges)
 
+    def test_orchestration_advice_renders_raw_frequency(self):
+        agentic = {"pillars": [{"name": "Breadth", "weight": 30, "axes": [
+            _axis("Orchestration", 33, 0.2, {
+                "orchestratable_sessions": 5,
+                "subagent_types": 1,
+                "fanout_median": 1,
+                "frequency": 0.6,
+                "frequency_score": 0.769,
+            })]}]}
+
+        edges = paxel.growth_edges(_edge_stats(agentic), dict(HEALTHY_SCORES))
+        advice = next(advice for _, _, advice in edges if "Orchestration" in advice)
+
+        self.assertIn("60%", advice)
+        self.assertNotIn("77%", advice)
+
     def test_healthy_aq_falls_through_to_balanced(self):
         agentic = {"pillars": [{"name": "Breadth", "weight": 30, "axes": [
             _axis("Orchestration", 33, 0.9), _axis("Tool command (MCP + CLI)", 28, 0.8)]}]}

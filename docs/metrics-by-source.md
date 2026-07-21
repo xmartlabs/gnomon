@@ -59,8 +59,13 @@ directly — no external dependency). Both decode to the same normalized events.
   or listed in injected `<manually_attached_skills>` on user turns (not the full `available_skills` catalog).
 - **Orchestration** (Cursor): measured from `Task`/`task_v2` dispatches in the parent Composer
   session — not UI multitask tabs. `fanout_median` is the median agents-per-delegating-session;
-  `max_session_fanout` and `parallel_session_share` capture peak coordination and how often
-  multi-agent turns happen.
+  AQ combines coordination quality with the raw share of orchestratable sessions that delegate.
+  That raw `frequency` is normalized against the provisional `0.78` target as
+  `frequency_score`; its scoring weight rises progressively from 0% to 30% across the first five
+  orchestratable sessions. The target remains provisional because the current three-user sample
+  is insufficient for recalibration. `max_session_fanout`, `parallel_dispatch_turns`, and
+  `parallel_session_share` are descriptive metrics, not AQ inputs. `parallel_session_share` means
+  the share of sessions with at least two agent invocations; it does not prove temporal concurrency.
 - **Git churn** requires local repo access: if `git_repos_seen == 0` but tool churn is high,
   `summary.json` includes `churn.git_coverage_warning` (common on upload/CI without `state.vscdb` + `.git`).
 - **Model mix** (AQ Savvy axis) is **not scored** for Cursor — every included model costs one
@@ -71,8 +76,7 @@ directly — no external dependency). Both decode to the same normalized events.
 
 ## Uploaded summary contract
 
-Current runtime contract: **scoring inputs version 5**, **AQ version 4**, and
-**GStack version 3** (`score_contract_id = 5:4:3`). Previous-contract scores
+Current runtime contract: **scoring inputs version 5**, **AQ version 5**, and **GStack version 3** (`score_contract_id = 5:5:3`). Previous-contract scores
 must not be shown as improvement or regression against v5. AQ is blended as
 65% recent (rolling 30-day) + 35%
 full-window (cumulative). The full window includes recent activity, so

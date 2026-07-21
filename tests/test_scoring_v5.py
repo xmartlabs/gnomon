@@ -8,6 +8,7 @@ from copy import deepcopy
 from gnomon.cli.accumulator import Accumulator, derive_ordered_behavior
 from gnomon.scoring.aq import (
     CONTEXT_INTELLIGENCE_TARGET,
+    ORCHESTRATION_FREQUENCY_TARGET,
     PLANNING_TARGET,
     MIN_ELIGIBLE_SESSIONS,
     compute_aq,
@@ -287,6 +288,79 @@ class TestConditionalScoring(unittest.TestCase):
             self._aq_axis(three, "Breadth", "Discipline")["score"],
             self._aq_axis(five, "Breadth", "Discipline")["score"],
         )
+
+    def test_orchestration_exports_raw_frequency_and_normalized_score(self):
+        stats = _v5_scoring_stats()
+        stats["behavior"].update({
+            "orchestratable_sessions": 5,
+            "delegated_orchestratable_sessions": 3,
+        })
+
+        axis = self._aq_axis(stats, "Breadth", "Orchestration")
+        signals = axis["signals"]
+
+        self.assertEqual(signals["frequency"], 0.6)
+        self.assertEqual(
+            signals["frequency_score"],
+            round(0.6 / ORCHESTRATION_FREQUENCY_TARGET, 3),
+        )
+        self.assertEqual(signals["frequency_confidence"], 1.0)
+        self.assertEqual(signals["frequency_weight"], 0.3)
+        self.assertAlmostEqual(
+            axis["normalized_score"],
+            0.7 * signals["coordination_quality"]
+            + 0.3 * signals["frequency_score"],
+            places=3,
+        )
+
+    def test_orchestration_frequency_confidence_progresses_through_five_sessions(self):
+        four = _v5_scoring_stats()
+        four["behavior"].update({
+            "orchestratable_sessions": 4,
+            "delegated_orchestratable_sessions": 4,
+        })
+        five = _v5_scoring_stats()
+        five["behavior"].update({
+            "orchestratable_sessions": 5,
+            "delegated_orchestratable_sessions": 5,
+        })
+
+        four_axis = self._aq_axis(four, "Breadth", "Orchestration")
+        five_axis = self._aq_axis(five, "Breadth", "Orchestration")
+
+        self.assertEqual(four_axis["signals"]["frequency_confidence"], 0.8)
+        self.assertEqual(four_axis["signals"]["frequency_weight"], 0.24)
+        self.assertEqual(five_axis["signals"]["frequency_confidence"], 1.0)
+        self.assertEqual(five_axis["signals"]["frequency_weight"], 0.3)
+        self.assertAlmostEqual(
+            four_axis["normalized_score"],
+            0.76 * four_axis["signals"]["coordination_quality"]
+            + 0.24 * four_axis["signals"]["frequency_score"],
+            places=3,
+        )
+        self.assertAlmostEqual(
+            five_axis["normalized_score"],
+            0.7 * five_axis["signals"]["coordination_quality"]
+            + 0.3 * five_axis["signals"]["frequency_score"],
+            places=3,
+        )
+
+    def test_orchestration_zero_sessions_uses_coordination_quality_only(self):
+        stats = _v5_scoring_stats()
+        stats["behavior"].update({
+            "orchestratable_sessions": 0,
+            "delegated_orchestratable_sessions": 0,
+        })
+
+        axis = self._aq_axis(stats, "Breadth", "Orchestration")
+        signals = axis["signals"]
+
+        self.assertIsNone(signals["frequency"])
+        self.assertIsNone(signals["frequency_score"])
+        self.assertEqual(signals["frequency_confidence"], 0.0)
+        self.assertEqual(signals["frequency_weight"], 0.0)
+        self.assertEqual(axis["normalized_score"], signals["coordination_quality"])
+        self.assertNotIn("quality", signals)
 
     def test_gstack_five_of_ten_is_full_credit_for_ordered_planning(self):
         three = _v5_scoring_stats(planned=3, evidence=4)
@@ -1033,7 +1107,7 @@ class TestV5Contract(unittest.TestCase):
     def test_compute_aq_emits_exact_contract(self):
         stats = {"corpus": {"sources": {}}, "volume": {"total_sessions": 0},
                  "tools": {}, "stack": {}, "behavior": {}}
-        self.assertEqual(SCORE_CONTRACT_ID, "5:4:3")
+        self.assertEqual(SCORE_CONTRACT_ID, "5:5:3")
         self.assertEqual(compute_aq(stats)["score_contract_id"], SCORE_CONTRACT_ID)
 
     def test_blend_rejects_missing_or_mismatched_contract(self):

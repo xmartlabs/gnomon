@@ -719,19 +719,6 @@ def _cursor_sqlite_events(db_path, twins=None):
     conn.close()
 
 
-def _cursor_build_workspace_index(sources):
-    """Union of resolved workspace paths from every Cursor JSONL transcript."""
-    cwds = set()
-    for _, fp, fmt in sources:
-        if fmt != "cursor-jsonl":
-            continue
-        _, slug_cwd, _ = _cursor_jsonl_meta(fp)
-        cwd = _cursor_resolve_cwd(fp, slug_cwd)
-        if cwd:
-            cwds.add(cwd)
-    return cwds
-
-
 def _cursor_dedup(sources):
     """Prefer the SQLite copy of a Cursor session over its JSONL transcript.
 
