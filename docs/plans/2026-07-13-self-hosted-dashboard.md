@@ -156,9 +156,14 @@ From `gnomon/output/summary.py` (`build_summary`) — the upload body shape:
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "vitest": "^4.1.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["better-sqlite3"]
   }
 }
 ```
+
+> **pnpm note:** `better-sqlite3` is a native module with a postinstall build script. pnpm 10 blocks build scripts by default, so `pnpm.onlyBuiltDependencies` must whitelist it — without this the binding never compiles and every DB call throws `Could not locate the bindings file` (in tests, `pnpm build`, and the Docker builder).
 
 > **Dep notes (validated 2026-07-20):** current major lines are Next 16.2.x, better-sqlite3 12.x, jose 6.x, recharts 3.x, vitest 4.x. Next 16 needs Node ≥20.9 (we use 22, OK) and React 18.2+/19 (we use 19.2). `recharts` v3 requires a matching `react-is`; `@tailwindcss/postcss` needs a direct `postcss` dep. Review each major's migration notes on install; jose 6 and vitest 4 have breaking changes vs the previously-pinned 5/3 lines.
 
