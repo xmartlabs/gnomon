@@ -6,12 +6,12 @@
 
 **Architecture:** Next.js (App Router) serves both the UI and the CLI-facing HTTP contract (`GET /cli-auth`, `POST /api/gnomon/ingest`). SQLite (better-sqlite3) on a mounted `/data` volume stores raw `summary.json` uploads keyed on `(person, monthKey)`; all metrics are derived at read time. Docker image published to ghcr; `docker-compose.yml` at repo root runs it.
 
-**Tech Stack:** Next.js 16 (App Router, TypeScript), better-sqlite3, jose (JWT HS256), Recharts, Tailwind CSS 4, Space Grotesk + IBM Plex Mono (`next/font`), Vitest (unit), Playwright (visual e2e), tsx (seed). Node 22. UI designed with huashu-design.
+**Tech Stack:** Next.js 16 (App Router, TypeScript), better-sqlite3, jose (JWT HS256), Recharts, Tailwind CSS 4, Fraunces + Archivo (`next/font`), Vitest (unit), Playwright (visual e2e), tsx (seed). Node 22. UI = "The Ledger" (huashu-design, editorial/warm).
 
 **Every task clears the [Per-task gate](#per-task-gate-mandatory--applies-to-every-task-below): tests green → `/simplify` → Codex validation (no BLOCKER/HIGH) → commit.** Task 13 is a final Playwright visual gate over seeded data.
 
 **Spec:** `docs/specs/2026-07-13-self-hosted-dashboard-design.md`
-**UI / design system:** `docs/design/design-system.md` + hi-fi mockups in `docs/design/mockups/` (built with huashu-design, Playwright-verified). Tasks 6/8/9 implement React to match those mockups — do not hand-invent visuals.
+**UI / design system:** "The Ledger" — editorial/warm print-report look (cream paper, espresso ink, terracotta accent, Fraunces + Archivo, hairline rules). Codified in `docs/design/design-system.md` + Playwright-verified hi-fi mockups in `docs/design/mockups/` (chosen from `/design-directions`; the three explorations are kept in `docs/design/directions/`). Tasks 6/8/9 implement React to match those mockups — do not hand-invent visuals. **Note:** any inline `style`/color in the Task 6/8/9 JSX blocks is pre-redesign scaffolding for structure/logic only; the mockups + design-system tokens are authoritative for all visuals (styling is applied during each task's build, verified by the Task 13 Playwright gate).
 
 ## Global Constraints
 
@@ -98,7 +98,7 @@ From `gnomon/output/summary.py` (`build_summary`) — the upload body shape:
 - Create: `dashboard/tests/smoke.test.ts`
 
 **Interfaces:**
-- Produces: a Next.js app that builds (`npm run build`) and tests (`npm test`), with Tailwind 4, the two design-system fonts (Space Grotesk + IBM Plex Mono via `next/font`), and the huashu-design theme CSS variables later tasks use (`--bg-base`, `--bg-surface`, `--bg-elev`, `--text-primary`, `--text-secondary`, `--text-muted`, `--border`, `--border-strong`, `--accent`, `--purple`, `--teal`, `--amber`, `--good`). See `docs/design/design-system.md`.
+- Produces: a Next.js app that builds (`npm run build`) and tests (`npm test`), with Tailwind 4, the two "The Ledger" fonts (Fraunces + Archivo via `next/font`), and the design-system CSS variables later tasks use (`--paper`, `--paper-2`, `--ink`, `--ink-60`, `--ink-30`, `--hairline`, `--accent`, `--gain`, `--loss`, `--parch`). See `docs/design/design-system.md`.
 
 - [ ] **Step 1: Create package.json**
 
@@ -192,50 +192,50 @@ export default nextConfig;
 export default { plugins: { "@tailwindcss/postcss": {} } };
 ```
 
-`dashboard/src/app/globals.css` — tokens are the **huashu-design system** (`docs/design/design-system.md`); the UI in Tasks 6/8/9 must match the verified mockups in `docs/design/mockups/`:
+`dashboard/src/app/globals.css` — tokens are the **"The Ledger" huashu-design system** (`docs/design/design-system.md`); the UI in Tasks 6/8/9 must match the verified mockups in `docs/design/mockups/`. Editorial print-report look: cream stock, espresso ink, one terracotta accent, hairline rules — **not** boxes/cards:
 
 ```css
 @import "tailwindcss";
 
 :root {
-  --bg-base: #14181f;
-  --bg-surface: #1b212b;
-  --bg-elev: #232b37;
-  --text-primary: #f2f4f7;
-  --text-secondary: #c2c8d2;
-  --text-muted: #7d8698;
-  --border: rgba(255, 255, 255, 0.07);
-  --border-strong: rgba(255, 255, 255, 0.12);
-  --accent: #ee1a64;   /* pink — primary / Opus / Elite */
-  --purple: #6d6ff2;   /* secondary / Advanced / Fable */
-  --teal: #2dd4bf;     /* tertiary series / Haiku */
-  --amber: #f5b642;    /* quaternary series / cost */
-  --good: #34d399;     /* positive delta */
+  --paper: #F6F1E6;     /* ground — cream stock */
+  --paper-2: #EFE8D8;   /* recessed panel / track wells */
+  --ink: #262016;       /* espresso ink — text, primary button, dark bars */
+  --ink-60: #6E655A;    /* secondary text */
+  --ink-30: #B4AA9A;    /* tertiary text / strong rule */
+  --hairline: #D8CFBC;  /* hairline rules — the primary structural device */
+  --accent: #B4451F;    /* terracotta — the one accent */
+  --gain: #4A6A45;      /* moss — positive deltas */
+  --loss: #9A3B22;      /* burnt — negative deltas */
+  --parch: #C9B99A;     /* parchment — 3rd chart series / older level bars */
 }
 
+html { background: #E9E2D2; }  /* gutter outside the sheet */
 body {
-  background: var(--bg-base);
-  color: var(--text-primary);
-  font-family: var(--font-ui), system-ui, -apple-system, sans-serif;
-  /* one faint positioned glow per screen — NOT a full gradient wash */
-  background-image: radial-gradient(1200px 380px at 50% -180px, rgba(109,111,242,.10), transparent 70%);
-  background-repeat: no-repeat;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body), system-ui, sans-serif;
 }
+.serif { font-family: var(--font-display), Georgia, serif; }
+.num { font-variant-numeric: tabular-nums; }
 ```
 
-Series color order for charts, model mix, and stat accent bars: **accent → purple → teal → amber**. All numeric values render in `var(--font-mono)`.
+Chart / model-mix series order: **ink (Opus) → terracotta (Fable) → parchment (Haiku)**. All numerals use Fraunces + `tabular-nums`. Structure comes from hairline (`1px --hairline`) and heavy (`2px --ink`) rules, never bordered/rounded cards.
 
 - [ ] **Step 5: Create layout and placeholder page**
 
-`dashboard/src/app/layout.tsx` — loads the two design-system fonts via `next/font/google` (self-hosted at build, no runtime CDN) and exposes them as `--font-ui` / `--font-mono`:
+`dashboard/src/app/layout.tsx` — loads the two "The Ledger" fonts via `next/font/google` (self-hosted at build, no runtime CDN) and exposes them as `--font-display` (Fraunces) / `--font-body` (Archivo):
 
 ```tsx
 import "./globals.css";
 import type { Metadata } from "next";
-import { Space_Grotesk, IBM_Plex_Mono } from "next/font/google";
+import { Fraunces, Archivo } from "next/font/google";
 
-const sans = Space_Grotesk({ subsets: ["latin"], variable: "--font-ui", weight: ["400", "500", "600", "700"] });
-const mono = IBM_Plex_Mono({ subsets: ["latin"], variable: "--font-mono", weight: ["400", "500", "600"] });
+const display = Fraunces({
+  subsets: ["latin"], variable: "--font-display",
+  axes: ["opsz"], weight: ["300", "400", "500", "600", "700"], style: ["normal", "italic"],
+});
+const body = Archivo({ subsets: ["latin"], variable: "--font-body", weight: ["400", "500", "600"] });
 
 export const metadata: Metadata = {
   title: "gnomon dashboard",
@@ -244,14 +244,14 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${sans.variable} ${mono.variable}`}>
+    <html lang="en" className={`${display.variable} ${body.variable}`}>
       <body className="min-h-screen">{children}</body>
     </html>
   );
 }
 ```
 
-Numeric UI (AQ, tokens, cost, deltas, axis scores, month labels) uses `font-family: var(--font-mono)`; everything else inherits `--font-ui`.
+Display (headings, all big numerals, logo, tier badges, pillar names, italic annotations) uses Fraunces via `.serif` / `var(--font-display)`; body/labels/table cells/buttons inherit Archivo.
 
 `dashboard/src/app/page.tsx` (placeholder):
 
@@ -1153,7 +1153,7 @@ git commit -m "feat(dashboard): /api/gnomon/ingest route matching CLI contract"
 
 ### Task 6: `/cli-auth` login page + callback redirect
 
-> **UI reference (huashu-design):** the login page must match `docs/design/mockups/cli-auth.html` (screenshot `cli-auth.png`) — centered card, brand dot + "gnomon dashboard · CLI sign-in" eyebrow, "Authorize upload" heading, privacy well, three fields (Name / Email / Team token as password, mono), pink Authorize button, mono callback footer. The JSX below is functional scaffolding; style it to the mockup using the design-system tokens.
+> **UI reference ("The Ledger"):** the login page must match `docs/design/mockups/cli-auth.html` (screenshot `cli-auth.png`) — centered ruled sheet on cream paper, 4px ink top rule, `gnomon.` Fraunces masthead + "CLI sign-in" small-caps sub over a 2px ink rule, "Authorize upload" Fraunces heading, hairline-ruled privacy line (`§` mark), three fields as underline inputs (Name / Email / Team token password), ink Authorize button, hairline callback footer. The JSX below is functional scaffolding; style it to the mockup using the design-system tokens.
 
 **Files:**
 - Create: `dashboard/src/app/cli-auth/page.tsx` (form UI, server component)
@@ -1958,7 +1958,7 @@ git commit -m "feat(dashboard): read-time metric derivation, pricing map, view m
 
 ### Task 8: Team overview page
 
-> **UI reference (huashu-design):** match `docs/design/mockups/team-overview.html` (screenshot `team-overview.png`) — top brand bar + status pill, 4 stat cards with cycling accent bars (Team avg AQ / Ingest coverage / Tokens per mo / Est. cost per mo), sortable people table (avatar + name, mono AQ, tier pill, trend sparkline, mono delta, top pillar, tokens, cost), and the stacked usage-over-time bars with a Tokens/Cost toggle. Use the design-system tokens and series color order.
+> **UI reference ("The Ledger"):** match `docs/design/mockups/team-overview.html` (screenshot `team-overview.png`) — `gnomon.` Fraunces masthead + right meta over a 2px ink rule; a stat band = the signature **drop-stat** (giant ~148px Fraunces team-avg AQ with an inked italic annotation) + three ruled stat columns (coverage / tokens / cost); the people table (Fraunces names, Fraunces AQ cell, dot tier badges, terracotta/ink-60 trend sparklines, moss/burnt deltas, Fraunces-italic top pillar, right-aligned tabular tokens & cost, sortable `<button>` headers); and the ink/terracotta/parchment stacked usage-over-time bars with dashed gridlines and a Tokens/Cost toggle. Hairline rules, not cards.
 
 **Files:**
 - Create: `dashboard/src/components/Card.tsx`
@@ -2238,7 +2238,7 @@ git commit -m "feat(dashboard): team overview — cards, people table, usage cha
 
 ### Task 9: Person profile page
 
-> **UI reference (huashu-design):** match `docs/design/mockups/person-profile.html` (screenshot `person-profile.png`) — back link + prev/next month nav, header (avatar, name, mono email, big mono AQ, tier pill, delta), italic archetype line, level-over-time bars (recent bar in accent, older in purple .5), 4 pillar cards with sub-axis rows, 3 scorecard cards with trend polylines, explore metric grid, usage 3-up + model-mix bar, and the optional coach card (purple, hidden when null). Use the design-system tokens.
+> **UI reference ("The Ledger"):** match `docs/design/mockups/person-profile.html` (screenshot `person-profile.png`) — back link + prev/next month nav over a 2px ink rule; header = person name in large Fraunces + email + the **drop-stat** (~120px Fraunces AQ, `/100`, dot tier badge, moss italic annotation) + terracotta italic archetype line; level-over-time bars (recent bar `--ink`, older `--parch`) on a 2px ink baseline; four ruled pillar columns with sub-axis rows; three ruled scorecard columns with trend polylines; a hairline-ruled explore metric grid; usage 3-up + ink/terracotta/parchment model-mix bar; and the optional coach block (2px terracotta rule, body set in Fraunces, hidden when null). Hairline rules, not cards.
 
 **Files:**
 - Create: `dashboard/src/app/p/[personId]/[monthKey]/page.tsx`
@@ -2360,10 +2360,9 @@ export function LevelBars({ points }: { points: { monthKey: string; aq: number }
             <div className="w-full rounded-t"
                  style={{
                    height: `${Math.max(4, (p.aq / max) * 56)}px`,
-                   background: isLast ? "var(--accent)" : "var(--purple)",
-                   opacity: isLast ? 1 : 0.55,
+                   background: isLast ? "var(--ink)" : "var(--parch)",
                  }} />
-            <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{p.monthKey.slice(2)}</span>
+            <span className="text-[10px]" style={{ color: "var(--ink-60)" }}>{p.monthKey}</span>
           </div>
         );
       })}
@@ -3230,9 +3229,8 @@ test("profile page renders AQ, pillars, and level-over-time bars", async ({ page
   await expect(page.getByText("Level over time")).toBeVisible();
   await expect(page.getByText("How you operate agents")).toBeVisible();
   await expect(page.getByText("Scorecard")).toBeVisible();
-  // Grace has 3 months seeded (2026-04/05/06); LevelBars labels months as
-  // monthKey.slice(2), so the oldest bar's "26-04" label is present.
-  await expect(page.getByText("26-04")).toBeVisible();
+  // Grace has 3 months seeded (2026-04/05/06); the oldest level bar is labeled.
+  await expect(page.getByText("2026-04")).toBeVisible();
 });
 
 test("cli-auth page renders the sign-in form", async ({ page }) => {
