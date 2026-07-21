@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>gnomon — Proposal B · Clinical Modern</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #F6F7F8;
+    --surface: #FFFFFF;
+    --ink: #14181A;
+    --ink-2: #55616B;
+    --ink-3: #8B949C;
+    --hairline: #E2E6E9;
+    --hairline-strong: #C9CFD4;
+    --accent: #0B7357;
+    --accent-deep: #08543F;
+    --accent-tint: #E8F2EE;
+    --neg: #B42318;
+    --neg-tint: #FBEAE8;
+    --bar-1: #0B7357;
+    --bar-2: #5FA98E;
+    --bar-3: #C6DED2;
+
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+    --sans: "Inter", -apple-system, sans-serif;
+
+    --z-sticky: 10;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { background: var(--bg); }
+
+  body {
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .frame { max-width: 1440px; margin: 0 auto; }
+  .inner { max-width: 1280px; margin: 0 auto; padding: 0 48px; }
+
+  /* ---------- shared atoms ---------- */
+
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  .btn {
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1;
+    padding: 9px 16px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background 150ms ease-out, border-color 150ms ease-out, color 150ms ease-out;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-deep); }
+  .btn-secondary { background: var(--surface); color: var(--ink); border-color: var(--hairline-strong); }
+  .btn-secondary:hover { border-color: var(--ink-3); }
+  .btn-ghost { background: transparent; color: var(--ink-2); }
+  .btn-ghost:hover { color: var(--ink); background: rgba(20,24,26,0.05); }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .tier {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    line-height: 1;
+    padding: 5px 8px 4px;
+    border-radius: 3px;
+    border: 1px solid var(--hairline-strong);
+    color: var(--ink-2);
+    background: var(--surface);
+    display: inline-block;
+  }
+  .tier-elite { border-color: var(--accent); color: var(--accent-deep); background: var(--accent-tint); }
+  .tier-advanced { border-color: var(--hairline-strong); color: var(--ink); }
+  .tier-proficient { border-color: var(--hairline); color: var(--ink-2); }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 6px;
+  }
+
+  .input {
+    font-family: var(--sans);
+    font-size: 13px;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--hairline-strong);
+    border-radius: 4px;
+    padding: 9px 12px;
+    width: 260px;
+    transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+  }
+  .input::placeholder { color: var(--ink-2); }
+  .input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+
+  .delta-up { color: var(--accent-deep); }
+  .delta-down { color: var(--neg); }
+  .delta-flat { color: var(--ink-3); }
+
+  /* ---------- section chrome (spec sheet) ---------- */
+
+  .spec-section { border-top: 1px solid var(--hairline-strong); padding: 48px 0 56px; }
+  .spec-label {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-2);
+    letter-spacing: 0.04em;
+    margin-bottom: 40px;
+  }
+  .spec-label b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- design system ---------- */
+
+  .ds-block + .ds-block { margin-top: 48px; }
+  .ds-h {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-3);
+    margin-bottom: 20px;
+  }
+
+  .swatches { display: flex; gap: 1px; background: var(--hairline); border: 1px solid var(--hairline); width: fit-content; }
+  .swatch { width: 128px; background: var(--surface); }
+  .swatch-chip { height: 72px; }
+  .swatch-meta { padding: 10px 12px 12px; border-top: 1px solid var(--hairline); }
+  .swatch-meta .role { font-size: 12px; font-weight: 600; color: var(--ink); }
+  .swatch-meta .hex { font-family: var(--mono); font-size: 11px; color: var(--ink-2); margin-top: 2px; }
+
+  .type-specimen { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; }
+  .type-display-xl { font-family: var(--mono); font-size: 44px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; }
+  .type-display { font-family: var(--mono); font-size: 28px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.2; margin-top: 16px; }
+  .type-h { font-size: 16px; font-weight: 600; margin-top: 24px; }
+  .type-body { font-size: 14px; color: var(--ink-2); max-width: 52ch; margin-top: 8px; }
+  .type-caption { font-family: var(--mono); font-size: 12px; color: var(--ink-3); margin-top: 16px; }
+  .scale-row { display: flex; align-items: baseline; gap: 16px; padding: 8px 0; border-bottom: 1px solid var(--hairline); }
+  .scale-row .sz { font-family: var(--mono); font-size: 11px; color: var(--ink-3); width: 88px; flex-shrink: 0; }
+
+  .atom-grid { display: flex; flex-wrap: wrap; gap: 48px; align-items: flex-start; }
+  .atom { }
+  .atom-caption { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-bottom: 14px; }
+  .atom-row { display: flex; gap: 12px; align-items: center; }
+
+  .demo-stat { width: 232px; padding: 20px; }
+  .demo-stat .k { font-size: 12px; font-weight: 500; color: var(--ink-2); }
+  .demo-stat .v { font-family: var(--mono); font-size: 28px; font-weight: 600; letter-spacing: -0.01em; margin-top: 8px; }
+  .demo-stat .s { font-size: 12px; color: var(--ink-3); margin-top: 4px; }
+
+  .demo-card { width: 340px; padding: 20px; }
+  .demo-card h4 { font-size: 14px; font-weight: 600; }
+  .demo-card p { font-size: 13px; color: var(--ink-2); margin-top: 6px; }
+  .demo-card .foot { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--hairline); display: flex; justify-content: space-between; align-items: center; }
+  .demo-card .foot span { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+
+  .demo-rows { width: 560px; }
+  .demo-row {
+    display: grid;
+    grid-template-columns: 1fr 64px 96px 88px;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--hairline);
+    transition: background 150ms ease-out;
+  }
+  .demo-row:hover { background: rgba(20,24,26,0.025); }
+  .demo-row .nm { font-weight: 500; font-size: 13px; }
+  .demo-row .num { font-family: var(--mono); font-size: 13px; text-align: right; }
+
+  /* ---------- dashboard ---------- */
+
+  .dash { background: var(--surface); border: 1px solid var(--hairline-strong); border-radius: 8px; overflow: hidden; }
+
+  .dash-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .brand { display: flex; align-items: baseline; gap: 12px; }
+  .brand .name { font-family: var(--mono); font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+  .brand .sub { font-size: 13px; color: var(--ink-2); padding-left: 12px; border-left: 1px solid var(--hairline-strong); }
+  .dash-meta { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+  .dash-meta b { color: var(--ink); font-weight: 500; }
+
+  /* stat strip: one ruled strip, vertical hairlines */
+  .stat-strip { display: grid; grid-template-columns: 1.35fr 1fr 1fr 1fr; border-bottom: 1px solid var(--hairline); }
+  .stat { padding: 24px 32px 28px; border-right: 1px solid var(--hairline); }
+  .stat:last-child { border-right: none; }
+  .stat .k { font-size: 12px; font-weight: 500; color: var(--ink-2); }
+  .stat .v { font-family: var(--mono); font-size: 32px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.1; margin-top: 10px; }
+  .stat .v small { font-size: 16px; font-weight: 500; color: var(--ink-3); letter-spacing: 0; }
+  .stat .s { font-size: 12px; color: var(--ink-3); margin-top: 6px; }
+  .stat .s .delta-up { font-weight: 500; }
+
+  /* signature: the gnomon meter */
+  .meter { margin-top: 18px; }
+  .meter svg { display: block; overflow: visible; }
+
+  /* people table */
+  .people { padding: 8px 0 0; }
+  .table-title-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 20px 32px 16px;
+  }
+  .table-title { font-size: 14px; font-weight: 600; }
+  .table-title-row .count { font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
+
+  table.people-table { width: 100%; border-collapse: collapse; }
+  .people-table th {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    text-align: left;
+    padding: 10px 16px;
+    border-top: 1px solid var(--hairline);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .people-table td {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--hairline);
+    font-size: 13px;
+    vertical-align: middle;
+  }
+  .people-table tr:hover td { background: rgba(20,24,26,0.02); }
+  .people-table th:first-child, .people-table td:first-child { padding-left: 32px; }
+  .people-table th:last-child, .people-table td:last-child { padding-right: 32px; }
+  .people-table .num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+  .people-table th.num { text-align: right; }
+  .people-table .name { font-weight: 500; }
+  .aq-cell { display: flex; align-items: center; gap: 12px; }
+  .aq-cell .score { font-family: var(--mono); font-size: 14px; font-weight: 600; width: 24px; text-align: right; }
+  .aq-track { position: relative; width: 64px; height: 2px; background: var(--hairline); }
+  .aq-track .fill { position: absolute; left: 0; top: 0; height: 2px; background: var(--accent); }
+  .aq-track .needle { position: absolute; top: -3px; width: 1.5px; height: 8px; background: var(--ink); }
+
+  .spark { display: block; }
+
+  /* chart */
+  .chart-block { border-top: 1px solid var(--hairline); }
+  .chart-head { display: flex; justify-content: space-between; align-items: center; padding: 24px 32px 8px; }
+  .chart-title { font-size: 14px; font-weight: 600; }
+
+  .toggle { display: inline-flex; border: 1px solid var(--hairline-strong); border-radius: 4px; overflow: hidden; }
+  .toggle button {
+    font-family: var(--sans); font-size: 12px; font-weight: 500;
+    padding: 7px 14px; border: none; cursor: pointer;
+    background: var(--surface); color: var(--ink-2);
+    transition: background 150ms ease-out, color 150ms ease-out;
+  }
+  .toggle button.active { background: var(--ink); color: #fff; }
+  .toggle button + button { border-left: 1px solid var(--hairline-strong); }
+
+  .chart-body { display: flex; gap: 48px; padding: 24px 32px 36px; align-items: flex-end; }
+  .chart-plot { display: flex; gap: 72px; align-items: flex-end; height: 240px; padding-left: 8px; }
+  .bar-group { display: flex; flex-direction: column; align-items: center; gap: 12px; height: 100%; justify-content: flex-end; }
+  .bar { width: 72px; display: flex; flex-direction: column-reverse; }
+  .bar .seg { width: 100%; }
+  .bar .seg + .seg { border-top: 1.5px solid var(--surface); }
+  .bar-label { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+  .bar-total { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-bottom: -4px; }
+  .bar-total b { color: var(--ink); font-weight: 600; }
+
+  .legend { display: flex; flex-direction: column; gap: 10px; padding-bottom: 28px; }
+  .legend-item { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--ink-2); }
+  .legend-item .chip { width: 10px; height: 10px; border-radius: 2px; }
+
+  /* page chrome */
+  .page-head { padding: 48px 0 36px; }
+  .page-head h1 { font-family: var(--mono); font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+  .page-head p { font-size: 13px; color: var(--ink-2); margin-top: 6px; max-width: 64ch; }
+
+  .footer-note { padding: 28px 0 48px; font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition-duration: 0.01ms !important; }
+  }
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="inner">
+
+    <div class="page-head">
+      <h1>gnomon / proposal B</h1>
+      <p>Clinical-modern, light. Ruled surfaces, tabular monospace numerals, one functional accent. The gnomon meter — a precision 0–100 rule — is the signature.</p>
+    </div>
+
+    <!-- ============ SECTION 1 · MINI DESIGN SYSTEM ============ -->
+    <section class="spec-section">
+      <div class="spec-label"><b>01 · Design system</b>&nbsp;&nbsp;palette / type / atoms</div>
+
+      <div class="ds-block">
+        <div class="ds-h">Palette</div>
+        <div class="swatches">
+          <div class="swatch"><div class="swatch-chip" style="background:#F6F7F8; border-bottom:1px solid #E2E6E9"></div><div class="swatch-meta"><div class="role">Ground</div><div class="hex">#F6F7F8</div></div></div>
+          <div class="swatch"><div class="swatch-chip" style="background:#FFFFFF"></div><div class="swatch-meta"><div class="role">Surface</div><div class="hex">#FFFFFF</div></div></div>
+          <div class="swatch"><div class="swatch-chip" style="background:#14181A"></div><div class="swatch-meta"><div class="role">Ink</div><div class="hex">#14181A</div></div></div>
+          <div class="swatch"><div class="swatch-chip" style="background:#55616B"></div><div class="swatch-meta"><div class="role">Ink muted</div><div class="hex">#55616B</div></div></div>
+          <div class="swatch"><div class="swatch-chip" style="background:#E2E6E9"></div><div class="swatch-meta"><div class="role">Hairline</div><div class="hex">#E2E6E9</div></div></div>
+          <div class="swatch"><div class="swatch-chip" style="background:#0B7357"></div><div class="swatch-meta"><div class="role">Accent · viridian</div><div class="hex">#0B7357</div></div></div>
+          <div class="swatch"><div class="swatch-chip" style="background:#E8F2EE"></div><div class="swatch-meta"><div class="role">Accent tint</div><div class="hex">#E8F2EE</div></div></div>
+          <div class="swatch"><div class="swatch-chip" style="background:#B42318"></div><div class="swatch-meta"><div class="role">Negative</div><div class="hex">#B42318</div></div></div>
+        </div>
+      </div>
+
+      <div class="ds-block">
+        <div class="ds-h">Typography — IBM Plex Mono (display &amp; data) · Inter (UI body)</div>
+        <div class="type-specimen">
+          <div>
+            <div class="type-display-xl">AQ 81 / 100</div>
+            <div class="type-display">Measured, not guessed.</div>
+            <div class="type-h">Team adoption is compounding</div>
+            <p class="type-body">Every engineer's agent usage is scored across four pillars. The score is a rule, not a vibe: same inputs, same number, every month.</p>
+            <div class="type-caption">CAPTION · IBM PLEX MONO 12 / tabular numerals throughout data</div>
+          </div>
+          <div>
+            <div class="scale-row"><span class="sz">44 / mono 600</span><span class="mono" style="font-size:44px;font-weight:600;letter-spacing:-0.02em">81</span></div>
+            <div class="scale-row"><span class="sz">28 / mono 600</span><span class="mono" style="font-size:28px;font-weight:600">18.9B</span></div>
+            <div class="scale-row"><span class="sz">20 / mono 600</span><span class="mono" style="font-size:20px;font-weight:600">gnomon</span></div>
+            <div class="scale-row"><span class="sz">16 / sans 600</span><span style="font-size:16px;font-weight:600">Section heading</span></div>
+            <div class="scale-row"><span class="sz">14 / sans 400</span><span style="font-size:14px">Body and table content</span></div>
+            <div class="scale-row"><span class="sz">12 / sans 400</span><span style="font-size:12px;color:var(--ink-2)">Supporting captions</span></div>
+            <div class="scale-row"><span class="sz">11 / mono 500</span><span class="mono" style="font-size:11px;font-weight:500;letter-spacing:0.05em;color:var(--ink-3)">COLUMN LABELS</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ds-block">
+        <div class="ds-h">Atoms</div>
+        <div class="atom-grid">
+          <div class="atom">
+            <div class="atom-caption">buttons</div>
+            <div class="atom-row">
+              <button class="btn btn-primary">Upload report</button>
+              <button class="btn btn-secondary">Export CSV</button>
+              <button class="btn btn-ghost">Dismiss</button>
+            </div>
+          </div>
+          <div class="atom">
+            <div class="atom-caption">tier badges</div>
+            <div class="atom-row">
+              <span class="tier tier-elite">Elite</span>
+              <span class="tier tier-advanced">Advanced</span>
+              <span class="tier tier-proficient">Proficient</span>
+            </div>
+          </div>
+          <div class="atom">
+            <div class="atom-caption">input</div>
+            <input class="input" type="text" placeholder="Filter by engineer…">
+          </div>
+        </div>
+        <div class="atom-grid" style="margin-top:48px">
+          <div class="atom">
+            <div class="atom-caption">stat card</div>
+            <div class="card demo-stat">
+              <div class="k">Team avg AQ</div>
+              <div class="v">81<small> / 100</small></div>
+              <div class="s"><span class="delta-up mono">+4</span> vs last month</div>
+            </div>
+          </div>
+          <div class="atom">
+            <div class="atom-caption">main card</div>
+            <div class="card demo-card">
+              <h4>Monthly ingest</h4>
+              <p>Drop each engineer's usage export here. gnomon parses tokens, cost, and pillar signals per model.</p>
+              <div class="foot">
+                <span>2026-06 · 4 files</span>
+                <button class="btn btn-secondary" style="padding:7px 12px">View log</button>
+              </div>
+            </div>
+          </div>
+          <div class="atom">
+            <div class="atom-caption">table row pattern</div>
+            <div class="card demo-rows" style="border-radius:6px; overflow:hidden">
+              <div class="demo-row" style="border-bottom-color:var(--hairline)">
+                <span class="nm">Ada Lovelace</span>
+                <span class="num" style="font-weight:600">93</span>
+                <span><span class="tier tier-elite">Elite</span></span>
+                <span class="num delta-up">+14</span>
+              </div>
+              <div class="demo-row" style="border-bottom:none">
+                <span class="nm">Alan Turing</span>
+                <span class="num" style="font-weight:600">85</span>
+                <span><span class="tier tier-advanced">Advanced</span></span>
+                <span class="num delta-down">-3</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 2 · TEAM OVERVIEW ============ -->
+    <section class="spec-section">
+      <div class="spec-label"><b>02 · Team overview</b>&nbsp;&nbsp;desktop 1440</div>
+
+      <div class="dash">
+
+        <header class="dash-header">
+          <div class="brand">
+            <span class="name">gnomon</span>
+            <span class="sub">team dashboard</span>
+          </div>
+          <div class="dash-meta">4 engineers · current window <b>2026-06</b></div>
+        </header>
+
+        <div class="stat-strip">
+          <div class="stat">
+            <div class="k">Team avg AQ</div>
+            <div class="v">81<small> / 100</small></div>
+            <div class="s"><span class="delta-up mono">+4</span> vs last month</div>
+            <!-- signature: the gnomon meter -->
+            <div class="meter" aria-hidden="true">
+              <svg width="240" height="36" viewBox="0 0 240 36">
+                <!-- minor ticks every 5 units (12px), majors every 25 -->
+                <g stroke="#C9CFD4" stroke-width="1">
+                  <line x1="0.5" y1="20" x2="0.5" y2="28"/><line x1="12" y1="24" x2="12" y2="28"/><line x1="24" y1="24" x2="24" y2="28"/><line x1="36" y1="24" x2="36" y2="28"/><line x1="48" y1="24" x2="48" y2="28"/>
+                  <line x1="60" y1="20" x2="60" y2="28"/><line x1="72" y1="24" x2="72" y2="28"/><line x1="84" y1="24" x2="84" y2="28"/><line x1="96" y1="24" x2="96" y2="28"/><line x1="108" y1="24" x2="108" y2="28"/>
+                  <line x1="120" y1="20" x2="120" y2="28"/><line x1="132" y1="24" x2="132" y2="28"/><line x1="144" y1="24" x2="144" y2="28"/><line x1="156" y1="24" x2="156" y2="28"/><line x1="168" y1="24" x2="168" y2="28"/>
+                  <line x1="180" y1="20" x2="180" y2="28"/><line x1="192" y1="24" x2="192" y2="28"/><line x1="204" y1="24" x2="204" y2="28"/><line x1="216" y1="24" x2="216" y2="28"/><line x1="228" y1="24" x2="228" y2="28"/>
+                  <line x1="239.5" y1="20" x2="239.5" y2="28"/>
+                </g>
+                <!-- baseline -->
+                <line x1="0" y1="28" x2="240" y2="28" stroke="#C9CFD4" stroke-width="1"/>
+                <!-- filled rule to current score (81) -->
+                <line x1="0" y1="28" x2="194" y2="28" stroke="#0B7357" stroke-width="2.5"/>
+                <!-- last month ghost needle at 77 -->
+                <line x1="185" y1="16" x2="185" y2="28" stroke="#8B949C" stroke-width="1.5"/>
+                <!-- current needle at 81 -->
+                <line x1="194" y1="10" x2="194" y2="28" stroke="#14181A" stroke-width="2"/>
+                <polygon points="190,5 198,5 194,11" fill="#14181A"/>
+              </svg>
+            </div>
+          </div>
+          <div class="stat">
+            <div class="k">Ingest coverage</div>
+            <div class="v">4<small> / 4</small></div>
+            <div class="s">people with a 2026-06 upload</div>
+          </div>
+          <div class="stat">
+            <div class="k">Tokens / mo</div>
+            <div class="v">18.9B</div>
+            <div class="s">across all models</div>
+          </div>
+          <div class="stat">
+            <div class="k">Est. cost / mo</div>
+            <div class="v">$1,284</div>
+            <div class="s">list prices · editable</div>
+          </div>
+        </div>
+
+        <div class="people">
+          <div class="table-title-row">
+            <span class="table-title">People</span>
+            <span class="count">4 rows · sorted by AQ</span>
+          </div>
+          <table class="people-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>AQ</th>
+                <th>Tier</th>
+                <th>Trend</th>
+                <th class="num">Delta</th>
+                <th>Top pillar</th>
+                <th class="num">Tokens</th>
+                <th class="num">Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="name">Ada Lovelace</td>
+                <td>
+                  <span class="aq-cell">
+                    <span class="score">93</span>
+                    <span class="aq-track"><span class="fill" style="width:93%"></span><span class="needle" style="left:93%"></span></span>
+                  </span>
+                </td>
+                <td><span class="tier tier-elite">Elite</span></td>
+                <td>
+                  <svg class="spark" width="72" height="20" viewBox="0 0 72 20" aria-label="upward trend">
+                    <polyline points="1,16 13,14 25,15 37,10 49,8 61,5 71,3" fill="none" stroke="#0B7357" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="71" cy="3" r="2" fill="#0B7357"/>
+                  </svg>
+                </td>
+                <td class="num delta-up" style="font-weight:500">+14</td>
+                <td>Craft</td>
+                <td class="num">5.7B</td>
+                <td class="num">$392</td>
+              </tr>
+              <tr>
+                <td class="name">Alan Turing</td>
+                <td>
+                  <span class="aq-cell">
+                    <span class="score">85</span>
+                    <span class="aq-track"><span class="fill" style="width:85%"></span><span class="needle" style="left:85%"></span></span>
+                  </span>
+                </td>
+                <td><span class="tier tier-advanced">Advanced</span></td>
+                <td>
+                  <svg class="spark" width="72" height="20" viewBox="0 0 72 20" aria-label="downward trend">
+                    <polyline points="1,6 13,4 25,7 37,6 49,10 61,12 71,14" fill="none" stroke="#8B949C" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="71" cy="14" r="2" fill="#8B949C"/>
+                  </svg>
+                </td>
+                <td class="num delta-down" style="font-weight:500">-3</td>
+                <td>Efficiency</td>
+                <td class="num">4.9B</td>
+                <td class="num">$338</td>
+              </tr>
+              <tr>
+                <td class="name">Grace Hopper</td>
+                <td>
+                  <span class="aq-cell">
+                    <span class="score">81</span>
+                    <span class="aq-track"><span class="fill" style="width:81%"></span><span class="needle" style="left:81%"></span></span>
+                  </span>
+                </td>
+                <td><span class="tier tier-advanced">Advanced</span></td>
+                <td>
+                  <svg class="spark" width="72" height="20" viewBox="0 0 72 20" aria-label="upward trend">
+                    <polyline points="1,15 13,16 25,12 37,13 49,9 61,7 71,4" fill="none" stroke="#0B7357" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="71" cy="4" r="2" fill="#0B7357"/>
+                  </svg>
+                </td>
+                <td class="num delta-up" style="font-weight:500">+7</td>
+                <td>Breadth</td>
+                <td class="num">4.6B</td>
+                <td class="num">$318</td>
+              </tr>
+              <tr>
+                <td class="name">Katherine J.</td>
+                <td>
+                  <span class="aq-cell">
+                    <span class="score">66</span>
+                    <span class="aq-track"><span class="fill" style="width:66%"></span><span class="needle" style="left:66%"></span></span>
+                  </span>
+                </td>
+                <td><span class="tier tier-proficient">Proficient</span></td>
+                <td>
+                  <svg class="spark" width="72" height="20" viewBox="0 0 72 20" aria-label="flat trend">
+                    <polyline points="1,10 13,11 25,9 37,10 49,10 61,11 71,10" fill="none" stroke="#8B949C" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="71" cy="10" r="2" fill="#8B949C"/>
+                  </svg>
+                </td>
+                <td class="num delta-flat">--</td>
+                <td>Savvy</td>
+                <td class="num">3.7B</td>
+                <td class="num">$236</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="chart-block">
+          <div class="chart-head">
+            <span class="chart-title">Company usage over time</span>
+            <div class="toggle" role="tablist" aria-label="Chart unit">
+              <button class="active" role="tab" aria-selected="true">Tokens</button>
+              <button role="tab" aria-selected="false">Cost</button>
+            </div>
+          </div>
+          <div class="chart-body">
+            <div class="chart-plot">
+              <div class="bar-group">
+                <div class="bar" aria-label="2026-04">
+                  <div class="seg" style="height:74px; background:var(--bar-1)"></div>
+                  <div class="seg" style="height:52px; background:var(--bar-2)"></div>
+                  <div class="seg" style="height:32px; background:var(--bar-3)"></div>
+                </div>
+                <span class="bar-label">2026-04</span>
+              </div>
+              <div class="bar-group">
+                <div class="bar" aria-label="2026-05">
+                  <div class="seg" style="height:82px; background:var(--bar-1)"></div>
+                  <div class="seg" style="height:62px; background:var(--bar-2)"></div>
+                  <div class="seg" style="height:36px; background:var(--bar-3)"></div>
+                </div>
+                <span class="bar-label">2026-05</span>
+              </div>
+              <div class="bar-group">
+                <span class="bar-total"><b>18.9B</b> tokens</span>
+                <div class="bar" aria-label="2026-06, 18.9 billion tokens">
+                  <div class="seg" style="height:92px; background:var(--bar-1)"></div>
+                  <div class="seg" style="height:70px; background:var(--bar-2)"></div>
+                  <div class="seg" style="height:42px; background:var(--bar-3)"></div>
+                </div>
+                <span class="bar-label">2026-06</span>
+              </div>
+            </div>
+            <div class="legend">
+              <div class="legend-item"><span class="chip" style="background:var(--bar-1)"></span>Opus 4.8</div>
+              <div class="legend-item"><span class="chip" style="background:var(--bar-2)"></span>Fable 5</div>
+              <div class="legend-item"><span class="chip" style="background:var(--bar-3)"></span>Haiku 4.5</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="footer-note">proposal B · clinical-modern light · IBM Plex Mono + Inter · accent #0B7357</div>
+    </section>
+
+  </div>
+</div>
+</body>
+</html>

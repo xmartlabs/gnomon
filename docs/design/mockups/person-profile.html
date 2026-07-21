@@ -1,251 +1,290 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>gnomon dashboard — profile</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>gnomon — Profile · The Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Archivo:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg-base:#14181f; --bg-surface:#1b212b; --bg-elev:#232b37;
-    --text-primary:#f2f4f7; --text-secondary:#c2c8d2; --text-muted:#7d8698;
-    --border:rgba(255,255,255,.07); --border-strong:rgba(255,255,255,.12);
-    --accent:#ee1a64; --purple:#6d6ff2; --teal:#2dd4bf; --amber:#f5b642; --good:#34d399;
-    --font-ui:"Space Grotesk",system-ui,sans-serif; --font-mono:"IBM Plex Mono",ui-monospace,monospace;
+  :root{
+    --paper:#F6F1E6; --paper-2:#EFE8D8; --ink:#262016; --ink-60:#6E655A; --ink-30:#B4AA9A;
+    --hairline:#D8CFBC; --accent:#B4451F; --gain:#4A6A45; --loss:#9A3B22; --parch:#C9B99A;
   }
-  * { box-sizing:border-box; margin:0; padding:0; }
-  body {
-    background:var(--bg-base); color:var(--text-primary); font-family:var(--font-ui);
-    -webkit-font-smoothing:antialiased; line-height:1.45;
-    background-image:radial-gradient(1100px 340px at 78% -160px, rgba(238,26,100,.10), transparent 70%);
-    background-repeat:no-repeat;
-  }
-  .wrap { max-width:1120px; margin:0 auto; padding:26px 24px 90px; }
-  a { color:inherit; text-decoration:none; }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html{background:#E9E2D2;}
+  body{font-family:'Archivo',sans-serif;color:var(--ink);background:var(--paper);-webkit-font-smoothing:antialiased;font-size:15px;line-height:1.5;}
+  .sheet{max-width:1200px;margin:0 auto;background:var(--paper);}
+  .pad{padding:0 72px;}
+  .serif{font-family:'Fraunces',serif;}
+  .num{font-variant-numeric:tabular-nums;}
+  .rule{border:0;border-top:1px solid var(--hairline);}
+  .rule-heavy{border:0;border-top:2px solid var(--ink);}
+  .eyebrow{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-60);font-weight:600;}
+  .screen{border-top:4px solid var(--ink);}
 
   /* nav */
-  .nav { display:flex; align-items:center; justify-content:space-between; margin-bottom:26px; }
-  .back { font-size:13.5px; color:var(--text-muted); font-weight:500; }
-  .back:hover { color:var(--text-secondary); }
-  .monthnav { display:flex; align-items:center; gap:14px; font-size:14px; }
-  .monthnav .arw { width:28px; height:28px; border-radius:8px; display:grid; place-items:center; background:var(--bg-surface); border:1px solid var(--border); color:var(--text-secondary); }
-  .monthnav .arw.off { opacity:.35; }
-  .monthnav .cur { font-family:var(--font-mono); font-weight:600; }
+  .topnav{display:flex;align-items:baseline;justify-content:space-between;padding:22px 72px 18px;}
+  .back{font-size:13px;color:var(--ink-60);text-decoration:none;}
+  .back:hover{color:var(--accent);}
+  .monthnav{display:flex;align-items:center;gap:16px;font-size:13px;}
+  .monthnav a{color:var(--ink);text-decoration:none;font-family:'Fraunces',serif;font-size:18px;}
+  .monthnav .cur{font-family:'Fraunces',serif;font-weight:600;font-variant-numeric:tabular-nums;}
+  .monthnav .off{color:var(--ink-30);}
 
-  /* header */
-  .head { display:flex; align-items:flex-end; justify-content:space-between; gap:24px; flex-wrap:wrap; margin-bottom:14px; }
-  .who { display:flex; align-items:center; gap:16px; }
-  .ava { width:56px; height:56px; border-radius:16px; display:grid; place-items:center; font-size:20px; font-weight:700; color:#fff; background:linear-gradient(135deg,#2dd4bf,#1c9e8f); box-shadow:0 8px 22px rgba(45,212,191,.28); }
-  .who h1 { font-size:26px; font-weight:700; letter-spacing:-.02em; }
-  .who .email { color:var(--text-muted); font-size:13.5px; font-family:var(--font-mono); }
-  .score { display:flex; align-items:center; gap:18px; }
-  .score .big { font-family:var(--font-mono); font-size:56px; font-weight:600; line-height:.9; letter-spacing:-.03em; }
-  .score .big .u { font-size:20px; color:var(--text-muted); }
-  .score .meta { display:flex; flex-direction:column; gap:7px; align-items:flex-start; }
-  .tier { font-size:11px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; padding:4px 11px; border-radius:999px; color:var(--purple); border:1px solid rgba(109,111,242,.45); background:rgba(109,111,242,.09); }
-  .dl { font-family:var(--font-mono); font-size:13px; color:var(--good); }
-  .archetype { font-size:14.5px; color:var(--text-secondary); font-style:italic; margin-bottom:26px; }
-  .archetype b { color:var(--text-primary); font-style:normal; font-weight:600; }
+  /* header drop-stat */
+  .head{display:grid;grid-template-columns:1.5fr 1fr;gap:0;padding:24px 72px 20px;}
+  .who .logo{font-family:'Fraunces',serif;font-weight:600;font-size:15px;color:var(--ink-60);}
+  .who h1{font-family:'Fraunces',serif;font-weight:600;font-size:52px;line-height:1;letter-spacing:-0.02em;margin:6px 0 6px;font-variation-settings:'opsz' 110;}
+  .who .email{font-size:13px;color:var(--ink-60);font-variant-numeric:tabular-nums;}
+  .who .arch{margin-top:16px;font-family:'Fraunces',serif;font-style:italic;font-size:17px;color:var(--ink);max-width:34ch;}
+  .who .arch b{color:var(--accent);font-style:normal;font-weight:600;}
+  .aq-drop{border-left:1px solid var(--hairline);padding-left:44px;display:flex;align-items:flex-start;gap:16px;}
+  .aq-drop .big{font-family:'Fraunces',serif;font-weight:600;font-size:120px;line-height:.9;letter-spacing:-0.04em;font-variant-numeric:tabular-nums;font-variation-settings:'opsz' 144;}
+  .aq-drop .aside{padding-top:16px;}
+  .aq-drop .of{font-family:'Fraunces',serif;font-style:italic;font-size:17px;color:var(--ink-60);}
+  .aq-drop .tier{margin-top:10px;font-family:'Fraunces',serif;font-weight:600;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink);display:flex;align-items:center;gap:7px;}
+  .aq-drop .tier::before{content:'';width:7px;height:7px;border-radius:50%;background:currentColor;}
+  .aq-drop .annot{margin-top:8px;font-family:'Fraunces',serif;font-style:italic;font-size:15px;color:var(--gain);border-bottom:1px solid var(--gain);padding-bottom:2px;display:inline-block;}
 
-  .sec { margin-bottom:22px; }
-  .sec > h2 { font-size:11.5px; text-transform:uppercase; letter-spacing:.16em; color:var(--text-muted); font-weight:600; margin-bottom:13px; }
-  .card { background:var(--bg-surface); border:1px solid var(--border); border-radius:16px; }
+  /* section */
+  .sec{padding:8px 72px;}
+  .sec-title{display:flex;align-items:baseline;justify-content:space-between;margin:26px 0 14px;}
+  .sec-title h2{font-family:'Fraunces',serif;font-weight:600;font-size:22px;font-variation-settings:'opsz' 60;}
+  .sec-title .note{font-size:12px;color:var(--ink-60);}
 
-  /* level bars */
-  .levels { padding:22px 24px; display:flex; align-items:flex-end; gap:14px; height:132px; }
-  .lvcol { flex:1; display:flex; flex-direction:column; align-items:center; gap:8px; justify-content:flex-end; height:100%; }
-  .lvval { font-family:var(--font-mono); font-size:13px; font-weight:600; }
-  .lvbar { width:100%; max-width:64px; border-radius:7px 7px 3px 3px; }
-  .lvlab { font-family:var(--font-mono); font-size:11px; color:var(--text-muted); }
+  /* level over time — ruled bars */
+  .levels{display:grid;grid-template-columns:repeat(3,140px);gap:56px;align-items:end;height:150px;border-bottom:2px solid var(--ink);padding-bottom:0;}
+  .lvcol{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;}
+  .lvval{font-family:'Fraunces',serif;font-weight:600;font-size:18px;margin-bottom:8px;font-variant-numeric:tabular-nums;}
+  .lvbar{width:100%;}
+  .lv-old{background:var(--parch);}
+  .lv-cur{background:var(--ink);}
+  .lvlabels{display:grid;grid-template-columns:repeat(3,140px);gap:56px;padding-top:10px;}
+  .lvlabels div{text-align:center;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-60);font-weight:600;}
 
-  /* pillars */
-  .grid4 { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
-  .pillar { padding:18px; }
-  .pillar .top { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:11px; }
-  .pillar .pn { font-size:14px; font-weight:600; }
-  .pillar .ps { font-family:var(--font-mono); font-size:13px; } .pillar .ps .u { color:var(--text-muted); }
-  .track { height:6px; border-radius:999px; background:var(--bg-elev); overflow:hidden; }
-  .fill { height:6px; border-radius:999px; background:var(--accent); }
-  .axes { margin-top:14px; display:flex; flex-direction:column; gap:7px; }
-  .axis { display:flex; justify-content:space-between; font-size:12px; color:var(--text-muted); }
-  .axis .av { font-family:var(--font-mono); color:var(--text-secondary); }
+  /* pillars — 4 ruled columns */
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);}
+  .pillar{padding:0 26px;border-right:1px solid var(--hairline);}
+  .pillar:first-child{padding-left:0;} .pillar:last-child{border-right:0;padding-right:0;}
+  .pillar .ptop{display:flex;align-items:baseline;justify-content:space-between;border-top:2px solid var(--ink);padding-top:12px;}
+  .pillar .pn{font-family:'Fraunces',serif;font-weight:600;font-size:16px;}
+  .pillar .ps{font-family:'Fraunces',serif;font-weight:600;font-size:18px;font-variant-numeric:tabular-nums;}
+  .pillar .ps small{font-size:12px;color:var(--ink-60);font-weight:500;}
+  .track{height:4px;background:var(--paper-2);margin-top:12px;}
+  .fill{height:4px;background:var(--accent);}
+  .axes{margin-top:14px;}
+  .axis{display:flex;justify-content:space-between;font-size:12.5px;color:var(--ink-60);padding:6px 0;border-bottom:1px solid var(--hairline);}
+  .axis:last-child{border-bottom:0;}
+  .axis .av{font-variant-numeric:tabular-nums;color:var(--ink);}
 
-  /* scorecard */
-  .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
-  .score-c { padding:20px; }
-  .score-c .k { font-size:11px; text-transform:uppercase; letter-spacing:.14em; color:var(--text-muted); font-weight:600; margin-bottom:10px; }
-  .score-c .v { font-family:var(--font-mono); font-size:30px; font-weight:600; } .score-c .v .u { font-size:15px; color:var(--text-muted); }
-  .score-c .g { font-size:12.5px; color:var(--text-muted); margin:7px 0 12px; min-height:32px; }
+  /* scorecard — 3 ruled columns */
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);}
+  .scard{padding:0 32px;border-right:1px solid var(--hairline);}
+  .scard:first-child{padding-left:0;} .scard:last-child{border-right:0;padding-right:0;}
+  .scard .stop{border-top:2px solid var(--ink);padding-top:12px;}
+  .scard .val{font-family:'Fraunces',serif;font-weight:600;font-size:38px;line-height:1;font-variant-numeric:tabular-nums;}
+  .scard .val small{font-size:17px;color:var(--ink-60);font-weight:500;}
+  .scard .gloss{font-size:12.5px;color:var(--ink-60);margin:8px 0 14px;min-height:34px;}
 
   /* explore grid */
-  .grid-explore { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
-  .metric { background:var(--bg-surface); border:1px solid var(--border); border-radius:14px; padding:15px 16px; }
-  .metric .ml { font-size:10.5px; text-transform:uppercase; letter-spacing:.12em; color:var(--text-muted); font-weight:600; margin-bottom:7px; }
-  .metric .mv { font-family:var(--font-mono); font-size:20px; font-weight:600; } .metric .mv .u { font-size:12px; color:var(--text-muted); }
+  .grid-explore{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--hairline);border-left:1px solid var(--hairline);}
+  .metric{padding:16px 18px;border-right:1px solid var(--hairline);border-bottom:1px solid var(--hairline);}
+  .metric .ml{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-60);font-weight:600;margin-bottom:8px;}
+  .metric .mv{font-family:'Fraunces',serif;font-weight:600;font-size:26px;font-variant-numeric:tabular-nums;}
+  .metric .mv small{font-size:13px;color:var(--ink-60);font-weight:500;}
 
-  /* usage + mix */
-  .usage { padding:22px 24px; display:flex; flex-direction:column; gap:20px; }
-  .u3 { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; text-align:center; }
-  .u3 .ul { font-size:11px; text-transform:uppercase; letter-spacing:.12em; color:var(--text-muted); font-weight:600; }
-  .u3 .uv { font-family:var(--font-mono); font-size:26px; font-weight:600; margin-top:5px; }
-  .mixbar { display:flex; height:12px; border-radius:999px; overflow:hidden; background:var(--bg-elev); margin-bottom:11px; }
-  .mixlegend { display:flex; flex-wrap:wrap; gap:16px; font-size:12.5px; color:var(--text-secondary); }
-  .mixlegend span { display:inline-flex; align-items:center; gap:7px; } .mixlegend i { width:9px; height:9px; border-radius:3px; }
+  /* usage */
+  .usage{display:grid;grid-template-columns:1fr 1fr;gap:56px;}
+  .u3{display:grid;grid-template-columns:repeat(3,1fr);border-top:2px solid var(--ink);}
+  .u3 .ucell{padding:14px 0;}
+  .u3 .ul{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-60);font-weight:600;}
+  .u3 .uv{font-family:'Fraunces',serif;font-weight:600;font-size:32px;font-variant-numeric:tabular-nums;margin-top:6px;}
+  .mix .ul{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-60);font-weight:600;border-top:2px solid var(--ink);padding-top:12px;}
+  .mixbar{display:flex;height:14px;margin:12px 0 14px;}
+  .mixbar span + span{border-left:2px solid var(--paper);}
+  .mixleg{font-size:13px;}
+  .mixleg .li{display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--hairline);}
+  .mixleg .li:last-child{border-bottom:0;}
+  .mixleg .k{width:13px;height:13px;flex:none;}
+  .mixleg .sh{margin-left:auto;color:var(--ink-60);font-variant-numeric:tabular-nums;}
 
   /* coach */
-  .coach { padding:20px 22px; border:1px solid rgba(109,111,242,.4); background:linear-gradient(180deg, rgba(109,111,242,.06), rgba(109,111,242,.01)); }
-  .coach .ch { font-size:11px; text-transform:uppercase; letter-spacing:.14em; color:var(--purple); font-weight:700; margin-bottom:9px; display:flex; align-items:center; gap:7px; }
-  .coach p { font-size:13.5px; color:var(--text-secondary); line-height:1.6; }
-  .coach .badge { font-size:10px; font-weight:600; color:var(--text-muted); border:1px solid var(--border-strong); border-radius:999px; padding:2px 8px; letter-spacing:.06em; }
+  .coach{border-top:2px solid var(--accent);padding:16px 0 4px;}
+  .coach .ch{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+  .coach .ch .lbl{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);font-weight:600;}
+  .coach .ch .badge{font-size:10.5px;color:var(--ink-60);border:1px solid var(--hairline);padding:2px 8px;letter-spacing:.06em;}
+  .coach p{font-size:14.5px;color:var(--ink);line-height:1.65;max-width:70ch;font-family:'Fraunces',serif;}
+  .coach p b{color:var(--accent);font-weight:600;}
+
+  .colophon{padding:18px 72px 40px;border-top:1px solid var(--hairline);display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-60);letter-spacing:.04em;margin-top:26px;}
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="sheet"><div class="screen">
 
-  <div class="nav">
-    <a class="back">← Team</a>
+  <div class="topnav">
+    <a class="back" href="#">← The people</a>
     <div class="monthnav">
-      <span class="arw">‹</span>
-      <span class="cur">2026&#8209;06</span>
-      <span class="arw off">›</span>
+      <a href="#">‹</a>
+      <span class="cur">2026-06</span>
+      <span class="off">›</span>
     </div>
   </div>
+  <div class="pad"><hr class="rule-heavy"></div>
 
+  <!-- HEADER DROP-STAT -->
   <div class="head">
     <div class="who">
-      <span class="ava">GH</span>
-      <div>
-        <h1>Grace Hopper</h1>
-        <div class="email">grace@example.com</div>
-      </div>
+      <div class="logo">gnomon · the AQ report</div>
+      <h1>Grace Hopper</h1>
+      <div class="email">grace@example.com</div>
+      <div class="arch"><b>Blueprint, then bulldozer</b> — “Plan wide, then grind narrow.”</div>
     </div>
-    <div class="score">
-      <div class="big">81<span class="u">/100</span></div>
-      <div class="meta">
-        <span class="tier">Advanced</span>
-        <span class="dl">↗ +7 pts vs May</span>
-      </div>
-    </div>
-  </div>
-
-  <p class="archetype"><b>Blueprint, then bulldozer</b> — “Plan wide, then grind narrow.”</p>
-
-  <div class="sec">
-    <h2>Level over time</h2>
-    <div class="card levels">
-      <div class="lvcol"><span class="lvval">70</span><div class="lvbar" style="height:52%;background:var(--purple);opacity:.5"></div><span class="lvlab">26&#8209;04</span></div>
-      <div class="lvcol"><span class="lvval">74</span><div class="lvbar" style="height:60%;background:var(--purple);opacity:.5"></div><span class="lvlab">26&#8209;05</span></div>
-      <div class="lvcol"><span class="lvval">81</span><div class="lvbar" style="height:74%;background:var(--accent)"></div><span class="lvlab">26&#8209;06</span></div>
+    <div class="aq-drop">
+      <span class="big num">81</span>
+      <span class="aside">
+        <div class="of">/ 100</div>
+        <div class="tier">Advanced</div>
+        <div class="annot">↗ +7 pts vs May</div>
+      </span>
     </div>
   </div>
 
+  <!-- LEVEL OVER TIME -->
   <div class="sec">
-    <h2>How you operate agents</h2>
+    <div class="sec-title"><h2>Level over time</h2><span class="note num">3 windows</span></div>
+    <div class="levels">
+      <div class="lvcol"><span class="lvval">70</span><div class="lvbar lv-old" style="height:56%"></div></div>
+      <div class="lvcol"><span class="lvval">74</span><div class="lvbar lv-old" style="height:64%"></div></div>
+      <div class="lvcol"><span class="lvval">81</span><div class="lvbar lv-cur" style="height:78%"></div></div>
+    </div>
+    <div class="lvlabels"><div>2026-04</div><div>2026-05</div><div>2026-06</div></div>
+  </div>
+
+  <!-- PILLARS -->
+  <div class="sec">
+    <div class="sec-title"><h2>How you operate agents</h2><span class="note">four pillars</span></div>
     <div class="grid4">
-      <div class="card pillar">
-        <div class="top"><span class="pn">Breadth</span><span class="ps">24<span class="u">/30</span></span></div>
+      <div class="pillar">
+        <div class="ptop"><span class="pn">Breadth</span><span class="ps">24<small>/30</small></span></div>
         <div class="track"><div class="fill" style="width:80%"></div></div>
         <div class="axes">
-          <div class="axis"><span>Tool range</span><span class="av">8.2/10</span></div>
-          <div class="axis"><span>Skill use</span><span class="av">7.9/10</span></div>
-          <div class="axis"><span>MCP reach</span><span class="av">7.6/10</span></div>
+          <div class="axis"><span>Tool range</span><span class="av">8.2</span></div>
+          <div class="axis"><span>Skill use</span><span class="av">7.9</span></div>
+          <div class="axis"><span>MCP reach</span><span class="av">7.6</span></div>
         </div>
       </div>
-      <div class="card pillar">
-        <div class="top"><span class="pn">Craft</span><span class="ps">29<span class="u">/35</span></span></div>
+      <div class="pillar">
+        <div class="ptop"><span class="pn">Craft</span><span class="ps">29<small>/35</small></span></div>
         <div class="track"><div class="fill" style="width:83%"></div></div>
         <div class="axes">
-          <div class="axis"><span>Verification</span><span class="av">8.6/10</span></div>
-          <div class="axis"><span>Error recovery</span><span class="av">9.1/10</span></div>
-          <div class="axis"><span>Iteration</span><span class="av">7.4/10</span></div>
+          <div class="axis"><span>Verification</span><span class="av">8.6</span></div>
+          <div class="axis"><span>Error recovery</span><span class="av">9.1</span></div>
+          <div class="axis"><span>Iteration</span><span class="av">7.4</span></div>
         </div>
       </div>
-      <div class="card pillar">
-        <div class="top"><span class="pn">Efficiency</span><span class="ps">16<span class="u">/20</span></span></div>
+      <div class="pillar">
+        <div class="ptop"><span class="pn">Efficiency</span><span class="ps">16<small>/20</small></span></div>
         <div class="track"><div class="fill" style="width:80%"></div></div>
         <div class="axes">
-          <div class="axis"><span>Actions/prompt</span><span class="av">7.8/10</span></div>
-          <div class="axis"><span>Fanout</span><span class="av">8.3/10</span></div>
+          <div class="axis"><span>Actions/prompt</span><span class="av">7.8</span></div>
+          <div class="axis"><span>Fanout</span><span class="av">8.3</span></div>
         </div>
       </div>
-      <div class="card pillar">
-        <div class="top"><span class="pn">Savvy</span><span class="ps">12<span class="u">/15</span></span></div>
+      <div class="pillar">
+        <div class="ptop"><span class="pn">Savvy</span><span class="ps">12<small>/15</small></span></div>
         <div class="track"><div class="fill" style="width:80%"></div></div>
         <div class="axes">
-          <div class="axis"><span>Planning</span><span class="av">8.0/10</span></div>
-          <div class="axis"><span>Compounding</span><span class="av">7.7/10</span></div>
+          <div class="axis"><span>Planning</span><span class="av">8.0</span></div>
+          <div class="axis"><span>Compounding</span><span class="av">7.7</span></div>
         </div>
       </div>
     </div>
   </div>
 
+  <!-- SCORECARD -->
   <div class="sec">
-    <h2>Scorecard</h2>
+    <div class="sec-title"><h2>Scorecard</h2></div>
     <div class="grid3">
-      <div class="card score-c">
-        <div class="k">Execution</div>
-        <div class="v">8.5<span class="u">/10</span></div>
-        <div class="g">How much you ship, how fast</div>
-        <svg width="100%" height="40" viewBox="0 0 180 40" preserveAspectRatio="none"><polyline points="0,30 60,26 120,20 180,14" fill="none" stroke="#ee1a64" stroke-width="2"/></svg>
+      <div class="scard">
+        <div class="stop"><div class="eyebrow">Execution</div>
+          <div class="val" style="margin-top:8px">8.5<small>/10</small></div>
+          <div class="gloss">How much you ship, how fast</div>
+          <svg width="100%" height="34" viewBox="0 0 200 34" preserveAspectRatio="none"><polyline points="0,26 66,22 133,17 200,11" fill="none" stroke="#B4451F" stroke-width="1.6"/></svg>
+        </div>
       </div>
-      <div class="card score-c">
-        <div class="k">Planning</div>
-        <div class="v">9.2<span class="u">/10</span></div>
-        <div class="g">Think before you build</div>
-        <svg width="100%" height="40" viewBox="0 0 180 40" preserveAspectRatio="none"><polyline points="0,24 60,18 120,16 180,8" fill="none" stroke="#6d6ff2" stroke-width="2"/></svg>
+      <div class="scard">
+        <div class="stop"><div class="eyebrow">Planning</div>
+          <div class="val" style="margin-top:8px">9.2<small>/10</small></div>
+          <div class="gloss">Think before you build</div>
+          <svg width="100%" height="34" viewBox="0 0 200 34" preserveAspectRatio="none"><polyline points="0,20 66,15 133,13 200,6" fill="none" stroke="#B4451F" stroke-width="1.6"/></svg>
+        </div>
       </div>
-      <div class="card score-c">
-        <div class="k">Engineering</div>
-        <div class="v">7.9<span class="u">/10</span></div>
-        <div class="g">How clean your work is</div>
-        <svg width="100%" height="40" viewBox="0 0 180 40" preserveAspectRatio="none"><polyline points="0,20 60,22 120,17 180,16" fill="none" stroke="#2dd4bf" stroke-width="2"/></svg>
+      <div class="scard">
+        <div class="stop"><div class="eyebrow">Engineering</div>
+          <div class="val" style="margin-top:8px">7.9<small>/10</small></div>
+          <div class="gloss">How clean your work is</div>
+          <svg width="100%" height="34" viewBox="0 0 200 34" preserveAspectRatio="none"><polyline points="0,17 66,19 133,14 200,13" fill="none" stroke="#6E655A" stroke-width="1.6"/></svg>
+        </div>
       </div>
     </div>
   </div>
 
+  <!-- EXPLORE -->
   <div class="sec">
-    <h2>Explore</h2>
+    <div class="sec-title"><h2>Explore</h2></div>
     <div class="grid-explore">
-      <div class="metric"><div class="ml">Planning ratio</div><div class="mv">82<span class="u">%</span></div></div>
-      <div class="metric"><div class="ml">Error recovery</div><div class="mv">98<span class="u">%</span></div></div>
-      <div class="metric"><div class="ml">Error rate</div><div class="mv">2.6<span class="u">/100</span></div></div>
-      <div class="metric"><div class="ml">Iter depth</div><div class="mv">2.3<span class="u">×</span></div></div>
-      <div class="metric"><div class="ml">Git churn</div><div class="mv">8.2<span class="u">M lines</span></div></div>
-      <div class="metric"><div class="ml">Fanout median</div><div class="mv">3.5<span class="u"> tasks</span></div></div>
+      <div class="metric"><div class="ml">Planning ratio</div><div class="mv">82<small>%</small></div></div>
+      <div class="metric"><div class="ml">Error recovery</div><div class="mv">98<small>%</small></div></div>
+      <div class="metric"><div class="ml">Error rate</div><div class="mv">2.6<small>/100</small></div></div>
+      <div class="metric"><div class="ml">Iter depth</div><div class="mv">2.3<small>×</small></div></div>
+      <div class="metric"><div class="ml">Git churn</div><div class="mv">8.2<small>M lines</small></div></div>
+      <div class="metric"><div class="ml">Fanout median</div><div class="mv">3.5<small> tasks</small></div></div>
       <div class="metric"><div class="ml">Compounding writes</div><div class="mv">91</div></div>
       <div class="metric"><div class="ml">Active days</div><div class="mv">14</div></div>
     </div>
   </div>
 
+  <!-- USAGE -->
   <div class="sec">
-    <h2>Usage</h2>
-    <div class="card usage">
+    <div class="sec-title"><h2>Usage</h2></div>
+    <div class="usage">
       <div class="u3">
-        <div><div class="ul">Sessions</div><div class="uv">157</div></div>
-        <div><div class="ul">Prompts</div><div class="uv">1,077</div></div>
-        <div><div class="ul">Actions / prompt</div><div class="uv">14</div></div>
+        <div class="ucell"><div class="ul">Sessions</div><div class="uv">157</div></div>
+        <div class="ucell"><div class="ul">Prompts</div><div class="uv num">1,077</div></div>
+        <div class="ucell"><div class="ul">Actions / prompt</div><div class="uv">14</div></div>
       </div>
-      <div>
-        <div class="ul" style="font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--text-muted);font-weight:600;margin-bottom:9px">Model mix</div>
-        <div class="mixbar"><div style="width:80%;background:#ee1a64"></div><div style="width:14%;background:#6d6ff2"></div><div style="width:6%;background:#2dd4bf"></div></div>
-        <div class="mixlegend">
-          <span><i style="background:#ee1a64"></i>Opus 4.8 · 80%</span>
-          <span><i style="background:#6d6ff2"></i>Fable 5 · 14%</span>
-          <span><i style="background:#2dd4bf"></i>Haiku 4.5 · 6%</span>
+      <div class="mix">
+        <div class="ul">Model mix</div>
+        <div class="mixbar">
+          <span style="width:80%;background:#262016"></span>
+          <span style="width:14%;background:#B4451F"></span>
+          <span style="width:6%;background:#C9B99A"></span>
+        </div>
+        <div class="mixleg">
+          <div class="li"><span class="k" style="background:#262016"></span>Opus 4.8<span class="sh">80%</span></div>
+          <div class="li"><span class="k" style="background:#B4451F"></span>Fable 5<span class="sh">14%</span></div>
+          <div class="li"><span class="k" style="background:#C9B99A"></span>Haiku 4.5<span class="sh">6%</span></div>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="sec">
-    <div class="card coach">
-      <div class="ch">✦ AI coach <span class="badge">optional · LLM_API_KEY</span></div>
-      <p>Your strongest area is <b style="color:var(--text-primary)">Craft</b> — error recovery at 9.1 shows you rarely leave a broken state behind. The highest-leverage move is iteration depth: you re-touch a handful of files 15×+, so tightening your plan-before-edit loop would convert raw churn into shipped work faster.</p>
+  <!-- COACH -->
+  <div class="sec" style="margin-top:12px">
+    <div class="coach">
+      <div class="ch"><span class="lbl">AI coach</span><span class="badge">optional · LLM_API_KEY</span></div>
+      <p>Your strongest area is <b>Craft</b> — error recovery at 9.1 shows you rarely leave a broken state behind. The highest-leverage move is iteration depth: you re-touch a handful of files 15×+, so tightening your plan-before-edit loop would convert raw churn into shipped work faster.</p>
     </div>
   </div>
 
-</div>
+  <div class="colophon">
+    <span>gnomon · the AQ report · self-hosted</span>
+    <span class="num">Window 2026-06 · Grace Hopper</span>
+  </div>
+
+</div></div>
 </body>
 </html>

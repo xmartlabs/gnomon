@@ -1,8 +1,12 @@
-# gnomon dashboard — design system (huashu-design)
+# gnomon dashboard — design system · "The Ledger" (huashu-design)
 
-Source of truth for the UI. The three screens were designed as hi-fi HTML mockups
-(`docs/design/mockups/*.html`, verified via Playwright screenshots `*.png`). The
-Next.js implementation (Tasks 6/8/9) must match these — do not hand-invent visuals.
+Chosen direction (from `/design-directions`, proposal A). An **editorial, warm, print-report**
+aesthetic: cream stock, espresso ink, one terracotta accent, Fraunces display + Archivo body,
+hairline rules instead of boxes. An AQ report *is* a periodical — so it's typeset like one.
+
+Source of truth for the UI. The three screens are Playwright-verified hi-fi mockups in
+`docs/design/mockups/*.html` (`*.png`). The Next.js implementation (Tasks 6/8/9) must match them —
+do not hand-invent visuals. The three exploration directions are kept in `docs/design/directions/`.
 
 ## Screens
 
@@ -16,61 +20,84 @@ Next.js implementation (Tasks 6/8/9) must match these — do not hand-invent vis
 
 ```css
 :root {
-  --bg-base:      #14181f;   /* app background (+ a single faint radial glow, not a wash) */
-  --bg-surface:   #1b212b;   /* cards, table, form */
-  --bg-elev:      #232b37;   /* inputs, tracks, toggle, inner wells */
-  --text-primary: #f2f4f7;
-  --text-secondary:#c2c8d2;
-  --text-muted:   #7d8698;
-  --border:       rgba(255,255,255,.07);
-  --border-strong:rgba(255,255,255,.12);
-  --accent:       #ee1a64;   /* pink — primary, Opus, Elite, deltas up-context */
-  --purple:       #6d6ff2;   /* secondary — Advanced, Fable */
-  --teal:         #2dd4bf;   /* tertiary series — Haiku */
-  --amber:        #f5b642;   /* quaternary series / cost accent */
-  --good:         #34d399;   /* positive delta, coverage ok */
+  --paper:    #F6F1E6;   /* ground — cream stock */
+  --paper-2:  #EFE8D8;   /* recessed panel / track wells */
+  --ink:      #262016;   /* espresso ink — text, primary button, dark bars */
+  --ink-60:   #6E655A;   /* secondary text */
+  --ink-30:   #B4AA9A;   /* tertiary text / strong rule */
+  --hairline: #D8CFBC;   /* hairline rules (the primary structural device) */
+  --accent:   #B4451F;   /* terracotta — THE one accent (links, gains-context, active) */
+  --gain:     #4A6A45;   /* muted moss — positive deltas */
+  --loss:     #9A3B22;   /* burnt — negative deltas (kept in the accent family) */
+  --parch:    #C9B99A;   /* parchment — 3rd chart series / older level bars */
 }
+/* page gutter outside the sheet */
+html { background: #E9E2D2; }
+body { background: var(--paper); color: var(--ink); }
 ```
 
-Series color order for charts / model mix / stat accent bars: **accent → purple → teal → amber → slate**.
+Chart / model-mix series order: **ink (Opus) → terracotta (Fable) → parchment (Haiku)**. Segments
+separated by a 2px `--paper` gap, not borders.
 
 ## Typography
 
-Two Google fonts, loaded via `next/font/google` (self-hosted at build, no runtime CDN):
+Two Google fonts via `next/font/google` (self-hosted at build, no runtime CDN):
 
-- **Space Grotesk** — all UI text, headings, labels. Weights 400/500/600/700.
-- **IBM Plex Mono** — every number: AQ, tokens, cost, deltas, axis scores, month labels. Weights 400/500/600.
+- **Fraunces** — display: headings, all big numerals (AQ, stat values, table AQ cell), the logo,
+  tier badges, pillar names, italic archetype/annotation lines. Use optical-size axis (`opsz`)
+  wide open at large sizes; italic in terracotta for accents. Weights 300–700, `ital` axis.
+- **Archivo** — body: paragraphs, labels, table cells, buttons, inputs. Weights 400/500/600.
 
 ```ts
 // app/layout.tsx
-import { Space_Grotesk, IBM_Plex_Mono } from "next/font/google";
-const sans = Space_Grotesk({ subsets: ["latin"], variable: "--font-ui", weight: ["400","500","600","700"] });
-const mono = IBM_Plex_Mono({ subsets: ["latin"], variable: "--font-mono", weight: ["400","500","600"] });
-// <html className={`${sans.variable} ${mono.variable}`}>
+import { Fraunces, Archivo } from "next/font/google";
+const display = Fraunces({ subsets: ["latin"], variable: "--font-display", axes: ["opsz"], weight: ["300","400","500","600","700"], style: ["normal","italic"] });
+const body = Archivo({ subsets: ["latin"], variable: "--font-body", weight: ["400","500","600"] });
+// <html className={`${display.variable} ${body.variable}`}>
+// body { font-family: var(--font-body) }  .serif { font-family: var(--font-display) }
 ```
 
-Map to `--font-ui` / `--font-mono` and set `body { font-family: var(--font-ui) }`. Anything numeric uses `font-family: var(--font-mono)`.
+All numerals use `font-variant-numeric: tabular-nums`.
 
-## Component patterns (shared)
+## Component patterns (the grammar)
 
-- **Cards**: `--bg-surface`, `1px solid --border`, `border-radius: 16px`. Profile header cards 22px.
-- **Section heading**: 11–12px, uppercase, `letter-spacing:.16em`, `--text-muted`, weight 600.
-- **Stat card**: uppercase label + big mono value (`--font-mono`, ~34px) with muted `/unit`; left 3px accent bar cycling the series colors; one-line footer with delta.
-- **Tier badge**: pill, 1px border, tinted bg. Elite→accent, Advanced→purple, Proficient→slate.
-- **Table**: uppercase mono-spaced header row (sortable headers are `<button>`, active shows `↓`/`↑` in accent); numeric columns right-aligned + mono; avatar = rounded 9px square with initials on a series-color gradient; row hover `rgba(255,255,255,.018)`.
-- **Bars** (usage-over-time, level-over-time): flat series colors, subtle shadow, rounded top; most-recent level bar in `--accent`, older bars in `--purple` at .5 opacity.
-- **Sparkline / trend**: 2px inline SVG polyline in the row's series color, end dot.
-- **Toggle** (Tokens/Cost): pill segmented control, active segment `--accent` on white text.
-- **Coach card**: `--purple` border, faint purple gradient fill, `✦ AI COACH` eyebrow + `optional · LLM_API_KEY` badge. Hidden entirely when the coach text is null.
+- **No boxes — rules.** Structure comes from hairlines (`1px --hairline`) and heavy rules
+  (`2px --ink`), not from bordered/rounded cards. Sections open with a 2px ink rule or an eyebrow.
+- **Eyebrow label**: 11px, `letter-spacing:.18em`, uppercase, `--ink-60`, weight 600.
+- **Section heading**: Fraunces 600, ~22–26px, `opsz` ~60.
+- **Masthead**: Fraunces logo `gnomon` with a terracotta full-stop (`gnomon.`), small-caps
+  "Team Dashboard" sub, right-aligned meta. Page opens with a 4px top ink rule.
+- **Signature (the 120%)**: the drop-stat — a giant Fraunces numeral (team avg AQ ~148px on
+  overview, person AQ ~120px on profile) with an inked italic annotation (`↗ +4 vs last month`).
+  Everything else stays calm hairlines at 80%.
+- **Stat column**: eyebrow + Fraunces value with muted `/unit` small, ruled left divider.
+- **Tier badge**: NO pill. Fraunces small-caps + a leading dot in the tier's color. Elite→terracotta,
+  Advanced→ink, Proficient→ink-60.
+- **Table**: heavy ink header rule, uppercase Archivo column labels, hairline row dividers; Name in
+  Fraunces, AQ cell in Fraunces ~22px, top-pillar in Fraunces italic, numeric columns right-aligned
+  tabular. Sortable headers are `<button>` (active shows a small caret in accent).
+- **Bars** (usage-over-time, level-over-time): flat fills, 2px ink baseline, dashed hairline
+  gridlines with tabular labels; most-recent level bar in `--ink`, older bars in `--parch`.
+  Fraunces total label above each column.
+- **Sparkline / trend**: 1.8px SVG polyline — terracotta for up, ink-60 for down, ink-30 flat.
+- **Toggle** (Tokens/Cost): 1px ink outline segmented; active segment ink fill, paper text.
+- **Buttons**: primary = ink fill / paper text, 2px radius; secondary = ink outline; ghost = terracotta
+  text with a terracotta underline (link-like).
+- **Inputs**: no box — a single `--ink-30` bottom rule that turns terracotta on focus; uppercase
+  eyebrow label above.
+- **Coach card**: opens with a 2px terracotta rule, `AI COACH` eyebrow + `optional · LLM_API_KEY`
+  badge, body set in Fraunces. Hidden entirely when the coach text is null.
+- **Colophon**: a footer line ("gnomon · the AQ report · self-hosted" / window meta) in `--ink-60`.
 
 ## Anti-slop guardrails (applied)
 
-- No emoji icons (the single `✦` coach glyph is a typographic mark, not an icon set).
-- No gradient wash — one faint radial glow per screen, positioned, not full-bleed.
-- Numbers always mono; never invent colors outside the token set.
-- Real fake data throughout (Ada/Alan/Grace/Katherine — same team as `scripts/seed.ts`), never lorem or fabricated stats-as-decoration.
+- No emoji icons; the `§` privacy mark and `↗` annotation tick are typographic glyphs.
+- No gradients at all — the warmth is the paper color, not a wash.
+- No rounded-card-with-left-border cliché — hairline rules carry structure.
+- Numerals always Fraunces + tabular; colors never invented outside the token set.
+- Real fake data throughout (Ada / Alan / Grace / Katherine — same team as `scripts/seed.ts`).
 
 ## Empty state (design spec §Error handling)
 
-No uploads yet → overview shows an onboarding card (same card styling) with the exact CLI command:
-`xl-ai-insights --mirdash-base=http://localhost:3000`, mono, copyable.
+No uploads yet → overview shows a ruled onboarding block (not a boxed card) with the exact CLI
+command `xl-ai-insights --mirdash-base=http://localhost:3000` set in a mono/Archivo run, copyable.
