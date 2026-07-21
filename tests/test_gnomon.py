@@ -1419,6 +1419,40 @@ class TestAntigravityDirOverride(unittest.TestCase):
         self.assertEqual(_resolve_source_dir(leaf, "conversations"), leaf)    # leaf -> no double-nest
 
 
+class TestAntigravityUnifiedSummary(unittest.TestCase):
+    def test_reads_unified_trajectory_summaries_key(self):
+        import base64, sqlite3, shutil, tempfile
+        from unittest import mock
+        from gnomon.sources import antigravity as A
+
+        def varint(n):
+            out = bytearray()
+            while n > 0x7f:
+                out.append((n & 0x7f) | 0x80)
+                n >>= 7
+            out.append(n)
+            return bytes(out)
+
+        def field_bytes(field, payload):
+            return varint((field << 3) | 2) + varint(len(payload)) + payload
+
+        root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        db = os.path.join(root, "state.vscdb")
+        uuid = b"8b28368c-3a97-4e69-9b4e-b4bd5bed063b"
+        payload = field_bytes(1, field_bytes(1, uuid))
+        con = sqlite3.connect(db)
+        con.execute("CREATE TABLE ItemTable (key TEXT, value BLOB)")
+        con.execute("INSERT INTO ItemTable VALUES (?, ?)",
+                    ("antigravityUnifiedStateSync.trajectorySummaries",
+                     base64.b64encode(payload).decode()))
+        con.commit()
+        con.close()
+
+        with mock.patch.object(A, "ANTIGRAVITY_DB", db):
+            self.assertEqual(A.antigravity_summary()["conversations"], 1)
+
+
 class TestScoringDoesNotPenalizeMissingCaps(unittest.TestCase):
     """A source must not be scored 0 on a signal its backend cannot emit — the axis/term is
     dropped and the rest renormalized (AQ build_pillar/wsum + gstack _axis_value)."""

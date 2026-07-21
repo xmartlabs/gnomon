@@ -303,7 +303,16 @@ def _antigravity_cli_events(fp):
 # None and the run continues without the IDE. Gated upstream on antigravity_summary() (only runs
 # when the IDE was actually used and its dates fall in the window).
 
-_ANTIGRAVITY_APP = "/Applications/Antigravity.app"
+_ANTIGRAVITY_APP = "/Applications/Antigravity IDE.app"
+_ANTIGRAVITY_APP_FALLBACK = "/Applications/Antigravity.app"
+
+
+def _antigravity_app_path():
+    if os.path.isdir(_ANTIGRAVITY_APP):
+        return _ANTIGRAVITY_APP
+    if os.path.isdir(_ANTIGRAVITY_APP_FALLBACK):
+        return _ANTIGRAVITY_APP_FALLBACK
+    return None
 
 
 def _discover_language_servers():
@@ -443,7 +452,8 @@ def export_antigravity_ide(out_dir, launch=True, wait_secs=20, log=print):
     import json as _json
     import subprocess
     import time as _time
-    if not _os.path.isdir(_ANTIGRAVITY_APP):
+    app_path = _antigravity_app_path()
+    if not app_path:
         log("  Antigravity IDE not installed (skipping IDE)")
         return None
 
@@ -451,7 +461,7 @@ def export_antigravity_ide(out_dir, launch=True, wait_secs=20, log=print):
     if not servers and launch:
         log("  launching Antigravity to read IDE history...")
         try:
-            subprocess.run(["open", "-a", "Antigravity"], timeout=15)
+            subprocess.run(["open", app_path], timeout=15)
         except Exception:
             pass
         deadline = _time.time() + wait_secs
@@ -636,6 +646,67 @@ def _ide_steps_cwd(steps):
 
 # --- IDE summary (volume/time only; full IDE steps are encrypted) -------------------
 
+_ANTIGRAVITY_SUMMARY_KEYS = (
+    "antigravityUnifiedStateSync.trajectorySummaries",
+    "jetskiStateSync.agentManagerInitState",
+)
+
+
+def _antigravity_summary_from_buf(buf):
+    tmin = tmax = None
+
+    def _scan_ts(b, depth=0):
+        nonlocal tmin, tmax
+        if depth > 6:
+            return
+        for _f, w, v in _pb_fields(b):
+            if w == 0 and 1.3e9 < v < 2.2e9:        # plausible unix seconds
+                ts = datetime.fromtimestamp(v).astimezone()
+                tmin = ts if tmin is None or ts < tmin else tmin
+                tmax = ts if tmax is None or ts > tmax else tmax
+            elif w == 2:
+                try:
+                    _scan_ts(v, depth + 1)
+                except Exception:
+                    pass
+
+    convs = 0
+
+    def _has_uuid(fields):
+        return any(g == 1 and gw == 2 and _UUID_RX.match(gv)
+                   for g, gw, gv in fields)
+
+    for f, w, root in _pb_fields(buf):
+        if f != 1 or w != 2:
+            continue
+        try:
+            children = _pb_fields(root)
+        except Exception:
+            continue
+        # Newer Antigravity IDE stores conversation records directly as repeated field 1.
+        if _has_uuid(children):
+            convs += 1
+            _scan_ts(root)
+            continue
+        # Older storage wrapped conversation records one level deeper.
+        for cf, cw, cv in children:
+            if cf != 1 or cw != 2:
+                continue
+            try:
+                inner = _pb_fields(cv)
+            except Exception:
+                continue
+            # a conversation record leads with its uuid as field 1
+            if _has_uuid(inner):
+                convs += 1
+                _scan_ts(cv)
+    if not convs:
+        return None
+    return {"conversations": convs,
+            "first": tmin.isoformat() if tmin else None,
+            "last": tmax.isoformat() if tmax else None}
+
+
 def antigravity_summary():
     """Best-effort read of Antigravity IDE conversation metadata from the unencrypted
     trajectory index in state.vscdb. Returns {"conversations": n, "first": iso,
@@ -646,54 +717,18 @@ def antigravity_summary():
     try:
         import base64
         con = sqlite3.connect(f"file:{ANTIGRAVITY_DB}?mode=ro&immutable=1", uri=True)
-        row = con.execute("SELECT value FROM ItemTable WHERE key="
-                          "'jetskiStateSync.agentManagerInitState'").fetchone()
-        con.close()
-        if not row or not row[0]:
-            return None
-        raw = row[0]
-        buf = base64.b64decode(raw if isinstance(raw, (bytes, bytearray)) else str(raw))
-        tmin = tmax = None
-
-        def _scan_ts(b, depth=0):
-            nonlocal tmin, tmax
-            if depth > 6:
-                return
-            for _f, w, v in _pb_fields(b):
-                if w == 0 and 1.3e9 < v < 2.2e9:        # plausible unix seconds
-                    ts = datetime.fromtimestamp(v).astimezone()
-                    tmin = ts if tmin is None or ts < tmin else tmin
-                    tmax = ts if tmax is None or ts > tmax else tmax
-                elif w == 2:
-                    try:
-                        _scan_ts(v, depth + 1)
-                    except Exception:
-                        pass
-
-        convs = 0
-        for f, w, root in _pb_fields(buf):
-            if f != 1 or w != 2:
-                continue
-            try:
-                children = _pb_fields(root)
-            except Exception:
-                continue
-            for cf, cw, cv in children:
-                if cf != 1 or cw != 2:
+        try:
+            for key in _ANTIGRAVITY_SUMMARY_KEYS:
+                row = con.execute("SELECT value FROM ItemTable WHERE key=?", (key,)).fetchone()
+                if not row or not row[0]:
                     continue
-                try:
-                    inner = _pb_fields(cv)
-                except Exception:
-                    continue
-                # a conversation record leads with its uuid as field 1
-                if any(g == 1 and gw == 2 and _UUID_RX.match(gv)
-                       for g, gw, gv in inner):
-                    convs += 1
-                    _scan_ts(cv)
-        if not convs:
-            return None
-        return {"conversations": convs,
-                "first": tmin.isoformat() if tmin else None,
-                "last": tmax.isoformat() if tmax else None}
+                raw = row[0]
+                buf = base64.b64decode(raw if isinstance(raw, (bytes, bytearray)) else str(raw))
+                summary = _antigravity_summary_from_buf(buf)
+                if summary:
+                    return summary
+        finally:
+            con.close()
+        return None
     except Exception:
         return None

@@ -175,8 +175,8 @@ def main(argv=None, output_dir=None):
     _t_discovery = time.monotonic() - _t0_disc
     if not sources:
         print("\n  No transcripts found in ~/.claude/projects, ~/.codex/sessions, "
-              "~/.gemini/tmp, ~/.pi/agent/sessions, ~/.local/share/opencode/storage, "
-              "or ~/.cursor/projects.")
+              "~/.gemini/tmp, ~/.gemini/antigravity*/..., ~/.pi/agent/sessions, "
+              "~/.local/share/opencode/(opencode.db or storage), or ~/.cursor/projects.")
         print("  Nothing to analyze -- run this where you've actually used a coding agent.")
         return
 
