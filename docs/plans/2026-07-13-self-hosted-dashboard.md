@@ -6,7 +6,7 @@
 
 **Architecture:** Next.js (App Router) serves both the UI and the CLI-facing HTTP contract (`GET /cli-auth`, `POST /api/gnomon/ingest`). SQLite (better-sqlite3) on a mounted `/data` volume stores raw `summary.json` uploads keyed on `(person, monthKey)`; all metrics are derived at read time. Docker image published to ghcr; `docker-compose.yml` at repo root runs it.
 
-**Tech Stack:** Next.js 16 (App Router, TypeScript), better-sqlite3, jose (JWT HS256), Recharts, Tailwind CSS 4, Fraunces + Archivo (`next/font`), Vitest (unit), Playwright (visual e2e), tsx (seed). Node 22. UI = "The Ledger" (huashu-design, editorial/warm).
+**Tech Stack:** Next.js 16 (App Router, TypeScript), better-sqlite3, jose (JWT HS256), Recharts, Tailwind CSS 4, Fraunces + Archivo (`next/font`), Vitest (unit), Playwright (visual e2e), tsx (seed). Node 22, pnpm (via corepack). UI = "The Ledger" (huashu-design, editorial/warm).
 
 **Every task clears the [Per-task gate](#per-task-gate-mandatory--applies-to-every-task-below): tests green → `/simplify` → Codex validation (no BLOCKER/HIGH) → commit.** Task 13 is a final Playwright visual gate over seeded data.
 
@@ -21,7 +21,7 @@ This plan is self-contained; a cleared session can execute it top-to-bottom. Cur
 - **Done so far (committed):** design spec, this plan (validated with Codex, all BLOCKER/HIGH folded in), the "The Ledger" design system + 3 Playwright-verified mockups (`docs/design/mockups/`), and the 3 `/design-directions` explorations (`docs/design/directions/`).
 - **How to execute:** invoke `superpowers:subagent-driven-development` (or `superpowers:executing-plans`) and work Task 1 → Task 13 in order. Each task ends with the **[Per-task gate](#per-task-gate-mandatory--applies-to-every-task-below)** (tests green → `/simplify` → Codex validation with zero BLOCKER/HIGH → commit). Do not advance a task until its gate is clean.
 - **UI:** implement Tasks 6/8/9 to match `docs/design/mockups/*.html` (The Ledger). The JSX in those tasks is structural scaffolding — the mockups + `docs/design/design-system.md` tokens are authoritative for all visuals.
-- **Verify before "done":** never claim a step passes without running it (`npm test`, `npm run build`, `npm run test:e2e`) and pasting the output. Task 13 (seed + Playwright) is the final whole-system visual gate.
+- **Verify before "done":** never claim a step passes without running it (`pnpm test`, `pnpm build`, `ppnpm test:e2e`) and pasting the output. Task 13 (seed + Playwright) is the final whole-system visual gate.
 
 ### ⚠️ Infra gotcha — parallel agents / teammates
 
@@ -46,7 +46,7 @@ The native teammate/subagent spawn broke this session: it exec'd a **stale Claud
 
 No task counts as "done" until it clears this gate. Do NOT start the next task, and do NOT commit, until the gate passes. The gate runs **after** the task's own "verify tests pass" step:
 
-1. **Tests green** — the task's own `npm test` (and `npm run build` where the task specifies it) all pass. Evidence: paste the passing output.
+1. **Tests green** — the task's own `pnpm test` (and `pnpm build` where the task specifies it) all pass. Evidence: paste the passing output.
 2. **Simplify** — run `/simplify` on the task's diff (quality-only: reuse, dedup, dead code, clarity, altitude). Apply what it surfaces. Re-run the task's tests after — they MUST still be green.
 3. **Codex validation** — hand the task's diff + its acceptance criteria (the task's **Interfaces** block) to Codex (`codex:codex-rescue`) with the instruction: *"Validate this diff against these acceptance criteria and the CLI contract. Report BLOCKER/HIGH/MED/LOW findings. Do not rewrite — judge."* 
    - **Pass** = zero BLOCKER and zero HIGH findings.
@@ -116,7 +116,7 @@ From `gnomon/output/summary.py` (`build_summary`) — the upload body shape:
 - Create: `dashboard/tests/smoke.test.ts`
 
 **Interfaces:**
-- Produces: a Next.js app that builds (`npm run build`) and tests (`npm test`), with Tailwind 4, the two "The Ledger" fonts (Fraunces + Archivo via `next/font`), and the design-system CSS variables later tasks use (`--paper`, `--paper-2`, `--ink`, `--ink-60`, `--ink-30`, `--hairline`, `--accent`, `--gain`, `--loss`, `--parch`). See `docs/design/design-system.md`.
+- Produces: a Next.js app that builds (`pnpm build`) and tests (`pnpm test`), with Tailwind 4, the two "The Ledger" fonts (Fraunces + Archivo via `next/font`), and the design-system CSS variables later tasks use (`--paper`, `--paper-2`, `--ink`, `--ink-60`, `--ink-30`, `--hairline`, `--accent`, `--gain`, `--loss`, `--parch`). See `docs/design/design-system.md`.
 
 - [ ] **Step 1: Create package.json**
 
@@ -125,6 +125,7 @@ From `gnomon/output/summary.py` (`build_summary`) — the upload body shape:
   "name": "gnomon-dashboard",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.33.0",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -314,7 +315,7 @@ node_modules/
 
 - [ ] **Step 8: Install and verify**
 
-Run: `cd dashboard && npm install && npm test && npm run build`
+Run: `cd dashboard && pnpm install && pnpm test && pnpm build`
 Expected: smoke test PASS, build succeeds.
 
 - [ ] **Step 9: Commit**
@@ -413,7 +414,7 @@ describe("db", () => {
 
 - [ ] **Step 2: Run tests, verify they fail**
 
-Run: `npm test -- tests/db.test.ts`
+Run: `pnpm test -- tests/db.test.ts`
 Expected: FAIL — module `@/lib/db` not found.
 
 - [ ] **Step 3: Implement db.ts**
@@ -522,7 +523,7 @@ export function latestUploads(db: Db) {
 
 - [ ] **Step 4: Run tests, verify pass**
 
-Run: `npm test -- tests/db.test.ts`
+Run: `pnpm test -- tests/db.test.ts`
 Expected: 5 PASS.
 
 - [ ] **Step 5: Commit**
@@ -634,7 +635,7 @@ describe("auth", () => {
 
 - [ ] **Step 2: Run tests, verify fail**
 
-Run: `npm test -- tests/auth.test.ts`
+Run: `pnpm test -- tests/auth.test.ts`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement auth.ts**
@@ -730,7 +731,7 @@ export function isLoopbackRedirect(uri: string): boolean {
 
 - [ ] **Step 4: Run tests, verify pass**
 
-Run: `npm test -- tests/auth.test.ts`
+Run: `pnpm test -- tests/auth.test.ts`
 Expected: 9 PASS.
 
 - [ ] **Step 5: Commit**
@@ -908,7 +909,7 @@ describe("ingestSummary", () => {
 
 - [ ] **Step 3: Run tests, verify fail**
 
-Run: `npm test -- tests/ingest.test.ts`
+Run: `pnpm test -- tests/ingest.test.ts`
 Expected: FAIL — module not found.
 
 - [ ] **Step 4: Implement ingest.ts**
@@ -987,7 +988,7 @@ export function ingestSummary(
 
 - [ ] **Step 5: Run tests, verify pass**
 
-Run: `npm test -- tests/ingest.test.ts`
+Run: `pnpm test -- tests/ingest.test.ts`
 Expected: all PASS.
 
 - [ ] **Step 6: Commit**
@@ -1096,7 +1097,7 @@ _resetDbForTests();
 
 - [ ] **Step 2: Run tests, verify fail**
 
-Run: `npm test -- tests/ingest-route.test.ts`
+Run: `pnpm test -- tests/ingest-route.test.ts`
 Expected: FAIL — route module not found.
 
 - [ ] **Step 3: Implement route.ts**
@@ -1157,7 +1158,7 @@ export async function POST(req: Request): Promise<Response> {
 
 - [ ] **Step 4: Run tests, verify pass**
 
-Run: `npm test -- tests/ingest-route.test.ts`
+Run: `pnpm test -- tests/ingest-route.test.ts`
 Expected: 4 PASS.
 
 - [ ] **Step 5: Commit**
@@ -1279,7 +1280,7 @@ describe("POST /api/cli-auth", () => {
 
 - [ ] **Step 2: Run tests, verify fail**
 
-Run: `npm test -- tests/cli-auth-route.test.ts`
+Run: `pnpm test -- tests/cli-auth-route.test.ts`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement api/cli-auth/route.ts**
@@ -1368,7 +1369,7 @@ export async function POST(req: Request): Promise<Response> {
 
 - [ ] **Step 4: Run tests, verify pass**
 
-Run: `npm test -- tests/cli-auth-route.test.ts`
+Run: `pnpm test -- tests/cli-auth-route.test.ts`
 Expected: 5 PASS.
 
 - [ ] **Step 5: Implement the form page** (no test — static server component; covered by smoke e2e in Task 11)
@@ -1436,7 +1437,7 @@ function Field({ name, label, type, placeholder }: {
 
 - [ ] **Step 6: Verify build + full test suite**
 
-Run: `npm run build && npm test`
+Run: `pnpm build && pnpm test`
 Expected: build OK, all tests PASS.
 
 - [ ] **Step 7: Commit**
@@ -1626,7 +1627,7 @@ describe("metrics", () => {
 
 - [ ] **Step 2: Run tests, verify fail**
 
-Run: `npm test -- tests/metrics.test.ts`
+Run: `pnpm test -- tests/metrics.test.ts`
 Expected: FAIL — modules not found.
 
 - [ ] **Step 3: Implement pricing.ts**
@@ -1962,7 +1963,7 @@ export function fmtUsd(n: number): string {
 
 - [ ] **Step 5: Run tests, verify pass**
 
-Run: `npm test -- tests/metrics.test.ts`
+Run: `pnpm test -- tests/metrics.test.ts`
 Expected: all PASS. If the delta test fails because `makeSummary` deep-merges `profile.aq` without replacing pillars, that's fine — only `aq_0_100`/`tier` are overridden; pillars stay from base.
 
 - [ ] **Step 6: Commit**
@@ -2240,10 +2241,10 @@ export default function Home() {
 
 - [ ] **Step 6: Verify build + manual smoke**
 
-Run: `npm run build && npm test`
+Run: `pnpm build && pnpm test`
 Expected: build OK, tests PASS.
 
-Manual check: `TEAM_TOKEN=dev JWT_SECRET=devsecret-32-bytes-minimum-please DATA_DIR=/tmp/gnomon-dev npm run dev` → open `http://localhost:3000` → empty-state card renders with the CLI command.
+Manual check: `TEAM_TOKEN=dev JWT_SECRET=devsecret-32-bytes-minimum-please DATA_DIR=/tmp/gnomon-dev pnpm dev` → open `http://localhost:3000` → empty-state card renders with the CLI command.
 
 - [ ] **Step 7: Commit**
 
@@ -2525,7 +2526,7 @@ export default async function ProfilePage({
 
 - [ ] **Step 5: Verify build + tests**
 
-Run: `npm run build && npm test`
+Run: `pnpm build && pnpm test`
 Expected: build OK, all tests PASS.
 
 - [ ] **Step 6: Commit**
@@ -2604,7 +2605,7 @@ describe("coach", () => {
 
 - [ ] **Step 2: Run tests, verify fail**
 
-Run: `npm test -- tests/coach.test.ts`
+Run: `pnpm test -- tests/coach.test.ts`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement coach.ts**
@@ -2662,7 +2663,7 @@ export async function getCoachText(db: Db, prof: PersonProfile): Promise<string 
 
 - [ ] **Step 4: Run tests, verify pass**
 
-Run: `npm test -- tests/coach.test.ts`
+Run: `pnpm test -- tests/coach.test.ts`
 Expected: 3 PASS.
 
 - [ ] **Step 5: CoachCard + wire into profile page**
@@ -2695,7 +2696,7 @@ const coach = await getCoachText(getDb(), prof);
 
 - [ ] **Step 6: Verify build + full suite**
 
-Run: `npm run build && npm test`
+Run: `pnpm build && pnpm test`
 Expected: all PASS.
 
 - [ ] **Step 7: Commit**
@@ -2726,10 +2727,11 @@ git commit -m "feat(dashboard): optional AI coach with DB cache, off without LLM
 FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
-COPY package.json package-lock.json ./
-RUN npm ci
+RUN corepack enable
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 COPY . .
-RUN npm run build
+RUN pnpm build
 
 FROM node:22-bookworm-slim AS runner
 WORKDIR /app
@@ -2798,7 +2800,7 @@ TEAM_TOKEN=change-me
 
 - [ ] **Step 5: TEAM_TOKEN boot guard (container entrypoint)**
 
-The guard MUST NOT live in `layout.tsx`: module-scope code there is evaluated during `npm run build`, which runs in the Docker builder **without** runtime secrets — a build-time throw would break the image build, and it is not a reliable process-start check anyway. Enforce it in a build-safe startup wrapper that runs only when the container starts.
+The guard MUST NOT live in `layout.tsx`: module-scope code there is evaluated during `pnpm build`, which runs in the Docker builder **without** runtime secrets — a build-time throw would break the image build, and it is not a reliable process-start check anyway. Enforce it in a build-safe startup wrapper that runs only when the container starts.
 
 `dashboard/scripts/docker-entrypoint.sh`:
 
@@ -2956,11 +2958,12 @@ jobs:
     defaults: { run: { working-directory: dashboard } }
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm, cache-dependency-path: dashboard/package-lock.json }
-      - run: npm ci
-      - run: npm test
-      - run: npm run build
+        with: { node-version: 22, cache: pnpm, cache-dependency-path: dashboard/pnpm-lock.yaml }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm build
 
   publish:
     needs: [dashboard-tests, dashboard-contract]  # tests + real CLI contract must pass
@@ -3114,7 +3117,7 @@ behavior.
 
 - [ ] **Step 4: Verify**
 
-Run: `cd dashboard && npm test && npm run build`
+Run: `cd dashboard && pnpm test && pnpm build`
 Expected: all green.
 
 - [ ] **Step 5: Commit**
@@ -3138,7 +3141,7 @@ git commit -m "ci(dashboard): gated ghcr publish, real CLI contract test, docume
 
 **Interfaces:**
 - Consumes: `getDb`, `upsertPerson`, `upsertUpload` (Task 2); `makeSummary` fixture (Task 4) reused as the seed shape.
-- Produces: `npm run seed` populates a DB at `GNOMON_DB_PATH`; `npm run test:e2e` boots the app against that DB and asserts overview + profile + cli-auth render with the seeded data.
+- Produces: `pnpm seed` populates a DB at `GNOMON_DB_PATH`; `pnpm test:e2e` boots the app against that DB and asserts overview + profile + cli-auth render with the seeded data.
 
 - [ ] **Step 1: Seed script**
 
@@ -3185,7 +3188,7 @@ function main() {
 main();
 ```
 
-Run to sanity-check: `GNOMON_DB_PATH=$(mktemp -d)/seed.db npm run seed` → prints `Seeded 4 people.`
+Run to sanity-check: `GNOMON_DB_PATH=$(mktemp -d)/seed.db pnpm seed` → prints `Seeded 4 people.`
 
 - [ ] **Step 2: Playwright config**
 
@@ -3204,7 +3207,7 @@ export default defineConfig({
   use: { baseURL: "http://localhost:3100" },
   webServer: {
     // Seed, then start the prod server against the same DB.
-    command: `GNOMON_DB_PATH=${DB} npm run seed && GNOMON_DB_PATH=${DB} PORT=3100 npm run start`,
+    command: `GNOMON_DB_PATH=${DB} pnpm seed && GNOMON_DB_PATH=${DB} PORT=3100 pnpm start`,
     url: "http://localhost:3100",
     timeout: 120_000,
     reuseExistingServer: false,
@@ -3213,7 +3216,7 @@ export default defineConfig({
 });
 ```
 
-> Requires a production build first (`npm run build`) since `npm run start` serves `.next`. The e2e step below runs build before Playwright.
+> Requires a production build first (`pnpm build`) since `pnpm start` serves `.next`. The e2e step below runs build before Playwright.
 
 - [ ] **Step 3: Playwright spec**
 
@@ -3264,11 +3267,11 @@ test("cli-auth page renders the sign-in form", async ({ page }) => {
 
 ```bash
 cd dashboard
-npm run build
-GNOMON_DB_PATH=$(mktemp -d)/e2e.db npm run test:e2e
+pnpm build
+GNOMON_DB_PATH=$(mktemp -d)/e2e.db ppnpm test:e2e
 ```
 
-Expected: all Playwright tests PASS. On failure, open `playwright-report/` (`npx playwright show-report`) to see the screenshot/trace, fix, re-run. This is a hard gate — the branch is not done until it is green.
+Expected: all Playwright tests PASS. On failure, open `playwright-report/` (`pnpm exec playwright show-report`) to see the screenshot/trace, fix, re-run. This is a hard gate — the branch is not done until it is green.
 
 - [ ] **Step 5: CI job (optional but recommended)**
 
@@ -3281,12 +3284,13 @@ Add to `dashboard-image.yml`, gating publish on it too:
     defaults: { run: { working-directory: dashboard } }
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm, cache-dependency-path: dashboard/package-lock.json }
-      - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - run: npm run build
-      - run: GNOMON_DB_PATH=$RUNNER_TEMP/e2e.db npm run test:e2e
+        with: { node-version: 22, cache: pnpm, cache-dependency-path: dashboard/pnpm-lock.yaml }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm build
+      - run: GNOMON_DB_PATH=$RUNNER_TEMP/e2e.db pnpm test:e2e
 ```
 
 Then extend the publish gate: `needs: [dashboard-tests, dashboard-contract, dashboard-e2e]`.

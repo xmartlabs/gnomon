@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+:root {
+  --paper: #F6F1E6;     /* ground — cream stock */
+  --paper-2: #EFE8D8;   /* recessed panel / track wells */
+  --ink: #262016;       /* espresso ink — text, primary button, dark bars */
+  --ink-60: #6E655A;    /* secondary text */
+  --ink-30: #B4AA9A;    /* tertiary text / strong rule */
+  --hairline: #D8CFBC;  /* hairline rules — the primary structural device */
+  --accent: #B4451F;    /* terracotta — the one accent */
+  --gain: #4A6A45;      /* moss — positive deltas */
+  --loss: #9A3B22;      /* burnt — negative deltas */
+  --parch: #C9B99A;     /* parchment — 3rd chart series / older level bars */
+}
+
+html { background: #E9E2D2; }  /* gutter outside the sheet */
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body), system-ui, sans-serif;
+}
+.serif { font-family: var(--font-display), Georgia, serif; }
+.num { font-variant-numeric: tabular-nums; }
