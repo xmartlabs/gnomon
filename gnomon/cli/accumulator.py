@@ -269,6 +269,7 @@ class Accumulator:
             self.month_skill_counter[mkey][name] += 1
         if self._is_plan_skill(name):
             self._mark_plan_session(sid, mkey)
+            self._mark_planning_skill_session(sid, mkey)
         if self._is_knowledge_skill(name):
             self._pending_knowledge_grounding[sid] = True
 

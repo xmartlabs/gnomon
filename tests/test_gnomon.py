@@ -151,7 +151,7 @@ class TestComputeAqV2(unittest.TestCase):
         return next(a for a in breadth["axes"] if a["name"] == "Orchestration")["score"]
 
     def test_coordination_beats_volume(self):
-        # Same agent_runs / variety / harness; only fan-out differs. A real orchestrator
+        # Same variety / harness; only fan-out differs. A real orchestrator
         # (coordinates a team per session) must out-score a serial grinder (1 agent/session).
         orchestrator = _sample_stats(); orchestrator["behavior"]["fanout_median"] = 6
         grinder = _sample_stats(); grinder["behavior"]["fanout_median"] = 1
@@ -178,7 +178,7 @@ class TestComputeAqV2(unittest.TestCase):
         self.assertIn("Context Intelligence", paxel.AQ_AXIS_NOTES)
 
     def test_volume_alone_cannot_max_orchestration(self):
-        # 10x the agent_runs but no coordination (fanout=1) -> still capped below full.
+        # High volume but no coordination (fanout=1) -> still capped below full.
         s = _sample_stats(); s["tools"]["agent_calls"] = 5000; s["behavior"]["fanout_median"] = 1
         self.assertLess(self._orch(paxel.compute_aq(s)), 33)
 
@@ -443,7 +443,7 @@ class TestGrowthEdgesAq(unittest.TestCase):
         # gstack scorecard healthy but Orchestration thin -> AQ edge, not "balanced".
         agentic = {"pillars": [{"name": "Breadth", "weight": 30, "axes": [
             _axis("Orchestration", 33, 0.2,
-                  {"agent_runs": 3, "subagent_types": 1, "fanout_median": 1})]}]}
+                  {"orchestratable_sessions": 3, "subagent_types": 1, "fanout_median": 1})]}]}
         edges = paxel.growth_edges(_edge_stats(agentic), dict(HEALTHY_SCORES))
         self.assertTrue(any("Orchestration" in adv for _, _, adv in edges), edges)
 
@@ -1715,7 +1715,7 @@ class TestToolsDiagnostic(unittest.TestCase):
             "agentic": {"pillars": [
                 {"name": "Breadth", "axes": [
                     {"name": "Discipline", "signals": {"task_tool_calls": 50}},
-                    {"name": "Orchestration", "signals": {"agent_runs": 200}},
+                    {"name": "Orchestration", "signals": {"orchestratable_sessions": 200}},
                     {"name": "Tool command", "signals": {"toolsearch": 30}},
                 ]},
                 {"name": "Craft", "axes": [
@@ -1730,7 +1730,7 @@ class TestToolsDiagnostic(unittest.TestCase):
         lines, rec = tools_diagnostic(self._stats(100))
         self.assertEqual(rec["sessions"], 100)
         self.assertEqual(rec["rates"]["task_tool_calls"], 0.5)   # 50/100
-        self.assertEqual(rec["rates"]["agent_runs"], 2.0)        # 200/100
+        self.assertEqual(rec["counts"]["orchestratable"], 200)     # absolute, not rate
         self.assertEqual(rec["rates"]["toolsearch_calls"], 0.3)  # 30/100
         self.assertEqual(rec["counts"]["review_skills"], 20)
         self.assertTrue(any("task_tool_calls" in l for l in lines))

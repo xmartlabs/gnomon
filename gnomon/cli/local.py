@@ -43,7 +43,7 @@ _TOOLS_DIAG = [
     ("review_skills", "review_skills", 1.5, True),
     ("shell_test_runs", "test_runs", 1.5, True),
     ("compounding_writes", "compounding_writes", 0.25, True),
-    ("agent_runs", "agent_runs", 1.0, True),
+    ("orchestratable", "orchestratable_sessions", 1.0, False),
     ("knowledge_calls", "knowledge_calls", 200, False),  # gated, absolute (not per-session)
 ]
 

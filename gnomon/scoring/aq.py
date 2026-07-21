@@ -120,16 +120,9 @@ def compute_aq(stats):
     # never coordinated a team). max_session_subagent_types is the per-session distinct-role
     # peak — name-/content-agnostic, so it works in the cross-source aggregate.
     o_harn = 1.0 if st.get("max_session_subagent_types", 0) >= 3 else 0.6
-    # Coordination over volume: fan-out (agents coordinated per orchestrating session)
-    # is the orchestration tell — a serial grinder firing N agents one-per-session reads
-    # fanout=1, a real orchestrator reads its team size. agent_runs stays only as a small
-    # volume floor; the old (background + scheduled) COUNT term was cut (it double-counted
-    # volume and rewarded firing-and-forgetting, not coordinating).
-    # fanout target 5: Anthropic's multi-agent research spawns ~3-5 subagents for typical work
-    # (1 simple / 2-4 comparison / 10+ complex), and span-of-control theory (Graicunas/Urwick,
-    # "rule of 7") lands at 5-7 — 5 sits in the overlap.
-    # agent_runs is a per-session rate (volume floor); subagent_types/fanout stay as-is
-    # (distinct-count and per-session-median — already volume-independent).
+    # Orchestration v2: frequency (share of orchestratable sessions that delegated)
+    # compounded with quality (subagent diversity, fan-out, harness use).
+    # fanout target 5: span-of-control theory (Graicunas/Urwick) lands at 5-7.
     o_quality = (0.40 * sat(st.get("subagent_types_distinct", 0), 8)
                + 0.40 * sat(fanout, 5)
                + 0.20 * o_harn)

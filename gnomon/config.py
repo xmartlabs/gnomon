@@ -26,7 +26,8 @@ OUT_DIR = os.getcwd()
 #                CLI doesn't, so that term drops there.
 #   skill_reads - observable skill invocations without a first-class Skill tool (Cursor SKILL.md
 #                 reads + manually_attached_skills; Codex shell-reads). Gates Craft review/compounding
-#                 ceremony terms only — NOT Skill fluency / Discipline (those need `skills`).
+#                 ceremony terms AND Skill fluency (which stays live when either `skills` or
+#                 `skill_reads` is present).
 # (errors are emitted by every source, so error_rate/recovery need no cap.)
 SOURCE_CAPS = {
     "claude":   {"skills", "skill_reads", "toolsearch", "tasktool", "delegate", "model", "thinking", "linked_model_routing"},
