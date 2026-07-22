@@ -152,22 +152,8 @@ def main(argv=None, output_dir=None):
               f"{(until_dt - timedelta(days=1)).date() if until_dt else 'now'}")
     # Antigravity IDE: transcripts are encrypted on disk; the only way to read them is to query
     # the running language server's local API. We first read the unencrypted usage index
-    # (antigravity_summary); if the IDE was used AND its date range overlaps the window, we pull
-    # the conversations (launching the IDE if needed) and fold them in. (The CLI half is already
-    # covered offline by discover_sources.)
-    # Don't touch the live local IDE when the user is analyzing CLI history copied from another
-    # machine (--antigravity-dir) -- that would merge unrelated local IDE usage into the result.
     _ide_dir_override = any(a.startswith("--antigravity-dir=") for a in argv)
     antigravity = None if _ide_dir_override else antigravity_summary()
-    if ("antigravity-ide" in selected and antigravity
-            and ide_window_overlaps(antigravity, since_dt, until_dt)):
-        export_path = export_antigravity_ide(os.path.join(_out_dir, "_antigravity_ide"))
-        if export_path:
-            sources.append(("antigravity-ide", export_path, "antigravity-ide-export"))
-            print(f"  Antigravity IDE history folded in ({antigravity['conversations']} conversations)")
-    elif antigravity and "antigravity-ide" in selected:
-        print(f"  note: Antigravity IDE detected ({antigravity['conversations']} conversations) "
-              f"but outside the selected window -- skipped")
     by_src = Counter(s for s, _, _ in sources)
     print(f"Found {len(sources)} transcript files across "
           f"{', '.join(f'{k}:{v}' for k, v in by_src.items()) or 'no sources'}")

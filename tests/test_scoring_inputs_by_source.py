@@ -63,7 +63,7 @@ class TestPerSourceChurnIsolation(unittest.TestCase):
                     "deletions": 0, "churn": 0, "commits": 0, "per_repo": []}
 
         dirs = dict(BASE=claude_dir, GEMINI_DIR=gemini_dir, CODEX_DIR=empty,
-                    ANTIGRAVITY_CLI_DIR=empty, ANTIGRAVITY_DB=os.path.join(empty, "nope.vscdb"),
+                    ANTIGRAVITY_CLI_DIR=empty, ANTIGRAVITY_IDE_DIR=empty, ANTIGRAVITY_DB=os.path.join(empty, "nope.vscdb"),
                     PI_DIR=empty, OPENCODE_DIR=empty, CURSOR_DIR=empty,
                     CURSOR_DB=os.path.join(empty, "no.vscdb"))
         with mock.patch.multiple(paxel, OUT_DIR=out, **dirs), \
@@ -238,7 +238,7 @@ class TestPerSourceParityRegressions(unittest.TestCase):
             json.dump(gem, fh)
 
         dirs = dict(BASE=claude_dir, GEMINI_DIR=gemini_dir, CODEX_DIR=empty,
-                    ANTIGRAVITY_CLI_DIR=empty, ANTIGRAVITY_DB=os.path.join(empty, "nope.vscdb"),
+                    ANTIGRAVITY_CLI_DIR=empty, ANTIGRAVITY_IDE_DIR=empty, ANTIGRAVITY_DB=os.path.join(empty, "nope.vscdb"),
                     PI_DIR=empty, OPENCODE_DIR=empty, CURSOR_DIR=empty,
                     CURSOR_DB=os.path.join(empty, "no.vscdb"))
         with mock.patch.multiple(paxel, OUT_DIR=out, **dirs), \
