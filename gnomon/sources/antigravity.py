@@ -32,7 +32,7 @@ import sqlite3
 from datetime import datetime
 
 from gnomon.sources.discovery import ANTIGRAVITY_DB
-from gnomon.taxonomy import _canon_tool, _canon_input, _SKILL_MD_RX
+from gnomon.taxonomy import _canon_tool, _canon_input, _norm_path_seps, _SKILL_MD_RX
 
 
 # --- stdlib protobuf wire-format decoder (no .proto, no dependency) -----------------
@@ -168,8 +168,12 @@ def _ag_mcp_name(name):
 
 def _skill_from_path(path):
     """Skill name if `path` reads a `skills/<name>/SKILL.md` (skill load), else None. Skips
-    vendored trees so a `node_modules/.../skills/x/SKILL.md` isn't miscredited as a skill use."""
-    p = path or ""
+    vendored trees so a `node_modules/.../skills/x/SKILL.md` isn't miscredited as a skill use.
+
+    Paths reaching here come either from a `file://` URI (already forward-slashed) or raw
+    from the Windsurf SQLite keys, which on Windows are backslashed -- normalize so both
+    the skill match and the vendored-tree guards fire either way."""
+    p = _norm_path_seps(path)
     if "/node_modules/" in p or "/vendor/" in p or "/.git/" in p:
         return None
     m = _SKILL_MD_RX.search(p)
@@ -639,7 +643,7 @@ def _ide_steps_cwd(steps):
             if not isinstance(block, dict):
                 continue
             cand = block.get("cwd") or _uri_path(block.get("absolutePathUri") or block.get("absoluteUri") or "")
-            if cand and "/.gemini/" not in cand:
+            if cand and "/.gemini/" not in _norm_path_seps(cand):
                 return cand if block.get("cwd") else os.path.dirname(cand)
     return None
 
