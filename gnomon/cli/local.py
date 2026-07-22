@@ -138,24 +138,16 @@ def main(argv=None, output_dir=None):
             setattr(_cfg, 'BASE', resolved)
         if not os.path.isdir(resolved):
             print(f"  warning: --{src}-dir path not found: {resolved}")
-    _t0_disc = time.monotonic()
-    sources = discover_sources(selected)
-    # Optional time window (--since/--until/--last): events outside it are skipped, so
-    # every downstream metric — INCLUDING git churn, whose since/until follow the kept
-    # events' date range — reads the same window. Timestampless events are DROPPED when
-    # a window is active (they can't honor "this period only"); Cursor JSONL-only
-    # sessions ride their single file-mtime timestamp. Parsed BEFORE the Antigravity IDE
-    # step so we can skip launching the IDE when its history can't fall in the window.
-    since_dt, until_dt = parse_window(argv)
-    if since_dt or until_dt:
-        print(f"  window: {since_dt.date() if since_dt else '...'} -> "
-              f"{(until_dt - timedelta(days=1)).date() if until_dt else 'now'}")
-    # Antigravity IDE: transcripts are encrypted on disk; the only way to read them is to query
-    # the running language server's local API. We first read the unencrypted usage index
     _ide_dir_override = any(a.startswith("--antigravity-dir=") for a in argv)
     _ide_dir_explicit = any(a.startswith("--antigravity-ide-dir=") for a in argv)
     if _ide_dir_override and not _ide_dir_explicit:
         selected = [s for s in selected if s != "antigravity-ide"]
+    _t0_disc = time.monotonic()
+    sources = discover_sources(selected)
+    since_dt, until_dt = parse_window(argv)
+    if since_dt or until_dt:
+        print(f"  window: {since_dt.date() if since_dt else '...'} -> "
+              f"{(until_dt - timedelta(days=1)).date() if until_dt else 'now'}")
     antigravity = None if _ide_dir_override else antigravity_summary()
     # Antigravity IDE fallback: if no IDE SQLite DBs were discovered (older Antigravity
     # versions that only expose data via the Language Server), try the LS CORTEX export.
