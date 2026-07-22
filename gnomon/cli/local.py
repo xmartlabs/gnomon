@@ -94,6 +94,17 @@ def tools_diagnostic(stats):
     return lines, record
 
 
+def _reconcile_sources(discovered, present, reasons):
+    """Sources discovered but absent from the per-source breakdown, with a reason.
+
+    Returns a sorted list of (source, reason) so nothing drops silently.
+    """
+    return sorted(
+        (src, reasons.get(src, "unknown"))
+        for src in (set(discovered) - set(present))
+    )
+
+
 def main(argv=None, output_dir=None):
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="replace")
@@ -231,6 +242,12 @@ def main(argv=None, output_dir=None):
         ]
         scoring_by_source[src] = {"window": window, "monthly": monthly}
     stats["scoring_inputs_by_source"] = scoring_by_source
+
+    dropped_sources = _reconcile_sources(
+        discovered=by_src.keys(), present=scoring_by_source.keys(), reasons={})
+    for src, reason in dropped_sources:
+        print(f"  warning: source '{src}' discovered but dropped from breakdown "
+              f"({reason}) -- not in source_usage/tabs")
 
     # ---- rolling bucket scoring (internal raw inputs; only scored AQ is shared) ----
     if RECENCY_BLEND_ENABLED:
