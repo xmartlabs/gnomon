@@ -1,6 +1,8 @@
 import unittest
 
-from gnomon.taxonomy import classify_change_target, is_plan_file_target
+from gnomon.taxonomy import (
+    classify_change_target, is_plan_file_target, _is_compounding_path, _norm_path_seps,
+)
 
 
 class TestClassifyChangeTarget(unittest.TestCase):
@@ -57,6 +59,38 @@ class TestIsPlanFileTarget(unittest.TestCase):
         for path in ("src/app.py", "README.md", "deployment-plans/notes.md",
                      "src/plans/config.json", "plansomething/x.md", ""):
             self.assertFalse(is_plan_file_target(path), path)
+
+
+class TestBackslashPathsCountLikeForwardSlash(unittest.TestCase):
+    """Windows transcripts record file_path with backslashes. The path classifiers only
+    inspect the string (they never open the file), so a backslash path must be classified
+    identically to its forward-slash form — otherwise Windows memory/ADR writes and native
+    plan files are silently uncounted."""
+
+    def test_compounding_memory_path(self):
+        self.assertTrue(_is_compounding_path(
+            r"C:\Users\d\.claude\projects\proj\memory\note.md"))
+
+    def test_compounding_adr_path(self):
+        self.assertTrue(_is_compounding_path(r"C:\repo\docs\adr\0003-thing.md"))
+
+    def test_plan_file_native_claude_plans(self):
+        self.assertTrue(is_plan_file_target(r"C:\Users\d\.claude\plans\hazy.md"))
+
+    def test_plan_file_superpowers_convention(self):
+        self.assertTrue(is_plan_file_target(
+            r"C:\repo\docs\superpowers\plans\2-stadium.md"))
+
+    def test_change_target_test_dir(self):
+        self.assertEqual(classify_change_target(r"C:\repo\tests\helper.js"), "test")
+
+    def test_normalization_is_identity_without_backslashes(self):
+        """The Linux/Mac guarantee, stated as an invariant: normalization only ever
+        rewrites a backslash, so any posix path is passed through byte-identical and
+        every existing classification is unchanged by construction."""
+        for path in ("/home/d/.claude/projects/p/memory/note.md", "src/app.py",
+                     "docs/adr/0001-x.md", "package-lock.json", ""):
+            self.assertEqual(_norm_path_seps(path), path, path)
 
 
 if __name__ == "__main__":
