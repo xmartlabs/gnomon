@@ -153,6 +153,13 @@ _CONFIG_NAMES = frozenset({
 })
 
 
+def _norm_path_seps(path):
+    """Windows transcripts record file paths with backslashes, inconsistently mixed with
+    forward slashes for the same file. Every path pattern here is written with `/`, so
+    normalize before matching (and before using a path as a dict key)."""
+    return str(path or "").replace("\\", "/")
+
+
 def classify_change_target(path):
     """Classify a write target into code/test/doc/config/lockfile/other for
     change-session eligibility (C2) and file-type semantics (P1/P2 fixes).
@@ -161,14 +168,15 @@ def classify_change_target(path):
     and foo.test.ts has a code extension."""
     if not path:
         return "other"
-    name = str(path).rsplit("/", 1)[-1]
+    path = _norm_path_seps(path)
+    name = path.rsplit("/", 1)[-1]
     low = name.lower()
     if low in _LOCKFILE_NAMES:
         return "lockfile"
     ext = ""
     if "." in name:
         ext = "." + name.rsplit(".", 1)[-1].lower()
-    if _TEST_NAME_RX.search(str(path)):
+    if _TEST_NAME_RX.search(path):
         return "test"
     if ext in _CODE_EXTS:
         return "code"
@@ -195,7 +203,7 @@ def is_plan_file_target(path):
     hand-off plan files regardless of source CLI."""
     if not path:
         return False
-    return bool(_PLAN_FILE_RX.search(str(path)))
+    return bool(_PLAN_FILE_RX.search(_norm_path_seps(path)))
 
 
 def classify_mcp_subcategory(server_name, tool_name=""):
@@ -325,7 +333,7 @@ def _extract_clis(command):
 
 def _is_compounding_path(path):
     """True if a write target is a compounding artifact (project memory / instructions / ADRs)."""
-    return bool(path) and bool(_COMPOUNDING_RX.search(path))
+    return bool(path) and bool(_COMPOUNDING_RX.search(_norm_path_seps(path)))
 
 
 def _canon_tool(name):

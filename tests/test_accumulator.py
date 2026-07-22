@@ -323,5 +323,66 @@ class TestAggregateOrderedC4(unittest.TestCase):
         self.assertEqual(result["planned"], 1)
 
 
+class TestBackslashPathsOnWindowsTranscripts(unittest.TestCase):
+    """Windows transcripts record file_path inconsistently -- the SAME file shows up
+    sometimes with `\\` and sometimes with `/`. Paths are only ever inspected as strings
+    here (never opened), so both forms must fold to one canonical form: otherwise
+    compounding writes go uncounted and a single edit run splits across two dict keys."""
+
+    def test_compounding_write_with_backslash_path_is_counted(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "Write", {
+            "file_path": r"C:\Users\d\.claude\projects\p\memory\note.md",
+            "content": "a\nb",
+        }), None, None)
+        self.assertEqual(acc.compounding_counter, 1)
+
+    def test_edit_run_not_split_by_separator_style(self):
+        # Same file, both spellings -> ONE run of 2, not two runs of 1.
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        for path in (r"C:\repo\a.py", "C:/repo/a.py"):
+            acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "Edit", {
+                "file_path": path, "old_string": "a", "new_string": "b",
+            }), None, None)
+        acc.end_file()
+        self.assertEqual(acc.edits_per_file_events, [2])
+
+    def test_ordered_target_normalized_for_code_written_dedup(self):
+        # _target stored in ordered facts must be forward-slashed so that
+        # code_written.add(target) de-duplicates correctly across separators.
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        for path in (r"C:\repo\src\app.py", "C:/repo/src/app.py"):
+            acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "Write", {
+                "file_path": path, "content": "x",
+            }), None, None)
+        acc.end_file()
+        facts = []
+        for v in acc.session_ordered_tools.values():
+            facts.extend(v)
+        targets = [f["target"] for f in facts if f["name"] == "Write"]
+        self.assertTrue(all("/" in t and "\\" not in t for t in targets),
+                        f"targets should be forward-slashed: {targets}")
+        self.assertEqual(len(set(targets)), 1,
+                         "both separator styles should collapse to one target")
+
+    def test_posix_paths_are_untouched(self):
+        # Guard for Linux/Mac: a path with no backslash must behave exactly as before.
+        # Two DISTINCT posix files stay two separate runs, and the memory write counts.
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "Write", {
+            "file_path": "/home/d/.claude/projects/p/memory/note.md", "content": "a",
+        }), None, None)
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:01Z", "Edit", {
+            "file_path": "/repo/a.py", "old_string": "a", "new_string": "b",
+        }), None, None)
+        acc.end_file()
+        self.assertEqual(acc.compounding_counter, 1)
+        self.assertEqual(sorted(acc.edits_per_file_events), [1, 1])
+
+
 if __name__ == "__main__":
     unittest.main()
