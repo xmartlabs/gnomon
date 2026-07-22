@@ -69,6 +69,21 @@ def score_linked_routing(pairs, state):
             "eligible_completed_substantive_pairs": eligible, "excluded_reasons": excluded}
 
 
+def _models_for_scoring(stats, fallback):
+    """Pool model rows only from sources where model choice is scoreable."""
+    by_source = stats.get("scoring_inputs_by_source")
+    if not by_source:
+        return fallback
+    counts = {}
+    for source, blocks in by_source.items():
+        if "model" not in available_caps([source]):
+            continue
+        window = (blocks or {}).get("window") or {}
+        for model, turns in ((window.get("stack") or {}).get("models") or []):
+            counts[model] = counts.get(model, 0) + turns
+    return list(counts.items())
+
+
 def compute_aq(stats):
     """Agentic Quotient v4 — 'how well you OPERATE AGENTS' (distinct from the gstack
     scorecard, which grades how you BUILD). Four pillars: Breadth (how much machinery),
@@ -266,7 +281,7 @@ def compute_aq(stats):
     # Provider-agnostic: works across Claude / OpenAI-Codex / Gemini / etc. "Model mix"
     # rewards using more than one model and routing work off your single default model
     # (match model to task) — no hard-coded model names or tiers.
-    models = st.get("models", [])
+    models = _models_for_scoring(stats, st.get("models", []))
     total_turns = sum(n for _, n in models)
     top_turns = max((n for _, n in models), default=0)
     offload_share = (1 - top_turns / total_turns) if total_turns else 0

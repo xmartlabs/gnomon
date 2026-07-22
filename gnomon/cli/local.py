@@ -223,6 +223,8 @@ def main(argv=None, output_dir=None):
         ]
         scoring_by_source[src] = {"window": window, "monthly": monthly}
     stats["scoring_inputs_by_source"] = scoring_by_source
+    # Recompute the public corpus AQ now that source capability boundaries are available.
+    stats["agentic"] = compute_aq(stats)
 
     # ---- rolling bucket scoring (internal raw inputs; only scored AQ is shared) ----
     if RECENCY_BLEND_ENABLED:
@@ -248,6 +250,7 @@ def main(argv=None, output_dir=None):
             if (bucket_stats.get("volume", {}).get("total_sessions", 0) or 0) <= 0:
                 continue
             metadata = metadata_by_id[bucket_id]
+            bucket_stats["scoring_inputs_by_source"] = bucket_scoring_by_source.get(bucket_id, {})
             corpus_components.append(dict(metadata, aq=compute_aq(bucket_stats)))
         if corpus_components:
             full_corpus_aq = stats["agentic"]

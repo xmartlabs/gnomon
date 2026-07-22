@@ -527,7 +527,8 @@ def _cursor_bubble_thinking_blocks(bubble):
     seen = set()
     th = bubble.get("thinking")
     if isinstance(th, dict):
-        t = th.get("text") or th.get("thinking") or ""
+        t = next((v for v in (th.get("text"), th.get("thinking"))
+                  if isinstance(v, str) and v), "")
         if t and t not in seen:
             seen.add(t)
             blocks.append({"type": "thinking", "thinking": t})
@@ -536,7 +537,8 @@ def _cursor_bubble_thinking_blocks(bubble):
         blocks.append({"type": "thinking", "thinking": th})
     for tb in bubble.get("allThinkingBlocks") or []:
         if isinstance(tb, dict):
-            t = tb.get("text") or tb.get("thinking") or ""
+            t = next((v for v in (tb.get("text"), tb.get("thinking"))
+                      if isinstance(v, str) and v), "")
         elif isinstance(tb, str):
             t = tb
         else:

@@ -234,6 +234,19 @@ class TestCursorPlanModeMetrics(unittest.TestCase):
 
 
 class TestCursorThinkingBlocks(unittest.TestCase):
+    def test_malformed_thinking_values_are_ignored_without_losing_valid_order(self):
+        bubble = {
+            "thinking": {"text": ["not", "text"]},
+            "allThinkingBlocks": [
+                {"text": {"not": "text"}},
+                {"text": "first"},
+                {"thinking": "first"},
+                "second",
+            ],
+        }
+        blocks, _ = _cursor_bubble_blocks(bubble)
+        self.assertEqual([b["thinking"] for b in blocks], ["first", "second"])
+
     def test_bubble_thinking_field_emits_thinking_block(self):
         bubble = {
             "type": 2,
@@ -316,6 +329,34 @@ class TestCursorVerificationScoring(unittest.TestCase):
 
 
 class TestCursorModelMixScoring(unittest.TestCase):
+    def test_cursor_models_do_not_change_mixed_corpus_model_mix(self):
+        from copy import deepcopy
+        from gnomon.scoring.aq import compute_aq
+
+        baseline = {
+            "corpus": {"sources": {"claude": {}, "cursor": {}}},
+            "volume": {"total_sessions": 10, "tool_calls_total": 100},
+            "stack": {"models": [["claude-sonnet", 100]]},
+            "tools": {},
+            "behavior": {},
+            "scoring_inputs_by_source": {
+                "claude": {"window": {"stack": {"models": [["claude-sonnet", 100]]}}},
+                "cursor": {"window": {"stack": {"models": []}}},
+            },
+        }
+        with_cursor_models = deepcopy(baseline)
+        cursor_models = [["composer-2.5", 50], ["gpt-5", 50]]
+        with_cursor_models["stack"]["models"] += cursor_models
+        with_cursor_models["scoring_inputs_by_source"]["cursor"]["window"]["stack"][
+            "models"] = cursor_models
+
+        expected = compute_aq(baseline)
+        actual = compute_aq(with_cursor_models)
+        self.assertEqual(actual["aq_0_100"], expected["aq_0_100"])
+        expected_savvy = next(p for p in expected["pillars"] if p["name"] == "Savvy")
+        actual_savvy = next(p for p in actual["pillars"] if p["name"] == "Savvy")
+        self.assertEqual(actual_savvy["axes"], expected_savvy["axes"])
+
     def test_model_mix_dropped_for_cursor_only_corpus(self):
         from gnomon.scoring.aq import compute_aq
 
