@@ -47,6 +47,7 @@ _AGENT_UNSUPPORTED_SOURCES = frozenset({"gemini"})
 
 _DIR_FLAGS = {"claude": ("BASE", "projects"), "codex": ("CODEX_DIR", "sessions"),
               "gemini": ("GEMINI_DIR", None), "antigravity": ("ANTIGRAVITY_CLI_DIR", "conversations"),
+              "antigravity-ide": ("ANTIGRAVITY_IDE_DIR", "conversations"),
               "pi": ("PI_DIR", None),
               "opencode": ("OPENCODE_DIR", None), "cursor": ("CURSOR_DIR", "projects")}
 
