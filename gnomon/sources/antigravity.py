@@ -643,7 +643,8 @@ def _ide_steps_cwd(steps):
             if not isinstance(block, dict):
                 continue
             cand = block.get("cwd") or _uri_path(block.get("absolutePathUri") or block.get("absoluteUri") or "")
-            if cand and "/.gemini/" not in _norm_path_seps(cand):
+            cand = _norm_path_seps(cand)
+            if cand and "/.gemini/" not in cand:
                 return cand if block.get("cwd") else os.path.dirname(cand)
     return None
 

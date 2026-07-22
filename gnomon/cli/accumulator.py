@@ -758,8 +758,9 @@ class Accumulator:
                             if name in {"Edit", "Write", "MultiEdit", "NotebookEdit"}:
                                 child["writes"] += 1
                         if sid:
-                            _target = (inp.get("file_path") or inp.get("notebook_path")
-                                       or inp.get("path") or inp.get("pattern") or inp.get("query") or "")
+                            _target = _norm_path_seps(
+                                inp.get("file_path") or inp.get("notebook_path")
+                                or inp.get("path") or inp.get("pattern") or inp.get("query") or "")
                             _items = (inp.get("todos") or inp.get("items") or inp.get("tasks")
                                       or inp.get("plan") or [])
                             if isinstance(_items, list):
