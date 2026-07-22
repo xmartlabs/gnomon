@@ -64,10 +64,19 @@ KNOWN_CLIS = {
     "vitest", "jest", "pytest", "ruby", "swift", "ffmpeg",
 }
 _CLI_SPLIT = re.compile(r"&&|\|\||\||;|\bthen\b|\bdo\b")
-_COMPOUNDING_RX = re.compile(r"CLAUDE\.md|AGENTS\.md|GEMINI\.md|/memory/|/docs/adr|\.cursorrules", re.I)
+_COMPOUNDING_RX = re.compile(
+    r"CLAUDE\.md|AGENTS\.md|GEMINI\.md|/memory/|/docs/adr|\.cursorrules|/\.cursor/rules/", re.I)
 # CLIs without a first-class Skill tool (Codex & friends) use skills by shelling out to
 # read skills/<name>/SKILL.md — credit that as skill usage so they aren't under-read
 _SKILL_MD_RX = re.compile(r"skills/([A-Za-z0-9_.-]+)/SKILL\.md")
+
+
+def extract_skill_name_from_path(path):
+    """Return the skill name when `path` points at skills/<name>/SKILL.md, else None."""
+    if not path:
+        return None
+    m = _SKILL_MD_RX.search(str(path).replace("\\", "/"))
+    return m.group(1) if m else None
 
 MCP_INSPECT_HINTS = ("read", "get", "list", "search", "find", "describe",
                      "snapshot", "screenshot", "query", "fetch", "whoami",
@@ -336,6 +345,24 @@ def _is_compounding_path(path):
     return bool(path) and bool(_COMPOUNDING_RX.search(_norm_path_seps(path)))
 
 
+def _canon_mcp_server(server, tool=""):
+    """Normalize MCP server bucket names so plugin-wrapped Cursor tools collapse to the vendor.
+
+    Cursor sometimes records `mcp__plugin__atlassian_atlassian_get_jira_issue` alongside
+    `mcp__atlassian__get_jira_issue`; without this, mcp_servers_distinct is inflated."""
+    s = str(server or "")
+    if s.lower() != "plugin":
+        return s
+    t = str(tool or "").lower()
+    m = re.match(r"^([a-z][a-z0-9-]*)_\1(?:_|$)", t)
+    if m:
+        return m.group(1)
+    m = re.match(r"^([a-z][a-z0-9-]+?)_", t)
+    if m and m.group(1) not in ("plugin", "tool", "get", "list", "search"):
+        return m.group(1)
+    return s
+
+
 def _canon_tool(name):
     """Normalize Pi/opencode/Gemini lower-case tool names to the Claude-style taxonomy."""
     n = str(name or "tool")
@@ -377,4 +404,10 @@ def _canon_input(name, inp):
     if cname == "Edit":
         out.setdefault("old_string", out.get("oldString") or out.get("old") or "")
         out.setdefault("new_string", out.get("newString") or out.get("new") or out.get("content") or "")
+    if cname == "Agent":
+        st = (out.get("subagent_type") or out.get("subagentType")
+              or out.get("agent_type") or "general-purpose")
+        if st in ("generalPurpose", "unspecified", ""):
+            st = "general-purpose"
+        out["subagent_type"] = st
     return out

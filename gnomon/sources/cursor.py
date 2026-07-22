@@ -8,7 +8,7 @@ from datetime import datetime
 
 from gnomon.sources._util import _texts, _iso_ms
 from gnomon.config import strip_injections, parse_ts, line_count
-from gnomon.taxonomy import _canon_tool, _canon_input
+from gnomon.taxonomy import _canon_tool, _canon_input, _canon_mcp_server
 from gnomon.sources.discovery import CURSOR_DIR, CURSOR_DB, CURSOR_CHATS_DIR
 
 
@@ -22,7 +22,7 @@ _CURSOR_TOOL_MAP = {
     "ripgrep_raw_search": "Grep", "semantic_search_full": "Grep",
     "semantic_search": "Grep", "rg": "Grep",
     "web_search": "WebSearch", "web_fetch": "WebFetch",
-    "task_v2": "Agent", "subagent": "Agent", "todo_write": "TodoWrite",
+    "task_v2": "Agent", "task": "Agent", "subagent": "Agent", "todo_write": "TodoWrite",
     "create_plan": "EnterPlanMode", "ask_question": "AskUserQuestion",
     "read_lints": "Read", "edit_notebook": "NotebookEdit",
     "await_shell": "BashOutput", "await": "BashOutput",
@@ -172,6 +172,26 @@ _CURSOR_WRAPPER_RE = re.compile(
     r"linter_errors|system_notification|system_reminder|additional_data|user_info|"
     r"current_file|cursor_position|edit_history|timestamp)>.*?</\1>", re.S | re.I)
 
+_CURSOR_SKILL_PATH_RE = re.compile(
+    r'(?:fullPath|path)="[^"]*skills/([A-Za-z0-9_.-]+)/SKILL\.md"', re.I)
+
+
+def _cursor_extract_injected_skills(text):
+    """Skills the user explicitly attached on a turn (not the full available_skills catalog)."""
+    if not text:
+        return []
+    found = []
+    for tag in ("manually_attached_skills",):
+        for m in re.finditer(rf"<{tag}>(.*?)</{tag}>", text, flags=re.S | re.I):
+            for sm in _CURSOR_SKILL_PATH_RE.finditer(m.group(1)):
+                found.append(sm.group(1))
+    seen, out = set(), []
+    for s in found:
+        if s not in seen:
+            seen.add(s)
+            out.append(s)
+    return out
+
 
 def _cursor_clean_prompt(text):
     if not text:
@@ -200,7 +220,8 @@ def _cursor_mcp_name(key):
     rest = key[len("mcp"):].lstrip("_")
     parts = [p for p in rest.split("_") if p]
     if len(parts) >= 2:
-        return f"mcp__{parts[0]}__{'_'.join(parts[1:])}"
+        server = _canon_mcp_server(parts[0], "_".join(parts[1:]))
+        return f"mcp__{server}__{'_'.join(parts[1:])}"
     if len(parts) == 1:
         return f"mcp__cursor__{parts[0]}"
     return "mcp__cursor__tool"
@@ -266,7 +287,8 @@ def _cursor_mcp_name_from_servers(raw_name, servers):
     cands.sort(key=lambda x: -len(x[0]))
     for pref, sname in cands:
         if n.startswith(pref):
-            return f"mcp__{sname}__{n[len(pref):] or 'tool'}"
+            server = _canon_mcp_server(sname, n[len(pref):] or "tool")
+            return f"mcp__{server}__{n[len(pref):] or 'tool'}"
     return None
 
 
@@ -325,8 +347,14 @@ def _cursor_tool(raw_name, raw_input, mcp_servers=None):
     so it's renamed mcp__<server>__<tool> to count as an MCP call, not a native one.
     mcp_servers (from the CLI's mcps/ sidecar) rewrites flat MCP tool names too."""
     inp = _cursor_tool_input(raw_name, raw_input)
-    if _cursor_tool_key(raw_name) == "call_mcp_tool":
-        server = str(inp.get("server") or "server")
+    key = _cursor_tool_key(raw_name)
+    if key == "switch_mode":
+        target = str(inp.get("target_mode_id") or inp.get("targetModeId") or "").lower()
+        if target == "plan":
+            return "EnterPlanMode", inp
+    if key == "call_mcp_tool":
+        server = _canon_mcp_server(str(inp.get("server") or "server"),
+                                   str(inp.get("toolName") or inp.get("tool_name") or "tool"))
         tool = str(inp.get("toolName") or inp.get("tool_name") or "tool")
         return f"mcp__{server}__{tool}", inp
     flat_mcp = _cursor_mcp_name_from_servers(raw_name, mcp_servers)
@@ -462,11 +490,16 @@ def _cursor_jsonl_events(fp):
                 synth_ts = not first
             content = msg.get("content")
             if role == "user":
-                text = _cursor_clean_prompt(_texts(content))
-                if text:
+                raw_text = _texts(content)
+                injected = _cursor_extract_injected_skills(raw_text)
+                text = _cursor_clean_prompt(raw_text)
+                if text or injected:
                     first = False
-                    yield {**base, "type": "user", "timestamp": ts, "__synth_ts__": synth_ts,
-                           "message": {"role": "user", "content": text}}
+                    ev_out = {**base, "type": "user", "timestamp": ts, "__synth_ts__": synth_ts,
+                              "message": {"role": "user", "content": text or ""}}
+                    if injected:
+                        ev_out["injectedSkills"] = injected
+                    yield ev_out
             elif role == "assistant":
                 blocks = _cursor_jsonl_blocks(content, mcp_servers)
                 tool_results = [b for b in blocks if b.get("type") == "tool_result"]
@@ -488,18 +521,40 @@ def _cursor_jsonl_events(fp):
                            "isApiErrorMessage": True}
 
 
+def _cursor_bubble_thinking_blocks(bubble):
+    """Cursor stores extended thinking on bubble.thinking, not allThinkingBlocks."""
+    blocks = []
+    seen = set()
+    th = bubble.get("thinking")
+    if isinstance(th, dict):
+        t = next((v for v in (th.get("text"), th.get("thinking"))
+                  if isinstance(v, str) and v), "")
+        if t and t not in seen:
+            seen.add(t)
+            blocks.append({"type": "thinking", "thinking": t})
+    elif isinstance(th, str) and th and th not in seen:
+        seen.add(th)
+        blocks.append({"type": "thinking", "thinking": th})
+    for tb in bubble.get("allThinkingBlocks") or []:
+        if isinstance(tb, dict):
+            t = next((v for v in (tb.get("text"), tb.get("thinking"))
+                      if isinstance(v, str) and v), "")
+        elif isinstance(tb, str):
+            t = tb
+        else:
+            t = ""
+        if t and t not in seen:
+            seen.add(t)
+            blocks.append({"type": "thinking", "thinking": t})
+    return blocks
+
+
 def _cursor_bubble_blocks(bubble):
     blocks = []
+    blocks.extend(_cursor_bubble_thinking_blocks(bubble))
     text = bubble.get("text") or ""
     if text:
         blocks.append({"type": "text", "text": text})
-    for tb in bubble.get("allThinkingBlocks") or []:
-        if isinstance(tb, dict):
-            t = tb.get("text") or tb.get("thinking") or ""
-            if t:
-                blocks.append({"type": "thinking", "thinking": t})
-        elif isinstance(tb, str) and tb:
-            blocks.append({"type": "thinking", "thinking": tb})
     tfd = bubble.get("toolFormerData")
     tool_meta = None
     if isinstance(tfd, dict) and tfd.get("name"):
@@ -618,10 +673,15 @@ def _cursor_sqlite_events(db_path, twins=None):
                         if not edit_queues[b["name"]]:
                             del edit_queues[b["name"]]
             if btype == 1:
-                text = _texts(blocks) or bubble.get("text") or ""
-                if text:
-                    yield {**base, "type": "user", "timestamp": ts,
-                           "message": {"role": "user", "content": text}}
+                raw_text = _texts(blocks) or bubble.get("text") or ""
+                injected = _cursor_extract_injected_skills(raw_text)
+                text = _cursor_clean_prompt(raw_text)
+                if text or injected:
+                    ev_out = {**base, "type": "user", "timestamp": ts,
+                              "message": {"role": "user", "content": text or ""}}
+                    if injected:
+                        ev_out["injectedSkills"] = injected
+                    yield ev_out
             elif btype == 2:
                 # Attach Cursor tokenCount to same assistant event instead of creating
                 # a separate usage-only turn. Ignore empty token payloads.

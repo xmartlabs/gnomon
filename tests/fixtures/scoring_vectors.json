@@ -3,11 +3,11 @@
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 88,
+          "aq_0_100": 87,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 79.7,
+              "score": 77.6,
               "weight": 30
             },
             {
@@ -26,12 +26,12 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "5:3:3",
-          "tier": "Elite"
+          "score_contract_id": "5:5:3",
+          "tier": "Advanced"
         },
         "archetype": {
           "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is breadth \u2014 that's where the next gain is.",
-          "title": "Elite"
+          "title": "Advanced"
         },
         "combination": {
           "rule": "weighted_mean_of_per_source_scores",
@@ -274,7 +274,7 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 88,
+            "aq_0_100": 87,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -288,12 +288,18 @@
                   {
                     "base_weight": 33,
                     "name": "Orchestration",
-                    "normalized_score": 0.725,
-                    "score": 23.9,
+                    "normalized_score": 0.66,
+                    "score": 21.8,
                     "signals": {
-                      "agent_runs": 200,
+                      "coordination_quality": 0.66,
+                      "delegated_orchestratable_sessions": 0,
                       "fanout_median": 3,
+                      "frequency": null,
+                      "frequency_confidence": 0.0,
+                      "frequency_score": null,
+                      "frequency_weight": 0.0,
                       "o_harn": 0.6,
+                      "orchestratable_sessions": 0,
                       "subagent_types": 6
                     },
                     "weight": 33
@@ -333,7 +339,7 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 79.7,
+                "score": 77.6,
                 "weight": 30
               },
               {
@@ -456,8 +462,8 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:3:3",
-            "tier": "Elite",
+            "score_contract_id": "5:5:3",
+            "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
               "entropy": 0.8
@@ -465,7 +471,7 @@
           },
           "archetype": {
             "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is breadth \u2014 that's where the next gain is.",
-            "title": "Elite"
+            "title": "Advanced"
           },
           "growth_edges": [
             {
@@ -852,16 +858,16 @@
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 39,
+          "aq_0_100": 43,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 17.4,
+              "score": 18.4,
               "weight": 30
             },
             {
               "name": "Craft",
-              "score": 27.2,
+              "score": 22.9,
               "weight": 35
             },
             {
@@ -871,11 +877,11 @@
             },
             {
               "name": "Savvy",
-              "score": 55.9,
+              "score": 95.2,
               "weight": 15
             }
           ],
-          "score_contract_id": "5:3:3",
+          "score_contract_id": "5:5:3",
           "tier": "Apprentice"
         },
         "archetype": {
@@ -1106,7 +1112,7 @@
       "by_source": {
         "cursor": {
           "aq": {
-            "aq_0_100": 39,
+            "aq_0_100": 43,
             "mcp_vs_cli": {
               "cli_calls": 100,
               "cli_distinct": 8,
@@ -1120,35 +1126,51 @@
                   {
                     "base_weight": 33,
                     "name": "Orchestration",
-                    "normalized_score": 0.18,
-                    "score": 9.7,
+                    "normalized_score": 0.2,
+                    "score": 8.0,
                     "signals": {
-                      "agent_runs": 0,
+                      "coordination_quality": 0.2,
+                      "delegated_orchestratable_sessions": 0,
                       "fanout_median": 1,
+                      "frequency": null,
+                      "frequency_confidence": 0.0,
+                      "frequency_score": null,
+                      "frequency_weight": 0.0,
                       "o_harn": 0.6,
+                      "orchestratable_sessions": 0,
                       "subagent_types": 0
                     },
-                    "weight": 54
+                    "weight": 40
+                  },
+                  {
+                    "base_weight": 22,
+                    "name": "Skill fluency",
+                    "normalized_score": 0.18,
+                    "score": 4.9,
+                    "signals": {
+                      "skills_distinct": 0,
+                      "skills_total": 0
+                    },
+                    "weight": 27
                   },
                   {
                     "base_weight": 28,
                     "name": "Tool command (MCP + CLI)",
                     "normalized_score": 0.166666666666667,
-                    "score": 7.7,
+                    "score": 5.5,
                     "signals": {
                       "clis": 8,
                       "mcp_servers": 2,
                       "toolsearch": 0
                     },
-                    "weight": 46
+                    "weight": 33
                   }
                 ],
                 "name": "Breadth",
                 "not_applicable": [
-                  "Skill fluency",
                   "Discipline"
                 ],
-                "score": 17.4,
+                "score": 18.4,
                 "weight": 30
               },
               {
@@ -1156,8 +1178,8 @@
                   {
                     "base_weight": 35,
                     "name": "Verification",
-                    "normalized_score": 0.333333333333333,
-                    "score": 11.7,
+                    "normalized_score": 0.166666666666667,
+                    "score": 5.8,
                     "signals": {
                       "review_skills": 0,
                       "test_runs": 5
@@ -1193,8 +1215,8 @@
                   {
                     "base_weight": 20,
                     "name": "Compounding",
-                    "normalized_score": 0.4,
-                    "score": 8.0,
+                    "normalized_score": 0.48,
+                    "score": 9.6,
                     "signals": {
                       "compounding_writes": 1
                     },
@@ -1202,7 +1224,7 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 27.2,
+                "score": 22.9,
                 "weight": 35
               },
               {
@@ -1238,40 +1260,25 @@
                 "axes": [
                   {
                     "base_weight": 50,
-                    "name": "Model mix",
-                    "normalized_score": 0.166666666666667,
-                    "score": 8.3,
-                    "signals": {
-                      "distinct_models": 1,
-                      "offload_share": 0.0,
-                      "routing": {
-                        "eligible_completed_substantive_pairs": 0,
-                        "excluded_reasons": {},
-                        "score": null,
-                        "state": "unsupported",
-                        "successful_lower_tier_pairs": 0
-                      }
-                    },
-                    "weight": 50
-                  },
-                  {
-                    "base_weight": 50,
                     "name": "Token economy",
                     "normalized_score": 0.952380952380952,
-                    "score": 47.6,
+                    "score": 95.2,
                     "signals": {
                       "cli_share": 0.67,
                       "toolsearch": 0
                     },
-                    "weight": 50
+                    "weight": 100
                   }
                 ],
                 "name": "Savvy",
-                "score": 55.9,
+                "not_applicable": [
+                  "Model mix"
+                ],
+                "score": 95.2,
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:3:3",
+            "score_contract_id": "5:5:3",
             "tier": "Apprentice",
             "tool_diversity": {
               "distinct": 12,
@@ -1305,12 +1312,12 @@
               "title": "Spend more time in Think + Plan"
             },
             {
-              "advice": "Savvy \u00b7 Model mix is your thinnest AQ signal. 1 model(s), with only 0% of turns routed off your default. Send mechanical work \u2014 renames, bulk edits, summaries \u2014 to a faster model and save the heavyweight for design and review.",
-              "axis": "Model mix",
+              "advice": "Breadth \u00b7 Tool command (MCP + CLI) is your thinnest AQ signal. 2 MCP servers and 8 CLIs in evidence. Connect the things you touch every day \u2014 issue tracker, browser, cloud \u2014 as MCP servers or CLIs, so the agent reaches them directly instead of through you.",
+              "axis": "Tool command (MCP + CLI)",
               "commands": [],
-              "eyebrow": "Route the work",
+              "eyebrow": "Widen the toolbelt",
               "severity": "medium",
-              "title": "Match the model to the task"
+              "title": "Wire your daily services into the agent"
             }
           ],
           "model_usage": [],
@@ -1574,16 +1581,16 @@
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 83,
+          "aq_0_100": 82,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 72.8,
+              "score": 71.0,
               "weight": 30
             },
             {
               "name": "Craft",
-              "score": 85.2,
+              "score": 84.8,
               "weight": 35
             },
             {
@@ -1593,11 +1600,11 @@
             },
             {
               "name": "Savvy",
-              "score": 84.0,
+              "score": 88.4,
               "weight": 15
             }
           ],
-          "score_contract_id": "5:3:3",
+          "score_contract_id": "5:5:3",
           "tier": "Advanced"
         },
         "archetype": {
@@ -1846,7 +1853,7 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 88,
+            "aq_0_100": 87,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -1860,12 +1867,18 @@
                   {
                     "base_weight": 33,
                     "name": "Orchestration",
-                    "normalized_score": 0.725,
-                    "score": 23.9,
+                    "normalized_score": 0.66,
+                    "score": 21.8,
                     "signals": {
-                      "agent_runs": 200,
+                      "coordination_quality": 0.66,
+                      "delegated_orchestratable_sessions": 0,
                       "fanout_median": 3,
+                      "frequency": null,
+                      "frequency_confidence": 0.0,
+                      "frequency_score": null,
+                      "frequency_weight": 0.0,
                       "o_harn": 0.6,
+                      "orchestratable_sessions": 0,
                       "subagent_types": 6
                     },
                     "weight": 33
@@ -1905,7 +1918,7 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 79.7,
+                "score": 77.6,
                 "weight": 30
               },
               {
@@ -2028,8 +2041,8 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:3:3",
-            "tier": "Elite",
+            "score_contract_id": "5:5:3",
+            "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
               "entropy": 0.8
@@ -2037,7 +2050,7 @@
           },
           "archetype": {
             "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is breadth \u2014 that's where the next gain is.",
-            "title": "Elite"
+            "title": "Advanced"
           },
           "growth_edges": [
             {
@@ -2272,7 +2285,7 @@
         },
         "cursor": {
           "aq": {
-            "aq_0_100": 39,
+            "aq_0_100": 43,
             "mcp_vs_cli": {
               "cli_calls": 100,
               "cli_distinct": 8,
@@ -2286,35 +2299,51 @@
                   {
                     "base_weight": 33,
                     "name": "Orchestration",
-                    "normalized_score": 0.18,
-                    "score": 9.7,
+                    "normalized_score": 0.2,
+                    "score": 8.0,
                     "signals": {
-                      "agent_runs": 0,
+                      "coordination_quality": 0.2,
+                      "delegated_orchestratable_sessions": 0,
                       "fanout_median": 1,
+                      "frequency": null,
+                      "frequency_confidence": 0.0,
+                      "frequency_score": null,
+                      "frequency_weight": 0.0,
                       "o_harn": 0.6,
+                      "orchestratable_sessions": 0,
                       "subagent_types": 0
                     },
-                    "weight": 54
+                    "weight": 40
+                  },
+                  {
+                    "base_weight": 22,
+                    "name": "Skill fluency",
+                    "normalized_score": 0.18,
+                    "score": 4.9,
+                    "signals": {
+                      "skills_distinct": 0,
+                      "skills_total": 0
+                    },
+                    "weight": 27
                   },
                   {
                     "base_weight": 28,
                     "name": "Tool command (MCP + CLI)",
                     "normalized_score": 0.166666666666667,
-                    "score": 7.7,
+                    "score": 5.5,
                     "signals": {
                       "clis": 8,
                       "mcp_servers": 2,
                       "toolsearch": 0
                     },
-                    "weight": 46
+                    "weight": 33
                   }
                 ],
                 "name": "Breadth",
                 "not_applicable": [
-                  "Skill fluency",
                   "Discipline"
                 ],
-                "score": 17.4,
+                "score": 18.4,
                 "weight": 30
               },
               {
@@ -2322,8 +2351,8 @@
                   {
                     "base_weight": 35,
                     "name": "Verification",
-                    "normalized_score": 0.333333333333333,
-                    "score": 11.7,
+                    "normalized_score": 0.166666666666667,
+                    "score": 5.8,
                     "signals": {
                       "review_skills": 0,
                       "test_runs": 5
@@ -2359,8 +2388,8 @@
                   {
                     "base_weight": 20,
                     "name": "Compounding",
-                    "normalized_score": 0.4,
-                    "score": 8.0,
+                    "normalized_score": 0.48,
+                    "score": 9.6,
                     "signals": {
                       "compounding_writes": 1
                     },
@@ -2368,7 +2397,7 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 27.2,
+                "score": 22.9,
                 "weight": 35
               },
               {
@@ -2404,40 +2433,25 @@
                 "axes": [
                   {
                     "base_weight": 50,
-                    "name": "Model mix",
-                    "normalized_score": 0.166666666666667,
-                    "score": 8.3,
-                    "signals": {
-                      "distinct_models": 1,
-                      "offload_share": 0.0,
-                      "routing": {
-                        "eligible_completed_substantive_pairs": 0,
-                        "excluded_reasons": {},
-                        "score": null,
-                        "state": "unsupported",
-                        "successful_lower_tier_pairs": 0
-                      }
-                    },
-                    "weight": 50
-                  },
-                  {
-                    "base_weight": 50,
                     "name": "Token economy",
                     "normalized_score": 0.952380952380952,
-                    "score": 47.6,
+                    "score": 95.2,
                     "signals": {
                       "cli_share": 0.67,
                       "toolsearch": 0
                     },
-                    "weight": 50
+                    "weight": 100
                   }
                 ],
                 "name": "Savvy",
-                "score": 55.9,
+                "not_applicable": [
+                  "Model mix"
+                ],
+                "score": 95.2,
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:3:3",
+            "score_contract_id": "5:5:3",
             "tier": "Apprentice",
             "tool_diversity": {
               "distinct": 12,
@@ -2471,12 +2485,12 @@
               "title": "Spend more time in Think + Plan"
             },
             {
-              "advice": "Savvy \u00b7 Model mix is your thinnest AQ signal. 1 model(s), with only 0% of turns routed off your default. Send mechanical work \u2014 renames, bulk edits, summaries \u2014 to a faster model and save the heavyweight for design and review.",
-              "axis": "Model mix",
+              "advice": "Breadth \u00b7 Tool command (MCP + CLI) is your thinnest AQ signal. 2 MCP servers and 8 CLIs in evidence. Connect the things you touch every day \u2014 issue tracker, browser, cloud \u2014 as MCP servers or CLIs, so the agent reaches them directly instead of through you.",
+              "axis": "Tool command (MCP + CLI)",
               "commands": [],
-              "eyebrow": "Route the work",
+              "eyebrow": "Widen the toolbelt",
               "severity": "medium",
-              "title": "Match the model to the task"
+              "title": "Wire your daily services into the agent"
             }
           ],
           "model_usage": [],
@@ -2883,11 +2897,11 @@
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 82,
+          "aq_0_100": 81,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 79.7,
+              "score": 77.6,
               "weight": 30
             },
             {
@@ -2906,7 +2920,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "5:3:3",
+          "score_contract_id": "5:5:3",
           "tier": "Advanced"
         },
         "archetype": {
@@ -3154,7 +3168,7 @@
       "by_source": {
         "claude-boundary": {
           "aq": {
-            "aq_0_100": 82,
+            "aq_0_100": 81,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -3168,12 +3182,18 @@
                   {
                     "base_weight": 33,
                     "name": "Orchestration",
-                    "normalized_score": 0.725,
-                    "score": 23.9,
+                    "normalized_score": 0.66,
+                    "score": 21.8,
                     "signals": {
-                      "agent_runs": 200,
+                      "coordination_quality": 0.66,
+                      "delegated_orchestratable_sessions": 0,
                       "fanout_median": 3,
+                      "frequency": null,
+                      "frequency_confidence": 0.0,
+                      "frequency_score": null,
+                      "frequency_weight": 0.0,
                       "o_harn": 0.6,
+                      "orchestratable_sessions": 0,
                       "subagent_types": 6
                     },
                     "weight": 33
@@ -3213,7 +3233,7 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 79.7,
+                "score": 77.6,
                 "weight": 30
               },
               {
@@ -3336,7 +3356,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:3:3",
+            "score_contract_id": "5:5:3",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -3740,7 +3760,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "5:3:3",
+          "score_contract_id": "5:5:3",
           "tier": "Novice"
         },
         "archetype": {
@@ -4008,9 +4028,15 @@
                     "normalized_score": 0.12,
                     "score": 4.0,
                     "signals": {
-                      "agent_runs": 0,
+                      "coordination_quality": 0.12,
+                      "delegated_orchestratable_sessions": 0,
                       "fanout_median": 0,
+                      "frequency": null,
+                      "frequency_confidence": 0.0,
+                      "frequency_score": null,
+                      "frequency_weight": 0.0,
                       "o_harn": 0.6,
+                      "orchestratable_sessions": 0,
                       "subagent_types": 0
                     },
                     "weight": 33
@@ -4160,7 +4186,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:3:3",
+            "score_contract_id": "5:5:3",
             "tier": "Novice",
             "tool_diversity": {
               "distinct": 0,
@@ -4644,7 +4670,7 @@
           "pillars": [
             {
               "name": "Breadth",
-              "score": 79.7,
+              "score": 77.6,
               "weight": 30
             },
             {
@@ -4663,7 +4689,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "5:3:3",
+          "score_contract_id": "5:5:3",
           "tier": "Advanced"
         },
         "archetype": {
@@ -4925,14 +4951,14 @@
                   "id": "recent_30d"
                 },
                 {
-                  "component_aq": 82,
+                  "component_aq": 81,
                   "configured_weight": 0.35,
                   "day_bounds": null,
                   "effective_weight": 0.35,
                   "id": "full_window"
                 }
               ],
-              "full_aq": 82
+              "full_aq": 81
             },
             "mcp_vs_cli": {
               "cli_calls": 1500,
@@ -4950,35 +4976,53 @@
                       {
                         "effective_weight": 0.65,
                         "id": "recent_30d",
-                        "normalized_score": 0.725,
-                        "score": 23.9,
+                        "normalized_score": 0.66,
+                        "score": 21.8,
                         "signals": {
-                          "agent_runs": 200,
+                          "coordination_quality": 0.66,
+                          "delegated_orchestratable_sessions": 0,
                           "fanout_median": 3,
+                          "frequency": null,
+                          "frequency_confidence": 0.0,
+                          "frequency_score": null,
+                          "frequency_weight": 0.0,
                           "o_harn": 0.6,
+                          "orchestratable_sessions": 0,
                           "subagent_types": 6
                         }
                       },
                       {
                         "effective_weight": 0.35,
                         "id": "full_window",
-                        "normalized_score": 0.725,
-                        "score": 23.9,
+                        "normalized_score": 0.66,
+                        "score": 21.8,
                         "signals": {
-                          "agent_runs": 200,
+                          "coordination_quality": 0.66,
+                          "delegated_orchestratable_sessions": 0,
                           "fanout_median": 3,
+                          "frequency": null,
+                          "frequency_confidence": 0.0,
+                          "frequency_score": null,
+                          "frequency_weight": 0.0,
                           "o_harn": 0.6,
+                          "orchestratable_sessions": 0,
                           "subagent_types": 6
                         }
                       }
                     ],
                     "name": "Orchestration",
-                    "normalized_score": 0.725,
-                    "score": 23.9,
+                    "normalized_score": 0.66,
+                    "score": 21.8,
                     "signals": {
-                      "agent_runs": 200,
+                      "coordination_quality": 0.66,
+                      "delegated_orchestratable_sessions": 0,
                       "fanout_median": 3,
+                      "frequency": null,
+                      "frequency_confidence": 0.0,
+                      "frequency_score": null,
+                      "frequency_weight": 0.0,
                       "o_harn": 0.6,
+                      "orchestratable_sessions": 0,
                       "subagent_types": 6
                     },
                     "weight": 33
@@ -5084,7 +5128,7 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 79.7,
+                "score": 77.6,
                 "weight": 30
               },
               {
@@ -5403,7 +5447,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:3:3",
+            "score_contract_id": "5:5:3",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,

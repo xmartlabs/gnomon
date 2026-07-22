@@ -88,10 +88,13 @@ class TestScoringInputsBySource(unittest.TestCase):
     _VELOCITY = {"active_hours", "tool_churn_edit_write", "shell_authored_lines_est"}
     _BEHAVIOR = {"planning_ratio_explore_to_doing", "actions_per_prompt", "questions_asked",
                  "error_recovery_ratio", "error_rate_per_100_tools", "api_errors_retries",
-                 "fanout_median", "shell_test_runs", "plan_sessions", "planning_skill_sessions",
+                 "fanout_median", "max_session_fanout", "shell_test_runs",
+                 "plan_sessions", "planning_skill_sessions",
                  "eligible_change_sessions", "planned_eligible_sessions",
-                 "evidence_eligible_sessions", "ordered_facts_state", "delegate_actions",
-                 "linked_model_pairs", "linked_model_routing_state",
+                 "evidence_eligible_sessions", "orchestratable_sessions",
+                 "delegated_orchestratable_sessions", "ordered_facts_state",
+                 "delegate_actions", "linked_model_pairs", "linked_model_routing_state",
+                 "parallel_dispatch_turns", "delegating_sessions", "parallel_session_share",
                  "background_tasks", "iteration_depth_mean", "iteration_depth_p90",
                  "iteration_depth_max", "files_hammered_over_15x", "no_tool_activity"}
     _STACK = {"skills_distinct", "skills_total", "compounding_writes",

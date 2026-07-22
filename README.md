@@ -101,8 +101,7 @@ components — recent behavior dominates while the full window provides
 stability. When the recent window has no sessions the blend falls back to the
 unblended full-window AQ.
 
-This runtime emits **scoring inputs version 5**, **AQ version 3**, and
-**GStack version 3** (`score_contract_id = 5:3:3`). Scores from the previous
+This runtime emits **scoring inputs version 5**, **AQ version 5**, and **GStack version 3** (`score_contract_id = 5:5:3`). Scores from the previous
 contract must not be presented as an improvement or regression against v5.
 
 What happens when you run it (without `--local`):
@@ -333,15 +332,17 @@ to different stores, and the CLI's transcript is leaner:
 
 The CLI transcript JSONL is lean (`role` + `content` + `turn_ended`), but its sibling
 `~/.cursor/chats/<workspaceHash>/<chatId>/` store backfills the real model and session date,
-so a CLI profile is scored on everything **except token economy** — tokens are the one signal
-the CLI never writes to disk. (If the `chats` dir is absent — e.g. a copied/mounted `projects`
+so a CLI profile is scored on everything **except token economy and model mix** — tokens are
+never written to disk, and model choice is flat-rate (one request per turn regardless of model).
+(If the `chats` dir is absent — e.g. a copied/mounted `projects`
 dir without it — the session falls back to file mtime and no model, as before.)
 
 **Overrides:** `--cursor-dir=PATH` points at a copied/mounted `projects` dir (root or the
 `projects` subdir both work). The `state.vscdb` path is fixed per platform — there's no
 flag for it, so DB-backed sessions are only read from the local Cursor install.
 
-**Known caveats:** CLI transcripts carry no per-event timestamps (single file-mtime stamp) and
-no tokens/model; if a `projects` dir is copied/synced to a new machine, mtimes reset and the
-monthly timeline compresses; `ApplyPatch` churn counts raw patch lines (slight over-estimate).
-Workspace slugs encode `.`/`-` ambiguously, so cwd is recovered from real tool-input paths.
+**Known caveats:** CLI transcript JSONL carries no per-event timestamps (single file-mtime
+stamp), token data, or model field. The chats sidecar may recover the model, but tokens remain
+unavailable. If a `projects` dir is copied/synced to a new machine, mtimes reset and the monthly
+timeline compresses; `ApplyPatch` churn counts raw patch lines (slight over-estimate). Workspace
+slugs encode `.`/`-` ambiguously, so cwd is recovered from real tool-input paths.

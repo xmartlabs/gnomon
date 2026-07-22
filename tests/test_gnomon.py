@@ -151,7 +151,7 @@ class TestComputeAqV2(unittest.TestCase):
         return next(a for a in breadth["axes"] if a["name"] == "Orchestration")["score"]
 
     def test_coordination_beats_volume(self):
-        # Same agent_runs / variety / harness; only fan-out differs. A real orchestrator
+        # Same variety / harness; only fan-out differs. A real orchestrator
         # (coordinates a team per session) must out-score a serial grinder (1 agent/session).
         orchestrator = _sample_stats(); orchestrator["behavior"]["fanout_median"] = 6
         grinder = _sample_stats(); grinder["behavior"]["fanout_median"] = 1
@@ -178,7 +178,7 @@ class TestComputeAqV2(unittest.TestCase):
         self.assertIn("Context Intelligence", paxel.AQ_AXIS_NOTES)
 
     def test_volume_alone_cannot_max_orchestration(self):
-        # 10x the agent_runs but no coordination (fanout=1) -> still capped below full.
+        # High volume but no coordination (fanout=1) -> still capped below full.
         s = _sample_stats(); s["tools"]["agent_calls"] = 5000; s["behavior"]["fanout_median"] = 1
         self.assertLess(self._orch(paxel.compute_aq(s)), 33)
 
@@ -443,9 +443,25 @@ class TestGrowthEdgesAq(unittest.TestCase):
         # gstack scorecard healthy but Orchestration thin -> AQ edge, not "balanced".
         agentic = {"pillars": [{"name": "Breadth", "weight": 30, "axes": [
             _axis("Orchestration", 33, 0.2,
-                  {"agent_runs": 3, "subagent_types": 1, "fanout_median": 1})]}]}
+                  {"orchestratable_sessions": 3, "subagent_types": 1, "fanout_median": 1})]}]}
         edges = paxel.growth_edges(_edge_stats(agentic), dict(HEALTHY_SCORES))
         self.assertTrue(any("Orchestration" in adv for _, _, adv in edges), edges)
+
+    def test_orchestration_advice_renders_raw_frequency(self):
+        agentic = {"pillars": [{"name": "Breadth", "weight": 30, "axes": [
+            _axis("Orchestration", 33, 0.2, {
+                "orchestratable_sessions": 5,
+                "subagent_types": 1,
+                "fanout_median": 1,
+                "frequency": 0.6,
+                "frequency_score": 0.769,
+            })]}]}
+
+        edges = paxel.growth_edges(_edge_stats(agentic), dict(HEALTHY_SCORES))
+        advice = next(advice for _, _, advice in edges if "Orchestration" in advice)
+
+        self.assertIn("60%", advice)
+        self.assertNotIn("77%", advice)
 
     def test_healthy_aq_falls_through_to_balanced(self):
         agentic = {"pillars": [{"name": "Breadth", "weight": 30, "axes": [
@@ -465,7 +481,8 @@ class TestGrowthEdgesAq(unittest.TestCase):
     def test_capped_at_three_most_urgent_first(self):
         agentic = {"pillars": [
             {"name": "Breadth", "weight": 30, "axes": [
-                _axis("Orchestration", 33, 0.1), _axis("Tool command (MCP + CLI)", 28, 0.3)]},
+                _axis("Orchestration", 33, 0.1),
+                _axis("Tool command (MCP + CLI)", 28, 0.3)]},
             {"name": "Savvy", "weight": 15, "axes": [
                 _axis("Model mix", 50, 0.2), _axis("Token economy", 50, 0.4)]},
             {"name": "Craft", "weight": 35, "axes": [_axis("Grounding", 30, 0.25)]},
@@ -584,6 +601,17 @@ class TestResolveSourceDir(unittest.TestCase):
             self.assertEqual(paxel._resolve_source_dir(d, "projects"), d)
 
 
+class TestCanonMcpServer(unittest.TestCase):
+    def test_plugin_doubled_vendor_prefix(self):
+        from gnomon.taxonomy import _canon_mcp_server
+        self.assertEqual(_canon_mcp_server("plugin", "atlassian_atlassian_get_jira_issue"), "atlassian")
+        self.assertEqual(_canon_mcp_server("plugin", "figma_figma_get_design_context"), "figma")
+
+    def test_non_plugin_unchanged(self):
+        from gnomon.taxonomy import _canon_mcp_server
+        self.assertEqual(_canon_mcp_server("atlassian", "get_jira_issue"), "atlassian")
+
+
 class TestCompoundingPath(unittest.TestCase):
     def test_claude_md(self):
         self.assertTrue(paxel._is_compounding_path("/x/CLAUDE.md"))
@@ -591,6 +619,8 @@ class TestCompoundingPath(unittest.TestCase):
         self.assertTrue(paxel._is_compounding_path("/x/memory/foo.md"))
     def test_adr(self):
         self.assertTrue(paxel._is_compounding_path("/x/docs/adr/0001.md"))
+    def test_cursor_rules(self):
+        self.assertTrue(paxel._is_compounding_path("/x/.cursor/rules/context7.mdc"))
     def test_normal_file_false(self):
         self.assertFalse(paxel._is_compounding_path("/x/src/app.py"))
     def test_none(self):
@@ -1377,6 +1407,21 @@ class TestAntigravityExportStale(unittest.TestCase):
 class TestAntigravityDirOverride(unittest.TestCase):
     """--antigravity-dir must accept the tool root, not only the leaf conversations dir."""
 
+    def test_cli_and_ide_directory_flags_are_applied(self):
+        import contextlib, io
+        from unittest import mock
+        from gnomon.cli import local
+        from gnomon.sources import discovery
+        for source, attr in (("antigravity", "ANTIGRAVITY_CLI_DIR"),
+                             ("antigravity-ide", "ANTIGRAVITY_IDE_DIR")):
+            with self.subTest(source=source), \
+                    mock.patch.object(discovery, attr, "unchanged"), \
+                    mock.patch.object(local, "discover_sources", return_value=[]), \
+                    mock.patch.object(local, "antigravity_summary", return_value=None), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                local.main([source, f"--{source}-dir=/tmp/ide", "--no-open"])
+                self.assertEqual(getattr(discovery, attr), "/tmp/ide")
+
     def test_root_resolves_to_conversations(self):
         import shutil, tempfile
         from gnomon.sources.discovery import _DIR_FLAGS, _resolve_source_dir
@@ -1446,11 +1491,11 @@ class TestScoringDoesNotPenalizeMissingCaps(unittest.TestCase):
         self.assertGreater(self._gstack("antigravity")["Planning"], self._gstack("claude")["Planning"])
 
     def test_gstack_planning_skill_dropped_for_cursor(self):
-        # Cursor cannot observe Skill use, so zero planning_skill_sessions is N/A,
-        # not evidence that the user skipped the educational practice.
+        # Cursor has no first-class Skill tool (only skill_reads), so planning_skill_sessions
+        # term is dropped and the rest of Planning renormalizes UP.
         self.assertGreater(self._gstack("cursor")["Planning"], self._gstack("claude")["Planning"])
 
-    def test_gstack_cursor_breakdown_marks_planning_skill_not_applicable(self):
+    def test_gstack_cursor_breakdown_drops_planning_skill(self):
         from gnomon.scoring.gstack import score_breakdown
         planning = score_breakdown(self._gstack_stats("cursor"))["planning"]["subs"]
         self.assertNotIn("Planning skill practice", {sub["label"] for sub in planning})
@@ -1735,7 +1780,7 @@ class TestToolsDiagnostic(unittest.TestCase):
             "agentic": {"pillars": [
                 {"name": "Breadth", "axes": [
                     {"name": "Discipline", "signals": {"task_tool_calls": 50}},
-                    {"name": "Orchestration", "signals": {"agent_runs": 200}},
+                    {"name": "Orchestration", "signals": {"orchestratable_sessions": 200}},
                     {"name": "Tool command", "signals": {"toolsearch": 30}},
                 ]},
                 {"name": "Craft", "axes": [
@@ -1750,7 +1795,7 @@ class TestToolsDiagnostic(unittest.TestCase):
         lines, rec = tools_diagnostic(self._stats(100))
         self.assertEqual(rec["sessions"], 100)
         self.assertEqual(rec["rates"]["task_tool_calls"], 0.5)   # 50/100
-        self.assertEqual(rec["rates"]["agent_runs"], 2.0)        # 200/100
+        self.assertEqual(rec["counts"]["orchestratable"], 200)     # absolute, not rate
         self.assertEqual(rec["rates"]["toolsearch_calls"], 0.3)  # 30/100
         self.assertEqual(rec["counts"]["review_skills"], 20)
         self.assertTrue(any("task_tool_calls" in l for l in lines))

@@ -21,6 +21,7 @@ FIX = os.path.join(HERE, "fixtures", "window-test")
 
 sys.path.insert(0, ROOT)
 import paxel  # noqa: E402
+from gnomon.cli.local import _accumulate  # noqa: E402
 
 # Only Claude fixtures in the window-test dir; disable every other source so
 # codex/gemini/etc. are not looked up in their real locations.
@@ -239,6 +240,63 @@ class TestWindowedGitChurnBounds(unittest.TestCase):
                         f"churn since should be requested start, got {since!r}")
         self.assertTrue(until.startswith("2025-03"),
                         f"churn until should fall back to corpus max, got {until!r}")
+
+
+class TestWindowedCursorGitChurnRoots(unittest.TestCase):
+    """Only Cursor workspaces with admitted events may feed git churn."""
+
+    @staticmethod
+    def _empty_churn():
+        return {"repos_seen": 0, "repos_with_commits": 0, "insertions": 0,
+                "deletions": 0, "churn": 0, "commits": 0, "per_repo": []}
+
+    def _capture_cursor_churn_roots(self, mtime):
+        root = tempfile.mkdtemp(prefix="paxel-cursor-churn-")
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        workspace = os.path.join(root, "workspace")
+        os.makedirs(workspace)
+        session_dir = os.path.join(
+            root, "projects", "Users-demo-workspace", "agent-transcripts", "session")
+        os.makedirs(session_dir)
+        transcript = os.path.join(session_dir, "session.jsonl")
+        with open(transcript, "w", encoding="utf-8") as fh:
+            fh.write('{"role":"user","message":{"content":"hello"}}\n')
+        os.utime(transcript, (mtime, mtime))
+
+        churn_roots = []
+
+        def fake_git_churn(cwds, _since_iso, _until_iso):
+            churn_roots.append(set(cwds))
+            return self._empty_churn()
+
+        since = datetime(2025, 2, 1, tzinfo=timezone.utc)
+        until = datetime(2025, 3, 1, tzinfo=timezone.utc)
+        with mock.patch("gnomon.sources.cursor._cursor_resolve_cwd",
+                        return_value=workspace), \
+                mock.patch("gnomon.cli.accumulator.git_churn", fake_git_churn):
+            _accumulate(
+                [("cursor", transcript, "cursor-jsonl")],
+                since,
+                until,
+                cursor_twins={},
+                antigravity=False,
+                verbose=False,
+            )
+        return churn_roots[0], workspace
+
+    def test_out_of_window_cursor_transcript_does_not_seed_git_churn(self):
+        jan10 = datetime(2025, 1, 10, 12, 0, tzinfo=timezone.utc).timestamp()
+
+        roots, workspace = self._capture_cursor_churn_roots(jan10)
+
+        self.assertNotIn(workspace, roots)
+
+    def test_admitted_cursor_event_contributes_workspace_to_git_churn(self):
+        feb15 = datetime(2025, 2, 15, 12, 0, tzinfo=timezone.utc).timestamp()
+
+        roots, workspace = self._capture_cursor_churn_roots(feb15)
+
+        self.assertIn(workspace, roots)
 
 
 class TestNoWindowIdentity(unittest.TestCase):

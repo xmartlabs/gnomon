@@ -55,13 +55,28 @@ directly — no external dependency). Both decode to the same normalized events.
 - **MCP** is detected on both surfaces: the CLI names MCP tools `server::tool` (→ `mcp__server__tool`),
   the IDE emits a dedicated `MCP_TOOL` step (`mcpTool.serverName` + `toolCall.name`). Counted as
   `mcp_calls` + distinct servers.
-- **Skills** are detected when a skill file is read (`skills/<name>/SKILL.md` → `attributionSkill`),
-  on both surfaces — so only file-loaded/`/slash`-invoked skills are counted, not context-injected ones.
+- **Skills** (Cursor): counted when a skill file is read via `Read`/`Bash` (`skills/<name>/SKILL.md`),
+  or listed in injected `<manually_attached_skills>` on user turns (not the full `available_skills` catalog).
+- **Orchestration** (Cursor): measured from `Task`/`task_v2` dispatches in the parent Composer
+  session — not UI multitask tabs. `fanout_median` is the median agents-per-delegating-session;
+  AQ combines coordination quality with the raw share of orchestratable sessions that delegate.
+  That raw `frequency` is normalized against the provisional `0.78` target as
+  `frequency_score`; its scoring weight rises progressively from 0% to 30% across the first five
+  orchestratable sessions. The target remains provisional because the current three-user sample
+  is insufficient for recalibration. `max_session_fanout`, `parallel_dispatch_turns`, and
+  `parallel_session_share` are descriptive metrics, not AQ inputs. `parallel_session_share` means
+  the share of sessions with at least two agent invocations; it does not prove temporal concurrency.
+- **Git churn** requires local repo access: if `git_repos_seen == 0` but tool churn is high,
+  `summary.json` includes `churn.git_coverage_warning` (common on upload/CI without `state.vscdb` + `.git`).
+- **Model mix** (AQ Savvy axis) is **not scored** for Cursor — every included model costs one
+  request, so routing between Composer 2.5 and cheaper models is not a cost signal. Model ids
+  are still collected for descriptive stats when `state.vscdb` (or CLI `~/.cursor/chats` sidecar)
+  is available; `stack.model_signal_missing` flags runs where assistant turns exist but no model
+  id was recovered.
 
 ## Uploaded summary contract
 
-Current runtime contract: **scoring inputs version 5**, **AQ version 3**, and
-**GStack version 3** (`score_contract_id = 5:3:3`). Previous-contract scores
+Current runtime contract: **scoring inputs version 5**, **AQ version 5**, and **GStack version 3** (`score_contract_id = 5:5:3`). Previous-contract scores
 must not be shown as improvement or regression against v5. AQ is blended as
 65% recent (rolling 30-day) + 35%
 full-window (cumulative). The full window includes recent activity, so

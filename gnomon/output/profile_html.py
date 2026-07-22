@@ -7,6 +7,7 @@ from gnomon.analysis.quotes import _safe_quote
 from gnomon.scoring.gstack import (
     REPO_URL, SCORE_NOTES, SCORE_NOTES_SHORT,
     AQ_PILLAR_NOTES, AQ_AXIS_NOTES,
+    savvy_cursor_model_mix_note,
     _d10, _mon_yr, _js, _clamp,
     score_breakdown, _evidence,
 )
@@ -354,6 +355,12 @@ def write_profile_html(stats, archetype, quote, scores, voice=None, output_dir=N
                   f'{_h.escape(ax["name"])}</span>'
                   f'<span class="track"><span class="fill" style="width:{pct:.0f}%"></span></span>'
                   f'<span class="vl mono">{ax["score"]:.0f}/{ax["weight"]}</span></div>')
+            if pillar["name"] == "Savvy":
+                _cursor_savvy = savvy_cursor_model_mix_note(stats, aq)
+                if _cursor_savvy:
+                    lead, body = _cursor_savvy
+                    P('<div class="aq-split"><p class="meta"><b>'
+                      f'{_h.escape(lead)}.</b> {_h.escape(body)}</p></div>')
         mv = aq["mcp_vs_cli"]
         cli_calls, mcp_calls = mv["cli_calls"], mv["mcp_calls"]
         tot = (cli_calls + mcp_calls) or 1

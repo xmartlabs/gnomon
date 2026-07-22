@@ -33,6 +33,7 @@ from gnomon.taxonomy import (
     is_substantive_tool, classify_change_target, is_plan_file_target,
     bash_writes_file, bash_runs_tests, bash_runs_knowledge, _extract_clis,
     _is_compounding_path, _norm_path_seps, _SKILL_MD_RX,
+    extract_skill_name_from_path, _canon_mcp_server,
 )
 from gnomon.sources.discovery import _AGENT_UNSUPPORTED_SOURCES
 from gnomon.analysis.churn import git_churn
@@ -43,7 +44,7 @@ from gnomon.analysis.metrics import (
 )
 from gnomon.scoring.aq import (
     compute_aq, CHURN_MIN, WINDOW, PLAN_MIN_LINES, PLAN_MIN_STEPS,
-    MIN_ELIGIBLE_SESSIONS,
+    MIN_ELIGIBLE_SESSIONS, ORCHESTRATABLE_CODE_FILES, ORCHESTRATABLE_SUBSTANTIVE,
 )
 from gnomon.scoring.inputs import build_monthly_scoring_stats
 from gnomon.output.summary import _build_monthly_noticed_stats
@@ -123,6 +124,7 @@ class Accumulator:
         self.subagent_counter = Counter()
         self.agents_per_session = defaultdict(int)
         self.session_subagent_types = defaultdict(set)  # sessionId -> distinct subagent roles
+        self.parallel_dispatch_turns = 0
         self.mcp_server_counter = Counter()
         self.mcp_subcategory_counter = Counter()
         self.mcp_subcategory_servers = defaultdict(set)
@@ -215,6 +217,7 @@ class Accumulator:
         self.source_files = Counter()
         self.source_sessions = defaultdict(set)
         self.source_prompts = Counter()
+        self._plan_sessions_degraded = False
 
         # per-file transient state (reset in begin_file, flushed in end_file)
         self._cur_src = None
@@ -248,6 +251,21 @@ class Accumulator:
         (codex empty-seed sessions)."""
         self.source_files[self._cur_src] -= 1
         self.files_parsed -= 1
+
+    def _git_cwds(self):
+        return list(self.project_activity.keys())
+
+    def _record_skill(self, name, sid, mkey):
+        if not name:
+            return
+        self.skill_counter[name] += 1
+        if mkey:
+            self.month_skill_counter[mkey][name] += 1
+        if self._is_plan_skill(name):
+            self._mark_plan_session(sid, mkey)
+            self._mark_planning_skill_session(sid, mkey)
+        if self._is_knowledge_skill(name):
+            self._pending_knowledge_grounding[sid] = True
 
     # ---- plan-ceremony (per-session) helpers -------------------------------
     @staticmethod
@@ -324,8 +342,14 @@ class Accumulator:
         """Plan sessions restricted to the same universe as total_sessions, so the
         plan_sessions / total_sessions fraction can never exceed 1 (a session that
         never entered session_ts is not in the denominator either)."""
+        if not self.plan_sessions:
+            self._plan_sessions_degraded = False
+            return 0
         if self.session_ts:
+            self._plan_sessions_degraded = False
             return len(self.plan_sessions & set(self.session_ts))
+        # No real timestamps at all — fall back to session_files (synth-only / undated).
+        self._plan_sessions_degraded = True
         return min(len(self.plan_sessions), len(self.session_files))
 
     def _counted_planning_skill_sessions(self):
@@ -607,6 +631,9 @@ class Accumulator:
             if sid:
                 self.project_sessions[cwd].add(sid)
 
+        for skill in ev.get("injectedSkills") or []:
+            self._record_skill(skill, sid, mkey)
+
         msg = ev.get("message") if isinstance(ev.get("message"), dict) else None
 
         if self._cur_src == "claude" and ev.get("isSidechain") and ev.get("agentId"):
@@ -733,6 +760,7 @@ class Accumulator:
                     self._pending_knowledge_grounding[sid] = True
             content = msg.get("content")
             if isinstance(content, list):
+                _turn_agent_count = 0
                 for b in content:
                     if not isinstance(b, dict):
                         continue
@@ -811,11 +839,11 @@ class Accumulator:
                             self.mcp_calls += 1
                             parts = name.split("__")
                             if len(parts) > 1 and parts[1]:
-                                server = parts[1]
+                                tool_part = parts[-1] if len(parts) > 2 else ""
+                                server = _canon_mcp_server(parts[1], tool_part)
                                 self.mcp_server_counter[server] += 1
                                 if mkey:
                                     self.month_mcp_server_counter[mkey][server] += 1
-                                tool_part = parts[-1] if len(parts) > 2 else ""
                                 subcat = classify_mcp_subcategory(server, tool_part)
                                 self.mcp_subcategory_counter[subcat] += 1
                                 self.mcp_subcategory_servers[subcat].add(server)
@@ -868,6 +896,7 @@ class Accumulator:
                         if name in PLAN_SIGNAL_TOOLS:
                             self._mark_plan_session(sid, mkey)
                         if name == "Agent":
+                            _turn_agent_count += 1
                             if self._cur_src == "codex" and sid:
                                 self.codex_spawn_events[sid].append({
                                     "order": ((dt.timestamp(), ev.get("__ordinal__", 0))
@@ -915,6 +944,11 @@ class Accumulator:
                             self.scheduled_actions += 1
                             if mkey:
                                 self.month_scheduled[mkey] += 1
+
+                        if name == "Read":
+                            skill_name = extract_skill_name_from_path(inp.get("file_path"))
+                            if skill_name:
+                                self._record_skill(skill_name, sid, mkey)
 
                         # ---- code churn + iteration depth ----------
                         if name == "Edit":
@@ -1030,6 +1064,8 @@ class Accumulator:
                                                 self.month_edits_per_file[_fm].append(cnt)
                                     self._file_edit_run[sid].clear()
                                     self._file_edit_month.get(sid, {}).clear()
+                if _turn_agent_count >= 2:
+                    self.parallel_dispatch_turns += 1
 
         return prompt_info
 
@@ -1044,6 +1080,16 @@ class Accumulator:
         _eligible = _agg["eligible"]
         _planned = _agg["planned"]
         _evidence = _agg["evidence"]
+        # Orchestratable: per-session cross-ref with agents_per_session
+        _orchestratable = _agg["orchestratable"]
+        _orchestratable_sids = set()
+        for (src, sid), facts in self.session_ordered_tools.items():
+            d = derive_session_ordered_facts(facts)
+            if d["orchestratable"]:
+                _orchestratable_sids.add(sid)
+        _delegated_orchestratable = sum(
+            1 for sid in _orchestratable_sids
+            if self.agents_per_session.get(sid, 0) > 0)
         _routing_pairs, _routing_state = self._routing_snapshot()
         total_sessions = len(self.session_ts) or len(self.session_files)
         # Active time = sum of consecutive inter-event gaps, each capped at GAP_CAP_S,
@@ -1074,7 +1120,7 @@ class Accumulator:
         else:
             gc_since = self.all_min_dt.isoformat() if self.all_min_dt else "1970-01-01"
             gc_until = self.all_max_dt.isoformat() if self.all_max_dt else "2100-01-01"
-        gc = git_churn(list(self.project_activity.keys()), gc_since, gc_until)
+        gc = git_churn(self._git_cwds(), gc_since, gc_until)
         self.gc = gc
         git_velocity = (gc["churn"] / active_hours) if active_hours > 0 else 0
 
@@ -1102,6 +1148,12 @@ class Accumulator:
             set(self.source_sessions.keys()) <= _AGENT_UNSUPPORTED_SOURCES
         )
         fanout_median = _fanout_median(_fanouts, no_tool_activity, all_sources_no_agent)
+        max_session_fanout = max(_fanouts, default=0)
+        delegating_sessions = len(_fanouts)
+        parallel_delegating_sessions = sum(1 for n in _fanouts if n >= 2)
+        parallel_session_share = (
+            round(parallel_delegating_sessions / delegating_sessions, 3)
+            if delegating_sessions else 0.0)
         _ids = _iteration_depth_stats(self.edits_per_file_events, no_tool_activity)
         iteration_mean = _ids["mean"]
         iteration_median = _ids["median"]
@@ -1247,6 +1299,10 @@ class Accumulator:
                 "recovered_errors": self.recovered_errors,
                 "api_errors_retries": self.api_errors,
                 "fanout_median": fanout_median,
+                "max_session_fanout": max_session_fanout,
+                "parallel_dispatch_turns": self.parallel_dispatch_turns,
+                "delegating_sessions": delegating_sessions,
+                "parallel_session_share": parallel_session_share,
                 "iteration_depth_mean": round(iteration_mean, 2) if iteration_mean is not None else None,
                 "iteration_depth_median": round(iteration_median, 2) if iteration_median is not None else None,
                 "iteration_depth_p90": iteration_p90,
@@ -1262,6 +1318,8 @@ class Accumulator:
                 "eligible_change_sessions": _eligible,
                 "planned_eligible_sessions": _planned,
                 "evidence_eligible_sessions": _evidence,
+                "orchestratable_sessions": _orchestratable,
+                "delegated_orchestratable_sessions": _delegated_orchestratable,
                 "ordered_facts_state": ("measured" if self.tool_use_total
                                         and self.ordered_facts_complete else "unmeasured"),
                 "linked_model_pairs": _routing_pairs,
@@ -1280,6 +1338,8 @@ class Accumulator:
                 "top_skills": self.skill_counter.most_common(100),
                 "skills_distinct": len(self.skill_counter),
                 "skills_total": sum(self.skill_counter.values()),
+                "model_signal_missing": (
+                    self.assistant_turns > 0 and not self.model_counter),
                 "subagent_types_distinct": len(self.subagent_counter),
                 "max_session_subagent_types": max(
                     (len(v) for v in self.session_subagent_types.values()), default=0),
@@ -1338,7 +1398,7 @@ class Accumulator:
             month_session_ts=self.month_session_ts,
             no_tool_activity=no_tool_activity,
             all_sources_no_agent=all_sources_no_agent,
-            cwds=list(self.project_activity.keys()),
+            cwds=self._git_cwds(),
             gap_cap_s=GAP_CAP_S,
             burst_gap_s=BURST_GAP_S,
             dow=DOW,
@@ -1378,7 +1438,7 @@ class Accumulator:
             month_planning_skill_sessions=self.month_planning_skill_sessions,
             month_api_errors=self.month_api_errors,
             planning_ratio_window=planning_ratio,
-            cwds=list(self.project_activity.keys()),
+            cwds=self._git_cwds(),
             gap_cap_s=GAP_CAP_S, burst_gap_s=BURST_GAP_S,
             no_tool_activity=no_tool_activity, all_sources_no_agent=all_sources_no_agent,
         )
@@ -1396,6 +1456,15 @@ class Accumulator:
         # C4: cross-session consume-once credit, scoped to this source's sessions.
         _s_agg = aggregate_ordered(self.session_ordered_tools.values())
         _s_eligible = _s_agg["eligible"]
+        _s_orchestratable = _s_agg["orchestratable"]
+        _s_orchestratable_sids = set()
+        for (src, sid), facts in self.session_ordered_tools.items():
+            d = derive_session_ordered_facts(facts)
+            if d["orchestratable"]:
+                _s_orchestratable_sids.add(sid)
+        _s_delegated_orchestratable = sum(
+            1 for sid in _s_orchestratable_sids
+            if self.agents_per_session.get(sid, 0) > 0)
         _s_routing_pairs, _s_routing_state = self._routing_snapshot(src_name)
         _s_all_no_agent = src_name in _AGENT_UNSUPPORTED_SOURCES
         # Null-honesty per source: a source slice with sessions but zero tool calls
@@ -1407,6 +1476,12 @@ class Accumulator:
         _s_recov = _error_recovery_ratio(self.recovered_errors, self.tool_errors, _s_no_tool)
         _s_fanouts_list = [n for n in self.agents_per_session.values() if n > 0]
         _s_fan_med = _fanout_median(_s_fanouts_list, _s_no_tool, _s_all_no_agent)
+        _s_max_fanout = max(_s_fanouts_list, default=0)
+        _s_delegating_sessions = len(_s_fanouts_list)
+        _s_parallel_delegating = sum(1 for n in _s_fanouts_list if n >= 2)
+        _s_parallel_session_share = (
+            round(_s_parallel_delegating / _s_delegating_sessions, 3)
+            if _s_delegating_sessions else 0.0)
         _s_active_hours, _ = _active_hours_and_longest_run(
             self.session_ts, GAP_CAP_S, BURST_GAP_S)
 
@@ -1437,7 +1512,7 @@ class Accumulator:
         else:
             _s_gc_since = self.all_min_dt.isoformat() if self.all_min_dt else "1970-01-01"
             _s_gc_until = self.all_max_dt.isoformat() if self.all_max_dt else "2100-01-01"
-        _s_gc_cwds = list(self.project_activity.keys())
+        _s_gc_cwds = self._git_cwds()
         _s_gc = git_churn(_s_gc_cwds, _s_gc_since, _s_gc_until) if _s_gc_cwds else {
             "repos_seen": 0, "repos_with_commits": 0, "insertions": 0,
             "deletions": 0, "churn": 0, "commits": 0, "per_repo": []}
@@ -1476,12 +1551,18 @@ class Accumulator:
                 "recovered_errors": self.recovered_errors,
                 "api_errors_retries": self.api_errors,
                 "fanout_median": _s_fan_med,
+                "max_session_fanout": _s_max_fanout,
+                "parallel_dispatch_turns": self.parallel_dispatch_turns,
+                "delegating_sessions": _s_delegating_sessions,
+                "parallel_session_share": _s_parallel_session_share,
                 "shell_test_runs": self.shell_test_runs,
                 "plan_sessions": self._counted_plan_sessions(),
                 "planning_skill_sessions": self._counted_planning_skill_sessions(),
                 "eligible_change_sessions": _s_eligible,
                 "planned_eligible_sessions": _s_agg["planned"],
                 "evidence_eligible_sessions": _s_agg["evidence"],
+                "orchestratable_sessions": _s_orchestratable,
+                "delegated_orchestratable_sessions": _s_delegated_orchestratable,
                 "ordered_facts_state": ("measured" if _s_tool_total
                                         and self.ordered_facts_complete else "unmeasured"),
                 "linked_model_pairs": _s_routing_pairs,
@@ -1590,7 +1671,7 @@ def derive_session_ordered_facts(events):
     )
     events = [event for _, event in events]
 
-    code_written, substantive, seen_reads = set(), 0, set()
+    code_written, substantive, orchestration_substantive, seen_reads = set(), 0, 0, set()
     code_churn = 0
     first_code_write = None
     first_write_order = None
@@ -1621,9 +1702,12 @@ def derive_session_ordered_facts(events):
                 key = target
                 if key not in seen_reads:
                     substantive += 1
+                    orchestration_substantive += 1
                     seen_reads.add(key)
             else:
                 substantive += 1
+                if classify_tool(name) != "delegate":
+                    orchestration_substantive += 1
         if first_code_write is None:
             items = event.get("items") or []
             if name in {"TodoWrite", "TaskCreate"}:
@@ -1643,6 +1727,9 @@ def derive_session_ordered_facts(events):
 
     eligible = bool(code_written) and (
         len(code_written) >= 2 or code_churn >= CHURN_MIN or substantive >= 10)
+    orchestratable = bool(code_written) and (
+        len(code_written) >= ORCHESTRATABLE_CODE_FILES
+        or orchestration_substantive >= ORCHESTRATABLE_SUBSTANTIVE)
 
     plan_artifacts = []
     planned_intra = False
@@ -1663,6 +1750,7 @@ def derive_session_ordered_facts(events):
 
     return {
         "eligible": eligible,
+        "orchestratable": orchestratable,
         "planned_intra": planned_intra,
         "evidence": eligible and evidence_before,
         "first_write_order": first_write_order,
@@ -1733,4 +1821,6 @@ def aggregate_ordered(sessions):
     planned = sum(1 for d in derived
                   if d["eligible"] and (d["planned_intra"] or d.get("planned_final")))
     evidence = sum(1 for d in derived if d["evidence"])
-    return {"eligible": eligible, "planned": planned, "evidence": evidence}
+    orchestratable = sum(1 for d in derived if d.get("orchestratable"))
+    return {"eligible": eligible, "planned": planned, "evidence": evidence,
+            "orchestratable": orchestratable}

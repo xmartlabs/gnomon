@@ -8,6 +8,7 @@ from copy import deepcopy
 from gnomon.cli.accumulator import Accumulator, derive_ordered_behavior
 from gnomon.scoring.aq import (
     CONTEXT_INTELLIGENCE_TARGET,
+    ORCHESTRATION_FREQUENCY_TARGET,
     PLANNING_TARGET,
     MIN_ELIGIBLE_SESSIONS,
     compute_aq,
@@ -288,6 +289,79 @@ class TestConditionalScoring(unittest.TestCase):
             self._aq_axis(five, "Breadth", "Discipline")["score"],
         )
 
+    def test_orchestration_exports_raw_frequency_and_normalized_score(self):
+        stats = _v5_scoring_stats()
+        stats["behavior"].update({
+            "orchestratable_sessions": 5,
+            "delegated_orchestratable_sessions": 3,
+        })
+
+        axis = self._aq_axis(stats, "Breadth", "Orchestration")
+        signals = axis["signals"]
+
+        self.assertEqual(signals["frequency"], 0.6)
+        self.assertEqual(
+            signals["frequency_score"],
+            round(0.6 / ORCHESTRATION_FREQUENCY_TARGET, 3),
+        )
+        self.assertEqual(signals["frequency_confidence"], 1.0)
+        self.assertEqual(signals["frequency_weight"], 0.3)
+        self.assertAlmostEqual(
+            axis["normalized_score"],
+            0.7 * signals["coordination_quality"]
+            + 0.3 * signals["frequency_score"],
+            places=3,
+        )
+
+    def test_orchestration_frequency_confidence_progresses_through_five_sessions(self):
+        four = _v5_scoring_stats()
+        four["behavior"].update({
+            "orchestratable_sessions": 4,
+            "delegated_orchestratable_sessions": 4,
+        })
+        five = _v5_scoring_stats()
+        five["behavior"].update({
+            "orchestratable_sessions": 5,
+            "delegated_orchestratable_sessions": 5,
+        })
+
+        four_axis = self._aq_axis(four, "Breadth", "Orchestration")
+        five_axis = self._aq_axis(five, "Breadth", "Orchestration")
+
+        self.assertEqual(four_axis["signals"]["frequency_confidence"], 0.8)
+        self.assertEqual(four_axis["signals"]["frequency_weight"], 0.24)
+        self.assertEqual(five_axis["signals"]["frequency_confidence"], 1.0)
+        self.assertEqual(five_axis["signals"]["frequency_weight"], 0.3)
+        self.assertAlmostEqual(
+            four_axis["normalized_score"],
+            0.76 * four_axis["signals"]["coordination_quality"]
+            + 0.24 * four_axis["signals"]["frequency_score"],
+            places=3,
+        )
+        self.assertAlmostEqual(
+            five_axis["normalized_score"],
+            0.7 * five_axis["signals"]["coordination_quality"]
+            + 0.3 * five_axis["signals"]["frequency_score"],
+            places=3,
+        )
+
+    def test_orchestration_zero_sessions_uses_coordination_quality_only(self):
+        stats = _v5_scoring_stats()
+        stats["behavior"].update({
+            "orchestratable_sessions": 0,
+            "delegated_orchestratable_sessions": 0,
+        })
+
+        axis = self._aq_axis(stats, "Breadth", "Orchestration")
+        signals = axis["signals"]
+
+        self.assertIsNone(signals["frequency"])
+        self.assertIsNone(signals["frequency_score"])
+        self.assertEqual(signals["frequency_confidence"], 0.0)
+        self.assertEqual(signals["frequency_weight"], 0.0)
+        self.assertEqual(axis["normalized_score"], signals["coordination_quality"])
+        self.assertNotIn("quality", signals)
+
     def test_gstack_five_of_ten_is_full_credit_for_ordered_planning(self):
         three = _v5_scoring_stats(planned=3, evidence=4)
         five = _v5_scoring_stats(planned=5, evidence=4)
@@ -397,19 +471,15 @@ class TestConditionalScoring(unittest.TestCase):
         self.assertNotIn("Ordered planning readiness", below_labels)
         self.assertIn("Ordered planning readiness", at_labels)
 
-    def test_cursor_profile_keeps_model_mix_inputs_while_linked_routing_is_na(self):
+    def test_cursor_profile_drops_model_mix_while_routing_inputs_stay_na(self):
         stats = _v5_scoring_stats(source="cursor")
+        scoring_inputs = build_scoring_inputs(stats)
         profile = score_by_source({
-            "cursor": {"window": build_scoring_inputs(stats)},
+            "cursor": {"window": scoring_inputs},
         })["by_source"]["cursor"]
         savvy = next(p for p in profile["aq"]["pillars"] if p["name"] == "Savvy")
-        model_mix = next(a for a in savvy["axes"] if a["name"] == "Model mix")
-
-        self.assertEqual(model_mix["signals"]["routing"]["state"], "unsupported")
-        self.assertIsNone(model_mix["signals"]["routing"]["score"])
-        self.assertEqual(model_mix["signals"]["distinct_models"], 2)
-        self.assertEqual(model_mix["signals"]["offload_share"], 0.2)
-        self.assertGreater(model_mix["score"], 0)
+        na = set(savvy.get("not_applicable") or [])
+        self.assertIn("Model mix", na)
 
 
 class TestPlanningSkillSessions(unittest.TestCase):
@@ -1037,7 +1107,7 @@ class TestV5Contract(unittest.TestCase):
     def test_compute_aq_emits_exact_contract(self):
         stats = {"corpus": {"sources": {}}, "volume": {"total_sessions": 0},
                  "tools": {}, "stack": {}, "behavior": {}}
-        self.assertEqual(SCORE_CONTRACT_ID, "5:3:3")
+        self.assertEqual(SCORE_CONTRACT_ID, "5:5:3")
         self.assertEqual(compute_aq(stats)["score_contract_id"], SCORE_CONTRACT_ID)
 
     def test_blend_rejects_missing_or_mismatched_contract(self):

@@ -43,7 +43,7 @@ _TOOLS_DIAG = [
     ("review_skills", "review_skills", 1.5, True),
     ("shell_test_runs", "test_runs", 1.5, True),
     ("compounding_writes", "compounding_writes", 0.25, True),
-    ("agent_runs", "agent_runs", 1.0, True),
+    ("orchestratable", "orchestratable_sessions", 1.0, False),
     ("knowledge_calls", "knowledge_calls", 200, False),  # gated, absolute (not per-session)
 ]
 
@@ -123,7 +123,7 @@ def main(argv=None, output_dir=None):
     import gnomon.sources.discovery as _disc
     import gnomon.config as _cfg
     for a in argv:
-        m = re.match(r"--([a-z]+)-dir=(.+)$", a)
+        m = re.match(r"--([a-z]+(?:-[a-z]+)*)-dir=(.+)$", a)
         if not m:
             continue
         src, path = m.group(1), m.group(2)
@@ -223,6 +223,8 @@ def main(argv=None, output_dir=None):
         ]
         scoring_by_source[src] = {"window": window, "monthly": monthly}
     stats["scoring_inputs_by_source"] = scoring_by_source
+    # Recompute the public corpus AQ now that source capability boundaries are available.
+    stats["agentic"] = compute_aq(stats)
 
     # ---- rolling bucket scoring (internal raw inputs; only scored AQ is shared) ----
     if RECENCY_BLEND_ENABLED:
@@ -248,6 +250,7 @@ def main(argv=None, output_dir=None):
             if (bucket_stats.get("volume", {}).get("total_sessions", 0) or 0) <= 0:
                 continue
             metadata = metadata_by_id[bucket_id]
+            bucket_stats["scoring_inputs_by_source"] = bucket_scoring_by_source.get(bucket_id, {})
             corpus_components.append(dict(metadata, aq=compute_aq(bucket_stats)))
         if corpus_components:
             full_corpus_aq = stats["agentic"]
@@ -377,9 +380,6 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
         bucket["id"]: {source: Accumulator() for source in _srcs_present}
         for bucket in bucket_windows
     }
-    # The report's calendar-month start can be newer than the rolling 180-day
-    # AQ horizon (especially during a partial current month). Scan far enough
-    # back for both consumers; each accumulator still applies its own bounds.
     file_scan_since = since_dt
     if since_dt is not None and bucket_windows:
         file_scan_since = min(since_dt, min(bucket["since"] for bucket in bucket_windows))

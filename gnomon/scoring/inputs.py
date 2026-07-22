@@ -49,6 +49,10 @@ def build_scoring_inputs(stats):
             "error_rate_per_100_tools": b.get("error_rate_per_100_tools"),
             "api_errors_retries": b.get("api_errors_retries", 0),
             "fanout_median": b.get("fanout_median"),
+            "max_session_fanout": b.get("max_session_fanout"),
+            "parallel_dispatch_turns": b.get("parallel_dispatch_turns", 0),
+            "delegating_sessions": b.get("delegating_sessions", 0),
+            "parallel_session_share": b.get("parallel_session_share"),
             "shell_test_runs": b.get("shell_test_runs", 0),
             "plan_sessions": b.get("plan_sessions", 0),
             "planning_skill_sessions": b.get("planning_skill_sessions", 0),
@@ -70,6 +74,8 @@ def build_scoring_inputs(stats):
             "iteration_depth_max": b.get("iteration_depth_max"),
             "files_hammered_over_15x": b.get("files_hammered_over_15x", 0),
             "no_tool_activity": b.get("no_tool_activity", False),
+            "orchestratable_sessions": b.get("orchestratable_sessions", 0),
+            "delegated_orchestratable_sessions": b.get("delegated_orchestratable_sessions", 0),
         },
         "stack": {
             "skills_distinct": st.get("skills_distinct", 0),
@@ -171,6 +177,15 @@ def build_monthly_scoring_stats(
         _month_agg = aggregate_ordered(
             (month_session_ordered_tools or {}).get(mk, {}).values())
         eligible = _month_agg["eligible"]
+        _month_orchestratable = _month_agg["orchestratable"]
+
+        _month_delegated_orch_sids = set()
+        for (src, sid), facts in (month_session_ordered_tools or {}).get(mk, {}).items():
+            from gnomon.cli.accumulator import derive_session_ordered_facts
+            d = derive_session_ordered_facts(facts)
+            if d["orchestratable"] and month_fanouts.get(mk, {}).get(sid, 0) > 0:
+                _month_delegated_orch_sids.add(sid)
+        _month_delegated_orchestratable = len(_month_delegated_orch_sids)
 
         stats_full = {
             "corpus": {"sources": {s: {} for s in sources_present}},
@@ -194,6 +209,12 @@ def build_monthly_scoring_stats(
                 "error_rate_per_100_tools": round(err_rate, 1) if err_rate is not None else None,
                 "api_errors_retries": month_api_errors.get(mk, 0),
                 "fanout_median": fan_med,
+                "max_session_fanout": max(fanouts, default=0),
+                "parallel_dispatch_turns": None,
+                "delegating_sessions": len(fanouts),
+                "parallel_session_share": (
+                    round(sum(1 for n in fanouts if n >= 2) / len(fanouts), 3)
+                    if fanouts else 0.0),
                 "shell_test_runs": month_shell_test_runs.get(mk, 0),
                 "plan_sessions": len((month_plan_sessions or {}).get(mk, set()) & month_sessions.get(mk, set())),
                 "planning_skill_sessions": len(
@@ -211,6 +232,8 @@ def build_monthly_scoring_stats(
                 "iteration_depth_max": ids["max"],
                 "files_hammered_over_15x": ids["heavy_files"],
                 "no_tool_activity": m_no_tool,
+                "orchestratable_sessions": _month_orchestratable,
+                "delegated_orchestratable_sessions": _month_delegated_orchestratable,
             },
             "stack": {
                 "models": month_models.get(mk, Counter()).most_common(),

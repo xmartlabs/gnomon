@@ -14,7 +14,7 @@ OUT_DIR = _script_dir if _os.path.isdir(_script_dir) and not _script_dir.startsw
 
 # Private names that tests access via paxel._ — not exported by wildcard import
 from gnomon.config import _pretty_model, _client_version  # noqa: F401
-from gnomon.taxonomy import _canon_tool, _extract_clis, _is_compounding_path, _SKILL_MD_RX, _COMPOUNDING_RX  # noqa: F401
+from gnomon.taxonomy import _canon_tool, _extract_clis, _is_compounding_path, _SKILL_MD_RX, _COMPOUNDING_RX, _canon_mcp_server  # noqa: F401
 from gnomon.sources.discovery import _resolve_source_dir, _DIR_FLAGS, _AGENT_UNSUPPORTED_SOURCES  # noqa: F401
 from gnomon.sources.codex import _codex_events, _codex_is_injected, _codex_tool, _patch_files, _patch_churn  # noqa: F401
 from gnomon.sources.gemini import _gemini_events  # noqa: F401

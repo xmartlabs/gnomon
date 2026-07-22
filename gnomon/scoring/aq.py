@@ -19,6 +19,13 @@ PLAN_MIN_LINES = 8          # net lines (C6): minimum substantive plan-file size
 PLAN_MIN_STEPS = 3          # distinct todo/task steps (C6): raised from 2 (anti-theater)
 MIN_ELIGIBLE_SESSIONS = 5   # sessions (C7): below this, drop+renormalize (noise floor)
 
+# ---- Orchestration v2 — frequency + quality compound -------------------------
+ORCHESTRATABLE_CODE_FILES = 3    # code files written (stricter than eligible's 2)
+ORCHESTRATABLE_SUBSTANTIVE = 20  # substantive tool calls (stricter than eligible's 10)
+# PROVISIONAL: the current three-user sample is insufficient for recalibration.
+ORCHESTRATION_FREQUENCY_TARGET = 0.78  # 78% of orchestratable sessions should delegate
+ORCHESTRATION_FULL_CONFIDENCE_SESSIONS = 5
+
 _MODEL_TIERS = {
     "anthropic": (("opus", 3), ("sonnet", 2), ("haiku", 1)),
     "openai": (("pro", 4), ("mini", 2), ("nano", 1), ("gpt-", 3), ("codex", 3)),
@@ -62,8 +69,23 @@ def score_linked_routing(pairs, state):
             "eligible_completed_substantive_pairs": eligible, "excluded_reasons": excluded}
 
 
+def _models_for_scoring(stats, fallback):
+    """Pool model rows only from sources where model choice is scoreable."""
+    by_source = stats.get("scoring_inputs_by_source")
+    if not by_source:
+        return fallback
+    counts = {}
+    for source, blocks in by_source.items():
+        if "model" not in available_caps([source]):
+            continue
+        window = (blocks or {}).get("window") or {}
+        for model, turns in ((window.get("stack") or {}).get("models") or []):
+            counts[model] = counts.get(model, 0) + turns
+    return list(counts.items())
+
+
 def compute_aq(stats):
-    """Agentic Quotient v3 — 'how well you OPERATE AGENTS' (distinct from the gstack
+    """Agentic Quotient v4 — 'how well you OPERATE AGENTS' (distinct from the gstack
     scorecard, which grades how you BUILD). Four pillars: Breadth (how much machinery),
     Craft (how well), Efficiency (leverage per intervention), Savvy (smart choices).
     MCP-vs-CLI and tool diversity stay descriptive (not graded).
@@ -108,7 +130,6 @@ def compute_aq(stats):
         return any(any(nd in str(k).lower() for nd in needles) for k, _ in skills)
 
     # ---- Pillar 1: Breadth (unchanged axes) ----
-    agent_runs = t.get("agent_calls", 0)
     fanout = b.get("fanout_median") or 0  # None (unmeasured) treated as 0 for AQ
     # Harness use = a SINGLE session coordinating a team of >=3 distinct subagent roles
     # (behavioral), not a subagent/skill NAMED "harness"/"trisel" (opaque), and not window-wide
@@ -116,18 +137,25 @@ def compute_aq(stats):
     # never coordinated a team). max_session_subagent_types is the per-session distinct-role
     # peak — name-/content-agnostic, so it works in the cross-source aggregate.
     o_harn = 1.0 if st.get("max_session_subagent_types", 0) >= 3 else 0.6
-    # Coordination over volume: fan-out (agents coordinated per orchestrating session)
-    # is the orchestration tell — a serial grinder firing N agents one-per-session reads
-    # fanout=1, a real orchestrator reads its team size. agent_runs stays only as a small
-    # volume floor; the old (background + scheduled) COUNT term was cut (it double-counted
-    # volume and rewarded firing-and-forgetting, not coordinating).
-    # fanout target 5: Anthropic's multi-agent research spawns ~3-5 subagents for typical work
-    # (1 simple / 2-4 comparison / 10+ complex), and span-of-control theory (Graicunas/Urwick,
-    # "rule of 7") lands at 5-7 — 5 sits in the overlap.
-    # agent_runs is a per-session rate (volume floor); subagent_types/fanout stay as-is
-    # (distinct-count and per-session-median — already volume-independent).
-    orchestration = (.30 * sat(st.get("subagent_types_distinct", 0), 8) + .30 * sat(fanout, 5)
-                     + .20 * o_harn + .20 * rate(agent_runs, 1.0))
+    # Orchestration v2: observed frequency (share of orchestratable sessions that
+    # delegated), normalized target score, and coordination quality (subagent
+    # diversity, fan-out, harness use). Frequency earns its full 30% weight
+    # progressively over the first five eligible sessions.
+    # fanout target 5: span-of-control theory (Graicunas/Urwick) lands at 5-7.
+    o_quality = (0.40 * sat(st.get("subagent_types_distinct", 0), 8)
+               + 0.40 * sat(fanout, 5)
+               + 0.20 * o_harn)
+    _o_orchestratable = b.get("orchestratable_sessions") or 0
+    _o_delegated = b.get("delegated_orchestratable_sessions") or 0
+    o_frequency = (_o_delegated / _o_orchestratable) if _o_orchestratable else None
+    o_frequency_score = (sat(o_frequency, ORCHESTRATION_FREQUENCY_TARGET)
+                         if o_frequency is not None else None)
+    o_frequency_confidence = min(
+        _o_orchestratable / ORCHESTRATION_FULL_CONFIDENCE_SESSIONS, 1.0)
+    o_frequency_weight = 0.30 * o_frequency_confidence
+    orchestration = ((1.0 - o_frequency_weight) * o_quality
+                     + o_frequency_weight * o_frequency_score
+                     if o_frequency_score is not None else o_quality)
     # skills_total -> per-session rate; skills_distinct stays (diversity, correctly absolute)
     skill_fluency = (.40 * sat(st.get("skills_distinct", 0), 40) + .30 * rate(st.get("skills_total", 0), 10)
                      + .30 * (1.0 if has_skill(["subagent-driven", "brainstorm", "writing-plans",
@@ -156,9 +184,16 @@ def compute_aq(stats):
     breadth_axes = [
         # Orchestration needs subagent delegation; a source that can't fan out by design
         # (Gemini/Pi/opencode) drops this axis (renormalized) instead of scoring ~0.
-        ("Orchestration", 33, orchestration, {"agent_runs": agent_runs,
-         "subagent_types": st.get("subagent_types_distinct", 0), "fanout_median": fanout,
-         "o_harn": o_harn},
+        ("Orchestration", 33, orchestration, {"subagent_types": st.get("subagent_types_distinct", 0),
+         "fanout_median": fanout, "o_harn": o_harn,
+         "frequency": round(o_frequency, 3) if o_frequency is not None else None,
+         "frequency_score": (round(o_frequency_score, 3)
+                             if o_frequency_score is not None else None),
+         "frequency_confidence": round(o_frequency_confidence, 3),
+         "frequency_weight": round(o_frequency_weight, 3),
+         "coordination_quality": round(o_quality, 3),
+         "orchestratable_sessions": _o_orchestratable,
+         "delegated_orchestratable_sessions": _o_delegated},
          "delegate"),
         ("Skill fluency", 22, skill_fluency, {"skills_distinct": st.get("skills_distinct", 0),
          "skills_total": st.get("skills_total", 0)}, "skills"),
@@ -169,10 +204,11 @@ def compute_aq(stats):
 
     # ---- Pillar 2: Craft ----
     review_n = _review_skill_uses(skills)
-    # review-skill term needs Skill capability; falls back to shell test runs alone
+    # review-skill term needs observable skill data (first-class Skill tool OR SKILL.md reads /
+    # injected skills on Cursor). Skill fluency / Discipline still require `skills` only.
     # test runs + review skills -> per-session rates (matches gstack's per-session test handling)
     verification = wsum((.5, rate(b.get("shell_test_runs", 0), 1.5), None),
-                        (.5, rate(review_n, 1.5), "skills"))
+                        (.5, rate(review_n, 1.5), "skill_reads"))
     grounding = sat(b.get("planning_ratio_explore_to_doing", 0), 1.0)
     # Context Intelligence: PURE per-session grounding COVERAGE, not knowledge-MCP call/
     # server volume (the old `<50 calls` gate was gameable by auto-fired knowledge-MCP
@@ -197,9 +233,15 @@ def compute_aq(stats):
                      else sat(coverage, CONTEXT_INTELLIGENCE_TARGET))
     # compounding writes -> per-session rate (rewards the habit, not raw volume)
     compounding = wsum((.6, rate(st.get("compounding_writes", 0), 0.25), None),
-                       (.4, (1.0 if has_skill(["retro", "writing-plans", "brainstorm"]) else 0.6), "skills"))
+                       (.4, (1.0 if has_skill(["retro", "writing-plans", "brainstorm"]) else 0.6), "skill_reads"))
+    _review_skills_applicable = "skill_reads" in caps
+    verification_signals = {"test_runs": b.get("shell_test_runs", 0)}
+    if _review_skills_applicable:
+        verification_signals["review_skills"] = review_n
+    else:
+        verification_signals["review_skills_applicable"] = False
     craft_axes = [
-        ("Verification", 35, verification, {"test_runs": b.get("shell_test_runs", 0), "review_skills": review_n}),
+        ("Verification", 35, verification, verification_signals),
         ("Grounding", 25, grounding, {"planning_ratio": b.get("planning_ratio_explore_to_doing", 0)}),
         ("Context Intelligence", 20, context_intel,
          {"grounded_sessions": grounded, "write_sessions": ci_denom,
@@ -239,7 +281,7 @@ def compute_aq(stats):
     # Provider-agnostic: works across Claude / OpenAI-Codex / Gemini / etc. "Model mix"
     # rewards using more than one model and routing work off your single default model
     # (match model to task) — no hard-coded model names or tiers.
-    models = st.get("models", [])
+    models = _models_for_scoring(stats, st.get("models", []))
     total_turns = sum(n for _, n in models)
     top_turns = max((n for _, n in models), default=0)
     offload_share = (1 - top_turns / total_turns) if total_turns else 0
@@ -269,7 +311,12 @@ def compute_aq(stats):
         def _live(a):
             if a[2] is None:                               # wsum found no measurable term
                 return False
-            return len(a) < 5 or a[4] is None or a[4] in caps   # required cap available
+            if len(a) < 5 or a[4] is None:
+                return True
+            # Skill fluency is observable via first-class Skill tool or read/inject paths.
+            if a[0] == "Skill fluency" and a[4] == "skills":
+                return "skills" in caps or "skill_reads" in caps
+            return a[4] in caps
         live = [a for a in axes if _live(a)]
         wlive = sum(a[1] for a in live) or 1
         scale = 100.0 / wlive
