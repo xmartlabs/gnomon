@@ -108,7 +108,7 @@ def _int(msg, f):
 
 
 _UUID_RX = re.compile(rb"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
-_MODEL_RX = re.compile(rb"(gemini-[0-9][\w.\-]*|claude-[\w.\-]+|gpt-[\w.\-]+)")
+_MODEL_RX = re.compile(rb"(gemini-[\w.\-]+|claude-[\w.\-]+|gpt-[\w.\-]+)")
 
 
 # --- CLI conversation parser --------------------------------------------------------
@@ -208,11 +208,25 @@ def _conversation_cwd(con):
 
 
 def _models_by_idx(con):
-    """Map steps.idx -> model id from the gen_metadata blobs (idx aligned with steps)."""
+    """Map steps.idx -> model id from the gen_metadata blobs (idx aligned with steps).
+
+    Prefers the structured protobuf field 1.19 (model ID) over a raw regex scan.
+    Large aggregate blobs at the end of each conversation embed many model names
+    from sub-calls and configuration; a regex picks up spurious matches there,
+    incorrectly attributing later steps to the wrong model.  Field 1.19 is the
+    canonical per-step model ID and is absent (None) on aggregate blobs, letting
+    the caller's carry-forward logic inherit the correct model."""
     models = {}
     try:
         for idx, data in con.execute("select idx, data from gen_metadata"):
             if data:
+                try:
+                    model_id = _str(_sub(_msg(data), 1), 19)
+                    if model_id:
+                        models[idx] = model_id
+                        continue
+                except Exception:
+                    pass
                 mm = _MODEL_RX.findall(data)
                 if mm:
                     models[idx] = mm[0].decode()

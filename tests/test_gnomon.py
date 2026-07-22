@@ -1113,7 +1113,7 @@ class TestBuildSummaryPayloadFields(unittest.TestCase):
         self.addCleanup(shutil.rmtree, out, ignore_errors=True)
         overrides = dict(
             OUT_DIR=out, BASE=proj, CODEX_DIR=empty, GEMINI_DIR=empty, PI_DIR=empty,
-            ANTIGRAVITY_CLI_DIR=empty, ANTIGRAVITY_DB=os.path.join(empty, "nope.vscdb"),
+            ANTIGRAVITY_CLI_DIR=empty, ANTIGRAVITY_IDE_DIR=empty, ANTIGRAVITY_DB=os.path.join(empty, "nope.vscdb"),
             OPENCODE_DIR=empty, CURSOR_DIR=empty,
             CURSOR_DB=os.path.join(empty, "nope.vscdb"),
         )
