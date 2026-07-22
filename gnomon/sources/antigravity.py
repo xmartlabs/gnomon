@@ -32,7 +32,7 @@ import sqlite3
 from datetime import datetime
 
 from gnomon.sources.discovery import ANTIGRAVITY_DB
-from gnomon.taxonomy import _canon_tool, _canon_input, _SKILL_MD_RX
+from gnomon.taxonomy import _canon_tool, _canon_input, _norm_path_seps, _SKILL_MD_RX
 
 
 # --- stdlib protobuf wire-format decoder (no .proto, no dependency) -----------------
@@ -108,7 +108,7 @@ def _int(msg, f):
 
 
 _UUID_RX = re.compile(rb"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
-_MODEL_RX = re.compile(rb"(gemini-[0-9][\w.\-]*|claude-[\w.\-]+|gpt-[\w.\-]+)")
+_MODEL_RX = re.compile(rb"(gemini-[\w.\-]+|claude-[\w.\-]+|gpt-[\w.\-]+)")
 
 
 # --- CLI conversation parser --------------------------------------------------------
@@ -168,8 +168,12 @@ def _ag_mcp_name(name):
 
 def _skill_from_path(path):
     """Skill name if `path` reads a `skills/<name>/SKILL.md` (skill load), else None. Skips
-    vendored trees so a `node_modules/.../skills/x/SKILL.md` isn't miscredited as a skill use."""
-    p = path or ""
+    vendored trees so a `node_modules/.../skills/x/SKILL.md` isn't miscredited as a skill use.
+
+    Paths reaching here come either from a `file://` URI (already forward-slashed) or raw
+    from the Windsurf SQLite keys, which on Windows are backslashed -- normalize so both
+    the skill match and the vendored-tree guards fire either way."""
+    p = _norm_path_seps(path)
     if "/node_modules/" in p or "/vendor/" in p or "/.git/" in p:
         return None
     m = _SKILL_MD_RX.search(p)
@@ -208,11 +212,25 @@ def _conversation_cwd(con):
 
 
 def _models_by_idx(con):
-    """Map steps.idx -> model id from the gen_metadata blobs (idx aligned with steps)."""
+    """Map steps.idx -> model id from the gen_metadata blobs (idx aligned with steps).
+
+    Prefers the structured protobuf field 1.19 (model ID) over a raw regex scan.
+    Large aggregate blobs at the end of each conversation embed many model names
+    from sub-calls and configuration; a regex picks up spurious matches there,
+    incorrectly attributing later steps to the wrong model.  Field 1.19 is the
+    canonical per-step model ID and is absent (None) on aggregate blobs, letting
+    the caller's carry-forward logic inherit the correct model."""
     models = {}
     try:
         for idx, data in con.execute("select idx, data from gen_metadata"):
             if data:
+                try:
+                    model_id = _str(_sub(_msg(data), 1), 19)
+                    if model_id:
+                        models[idx] = model_id
+                        continue
+                except Exception:
+                    pass
                 mm = _MODEL_RX.findall(data)
                 if mm:
                     models[idx] = mm[0].decode()
@@ -639,6 +657,7 @@ def _ide_steps_cwd(steps):
             if not isinstance(block, dict):
                 continue
             cand = block.get("cwd") or _uri_path(block.get("absolutePathUri") or block.get("absoluteUri") or "")
+            cand = _norm_path_seps(cand)
             if cand and "/.gemini/" not in cand:
                 return cand if block.get("cwd") else os.path.dirname(cand)
     return None

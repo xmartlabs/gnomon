@@ -32,7 +32,8 @@ from gnomon.taxonomy import (
     classify_tool, classify_mcp_subcategory, CI_CONTEXT_SUBCATS,
     is_substantive_tool, classify_change_target, is_plan_file_target,
     bash_writes_file, bash_runs_tests, bash_runs_knowledge, _extract_clis,
-    _is_compounding_path, _SKILL_MD_RX, extract_skill_name_from_path, _canon_mcp_server,
+    _is_compounding_path, _norm_path_seps, _SKILL_MD_RX,
+    extract_skill_name_from_path, _canon_mcp_server,
 )
 from gnomon.sources.discovery import _AGENT_UNSUPPORTED_SOURCES
 from gnomon.analysis.churn import git_churn
@@ -785,8 +786,9 @@ class Accumulator:
                             if name in {"Edit", "Write", "MultiEdit", "NotebookEdit"}:
                                 child["writes"] += 1
                         if sid:
-                            _target = (inp.get("file_path") or inp.get("notebook_path")
-                                       or inp.get("path") or inp.get("pattern") or inp.get("query") or "")
+                            _target = _norm_path_seps(
+                                inp.get("file_path") or inp.get("notebook_path")
+                                or inp.get("path") or inp.get("pattern") or inp.get("query") or "")
                             _items = (inp.get("todos") or inp.get("items") or inp.get("tasks")
                                       or inp.get("plan") or [])
                             if isinstance(_items, list):
@@ -957,7 +959,7 @@ class Accumulator:
                             self.lines_removed += r
                             if mkey:
                                 self.month_churn[mkey] += a + r
-                            fpth = inp.get("file_path")
+                            fpth = _norm_path_seps(inp.get("file_path"))
                             if sid and fpth:
                                 self._file_edit_run[sid][fpth] += 1
                                 if mkey:
@@ -972,7 +974,7 @@ class Accumulator:
                             self.lines_added += a
                             if mkey:
                                 self.month_churn[mkey] += a
-                            fpth = inp.get("file_path")
+                            fpth = _norm_path_seps(inp.get("file_path"))
                             if sid and fpth:
                                 self._file_edit_run[sid][fpth] += 1
                                 if mkey:
@@ -995,7 +997,7 @@ class Accumulator:
                                     _me_removed += _er
                                     if mkey:
                                         self.month_churn[mkey] += _ea + _er
-                            fpth = inp.get("file_path")
+                            fpth = _norm_path_seps(inp.get("file_path"))
                             if sid and fpth:
                                 self._file_edit_run[sid][fpth] += 1
                                 if mkey:
@@ -1008,7 +1010,7 @@ class Accumulator:
                             self._consume_knowledge_grounding(sid, mkey)
                             _nb_a = line_count(inp.get("new_source", ""))
                             self.lines_added += _nb_a
-                            fpth = inp.get("notebook_path")
+                            fpth = _norm_path_seps(inp.get("notebook_path"))
                             if sid and fpth:
                                 self._file_edit_run[sid][fpth] += 1
                                 if mkey:

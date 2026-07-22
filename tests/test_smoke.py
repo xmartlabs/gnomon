@@ -33,6 +33,7 @@ SRC_DIRS = dict(
     CODEX_DIR=os.path.join(FIX, "codex"),
     GEMINI_DIR=os.path.join(FIX, "gemini"),
     ANTIGRAVITY_CLI_DIR=os.path.join(FIX, "antigravity"),
+    ANTIGRAVITY_IDE_DIR=os.path.join(FIX, "antigravity-ide"),
     ANTIGRAVITY_DB=os.path.join(FIX, "nope.vscdb"),
     PI_DIR=os.path.join(FIX, "pi"),
     OPENCODE_DIR=os.path.join(FIX, "opencode"),

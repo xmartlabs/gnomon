@@ -123,7 +123,7 @@ def main(argv=None, output_dir=None):
     import gnomon.sources.discovery as _disc
     import gnomon.config as _cfg
     for a in argv:
-        m = re.match(r"--([a-z]+)-dir=(.+)$", a)
+        m = re.match(r"--([a-z]+(?:-[a-z]+)*)-dir=(.+)$", a)
         if not m:
             continue
         src, path = m.group(1), m.group(2)
@@ -138,36 +138,28 @@ def main(argv=None, output_dir=None):
             setattr(_cfg, 'BASE', resolved)
         if not os.path.isdir(resolved):
             print(f"  warning: --{src}-dir path not found: {resolved}")
+    _ide_dir_override = any(a.startswith("--antigravity-dir=") for a in argv)
+    _ide_dir_explicit = any(a.startswith("--antigravity-ide-dir=") for a in argv)
+    if _ide_dir_override and not _ide_dir_explicit:
+        selected = [s for s in selected if s != "antigravity-ide"]
     _t0_disc = time.monotonic()
     sources = discover_sources(selected)
-    # Optional time window (--since/--until/--last): events outside it are skipped, so
-    # every downstream metric — INCLUDING git churn, whose since/until follow the kept
-    # events' date range — reads the same window. Timestampless events are DROPPED when
-    # a window is active (they can't honor "this period only"); Cursor JSONL-only
-    # sessions ride their single file-mtime timestamp. Parsed BEFORE the Antigravity IDE
-    # step so we can skip launching the IDE when its history can't fall in the window.
     since_dt, until_dt = parse_window(argv)
     if since_dt or until_dt:
         print(f"  window: {since_dt.date() if since_dt else '...'} -> "
               f"{(until_dt - timedelta(days=1)).date() if until_dt else 'now'}")
-    # Antigravity IDE: transcripts are encrypted on disk; the only way to read them is to query
-    # the running language server's local API. We first read the unencrypted usage index
-    # (antigravity_summary); if the IDE was used AND its date range overlaps the window, we pull
-    # the conversations (launching the IDE if needed) and fold them in. (The CLI half is already
-    # covered offline by discover_sources.)
-    # Don't touch the live local IDE when the user is analyzing CLI history copied from another
-    # machine (--antigravity-dir) -- that would merge unrelated local IDE usage into the result.
-    _ide_dir_override = any(a.startswith("--antigravity-dir=") for a in argv)
     antigravity = None if _ide_dir_override else antigravity_summary()
-    if ("antigravity-ide" in selected and antigravity
+    # Antigravity IDE fallback: if no IDE SQLite DBs were discovered (older Antigravity
+    # versions that only expose data via the Language Server), try the LS CORTEX export.
+    # The LS path masks model identity but still captures volume/tools/timestamps.
+    _ide_dbs_found = any(s == "antigravity-ide" for s, _, _ in sources)
+    if (not _ide_dbs_found and not _ide_dir_override
+            and "antigravity-ide" in selected and antigravity
             and ide_window_overlaps(antigravity, since_dt, until_dt)):
         export_path = export_antigravity_ide(os.path.join(_out_dir, "_antigravity_ide"))
         if export_path:
             sources.append(("antigravity-ide", export_path, "antigravity-ide-export"))
-            print(f"  Antigravity IDE history folded in ({antigravity['conversations']} conversations)")
-    elif antigravity and "antigravity-ide" in selected:
-        print(f"  note: Antigravity IDE detected ({antigravity['conversations']} conversations) "
-              f"but outside the selected window -- skipped")
+            print(f"  Antigravity IDE history folded in via LS ({antigravity['conversations']} conversations)")
     by_src = Counter(s for s, _, _ in sources)
     print(f"Found {len(sources)} transcript files across "
           f"{', '.join(f'{k}:{v}' for k, v in by_src.items()) or 'no sources'}")

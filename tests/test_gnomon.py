@@ -1143,7 +1143,7 @@ class TestBuildSummaryPayloadFields(unittest.TestCase):
         self.addCleanup(shutil.rmtree, out, ignore_errors=True)
         overrides = dict(
             OUT_DIR=out, BASE=proj, CODEX_DIR=empty, GEMINI_DIR=empty, PI_DIR=empty,
-            ANTIGRAVITY_CLI_DIR=empty, ANTIGRAVITY_DB=os.path.join(empty, "nope.vscdb"),
+            ANTIGRAVITY_CLI_DIR=empty, ANTIGRAVITY_IDE_DIR=empty, ANTIGRAVITY_DB=os.path.join(empty, "nope.vscdb"),
             OPENCODE_DIR=empty, CURSOR_DIR=empty,
             CURSOR_DB=os.path.join(empty, "nope.vscdb"),
         )
@@ -1406,6 +1406,21 @@ class TestAntigravityExportStale(unittest.TestCase):
 
 class TestAntigravityDirOverride(unittest.TestCase):
     """--antigravity-dir must accept the tool root, not only the leaf conversations dir."""
+
+    def test_cli_and_ide_directory_flags_are_applied(self):
+        import contextlib, io
+        from unittest import mock
+        from gnomon.cli import local
+        from gnomon.sources import discovery
+        for source, attr in (("antigravity", "ANTIGRAVITY_CLI_DIR"),
+                             ("antigravity-ide", "ANTIGRAVITY_IDE_DIR")):
+            with self.subTest(source=source), \
+                    mock.patch.object(discovery, attr, "unchanged"), \
+                    mock.patch.object(local, "discover_sources", return_value=[]), \
+                    mock.patch.object(local, "antigravity_summary", return_value=None), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                local.main([source, f"--{source}-dir=/tmp/ide", "--no-open"])
+                self.assertEqual(getattr(discovery, attr), "/tmp/ide")
 
     def test_root_resolves_to_conversations(self):
         import shutil, tempfile
