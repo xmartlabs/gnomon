@@ -24,7 +24,7 @@ def build_scoring_inputs(stats):
     t = stats.get("tools") or {}
     srcs = sorted((stats.get("corpus", {}).get("sources") or {}).keys())
     source = srcs[0] if len(srcs) == 1 else (",".join(srcs) if srcs else None)
-    return {
+    result = {
         "scoring_inputs_version": SCORING_INPUTS_VERSION,
         "aq_version": AQ_VERSION,
         "gstack_version": GSTACK_VERSION,
@@ -110,6 +110,25 @@ def build_scoring_inputs(stats):
         },
         "token_usage": stats.get("token_usage") or {"by_model": []},
     }
+    if any(field in b for field in (
+            "planning_skill_eligible_sessions",
+            "planning_skill_unmeasured_sessions",
+            "planning_skill_session_scope_state",
+            "planning_skill_session_share",
+            "planning_skill_session_coverage")):
+        result["behavior"].update({
+            "planning_skill_eligible_sessions": b.get(
+                "planning_skill_eligible_sessions"),
+            "planning_skill_unmeasured_sessions": b.get(
+                "planning_skill_unmeasured_sessions"),
+            "planning_skill_session_scope_state": b.get(
+                "planning_skill_session_scope_state"),
+            "planning_skill_session_share": b.get(
+                "planning_skill_session_share"),
+            "planning_skill_session_coverage": b.get(
+                "planning_skill_session_coverage"),
+        })
+    return result
 
 
 def build_monthly_scoring_stats(
@@ -123,6 +142,8 @@ def build_monthly_scoring_stats(
     planning_ratio_window, cwds, gap_cap_s, burst_gap_s,
     no_tool_activity, all_sources_no_agent, month_plan_sessions=None,
     month_planning_skill_sessions=None,
+    month_planning_skill_eligible_sessions=None,
+    month_planning_skill_unmeasured_sessions=None,
     month_session_subagent_types=None,
     month_mcp_subcategory_counter=None, month_mcp_subcategory_servers=None,
     month_grounded_sessions=None, month_write_sessions=None,
@@ -187,6 +208,23 @@ def build_monthly_scoring_stats(
                 _month_delegated_orch_sids.add(sid)
         _month_delegated_orchestratable = len(_month_delegated_orch_sids)
 
+        _planning_denominator_set = (
+            (month_planning_skill_eligible_sessions or {}).get(mk, set()))
+        _planning_numerator_set = (
+            (month_planning_skill_sessions or {}).get(mk, set())
+            & _planning_denominator_set)
+        _planning_unmeasured_set = (
+            (month_planning_skill_unmeasured_sessions or {}).get(mk, set())
+            - _planning_denominator_set)
+        _planning_numerator = len(_planning_numerator_set)
+        _planning_denominator = len(_planning_denominator_set)
+        _planning_unmeasured = len(_planning_unmeasured_set)
+        _planning_scope_state = (
+            "measured" if _planning_denominator > 0 and _planning_unmeasured == 0
+            else "partial" if _planning_denominator > 0 and _planning_unmeasured > 0
+            else "unmeasured")
+        assert 0 <= _planning_numerator <= _planning_denominator
+
         stats_full = {
             "corpus": {"sources": {s: {} for s in sources_present}},
             "volume": {
@@ -217,9 +255,17 @@ def build_monthly_scoring_stats(
                     if fanouts else 0.0),
                 "shell_test_runs": month_shell_test_runs.get(mk, 0),
                 "plan_sessions": len((month_plan_sessions or {}).get(mk, set()) & month_sessions.get(mk, set())),
-                "planning_skill_sessions": len(
-                    (month_planning_skill_sessions or {}).get(mk, set())
-                    & month_sessions.get(mk, set())),
+                "planning_skill_sessions": _planning_numerator,
+                "planning_skill_eligible_sessions": _planning_denominator,
+                "planning_skill_unmeasured_sessions": _planning_unmeasured,
+                "planning_skill_session_scope_state": _planning_scope_state,
+                "planning_skill_session_share": (
+                    round(_planning_numerator / _planning_denominator, 6)
+                    if _planning_scope_state in {"measured", "partial"} else None),
+                "planning_skill_session_coverage": (
+                    round(_planning_denominator / (
+                        _planning_denominator + _planning_unmeasured), 6)
+                    if _planning_scope_state in {"measured", "partial"} else None),
                 "eligible_change_sessions": eligible,
                 "planned_eligible_sessions": _month_agg["planned"],
                 "evidence_eligible_sessions": _month_agg["evidence"],

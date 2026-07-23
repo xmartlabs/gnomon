@@ -26,7 +26,18 @@ def _iter_events_raw(fp, fmt, cursor_twins=None):
                 except Exception:
                     yield {"__bad__": True}
                     continue
-                yield obj if isinstance(obj, dict) else {"__bad__": True}
+                if isinstance(obj, dict):
+                    # Claude root transcripts historically omit the field while
+                    # sidechain files may rely on their authoritative /subagents/
+                    # path. A present malformed value is never coerced to root.
+                    path_parts = fp.replace("\\", "/").split("/")
+                    path_sidechain = "subagents" in path_parts
+                    raw_sidechain = obj.get("isSidechain", path_sidechain)
+                    identity = raw_sidechain if isinstance(raw_sidechain, bool) else None
+                    obj = dict(obj, isSidechain=identity)
+                    yield obj
+                else:
+                    yield {"__bad__": True}
     elif fmt == "codex":
         yield from _codex_events(fp)
     elif fmt == "gemini":

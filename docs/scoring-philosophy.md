@@ -27,6 +27,7 @@ when a formal plan or retrieval adds no value.
 | Area | Decision | Why |
 |---|---|---|
 | Planning readiness | Grade ordered planning readiness only on eligible non-trivial changes and target 50% coverage | Small tasks should stay direct; larger work benefits from an explicit plan before editing. Planning Skill practice remains a separate educational term. |
+| Planning skill practice | Measure recognized planning-skill use per authoritative human-started top-level session and scale its weight by session coverage | Child, fabricated synthetic, undated, and routing events are excluded. `__synth_ts__` is timestamp provenance only: it may credit an already-eligible root but can never create eligibility. Partial identity coverage remains numeric and auditable instead of becoming zero or erasing measured evidence. |
 | Context Intelligence | Target evidence gathering before the first write in 60% of eligible changes | Grounding should inform implementation, not become after-the-fact ceremony. |
 | Model routing | Reward completed, substantive work routed to a lower-tier model when linkage is observable | This teaches efficient model selection without guessing from incomplete telemetry. |
 | Existing signals | Keep skills, MCPs, CLIs, ToolSearch, fanout, output, delegation, and model diversity scored | They are educational prompts for capabilities users should learn, not claims of output quality. |

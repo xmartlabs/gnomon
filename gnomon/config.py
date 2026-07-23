@@ -41,6 +41,21 @@ SOURCE_CAPS = {
 }
 _ALL_CAPS = {"skills", "skill_reads", "toolsearch", "tasktool", "delegate", "model", "thinking", "linked_model_routing"}
 
+# Whether a source adapter can authoritatively distinguish human-started root
+# events from delegated child events.  Planning Skill Practice is scored only
+# for measured sources; unknown/unsupported sources remain visible but cannot
+# silently contribute a numeric value.
+PLANNING_SESSION_SCOPE_BY_SOURCE = {
+    "claude": "measured",
+    "codex": "measured",
+    "opencode": "measured",
+    "cursor": "measured",
+}
+
+
+def planning_session_scope(source):
+    return PLANNING_SESSION_SCOPE_BY_SOURCE.get(str(source or "").lower(), "unmeasured")
+
 
 def available_caps(sources):
     """Union of capabilities across the sources present in this run. Unknown sources are

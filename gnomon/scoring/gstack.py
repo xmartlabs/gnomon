@@ -1,4 +1,5 @@
 import json
+import math
 
 from gnomon.scoring.aq import (
     CONTEXT_INTELLIGENCE_TARGET, PLANNING_TARGET, MIN_ELIGIBLE_SESSIONS,
@@ -103,9 +104,13 @@ def _apply_sub_caps(subs, caps):
         cap = s.pop("_cap", None)
         if cap is None or cap in caps:
             kept.append(s)
-    tot = sum(s["weight"] for s in kept) or 1.0
+    # Unavailable terms remain in the profile as explicit audit evidence, but
+    # carry zero effective weight; measured terms are renormalized exactly as
+    # compute_scores does through _axis_value.
+    tot = sum(s["weight"] for s in kept if s.get("pct") is not None) or 1.0
     for s in kept:
-        s["weight"] = round(s["weight"] / tot, 4)
+        s["weight"] = (round(s["weight"] / tot, 4)
+                       if s.get("pct") is not None else 0.0)
     return kept
 
 
@@ -118,6 +123,123 @@ def _axis_value(terms, caps):
             if v is not None and (cap is None or cap in caps)]
     tot = sum(w for w, _ in live) or 1.0
     return round(10 * sum(w * v for w, v in live) / tot, 1)
+
+
+def _nonnegative_integral_count(value):
+    """Return an integer count, or ``None`` for malformed telemetry."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if isinstance(value, float) and (not math.isfinite(value) or not value.is_integer()):
+        return None
+    return int(value) if value >= 0 else None
+
+
+_PLANNING_SKILL_BASE_WEIGHT = 0.25
+_PLANNING_SKILL_NEW_FIELDS = {
+    "planning_skill_sessions",
+    "planning_skill_eligible_sessions",
+    "planning_skill_unmeasured_sessions",
+    "planning_skill_session_scope_state",
+    "planning_skill_session_share",
+    "planning_skill_session_coverage",
+}
+_PLANNING_SKILL_SELECTORS = _PLANNING_SKILL_NEW_FIELDS - {"planning_skill_sessions"}
+
+
+def _unmeasured_planning_evidence():
+    return {
+        "planning_sessions": None,
+        "eligible_sessions": None,
+        "unmeasured_sessions": None,
+        "state": "unmeasured",
+        "share": None,
+        "coverage": None,
+        "legacy": False,
+        "base_weight": _PLANNING_SKILL_BASE_WEIGHT,
+        "effective_weight": 0.0,
+    }
+
+
+def _planning_skill_evidence(behavior, legacy_sessions):
+    """Validate and derive the one Planning Skill Practice scoring evidence shape."""
+    if not any(field in behavior for field in _PLANNING_SKILL_SELECTORS):
+        denominator = _nonnegative_integral_count(legacy_sessions)
+        numerator = _nonnegative_integral_count(behavior.get(
+            "planning_skill_sessions", behavior.get("plan_sessions", 0)))
+        if numerator is None or denominator is None:
+            return _unmeasured_planning_evidence()
+        share = numerator / denominator if denominator and numerator <= denominator else None
+        return {
+            "planning_sessions": numerator,
+            "eligible_sessions": denominator,
+            "unmeasured_sessions": None,
+            "state": "legacy",
+            "share": share,
+            "coverage": 1.0 if share is not None else None,
+            "legacy": True,
+            "base_weight": _PLANNING_SKILL_BASE_WEIGHT,
+            "effective_weight": (
+                _PLANNING_SKILL_BASE_WEIGHT if share is not None else 0.0),
+        }
+
+    if not _PLANNING_SKILL_NEW_FIELDS <= set(behavior):
+        return _unmeasured_planning_evidence()
+    numerator = _nonnegative_integral_count(behavior["planning_skill_sessions"])
+    denominator = _nonnegative_integral_count(
+        behavior["planning_skill_eligible_sessions"])
+    unmeasured = _nonnegative_integral_count(
+        behavior["planning_skill_unmeasured_sessions"])
+    if (numerator is None or denominator is None or unmeasured is None
+            or numerator > denominator):
+        return _unmeasured_planning_evidence()
+
+    expected_state = (
+        "measured" if denominator > 0 and unmeasured == 0
+        else "partial" if denominator > 0 and unmeasured > 0
+        else "unmeasured")
+    if behavior["planning_skill_session_scope_state"] != expected_state:
+        return _unmeasured_planning_evidence()
+    if expected_state == "unmeasured":
+        if (behavior["planning_skill_session_share"] is not None
+                or behavior["planning_skill_session_coverage"] is not None):
+            return _unmeasured_planning_evidence()
+        return {
+            **_unmeasured_planning_evidence(),
+            "planning_sessions": numerator,
+            "eligible_sessions": denominator,
+            "unmeasured_sessions": unmeasured,
+        }
+
+    share = numerator / denominator
+    coverage = denominator / (denominator + unmeasured)
+    raw_share = behavior["planning_skill_session_share"]
+    raw_coverage = behavior["planning_skill_session_coverage"]
+    if (isinstance(raw_share, bool) or not isinstance(raw_share, (int, float))
+            or not math.isfinite(raw_share)
+            or not math.isclose(raw_share, share, rel_tol=1e-6, abs_tol=1e-6)
+            or isinstance(raw_coverage, bool)
+            or not isinstance(raw_coverage, (int, float))
+            or not math.isfinite(raw_coverage)
+            or not math.isclose(
+                raw_coverage, coverage, rel_tol=1e-6, abs_tol=1e-6)):
+        return _unmeasured_planning_evidence()
+    return {
+        "planning_sessions": numerator,
+        "eligible_sessions": denominator,
+        "unmeasured_sessions": unmeasured,
+        "state": expected_state,
+        "share": share,
+        "coverage": coverage,
+        "legacy": False,
+        "base_weight": _PLANNING_SKILL_BASE_WEIGHT,
+        "effective_weight": _PLANNING_SKILL_BASE_WEIGHT * coverage,
+    }
+
+
+def _planning_skill_share(behavior, legacy_sessions):
+    """Compatibility test hook; production scoring uses the full evidence helper."""
+    evidence = _planning_skill_evidence(behavior, legacy_sessions)
+    return evidence["share"], evidence["state"], evidence["legacy"]
 
 
 def _d10(x):
@@ -233,6 +355,15 @@ def _sub_narrative(label, verdict, display_value, display_target, direction, sco
 def _enrich_sub(sub):
     """Add narrative fields to a score_breakdown sub dict, in-place."""
     p = sub["pct"]
+    if p is None:
+        sub.update({
+            "verdict": "unavailable", "score_pct": None,
+            "display_value": "unavailable",
+            "display_target": _fmt_target(
+                sub["target"], sub["unit"], sub["direction"]),
+            "narrative": f"{sub['label']} is unavailable for this scope.",
+        })
+        return sub
     sub["verdict"] = _verdict(p)
     sub["score_pct"] = round(p * 100)
     sub["display_value"] = _fmt_val(sub["your_value"], sub["unit"])
@@ -257,7 +388,11 @@ def compute_scores(stats):
     # Weights sum to 1.0 per axis; every term is clamped 0..1 against a justified target;
     # `_ev` pulls the INVERSE terms toward neutral on a thin corpus.
     v, b, vel = stats["volume"], stats["behavior"], stats["velocity"]
-    if v["total_sessions"] == 0 or v["tool_calls_total"] == 0:
+    plan_evidence = _planning_skill_evidence(b, max(v["total_sessions"], 1))
+    has_authoritative_planning = (
+        plan_evidence["share"] is not None and not plan_evidence["legacy"])
+    if (v["total_sessions"] == 0
+            or (v["tool_calls_total"] == 0 and not has_authoritative_planning)):
         # No real activity → don't manufacture a flattering "Quality Guardian 9.0"
         return {"Execution": 0.0, "Planning": 0.0, "Engineering": 0.0}
     sess = max(v["total_sessions"], 1)
@@ -291,7 +426,10 @@ def compute_scores(stats):
     # a planning Skill), NOT a raw plan-tool count. Counting distinct sessions stops
     # TodoWrite (fires many times/session) from saturating the term; target 0.4 = plan in
     # ~40% of sessions. See accumulator.plan_sessions.
-    plan_ceremony = _clamp((b.get("planning_skill_sessions", b.get("plan_sessions", 0)) / sess) / 0.4)
+    plan_share = plan_evidence["share"]
+    plan_legacy = plan_evidence["legacy"]
+    plan_ceremony = (_clamp(plan_share / 0.4)
+                     if plan_share is not None else None)
     eligible = b.get("eligible_change_sessions", 0) or 0
     # C7 — significance floor: drop below MIN_ELIGIBLE_SESSIONS (noise, not a
     # real signal), mirroring the aq.py guard.
@@ -304,7 +442,8 @@ def compute_scores(stats):
     planning = _axis_value([
         (0.30, _clamp(b["planning_ratio_explore_to_doing"] / 0.65), None),
         (0.30, _clamp((v["thinking_blocks"] / sess) / 12.0), "thinking"),
-        (0.25, plan_ceremony, "skills"),
+        (plan_evidence["effective_weight"], plan_ceremony,
+         "skills" if plan_legacy else None),
         (0.15, ordered_plan, None),
     ], caps)
 
@@ -334,6 +473,8 @@ def compute_scores(stats):
         + 0.15 * _clamp((eng_skills / sess) / 3.0)                       # quality ceremonies: review/qa/investigate
         + 0.10 * _ev(1 - _clamp((b.get("error_rate_per_100_tools") or 0) / 10), ev))  # low error rate: root-cause discipline
 
+    if v["tool_calls_total"] == 0:
+        execution = engineering = 0.0
     return {"Execution": round(execution, 1), "Planning": round(planning, 1),
             "Engineering": round(engineering, 1)}
 
@@ -346,8 +487,12 @@ def score_breakdown(stats):
     NOTE: keep constants aligned with compute_scores (above) — any formula change must
     be made in BOTH places; the test_value_equals_compute_scores test enforces this."""
     v, b, vel = stats.get("volume", {}), stats.get("behavior", {}), stats.get("velocity", {})
+    plan_evidence = _planning_skill_evidence(b, max(v.get("total_sessions", 0), 1))
+    has_authoritative_planning = (
+        plan_evidence["share"] is not None and not plan_evidence["legacy"])
     # Guard: no real activity → well-formed zeros (mirrors compute_scores early-return)
-    if v.get("total_sessions", 0) == 0 or v.get("tool_calls_total", 0) == 0:
+    if (v.get("total_sessions", 0) == 0
+            or (v.get("tool_calls_total", 0) == 0 and not has_authoritative_planning)):
         def _zero_sub(label, target, unit, weight, direction):
             return {"label": label, "your_value": 0.0, "target": target, "unit": unit,
                     "weight": weight, "pct": 0.5, "direction": direction, "is_drag": False,
@@ -421,8 +566,11 @@ def score_breakdown(stats):
     thinking_pct      = _clamp(thinking_raw / 12.0)
     # Plan ceremony = fraction of sessions with a planning signal (see compute_scores);
     # per-session, so TodoWrite volume can't saturate it. Target 0.4.
-    plan_sess_raw     = b.get("planning_skill_sessions", b.get("plan_sessions", 0)) / sess
-    plan_ceremony_pct = _clamp(plan_sess_raw / 0.4)
+    plan_sess_raw = plan_evidence["share"]
+    plan_scope_state = plan_evidence["state"]
+    plan_legacy = plan_evidence["legacy"]
+    plan_ceremony_pct = (_clamp(plan_sess_raw / 0.4)
+                         if plan_sess_raw is not None else None)
     eligible = b.get("eligible_change_sessions", 0) or 0
     ordered_raw = b.get("planned_eligible_sessions", 0) / eligible if eligible else 0
     # C7 — significance floor (see compute_scores above for rationale).
@@ -430,7 +578,8 @@ def score_breakdown(stats):
                    or eligible < MIN_ELIGIBLE_SESSIONS
                    else _clamp(ordered_raw / PLANNING_TARGET))
     planning_val      = _axis_value([(0.30, explore_pct, None), (0.30, thinking_pct, "thinking"),
-                                     (0.25, plan_ceremony_pct, "skills"),
+                                     (plan_evidence["effective_weight"], plan_ceremony_pct,
+                                      "skills" if plan_legacy else None),
                                      (0.15, ordered_pct, None)], caps)
     plan_subs = [
         {"label": "Explore-before-build",
@@ -441,8 +590,19 @@ def score_breakdown(stats):
          "target": 12.0, "unit": "thinking blocks/session", "weight": 0.30, "pct": thinking_pct,
          "direction": "higher", "is_drag": False, "_cap": "thinking"},
         {"label": "Planning skill practice", "your_value": plan_sess_raw,
-         "target": 0.4, "unit": "planning sessions/session", "weight": 0.25, "pct": plan_ceremony_pct,
-         "direction": "higher", "is_drag": False, "_cap": "skills"},
+         "target": 0.4, "unit": "planning sessions/session",
+         "weight": plan_evidence["effective_weight"], "pct": plan_ceremony_pct,
+         "direction": "higher", "is_drag": False,
+         "scope_state": plan_scope_state,
+         "planning_skill_sessions": plan_evidence["planning_sessions"],
+         "planning_skill_eligible_sessions": plan_evidence["eligible_sessions"],
+         "planning_skill_unmeasured_sessions": plan_evidence["unmeasured_sessions"],
+         "planning_skill_session_share": plan_evidence["share"],
+         "planning_skill_session_coverage": plan_evidence["coverage"],
+         "coverage": plan_evidence["coverage"],
+         "base_weight": plan_evidence["base_weight"],
+         "effective_weight": plan_evidence["effective_weight"],
+         "_cap": "skills" if plan_legacy else None},
     ]
     if ordered_pct is not None:
         plan_subs.append({"label": "Ordered planning readiness", "your_value": ordered_raw,
@@ -462,6 +622,8 @@ def score_breakdown(stats):
     err_pct      = _ev(1 - _clamp((b.get("error_rate_per_100_tools") or 0) / 10), ev)
     engineering_val = round(10 * (0.30 * rework_pct + 0.25 * iter_pct + 0.20 * focus_pct
                                   + 0.15 * qual_pct + 0.10 * err_pct), 1)
+    if v.get("tool_calls_total", 0) == 0:
+        execution_val = engineering_val = 0.0
     eng_subs = [
         {"label": "Low rework", "your_value": b.get("iteration_depth_mean") or 0,
          "target": 2.0, "unit": "mean file-edit depth", "weight": 0.30, "pct": rework_pct,
@@ -483,7 +645,8 @@ def score_breakdown(stats):
 
     def _mark_drag(axis_name, subs, gloss):
         """Flag the sub with the smallest weight*pct contribution; build a drag_note."""
-        drag_idx = min(range(len(subs)), key=lambda i: subs[i]["weight"] * subs[i]["pct"])
+        live_indices = [i for i, sub in enumerate(subs) if sub.get("pct") is not None]
+        drag_idx = min(live_indices, key=lambda i: subs[i]["weight"] * subs[i]["pct"])
         for i, s in enumerate(subs):
             s["is_drag"] = (i == drag_idx)
         d = subs[drag_idx]
@@ -499,7 +662,7 @@ def score_breakdown(stats):
             "engineering": engineering_val,
         }
         drag_sub = subs[drag_idx]
-        best_sub = max(subs, key=lambda s: s["pct"])
+        best_sub = max((subs[i] for i in live_indices), key=lambda s: s["pct"])
         av = _axis_verdict(_axis_values[axis_name])
         dir_hint = "higher is better" if drag_sub["direction"] == "higher" else "lower is better"
         drag_narr = (
