@@ -25,7 +25,7 @@ import time
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 
-from gnomon.config import parse_ts, line_count, strip_injections
+from gnomon.config import parse_ts, line_count, strip_injections, planning_session_scope
 from gnomon.taxonomy import (
     SCHEDULE_TOOLS, ASK_TOOLS, PLAN_SIGNAL_TOOLS, PLAN_SKILL_NEEDLES,
     KNOWLEDGE_SKILL_NEEDLES,
@@ -160,7 +160,12 @@ class Accumulator:
         # planning Skill. Counting distinct sessions (not tool calls) stops TodoWrite,
         # which fires many times per session, from inflating the metric.
         self.plan_sessions = set()
+        # Qualified Planning Skill Practice uses source-qualified session IDs so
+        # pooled sources cannot collide. Numerator and denominator are admitted
+        # by the same event-level predicate.
         self.planning_skill_sessions = set()
+        self.planning_skill_eligible_sessions = set()
+        self.planning_skill_unmeasured_sessions = set()
         self.session_ordered_tools = defaultdict(list)
         self.month_session_ordered_tools = defaultdict(lambda: defaultdict(list))
         self.ordered_facts_complete = True
@@ -208,6 +213,8 @@ class Accumulator:
         self.month_shell_test_runs = Counter()
         self.month_plan_sessions = defaultdict(set)   # "YYYY-MM" -> {sessionId with planning}
         self.month_planning_skill_sessions = defaultdict(set)
+        self.month_planning_skill_eligible_sessions = defaultdict(set)
+        self.month_planning_skill_unmeasured_sessions = defaultdict(set)
         self.month_api_errors = Counter()
 
         self.model_tokens = defaultdict(_zero_tok)
@@ -255,7 +262,7 @@ class Accumulator:
     def _git_cwds(self):
         return list(self.project_activity.keys())
 
-    def _record_skill(self, name, sid, mkey):
+    def _record_skill(self, name, sid, mkey, planning_event_eligible=False):
         if not name:
             return
         self.skill_counter[name] += 1
@@ -263,7 +270,8 @@ class Accumulator:
             self.month_skill_counter[mkey][name] += 1
         if self._is_plan_skill(name):
             self._mark_plan_session(sid, mkey)
-            self._mark_planning_skill_session(sid, mkey)
+            self._record_planning_skill_signal(
+                sid, mkey, event_eligible=planning_event_eligible)
         if self._is_knowledge_skill(name):
             self._pending_knowledge_grounding[sid] = True
 
@@ -330,13 +338,20 @@ class Accumulator:
         if mkey:
             self.month_plan_sessions[mkey].add(sid)
 
-    def _mark_planning_skill_session(self, sid, mkey):
-        """Record actual planning Skill use, separate from plan/todo ceremony."""
-        if not sid:
+    def _record_planning_skill_signal(self, sid, mkey, *, event_eligible):
+        """The sole mutation path for the qualified planning numerator.
+
+        Descriptive skill counters are updated before this guard, so rejecting a
+        child marker changes scoring attribution only. A synthetic timestamp is
+        provenance for a real event: it may credit an already-eligible root at
+        corpus level, but never creates eligibility or a mismatched monthly credit.
+        """
+        if not event_eligible or not sid:
             return
-        self.planning_skill_sessions.add(sid)
-        if mkey:
-            self.month_planning_skill_sessions[mkey].add(sid)
+        key = (self._cur_src, sid)
+        self.planning_skill_sessions.add(key)
+        if mkey and key in self.month_planning_skill_eligible_sessions[mkey]:
+            self.month_planning_skill_sessions[mkey].add(key)
 
     def _counted_plan_sessions(self):
         """Plan sessions restricted to the same universe as total_sessions, so the
@@ -353,9 +368,34 @@ class Accumulator:
         return min(len(self.plan_sessions), len(self.session_files))
 
     def _counted_planning_skill_sessions(self):
-        if self.session_ts:
-            return len(self.planning_skill_sessions & set(self.session_ts))
-        return min(len(self.planning_skill_sessions), len(self.session_files))
+        return len(self.planning_skill_sessions & self.planning_skill_eligible_sessions)
+
+    @staticmethod
+    def _planning_skill_fields(numerator, denominator, unmeasured):
+        assert 0 <= numerator <= denominator
+        assert unmeasured >= 0
+        state = ("measured" if denominator > 0 and unmeasured == 0
+                 else "partial" if denominator > 0 and unmeasured > 0
+                 else "unmeasured")
+        return {
+            "planning_skill_sessions": numerator,
+            "planning_skill_eligible_sessions": denominator,
+            "planning_skill_unmeasured_sessions": unmeasured,
+            "planning_skill_session_scope_state": state,
+            "planning_skill_session_share": (
+                round(numerator / denominator, 6)
+                if state in {"measured", "partial"} else None),
+            "planning_skill_session_coverage": (
+                round(denominator / (denominator + unmeasured), 6)
+                if state in {"measured", "partial"} else None),
+        }
+
+    def _counted_planning_skill_unmeasured_sessions(self, month=None):
+        unresolved = (self.month_planning_skill_unmeasured_sessions.get(month, set())
+                      if month else self.planning_skill_unmeasured_sessions)
+        eligible = (self.month_planning_skill_eligible_sessions.get(month, set())
+                    if month else self.planning_skill_eligible_sessions)
+        return len(unresolved - eligible)
 
     # ---- Context Intelligence (behavioral grounding) helper ----------------
     def _consume_knowledge_grounding(self, sid, mkey):
@@ -601,6 +641,43 @@ class Accumulator:
             return None
         mkey = dt.strftime("%Y-%m") if dt is not None else None
 
+        # Planning eligibility is deliberately event-scoped. In particular,
+        # Cursor root and child events can share a SID, so filtering only after
+        # session dedupe would let a child marker credit its parent.
+        _scope_measured = planning_session_scope(self._cur_src) == "measured"
+        _identity_valid = isinstance(ev.get("isSidechain"), bool)
+        _planning_key = (self._cur_src, sid) if sid else None
+        _planning_candidate = bool(
+            sid and dt is not None
+            and not ev.get("__synth_ts__")
+            and not ev.get("__codex_usage__")
+            and etype != "routing_link")
+        planning_denominator_eligible = bool(
+            _planning_candidate and _scope_measured and _identity_valid
+            and ev.get("isSidechain") is False)
+        if planning_denominator_eligible:
+            self.planning_skill_eligible_sessions.add(_planning_key)
+            if mkey:
+                self.month_planning_skill_eligible_sessions[mkey].add(_planning_key)
+        elif _planning_candidate and (
+                not _scope_measured or not _identity_valid):
+            self.planning_skill_unmeasured_sessions.add(_planning_key)
+            if mkey:
+                self.month_planning_skill_unmeasured_sessions[mkey].add(_planning_key)
+        # ``__synth_ts__`` marks timestamp provenance, not a fabricated event.
+        # Cursor may therefore credit a root admitted by an earlier real event,
+        # but it can never create denominator eligibility by itself.
+        _already_eligible = _planning_key in self.planning_skill_eligible_sessions
+        planning_event_eligible = bool(
+            sid and dt is not None
+            and not ev.get("__codex_usage__")
+            and etype != "routing_link"
+            and _scope_measured
+            and _identity_valid
+            and ev.get("isSidechain") is False
+            and (not ev.get("__synth_ts__") or _already_eligible)
+        )
+
         if dt is not None:
             # Synthetic timestamps (Cursor JSONL events past the first, stamped with
             # the file mtime) must reach the date window / month bucket so windowed
@@ -632,7 +709,7 @@ class Accumulator:
                 self.project_sessions[cwd].add(sid)
 
         for skill in ev.get("injectedSkills") or []:
-            self._record_skill(skill, sid, mkey)
+            self._record_skill(skill, sid, mkey, planning_event_eligible)
 
         msg = ev.get("message") if isinstance(ev.get("message"), dict) else None
 
@@ -750,14 +827,8 @@ class Accumulator:
                     self.month_model_tokens[mkey][mdl]["cache_read"]     += _tcr
                     self.month_model_tokens[mkey][mdl]["cache_creation"] += _tcc
             if ev.get("attributionSkill"):
-                self.skill_counter[ev["attributionSkill"]] += 1
-                if mkey:
-                    self.month_skill_counter[mkey][ev["attributionSkill"]] += 1
-                if self._is_plan_skill(ev["attributionSkill"]):
-                    self._mark_plan_session(sid, mkey)
-                    self._mark_planning_skill_session(sid, mkey)
-                if self._is_knowledge_skill(ev["attributionSkill"]):
-                    self._pending_knowledge_grounding[sid] = True
+                self._record_skill(
+                    ev["attributionSkill"], sid, mkey, planning_event_eligible)
             content = msg.get("content")
             if isinstance(content, list):
                 _turn_agent_count = 0
@@ -877,15 +948,8 @@ class Accumulator:
                         if name == "Skill":
                             s = inp.get("skill")
                             if s:
-                                self.skill_counter[s] += 1
-                                if mkey:
-                                    self.month_skill_counter[mkey][s] += 1
-                                # a planning Skill also marks this a planning session
-                                if self._is_plan_skill(s):
-                                    self._mark_plan_session(sid, mkey)
-                                    self._mark_planning_skill_session(sid, mkey)
-                                if self._is_knowledge_skill(s):
-                                    self._pending_knowledge_grounding[sid] = True
+                                self._record_skill(
+                                    s, sid, mkey, planning_event_eligible)
                         # Plan-ceremony signal: mark this SESSION as a planning session.
                         # PLAN_SIGNAL_TOOLS normalizes across sources (EnterPlanMode = Cursor
                         # create_plan; ExitPlanMode = Claude Code native plan mode, shift+tab ->
@@ -948,7 +1012,8 @@ class Accumulator:
                         if name == "Read":
                             skill_name = extract_skill_name_from_path(inp.get("file_path"))
                             if skill_name:
-                                self._record_skill(skill_name, sid, mkey)
+                                self._record_skill(
+                                    skill_name, sid, mkey, planning_event_eligible)
 
                         # ---- code churn + iteration depth ----------
                         if name == "Edit":
@@ -1031,14 +1096,9 @@ class Accumulator:
                                 # Claude invokes skills via the Skill tool (counted
                                 # above); other CLIs read SKILL.md through the shell
                                 for _sm in _SKILL_MD_RX.finditer(cmd):
-                                    self.skill_counter[_sm.group(1)] += 1
-                                    if mkey:
-                                        self.month_skill_counter[mkey][_sm.group(1)] += 1
-                                    if self._is_plan_skill(_sm.group(1)):
-                                        self._mark_plan_session(sid, mkey)
-                                        self._mark_planning_skill_session(sid, mkey)
-                                    if self._is_knowledge_skill(_sm.group(1)):
-                                        self._pending_knowledge_grounding[sid] = True
+                                    self._record_skill(
+                                        _sm.group(1), sid, mkey,
+                                        planning_event_eligible)
                             if bash_writes_file(cmd):
                                 self.bash_write_calls += 1
                                 _bash_nl = cmd.count("\n")
@@ -1314,7 +1374,10 @@ class Accumulator:
                 "scheduled_actions": self.scheduled_actions,
                 "shell_test_runs": self.shell_test_runs,
                 "plan_sessions": self._counted_plan_sessions(),
-                "planning_skill_sessions": self._counted_planning_skill_sessions(),
+                **self._planning_skill_fields(
+                    self._counted_planning_skill_sessions(),
+                    len(self.planning_skill_eligible_sessions),
+                    self._counted_planning_skill_unmeasured_sessions()),
                 "eligible_change_sessions": _eligible,
                 "planned_eligible_sessions": _planned,
                 "evidence_eligible_sessions": _evidence,
@@ -1436,6 +1499,9 @@ class Accumulator:
             month_compounding=self.month_compounding, month_shell_test_runs=self.month_shell_test_runs,
             month_plan_sessions=self.month_plan_sessions,
             month_planning_skill_sessions=self.month_planning_skill_sessions,
+            month_planning_skill_eligible_sessions=self.month_planning_skill_eligible_sessions,
+            month_planning_skill_unmeasured_sessions=(
+                self.month_planning_skill_unmeasured_sessions),
             month_api_errors=self.month_api_errors,
             planning_ratio_window=planning_ratio,
             cwds=self._git_cwds(),
@@ -1557,7 +1623,10 @@ class Accumulator:
                 "parallel_session_share": _s_parallel_session_share,
                 "shell_test_runs": self.shell_test_runs,
                 "plan_sessions": self._counted_plan_sessions(),
-                "planning_skill_sessions": self._counted_planning_skill_sessions(),
+                **self._planning_skill_fields(
+                    self._counted_planning_skill_sessions(),
+                    len(self.planning_skill_eligible_sessions),
+                    self._counted_planning_skill_unmeasured_sessions()),
                 "eligible_change_sessions": _s_eligible,
                 "planned_eligible_sessions": _s_agg["planned"],
                 "evidence_eligible_sessions": _s_agg["evidence"],

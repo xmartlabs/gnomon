@@ -38,7 +38,8 @@ class TestPublicDocumentationContract(unittest.TestCase):
         for document in (self.readme, metrics):
             self.assertIn("scoring inputs version 5", document)
             self.assertIn("AQ version 5", document)
-            self.assertIn("GStack version 3", document)
+            self.assertIn("GStack version 5", document)
+            self.assertIn("5:5:5", document)
             self.assertNotIn("scoring contract version 4", document)
 
     def test_readme_model_mix_describes_explicit_provider_tiers(self):

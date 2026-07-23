@@ -372,6 +372,8 @@ def _codex_events(fp):
     sid = os.path.basename(fp).split(".")[0]
     cwd = None
     parent_tid = None            # parent_thread_id when this session was spawned as a subagent
+    guardian_child = False       # system guardian sessions are authoritative sidechains
+    child_identity_invalid = False
     agent_path = None            # stable collaboration identity for reused child threads
     child_ts = None              # representative timestamp of THIS (child) session
     for ev in rows:                       # first pass: session id + working dir + subagent parent
@@ -386,19 +388,26 @@ def _codex_events(fp):
             cwd = p.get("cwd") or cwd
             # thread_spawn means this session was launched as a delegate.
             src = p.get("source")
-            if isinstance(src, dict):
-                sub = src.get("subagent") or {}
+            if isinstance(src, dict) and "subagent" in src:
+                sub = src.get("subagent")
                 spawn = sub.get("thread_spawn") if isinstance(sub, dict) else None
-                if isinstance(spawn, dict) and spawn:
-                    parent_tid = spawn.get("parent_thread_id") or parent_tid
+                parent = spawn.get("parent_thread_id") if isinstance(spawn, dict) else None
+                if isinstance(parent, str) and parent.strip():
+                    parent_tid = parent
                     agent_path = spawn.get("agent_path") or agent_path
+                elif isinstance(sub, dict) and sub.get("other") == "guardian":
+                    guardian_child = True
+                else:
+                    child_identity_invalid = True
         elif ev.get("type") == "response_item" and p.get("type") == "function_call":
             try:
                 a = json.loads(p.get("arguments") or "{}")
                 cwd = cwd or (a.get("workdir") if isinstance(a, dict) else None)
             except Exception:
                 pass
-    base = {"sessionId": sid, "cwd": cwd}
+    base = {"sessionId": sid, "cwd": cwd,
+            "isSidechain": (
+                None if child_identity_invalid else bool(parent_tid or guardian_child))}
 
     if parent_tid:
         # A reused Codex thread can contain multiple turns. Attribute tools and

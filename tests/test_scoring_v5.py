@@ -19,7 +19,9 @@ from gnomon.scoring.aggregate import blend_model_mix_components
 from gnomon.scoring.aggregate import _blend_aq
 from gnomon.scoring.versioning import IncompatibleScoreContract
 from gnomon.scoring.inputs import build_scoring_inputs
-from gnomon.scoring.gstack import compute_scores, score_breakdown
+from gnomon.scoring.gstack import (
+    _planning_skill_evidence, compute_scores, score_breakdown,
+)
 from gnomon.scoring.aggregate import score_by_source
 from gnomon.sources.codex import _codex_events, _codex_tool
 from gnomon.sources import iter_events
@@ -486,6 +488,7 @@ class TestPlanningSkillSessions(unittest.TestCase):
     @staticmethod
     def _event(sid, timestamp, name, inp=None, attribution=None):
         event = {"type": "assistant", "sessionId": sid, "timestamp": timestamp,
+                 "isSidechain": False,
                  "message": {"role": "assistant", "model": "claude-sonnet-4-6",
                              "content": [{"type": "tool_use", "name": name,
                                           "input": inp or {}}]}}
@@ -520,6 +523,141 @@ class TestPlanningSkillSessions(unittest.TestCase):
         ), None, None)
         stats = acc.to_source_stats("codex", None, None)
         self.assertEqual(stats["behavior"]["planning_skill_sessions"], 1)
+
+
+class TestPlanningPartialCoverageScoring(unittest.TestCase):
+    @staticmethod
+    def _fields(planning, eligible, unmeasured):
+        if eligible:
+            share = planning / eligible
+            coverage = eligible / (eligible + unmeasured)
+            state = "partial" if unmeasured else "measured"
+        else:
+            share = coverage = None
+            state = "unmeasured"
+        return {
+            "planning_skill_sessions": planning,
+            "planning_skill_eligible_sessions": eligible,
+            "planning_skill_unmeasured_sessions": unmeasured,
+            "planning_skill_session_scope_state": state,
+            "planning_skill_session_share": share,
+            "planning_skill_session_coverage": coverage,
+        }
+
+    def test_partial_evidence_scales_effective_weight_and_matches_profile(self):
+        stats = _v5_scoring_stats()
+        stats["behavior"].update(self._fields(187, 1180, 5))
+        evidence = _planning_skill_evidence(stats["behavior"], 10)
+        self.assertAlmostEqual(evidence["share"], 187 / 1180)
+        self.assertAlmostEqual(evidence["coverage"], 1180 / 1185)
+        self.assertEqual(evidence["state"], "partial")
+        self.assertAlmostEqual(
+            evidence["effective_weight"], 0.25 * (1180 / 1185))
+
+        sub = next(s for s in score_breakdown(stats)["planning"]["subs"]
+                   if s["label"] == "Planning skill practice")
+        self.assertAlmostEqual(sub["your_value"], evidence["share"])
+        self.assertAlmostEqual(sub["coverage"], evidence["coverage"])
+        self.assertAlmostEqual(
+            sub["effective_weight"], evidence["effective_weight"])
+        self.assertEqual(sub["score_pct"], round(100 * (187 / 1180) / 0.4))
+        self.assertEqual(
+            compute_scores(stats)["Planning"],
+            score_breakdown(stats)["planning"]["value"])
+
+    def test_zero_tool_root_preserves_authoritative_planning_evidence(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "zero-tool-root.jsonl")
+        acc.observe({
+            "type": "user",
+            "sessionId": "dated-root",
+            "timestamp": "2026-07-01T00:00:00Z",
+            "isSidechain": False,
+            "injectedSkills": ["writing-plans"],
+            "message": {"role": "user", "content": "Plan this change"},
+        }, None, None)
+        stats = acc.to_source_stats("claude", None, None)
+        behavior = stats["behavior"]
+        self.assertEqual(stats["volume"]["tool_calls_total"], 0)
+        self.assertEqual(
+            (behavior["planning_skill_sessions"],
+             behavior["planning_skill_eligible_sessions"],
+             behavior["planning_skill_unmeasured_sessions"]),
+            (1, 1, 0),
+        )
+
+        scores = compute_scores(stats)
+        breakdown = score_breakdown(stats)
+        sub = next(s for s in breakdown["planning"]["subs"]
+                   if s["label"] == "Planning skill practice")
+        self.assertEqual(sub["your_value"], 1.0)
+        self.assertEqual(sub["pct"], 1.0)
+        self.assertEqual(sub["scope_state"], "measured")
+        self.assertEqual({
+            key: sub[key] for key in (
+                "planning_skill_sessions",
+                "planning_skill_eligible_sessions",
+                "planning_skill_unmeasured_sessions",
+                "planning_skill_session_share",
+                "planning_skill_session_coverage",
+                "scope_state",
+            )
+        }, {
+            "planning_skill_sessions": 1,
+            "planning_skill_eligible_sessions": 1,
+            "planning_skill_unmeasured_sessions": 0,
+            "planning_skill_session_share": 1.0,
+            "planning_skill_session_coverage": 1.0,
+            "scope_state": "measured",
+        })
+        self.assertEqual(sub["base_weight"], 0.25)
+        self.assertEqual(sub["effective_weight"], 0.25)
+        self.assertEqual(scores["Planning"], breakdown["planning"]["value"])
+        self.assertEqual((scores["Execution"], scores["Engineering"]), (0.0, 0.0))
+
+        legacy = deepcopy(stats)
+        for field in self._fields(1, 1, 0):
+            if field != "planning_skill_sessions":
+                legacy["behavior"].pop(field)
+        self.assertEqual(
+            compute_scores(legacy),
+            {"Execution": 0.0, "Planning": 0.0, "Engineering": 0.0},
+        )
+
+    def test_incomplete_or_inconsistent_new_payload_fails_closed(self):
+        complete = self._fields(1, 4, 1)
+        invalid_payloads = []
+        for field in complete:
+            payload = dict(complete)
+            payload.pop(field)
+            invalid_payloads.append(payload)
+        invalid_payloads.append({**complete, "planning_skill_session_share": 0.9})
+        invalid_payloads.append({**complete, "planning_skill_session_coverage": 0.9})
+        for payload in invalid_payloads:
+            with self.subTest(payload=payload):
+                evidence = _planning_skill_evidence(payload, 99)
+                self.assertIsNone(evidence["share"])
+                self.assertEqual(evidence["state"], "unmeasured")
+                self.assertEqual(evidence["effective_weight"], 0.0)
+
+    def test_legacy_fallback_requires_every_new_field_to_be_absent(self):
+        legacy = _planning_skill_evidence({"planning_skill_sessions": 2}, 4)
+        self.assertEqual(legacy["share"], 0.5)
+        self.assertTrue(legacy["legacy"])
+        self.assertEqual(legacy["effective_weight"], 0.25)
+
+        for field in (
+            "planning_skill_eligible_sessions",
+            "planning_skill_unmeasured_sessions",
+            "planning_skill_session_scope_state",
+            "planning_skill_session_share",
+            "planning_skill_session_coverage",
+        ):
+            with self.subTest(field=field):
+                evidence = _planning_skill_evidence(
+                    {"planning_skill_sessions": 2, field: None}, 4)
+                self.assertFalse(evidence["legacy"])
+                self.assertIsNone(evidence["share"])
 
 
 class TestRouting(unittest.TestCase):
@@ -1107,7 +1245,7 @@ class TestV5Contract(unittest.TestCase):
     def test_compute_aq_emits_exact_contract(self):
         stats = {"corpus": {"sources": {}}, "volume": {"total_sessions": 0},
                  "tools": {}, "stack": {}, "behavior": {}}
-        self.assertEqual(SCORE_CONTRACT_ID, "5:5:3")
+        self.assertEqual(SCORE_CONTRACT_ID, "5:5:5")
         self.assertEqual(compute_aq(stats)["score_contract_id"], SCORE_CONTRACT_ID)
 
     def test_blend_rejects_missing_or_mismatched_contract(self):

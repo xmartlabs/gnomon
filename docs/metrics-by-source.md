@@ -38,12 +38,16 @@ directly — no external dependency). Both decode to the same normalized events.
 
 ## Session caveats
 
+- **Planning Skill Practice** has authoritative root/child identity for Claude, Codex,
+  Cursor, and OpenCode. Other active sources contribute unmeasured sessions (`U`) to
+  coverage instead of forcing the measured `P/E` share to zero or unavailable.
 - `git_churn` is parser-independent once source yields a real `cwd`. Antigravity CLI yields a real
   `cwd` (from `trajectory_metadata_blob`); the IDE derives it best-effort from edit/command paths.
 - Codex now counts `apply_patch` churn per file, so churn, deletions, and iteration depth are meaningful there.
 - Gemini captures tool activity, thinking, tokens, and errors, but deletions stay partial because `write_file` has no old-string diff.
-- Gemini/Pi/opencode have no subagent support, so the **Orchestration** AQ axis is dropped (caps
-  lack `delegate`), not scored 0 — they aren't penalized for fan-out they can't do.
+- Gnomon does not extract delegation signals from Gemini, Pi, or OpenCode, so the
+  **Orchestration** AQ axis is dropped (caps lack `delegate`), not scored 0. OpenCode itself
+  supports child sessions; their parent identity is still used to scope Planning Skill Practice.
 - Gemini MCP usage is not captured because tool names do not use `mcp__` naming.
 - **Antigravity CLI** is fully scored offline: prompts, tool calls, tokens, and model are decoded
   from the protobuf step payloads (stdlib decoder, no deps).
@@ -76,7 +80,7 @@ directly — no external dependency). Both decode to the same normalized events.
 
 ## Uploaded summary contract
 
-Current runtime contract: **scoring inputs version 5**, **AQ version 5**, and **GStack version 3** (`score_contract_id = 5:5:3`). Previous-contract scores
+Current runtime contract: **scoring inputs version 5**, **AQ version 5**, and **GStack version 5** (`score_contract_id = 5:5:5`). Previous-contract scores
 must not be shown as improvement or regression against v5. AQ is blended as
 65% recent (rolling 30-day) + 35%
 full-window (cumulative). The full window includes recent activity, so

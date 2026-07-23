@@ -26,7 +26,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "5:5:3",
+          "score_contract_id": "5:5:5",
           "tier": "Advanced"
         },
         "archetype": {
@@ -34,7 +34,12 @@
           "title": "Advanced"
         },
         "combination": {
-          "rule": "weighted_mean_of_per_source_scores",
+          "axes": {
+            "engineering": "tool_volume_weighted_mean",
+            "execution": "tool_volume_weighted_mean",
+            "planning": "recomputed_from_synthesized_corpus"
+          },
+          "rule": "weighted_mean_except_synthesized_planning",
           "weight": "tool_calls_total",
           "weights": {
             "claude": 4000
@@ -220,13 +225,22 @@
                 "your_value": 15.0
               },
               {
+                "base_weight": 0.25,
+                "coverage": 1.0,
                 "direction": "higher",
                 "display_target": "0.4 planning sessions/session",
                 "display_value": "0.4 planning sessions/session",
+                "effective_weight": 0.25,
                 "is_drag": true,
                 "label": "Planning skill practice",
                 "narrative": "Planning skill practice is excellent (0.4 planning sessions/session, target 0.4 planning sessions/session \u2014 well above target, scoring 100%).",
                 "pct": 1.0,
+                "planning_skill_eligible_sessions": 40,
+                "planning_skill_session_coverage": 1.0,
+                "planning_skill_session_share": 0.4,
+                "planning_skill_sessions": 16,
+                "planning_skill_unmeasured_sessions": 0,
+                "scope_state": "measured",
                 "score_pct": 100,
                 "target": 0.4,
                 "unit": "planning sessions/session",
@@ -462,7 +476,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:5:3",
+            "score_contract_id": "5:5:5",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -653,13 +667,22 @@
                   "your_value": 15.0
                 },
                 {
+                  "base_weight": 0.25,
+                  "coverage": 1.0,
                   "direction": "higher",
                   "display_target": "0.4 planning sessions/session",
                   "display_value": "0.4 planning sessions/session",
+                  "effective_weight": 0.25,
                   "is_drag": true,
                   "label": "Planning skill practice",
                   "narrative": "Planning skill practice is excellent (0.4 planning sessions/session, target 0.4 planning sessions/session \u2014 well above target, scoring 100%).",
                   "pct": 1.0,
+                  "planning_skill_eligible_sessions": 40,
+                  "planning_skill_session_coverage": 1.0,
+                  "planning_skill_session_share": 0.4,
+                  "planning_skill_sessions": 16,
+                  "planning_skill_unmeasured_sessions": 0,
+                  "scope_state": "measured",
                   "score_pct": 100,
                   "target": 0.4,
                   "unit": "planning sessions/session",
@@ -725,6 +748,12 @@
             "iteration_depth_p90": 4,
             "plan_sessions": 16,
             "planning_ratio_explore_to_doing": 0.7,
+            "planning_skill_eligible_sessions": 40,
+            "planning_skill_session_coverage": 1.0,
+            "planning_skill_session_scope_state": "measured",
+            "planning_skill_session_share": 0.4,
+            "planning_skill_sessions": 16,
+            "planning_skill_unmeasured_sessions": 0,
             "questions_asked": 5,
             "shell_test_runs": 120
           },
@@ -881,7 +910,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "5:5:3",
+          "score_contract_id": "5:5:5",
           "tier": "Apprentice"
         },
         "archetype": {
@@ -889,7 +918,12 @@
           "title": "Apprentice"
         },
         "combination": {
-          "rule": "weighted_mean_of_per_source_scores",
+          "axes": {
+            "engineering": "tool_volume_weighted_mean",
+            "execution": "tool_volume_weighted_mean",
+            "planning": "recomputed_from_synthesized_corpus"
+          },
+          "rule": "weighted_mean_except_synthesized_planning",
           "weight": "tool_calls_total",
           "weights": {
             "cursor": 500
@@ -907,7 +941,7 @@
             "title": "When a file fights back, root-cause it"
           },
           {
-            "advice": "Planning is 2.3. Sketch the plan and reframe the ask before writing code \u2014 it's the cheapest place to catch a wrong turn. (gstack front-loads this with /office-hours + /autoplan.)",
+            "advice": "Planning is 3.1. Sketch the plan and reframe the ask before writing code \u2014 it's the cheapest place to catch a wrong turn. (gstack front-loads this with /office-hours + /autoplan.)",
             "axis": null,
             "commands": [
               "/office-hours",
@@ -1061,12 +1095,12 @@
             "value": 1.5
           },
           "planning": {
-            "axis_narrative": "Planning scores 2.3/10 (poor). Strongest: Explore-before-build (46%); weakest: Reasoning depth (0%).",
-            "axis_verdict": "poor",
+            "axis_narrative": "Planning scores 3.1/10 (weak). Strongest: Planning skill practice (50%); weakest: Reasoning depth (0%).",
+            "axis_verdict": "weak",
             "drag_narrative": "Reasoning depth is the weakest contributor, scoring 0%. Your value: 0 thinking blocks/session (target: 12 thinking blocks/session, higher is better).",
             "drag_note": "Reasoning depth is dragging this down \u2014 0 thinking blocks/session, target ~12.",
             "gloss": "Think before you build",
-            "score_out_of_10": "2.3 / 10",
+            "score_out_of_10": "3.1 / 10",
             "subs": [
               {
                 "direction": "higher",
@@ -1080,7 +1114,7 @@
                 "target": 0.65,
                 "unit": "explore/doing ratio",
                 "verdict": "weak",
-                "weight": 0.5,
+                "weight": 0.3529,
                 "your_value": 0.3
               },
               {
@@ -1095,11 +1129,35 @@
                 "target": 12.0,
                 "unit": "thinking blocks/session",
                 "verdict": "poor",
-                "weight": 0.5,
+                "weight": 0.3529,
                 "your_value": 0.0
+              },
+              {
+                "base_weight": 0.25,
+                "coverage": 1.0,
+                "direction": "higher",
+                "display_target": "0.4 planning sessions/session",
+                "display_value": "0.2 planning sessions/session",
+                "effective_weight": 0.25,
+                "is_drag": false,
+                "label": "Planning skill practice",
+                "narrative": "Planning skill practice is adequate (0.2 planning sessions/session, target 0.4 planning sessions/session \u2014 approaching target, scoring 50%).",
+                "pct": 0.5,
+                "planning_skill_eligible_sessions": 10,
+                "planning_skill_session_coverage": 1.0,
+                "planning_skill_session_share": 0.2,
+                "planning_skill_sessions": 2,
+                "planning_skill_unmeasured_sessions": 0,
+                "scope_state": "measured",
+                "score_pct": 50,
+                "target": 0.4,
+                "unit": "planning sessions/session",
+                "verdict": "adequate",
+                "weight": 0.2941,
+                "your_value": 0.2
               }
             ],
-            "value": 2.3
+            "value": 3.1
           }
         },
         "signature_moves": [],
@@ -1278,7 +1336,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:5:3",
+            "score_contract_id": "5:5:5",
             "tier": "Apprentice",
             "tool_diversity": {
               "distinct": 12,
@@ -1301,7 +1359,7 @@
               "title": "When a file fights back, root-cause it"
             },
             {
-              "advice": "Planning is 2.3. Sketch the plan and reframe the ask before writing code \u2014 it's the cheapest place to catch a wrong turn. (gstack front-loads this with /office-hours + /autoplan.)",
+              "advice": "Planning is 3.1. Sketch the plan and reframe the ask before writing code \u2014 it's the cheapest place to catch a wrong turn. (gstack front-loads this with /office-hours + /autoplan.)",
               "axis": null,
               "commands": [
                 "/office-hours",
@@ -1450,12 +1508,12 @@
               "value": 1.5
             },
             "planning": {
-              "axis_narrative": "Planning scores 2.3/10 (poor). Strongest: Explore-before-build (46%); weakest: Reasoning depth (0%).",
-              "axis_verdict": "poor",
+              "axis_narrative": "Planning scores 3.1/10 (weak). Strongest: Planning skill practice (50%); weakest: Reasoning depth (0%).",
+              "axis_verdict": "weak",
               "drag_narrative": "Reasoning depth is the weakest contributor, scoring 0%. Your value: 0 thinking blocks/session (target: 12 thinking blocks/session, higher is better).",
               "drag_note": "Reasoning depth is dragging this down \u2014 0 thinking blocks/session, target ~12.",
               "gloss": "Think before you build",
-              "score_out_of_10": "2.3 / 10",
+              "score_out_of_10": "3.1 / 10",
               "subs": [
                 {
                   "direction": "higher",
@@ -1469,7 +1527,7 @@
                   "target": 0.65,
                   "unit": "explore/doing ratio",
                   "verdict": "weak",
-                  "weight": 0.5,
+                  "weight": 0.3529,
                   "your_value": 0.3
                 },
                 {
@@ -1484,11 +1542,35 @@
                   "target": 12.0,
                   "unit": "thinking blocks/session",
                   "verdict": "poor",
-                  "weight": 0.5,
+                  "weight": 0.3529,
                   "your_value": 0.0
+                },
+                {
+                  "base_weight": 0.25,
+                  "coverage": 1.0,
+                  "direction": "higher",
+                  "display_target": "0.4 planning sessions/session",
+                  "display_value": "0.2 planning sessions/session",
+                  "effective_weight": 0.25,
+                  "is_drag": false,
+                  "label": "Planning skill practice",
+                  "narrative": "Planning skill practice is adequate (0.2 planning sessions/session, target 0.4 planning sessions/session \u2014 approaching target, scoring 50%).",
+                  "pct": 0.5,
+                  "planning_skill_eligible_sessions": 10,
+                  "planning_skill_session_coverage": 1.0,
+                  "planning_skill_session_share": 0.2,
+                  "planning_skill_sessions": 2,
+                  "planning_skill_unmeasured_sessions": 0,
+                  "scope_state": "measured",
+                  "score_pct": 50,
+                  "target": 0.4,
+                  "unit": "planning sessions/session",
+                  "verdict": "adequate",
+                  "weight": 0.2941,
+                  "your_value": 0.2
                 }
               ],
-              "value": 2.3
+              "value": 3.1
             }
           },
           "signature_moves": [],
@@ -1519,6 +1601,12 @@
             "iteration_depth_p90": 12,
             "plan_sessions": 2,
             "planning_ratio_explore_to_doing": 0.3,
+            "planning_skill_eligible_sessions": 10,
+            "planning_skill_session_coverage": 1.0,
+            "planning_skill_session_scope_state": "measured",
+            "planning_skill_session_share": 0.2,
+            "planning_skill_sessions": 2,
+            "planning_skill_unmeasured_sessions": 0,
             "questions_asked": 1,
             "shell_test_runs": 5
           },
@@ -1604,7 +1692,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "5:5:3",
+          "score_contract_id": "5:5:5",
           "tier": "Advanced"
         },
         "archetype": {
@@ -1612,7 +1700,12 @@
           "title": "Advanced"
         },
         "combination": {
-          "rule": "weighted_mean_of_per_source_scores",
+          "axes": {
+            "engineering": "tool_volume_weighted_mean",
+            "execution": "tool_volume_weighted_mean",
+            "planning": "recomputed_from_synthesized_corpus"
+          },
+          "rule": "weighted_mean_except_synthesized_planning",
           "weight": "tool_calls_total",
           "weights": {
             "claude": 4000,
@@ -1761,12 +1854,12 @@
             "value": 7.1
           },
           "planning": {
-            "axis_narrative": "Planning scores 9.1/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning skill practice (90%).",
+            "axis_narrative": "Planning scores 9.7/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning skill practice (90%).",
             "axis_verdict": "excellent",
             "drag_narrative": "Planning skill practice is the weakest contributor, scoring 90%. Your value: 0.36 planning sessions/session (target: 0.4 planning sessions/session, higher is better).",
             "drag_note": "Planning skill practice is dragging this down \u2014 0.36 planning sessions/session, target ~0.4.",
             "gloss": "Think before you build",
-            "score_out_of_10": "9.1 / 10",
+            "score_out_of_10": "9.7 / 10",
             "subs": [
               {
                 "direction": "higher",
@@ -1799,13 +1892,22 @@
                 "your_value": 12.0
               },
               {
+                "base_weight": 0.25,
+                "coverage": 1.0,
                 "direction": "higher",
                 "display_target": "0.4 planning sessions/session",
                 "display_value": "0.36 planning sessions/session",
+                "effective_weight": 0.25,
                 "is_drag": true,
                 "label": "Planning skill practice",
                 "narrative": "Planning skill practice is good (0.36 planning sessions/session, target 0.4 planning sessions/session \u2014 well above target, scoring 90%).",
                 "pct": 0.8999999999999999,
+                "planning_skill_eligible_sessions": 50,
+                "planning_skill_session_coverage": 1.0,
+                "planning_skill_session_share": 0.36,
+                "planning_skill_sessions": 18,
+                "planning_skill_unmeasured_sessions": 0,
+                "scope_state": "measured",
                 "score_pct": 90,
                 "target": 0.4,
                 "unit": "planning sessions/session",
@@ -1814,7 +1916,7 @@
                 "your_value": 0.36
               }
             ],
-            "value": 9.1
+            "value": 9.7
           }
         },
         "signature_moves": [
@@ -2041,7 +2143,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:5:3",
+            "score_contract_id": "5:5:5",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -2232,13 +2334,22 @@
                   "your_value": 15.0
                 },
                 {
+                  "base_weight": 0.25,
+                  "coverage": 1.0,
                   "direction": "higher",
                   "display_target": "0.4 planning sessions/session",
                   "display_value": "0.4 planning sessions/session",
+                  "effective_weight": 0.25,
                   "is_drag": true,
                   "label": "Planning skill practice",
                   "narrative": "Planning skill practice is excellent (0.4 planning sessions/session, target 0.4 planning sessions/session \u2014 well above target, scoring 100%).",
                   "pct": 1.0,
+                  "planning_skill_eligible_sessions": 40,
+                  "planning_skill_session_coverage": 1.0,
+                  "planning_skill_session_share": 0.4,
+                  "planning_skill_sessions": 16,
+                  "planning_skill_unmeasured_sessions": 0,
+                  "scope_state": "measured",
                   "score_pct": 100,
                   "target": 0.4,
                   "unit": "planning sessions/session",
@@ -2451,7 +2562,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:5:3",
+            "score_contract_id": "5:5:5",
             "tier": "Apprentice",
             "tool_diversity": {
               "distinct": 12,
@@ -2474,7 +2585,7 @@
               "title": "When a file fights back, root-cause it"
             },
             {
-              "advice": "Planning is 2.3. Sketch the plan and reframe the ask before writing code \u2014 it's the cheapest place to catch a wrong turn. (gstack front-loads this with /office-hours + /autoplan.)",
+              "advice": "Planning is 3.1. Sketch the plan and reframe the ask before writing code \u2014 it's the cheapest place to catch a wrong turn. (gstack front-loads this with /office-hours + /autoplan.)",
               "axis": null,
               "commands": [
                 "/office-hours",
@@ -2623,12 +2734,12 @@
               "value": 1.5
             },
             "planning": {
-              "axis_narrative": "Planning scores 2.3/10 (poor). Strongest: Explore-before-build (46%); weakest: Reasoning depth (0%).",
-              "axis_verdict": "poor",
+              "axis_narrative": "Planning scores 3.1/10 (weak). Strongest: Planning skill practice (50%); weakest: Reasoning depth (0%).",
+              "axis_verdict": "weak",
               "drag_narrative": "Reasoning depth is the weakest contributor, scoring 0%. Your value: 0 thinking blocks/session (target: 12 thinking blocks/session, higher is better).",
               "drag_note": "Reasoning depth is dragging this down \u2014 0 thinking blocks/session, target ~12.",
               "gloss": "Think before you build",
-              "score_out_of_10": "2.3 / 10",
+              "score_out_of_10": "3.1 / 10",
               "subs": [
                 {
                   "direction": "higher",
@@ -2642,7 +2753,7 @@
                   "target": 0.65,
                   "unit": "explore/doing ratio",
                   "verdict": "weak",
-                  "weight": 0.5,
+                  "weight": 0.3529,
                   "your_value": 0.3
                 },
                 {
@@ -2657,11 +2768,35 @@
                   "target": 12.0,
                   "unit": "thinking blocks/session",
                   "verdict": "poor",
-                  "weight": 0.5,
+                  "weight": 0.3529,
                   "your_value": 0.0
+                },
+                {
+                  "base_weight": 0.25,
+                  "coverage": 1.0,
+                  "direction": "higher",
+                  "display_target": "0.4 planning sessions/session",
+                  "display_value": "0.2 planning sessions/session",
+                  "effective_weight": 0.25,
+                  "is_drag": false,
+                  "label": "Planning skill practice",
+                  "narrative": "Planning skill practice is adequate (0.2 planning sessions/session, target 0.4 planning sessions/session \u2014 approaching target, scoring 50%).",
+                  "pct": 0.5,
+                  "planning_skill_eligible_sessions": 10,
+                  "planning_skill_session_coverage": 1.0,
+                  "planning_skill_session_share": 0.2,
+                  "planning_skill_sessions": 2,
+                  "planning_skill_unmeasured_sessions": 0,
+                  "scope_state": "measured",
+                  "score_pct": 50,
+                  "target": 0.4,
+                  "unit": "planning sessions/session",
+                  "verdict": "adequate",
+                  "weight": 0.2941,
+                  "your_value": 0.2
                 }
               ],
-              "value": 2.3
+              "value": 3.1
             }
           },
           "signature_moves": [],
@@ -2692,6 +2827,12 @@
             "iteration_depth_p90": 4,
             "plan_sessions": 16,
             "planning_ratio_explore_to_doing": 0.7,
+            "planning_skill_eligible_sessions": 40,
+            "planning_skill_session_coverage": 1.0,
+            "planning_skill_session_scope_state": "measured",
+            "planning_skill_session_share": 0.4,
+            "planning_skill_sessions": 16,
+            "planning_skill_unmeasured_sessions": 0,
             "questions_asked": 5,
             "shell_test_runs": 120
           },
@@ -2835,6 +2976,12 @@
             "iteration_depth_p90": 12,
             "plan_sessions": 2,
             "planning_ratio_explore_to_doing": 0.3,
+            "planning_skill_eligible_sessions": 10,
+            "planning_skill_session_coverage": 1.0,
+            "planning_skill_session_scope_state": "measured",
+            "planning_skill_session_share": 0.2,
+            "planning_skill_sessions": 2,
+            "planning_skill_unmeasured_sessions": 0,
             "questions_asked": 1,
             "shell_test_runs": 5
           },
@@ -2920,7 +3067,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "5:5:3",
+          "score_contract_id": "5:5:5",
           "tier": "Advanced"
         },
         "archetype": {
@@ -2928,7 +3075,12 @@
           "title": "Advanced"
         },
         "combination": {
-          "rule": "weighted_mean_of_per_source_scores",
+          "axes": {
+            "engineering": "tool_volume_weighted_mean",
+            "execution": "tool_volume_weighted_mean",
+            "planning": "recomputed_from_synthesized_corpus"
+          },
+          "rule": "weighted_mean_except_synthesized_planning",
           "weight": "tool_calls_total",
           "weights": {
             "claude-boundary": 4000
@@ -3114,13 +3266,22 @@
                 "your_value": 15.0
               },
               {
+                "base_weight": 0.25,
+                "coverage": 1.0,
                 "direction": "higher",
                 "display_target": "0.4 planning sessions/session",
                 "display_value": "0.4 planning sessions/session",
+                "effective_weight": 0.25,
                 "is_drag": true,
                 "label": "Planning skill practice",
                 "narrative": "Planning skill practice is excellent (0.4 planning sessions/session, target 0.4 planning sessions/session \u2014 well above target, scoring 100%).",
                 "pct": 1.0,
+                "planning_skill_eligible_sessions": 40,
+                "planning_skill_session_coverage": 1.0,
+                "planning_skill_session_share": 0.4,
+                "planning_skill_sessions": 16,
+                "planning_skill_unmeasured_sessions": 0,
+                "scope_state": "measured",
                 "score_pct": 100,
                 "target": 0.4,
                 "unit": "planning sessions/session",
@@ -3356,7 +3517,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:5:3",
+            "score_contract_id": "5:5:5",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -3547,13 +3708,22 @@
                   "your_value": 15.0
                 },
                 {
+                  "base_weight": 0.25,
+                  "coverage": 1.0,
                   "direction": "higher",
                   "display_target": "0.4 planning sessions/session",
                   "display_value": "0.4 planning sessions/session",
+                  "effective_weight": 0.25,
                   "is_drag": true,
                   "label": "Planning skill practice",
                   "narrative": "Planning skill practice is excellent (0.4 planning sessions/session, target 0.4 planning sessions/session \u2014 well above target, scoring 100%).",
                   "pct": 1.0,
+                  "planning_skill_eligible_sessions": 40,
+                  "planning_skill_session_coverage": 1.0,
+                  "planning_skill_session_share": 0.4,
+                  "planning_skill_sessions": 16,
+                  "planning_skill_unmeasured_sessions": 0,
+                  "scope_state": "measured",
                   "score_pct": 100,
                   "target": 0.4,
                   "unit": "planning sessions/session",
@@ -3619,6 +3789,12 @@
             "iteration_depth_p90": 4,
             "plan_sessions": 16,
             "planning_ratio_explore_to_doing": 0.7,
+            "planning_skill_eligible_sessions": 40,
+            "planning_skill_session_coverage": 1.0,
+            "planning_skill_session_scope_state": "measured",
+            "planning_skill_session_share": 0.4,
+            "planning_skill_sessions": 16,
+            "planning_skill_unmeasured_sessions": 0,
             "questions_asked": 5,
             "shell_test_runs": 120
           },
@@ -3760,7 +3936,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "5:5:3",
+          "score_contract_id": "5:5:5",
           "tier": "Novice"
         },
         "archetype": {
@@ -3768,7 +3944,12 @@
           "title": "Novice"
         },
         "combination": {
-          "rule": "weighted_mean_of_per_source_scores",
+          "axes": {
+            "engineering": "tool_volume_weighted_mean",
+            "execution": "tool_volume_weighted_mean",
+            "planning": "recomputed_from_synthesized_corpus"
+          },
+          "rule": "weighted_mean_except_synthesized_planning",
           "weight": "tool_calls_total",
           "weights": {
             "no-tool-activity": 0
@@ -4186,7 +4367,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:5:3",
+            "score_contract_id": "5:5:5",
             "tier": "Novice",
             "tool_diversity": {
               "distinct": 0,
@@ -4461,6 +4642,12 @@
             "no_tool_activity": true,
             "plan_sessions": 0,
             "planning_ratio_explore_to_doing": 0,
+            "planning_skill_eligible_sessions": 0,
+            "planning_skill_session_coverage": null,
+            "planning_skill_session_scope_state": "unmeasured",
+            "planning_skill_session_share": null,
+            "planning_skill_sessions": 0,
+            "planning_skill_unmeasured_sessions": 5,
             "questions_asked": 0,
             "shell_test_runs": 0
           },
@@ -4543,6 +4730,12 @@
               "iteration_depth_p90": 4,
               "plan_sessions": 16,
               "planning_ratio_explore_to_doing": 1.0,
+              "planning_skill_eligible_sessions": 10,
+              "planning_skill_session_coverage": 1.0,
+              "planning_skill_session_scope_state": "measured",
+              "planning_skill_session_share": 0.4,
+              "planning_skill_sessions": 4,
+              "planning_skill_unmeasured_sessions": 0,
               "questions_asked": 5,
               "shell_test_runs": 100
             },
@@ -4689,7 +4882,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "5:5:3",
+          "score_contract_id": "5:5:5",
           "tier": "Advanced"
         },
         "archetype": {
@@ -4697,7 +4890,12 @@
           "title": "Advanced"
         },
         "combination": {
-          "rule": "weighted_mean_of_per_source_scores",
+          "axes": {
+            "engineering": "tool_volume_weighted_mean",
+            "execution": "tool_volume_weighted_mean",
+            "planning": "recomputed_from_synthesized_corpus"
+          },
+          "rule": "weighted_mean_except_synthesized_planning",
           "weight": "tool_calls_total",
           "weights": {
             "claude": 2600.0
@@ -4883,19 +5081,28 @@
                 "your_value": 20.0
               },
               {
+                "base_weight": 0.25,
+                "coverage": 1.0,
                 "direction": "higher",
                 "display_target": "0.4 planning sessions/session",
-                "display_value": "0.53 planning sessions/session",
+                "display_value": "0.4 planning sessions/session",
+                "effective_weight": 0.25,
                 "is_drag": false,
                 "label": "Planning skill practice",
-                "narrative": "Planning skill practice is excellent (0.53 planning sessions/session, target 0.4 planning sessions/session \u2014 well above target, scoring 100%).",
+                "narrative": "Planning skill practice is excellent (0.4 planning sessions/session, target 0.4 planning sessions/session \u2014 well above target, scoring 100%).",
                 "pct": 1.0,
+                "planning_skill_eligible_sessions": 30,
+                "planning_skill_session_coverage": 1.0,
+                "planning_skill_session_share": 0.4,
+                "planning_skill_sessions": 12,
+                "planning_skill_unmeasured_sessions": 0,
+                "scope_state": "measured",
                 "score_pct": 100,
                 "target": 0.4,
                 "unit": "planning sessions/session",
                 "verdict": "excellent",
                 "weight": 0.2941,
-                "your_value": 0.5333333333333333
+                "your_value": 0.4
               }
             ],
             "value": 9.2
@@ -5447,7 +5654,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "5:5:3",
+            "score_contract_id": "5:5:5",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -5638,19 +5845,28 @@
                   "your_value": 20.0
                 },
                 {
+                  "base_weight": 0.25,
+                  "coverage": 1.0,
                   "direction": "higher",
                   "display_target": "0.4 planning sessions/session",
-                  "display_value": "0.53 planning sessions/session",
+                  "display_value": "0.4 planning sessions/session",
+                  "effective_weight": 0.25,
                   "is_drag": false,
                   "label": "Planning skill practice",
-                  "narrative": "Planning skill practice is excellent (0.53 planning sessions/session, target 0.4 planning sessions/session \u2014 well above target, scoring 100%).",
+                  "narrative": "Planning skill practice is excellent (0.4 planning sessions/session, target 0.4 planning sessions/session \u2014 well above target, scoring 100%).",
                   "pct": 1.0,
+                  "planning_skill_eligible_sessions": 30,
+                  "planning_skill_session_coverage": 1.0,
+                  "planning_skill_session_share": 0.4,
+                  "planning_skill_sessions": 12,
+                  "planning_skill_unmeasured_sessions": 0,
+                  "scope_state": "measured",
                   "score_pct": 100,
                   "target": 0.4,
                   "unit": "planning sessions/session",
                   "verdict": "excellent",
                   "weight": 0.2941,
-                  "your_value": 0.5333333333333333
+                  "your_value": 0.4
                 }
               ],
               "value": 9.2
@@ -5709,6 +5925,12 @@
             "iteration_depth_p90": 4,
             "plan_sessions": 16,
             "planning_ratio_explore_to_doing": 0.5,
+            "planning_skill_eligible_sessions": 30,
+            "planning_skill_session_coverage": 1.0,
+            "planning_skill_session_scope_state": "measured",
+            "planning_skill_session_share": 0.4,
+            "planning_skill_sessions": 12,
+            "planning_skill_unmeasured_sessions": 0,
             "questions_asked": 5,
             "shell_test_runs": 30
           },

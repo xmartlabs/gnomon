@@ -21,8 +21,19 @@ def _json_dict(raw):
     return obj if isinstance(obj, dict) else {}
 
 
-def _opencode_session_events(sid, cwd, messages, parts_by_message):
-    base = {"sessionId": sid, "cwd": cwd}
+def _parent_identity(container, field, *, missing=None):
+    if field not in container:
+        return missing
+    parent = container.get(field)
+    if parent is None:
+        return False
+    if isinstance(parent, str) and parent.strip():
+        return True
+    return None
+
+
+def _opencode_session_events(sid, cwd, messages, parts_by_message, is_sidechain):
+    base = {"sessionId": sid, "cwd": cwd, "isSidechain": is_sidechain}
     for m in messages:
         mid = m.get("id")
         ts = _iso_ms((m.get("time") or {}).get("created"))
@@ -60,7 +71,8 @@ def _opencode_session_events(sid, cwd, messages, parts_by_message):
 
 def _opencode_events(fp):
     try:
-        sess = json.load(open(fp, "r", errors="replace"))
+        with open(fp, "r", errors="replace") as handle:
+            sess = json.load(handle)
     except Exception:
         return
     if not isinstance(sess, dict):
@@ -72,7 +84,8 @@ def _opencode_events(fp):
     messages = []
     for mp in sorted(glob.glob(os.path.join(msg_dir, "*.json"))):
         try:
-            m = json.load(open(mp, "r", errors="replace"))
+            with open(mp, "r", errors="replace") as handle:
+                m = json.load(handle)
         except Exception:
             continue
         if isinstance(m, dict):
@@ -82,12 +95,15 @@ def _opencode_events(fp):
     for mid in [m.get("id") for m in messages if m.get("id")]:
         for pp in sorted(glob.glob(os.path.join(part_root, str(mid), "*.json"))):
             try:
-                p = json.load(open(pp, "r", errors="replace"))
+                with open(pp, "r", errors="replace") as handle:
+                    p = json.load(handle)
             except Exception:
                 continue
             if isinstance(p, dict):
                 parts_by_message[str(mid)].append(p)
-    yield from _opencode_session_events(sid, cwd, messages, parts_by_message)
+    yield from _opencode_session_events(
+        sid, cwd, messages, parts_by_message,
+        _parent_identity(sess, "parentID", missing=False))
 
 
 def _opencode_sqlite_events(db_path):
@@ -97,8 +113,13 @@ def _opencode_sqlite_events(db_path):
     except Exception:
         return
     try:
+        session_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(session)")}
+        has_parent_id = "parent_id" in session_columns
+        parent_projection = ", parent_id" if has_parent_id else ""
         sessions = conn.execute(
-            "SELECT id, directory, time_created FROM session ORDER BY time_created, id"
+            f"SELECT id, directory, time_created{parent_projection} "
+            "FROM session ORDER BY time_created, id"
         ).fetchall()
         for sess in sessions:
             sid = sess["id"]
@@ -121,7 +142,8 @@ def _opencode_sqlite_events(db_path):
                     part.setdefault("id", row["id"])
                     parts_by_message[str(row["message_id"])].append(part)
             yield from _opencode_session_events(
-                sid, sess["directory"], messages, parts_by_message)
+                sid, sess["directory"], messages, parts_by_message,
+                _parent_identity(dict(sess), "parent_id"))
     except sqlite3.Error:
         return
     finally:

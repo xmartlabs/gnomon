@@ -1,6 +1,8 @@
 import unittest
 
 import paxel
+from gnomon.scoring.aggregate import score_by_source
+from gnomon.scoring.inputs import build_scoring_inputs
 from tests.test_smoke import _claude_turn, _run_claude_transcript
 
 
@@ -70,6 +72,57 @@ class TestProfilesBySourceAndUsage(unittest.TestCase):
         summary, _ = self._summary()
         self.assertIn("profile", summary)
         self.assertIn("aq", summary["profile"])
+
+
+class TestAggregatePlanningSessionPooling(unittest.TestCase):
+    @staticmethod
+    def _block(source, *, planning, eligible, unmeasured, tools, sessions):
+        state = ("measured" if eligible and not unmeasured
+                 else "partial" if eligible else "unmeasured")
+        share = planning / eligible if eligible else None
+        coverage = eligible / (eligible + unmeasured) if eligible else None
+        stats = {
+            "corpus": {"sources": {source: {}}},
+            "volume": {"total_sessions": sessions, "total_prompts": sessions,
+                       "tool_calls_total": tools, "thinking_blocks": 0},
+            "velocity": {"active_hours": 1, "tool_churn_edit_write": 0},
+            "behavior": {
+                "planning_ratio_explore_to_doing": 0,
+                "planning_skill_sessions": planning,
+                "planning_skill_eligible_sessions": eligible,
+                "planning_skill_unmeasured_sessions": unmeasured,
+                "planning_skill_session_scope_state": state,
+                "planning_skill_session_share": share,
+                "planning_skill_session_coverage": coverage,
+                "eligible_change_sessions": 0,
+                "planned_eligible_sessions": 0,
+                "ordered_facts_state": "unmeasured",
+            },
+            "stack": {"skills_all": [], "top_skills": [], "models": []},
+            "tools": {},
+        }
+        return build_scoring_inputs(stats)
+
+    def test_zero_tool_source_contributes_unmeasured_sessions_to_planning(self):
+        measured = self._block(
+            "claude", planning=1, eligible=1, unmeasured=0, tools=100, sessions=1)
+        zero_tool = self._block(
+            "gemini", planning=0, eligible=0, unmeasured=2, tools=0, sessions=2)
+        result = score_by_source({
+            "claude": {"window": measured},
+            "gemini": {"window": zero_tool},
+        })
+        sub = next(
+            item for item in result["aggregate"]["scores"]["planning"]["subs"]
+            if item["label"] == "Planning skill practice")
+        self.assertEqual((
+            sub["planning_skill_sessions"],
+            sub["planning_skill_eligible_sessions"],
+            sub["planning_skill_unmeasured_sessions"],
+            sub["scope_state"],
+        ), (1, 1, 2, "partial"))
+        self.assertEqual(sub["your_value"], 1.0)
+        self.assertAlmostEqual(sub["coverage"], 1 / 3)
 
 
 if __name__ == "__main__":

@@ -441,9 +441,7 @@ def _cursor_jsonl_events(fp):
     # resolves.) Falls back to file mtime / no-model when the sidecar isn't present.
     chat_meta = _cursor_chat_meta(sid)
     chat_model = chat_meta.get("model")
-    base = {"sessionId": sid, "cwd": cwd}
-    if is_sidechain:
-        base["isSidechain"] = True
+    base = {"sessionId": sid, "cwd": cwd, "isSidechain": bool(is_sidechain)}
     # Real Cursor JSONL carries NO per-event timestamps (the SQLite copy of the same
     # session does -- and is preferred). For JSONL-only sessions, stamp the FIRST event
     # with the file mtime so the session still lands on the calendar / time window,
@@ -629,7 +627,8 @@ def _cursor_sqlite_events(db_path, twins=None):
             continue
         # cwd comes from the JSONL twin's project slug -- the DB stores no workspace path
         twin = twins.get(composer_id) or {}
-        base = {"sessionId": composer_id, "cwd": twin.get("cwd")}
+        base = {"sessionId": composer_id, "cwd": twin.get("cwd"),
+                "isSidechain": False}
         # The real model lives on the session, not the bubble: composerData carries
         # modelConfig.modelName (e.g. "claude-4.5-sonnet-thinking", "gemini-3-pro",
         # "default"). Per-bubble `model` is always None on disk, so without this the

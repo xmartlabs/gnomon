@@ -182,12 +182,16 @@ class TestAggregateIsWeightedMean(unittest.TestCase):
         def axis_val(prof, ax):
             return prof["scores"][ax]["value"]
 
-        for ax in ("execution", "planning", "engineering"):
+        for ax in ("execution", "engineering"):
             a = axis_val(out["by_source"]["claude"], ax)
             b = axis_val(out["by_source"]["cursor"], ax)
             expected = round((a * wa + b * wu) / (wa + wu), 1)
             self.assertAlmostEqual(out["aggregate"]["scores"][ax]["value"], expected, places=1,
                                    msg=f"axis {ax} aggregate not the weighted mean")
+        self.assertEqual(
+            out["aggregate"]["combination"]["axes"]["planning"],
+            "recomputed_from_synthesized_corpus",
+        )
 
     def test_single_source_aggregate_equals_that_source(self):
         """With one source the aggregate is just that source's profile numbers."""
