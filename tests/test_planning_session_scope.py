@@ -239,6 +239,29 @@ class TestQualifiedPlanningAggregation(unittest.TestCase):
         ), (0, 0))
         self.assertEqual(child.skill_counter["writing-plans"], 1)
 
+    def test_agent_subagent_type_planning_credits_root(self):
+        agent_tool = {"type": "tool_use", "name": "Agent",
+                      "input": {"subagent_type": "writing-plans",
+                                "prompt": "plan the feature"}}
+        acc = self._acc()
+        acc.observe(_event("root", tool=agent_tool), None, None)
+        behavior = acc.to_source_stats("claude", None, None)["behavior"]
+        self.assertEqual((
+            behavior["planning_skill_sessions"],
+            behavior["planning_skill_eligible_sessions"],
+        ), (1, 1))
+
+    def test_agent_subagent_type_planning_rejected_for_child(self):
+        agent_tool = {"type": "tool_use", "name": "Agent",
+                      "input": {"subagent_type": "writing-plans",
+                                "prompt": "plan the feature"}}
+        acc = self._acc()
+        acc.observe(_event("root"), None, None)
+        acc.observe(_event("child", sidechain=True, tool=agent_tool), None, None)
+        behavior = acc.to_source_stats("claude", None, None)["behavior"]
+        self.assertEqual(behavior["planning_skill_sessions"], 0)
+        self.assertEqual(behavior["planning_skill_eligible_sessions"], 1)
+
     def test_routing_link_never_enters_planning_session_evidence(self):
         acc = self._acc("codex")
         event = _event("routing", source_skill="writing-plans")

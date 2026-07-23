@@ -986,6 +986,8 @@ class Accumulator:
                             self.subagent_counter[st] += 1
                             if self._is_plan_skill(st):
                                 self._mark_plan_session(sid, mkey)
+                                self._record_planning_skill_signal(
+                                    sid, mkey, event_eligible=planning_event_eligible)
                             if self._is_knowledge_skill(st):
                                 self._pending_knowledge_grounding[sid] = True
                             if mkey:
