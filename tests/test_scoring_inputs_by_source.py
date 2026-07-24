@@ -421,6 +421,64 @@ class TestPlanCeremonyToolCounting(unittest.TestCase):
         self.assertEqual(may["behavior"]["planning_skill_sessions"], 1)
 
 
+class TestPlanCeremonyIsNeitherExploreNorDoing(unittest.TestCase):
+    """planning_ratio_explore_to_doing must not count planning ceremony on either side.
+
+    The corpus path reads cat_counter; the monthly path in scoring/inputs.py rebuilds
+    categories from month_tool_counter by NAME. Both must agree, or the rolling-AQ blend
+    mixes two definitions of the same ratio."""
+
+    def _transcript(self, tools):
+        """One turn per tool. Turn count is held constant across compared variants on
+        purpose: every _claude_turn also emits a thinking block, and thinking_blocks is
+        added to the explore numerator, so varying the turn count would confound the
+        category effect this class is measuring."""
+        rows = []
+        for i, tool in enumerate(tools):
+            rows += _claude_turn(f"s{i}", f"2026-05-1{i}T12:00:00.000Z",
+                                 tool=tool, prompt="work")
+        return _run_claude_transcript(self, rows)
+
+    def test_plan_tools_are_excluded_from_the_explore_numerator(self):
+        # Same three turns, so the same three thinking blocks: the only difference is
+        # whether the two extra tools classify as explore.
+        as_reads = self._transcript(["Read", "Read", "Read"])
+        as_plan = self._transcript(["Read", "ExitPlanMode", "TodoWrite"])
+        self.assertEqual(as_reads["behavior"]["explore_actions"], 6)   # 3 reads + 3 thinking
+        self.assertEqual(as_plan["behavior"]["explore_actions"], 4)    # 1 read  + 3 thinking
+
+    def test_plan_tools_do_not_move_the_explore_to_doing_ratio(self):
+        as_reads = self._transcript(["Edit", "Read", "Read"])
+        as_plan = self._transcript(["Edit", "ExitPlanMode", "EnterPlanMode"])
+        self.assertGreater(as_reads["behavior"]["planning_ratio_explore_to_doing"],
+                           as_plan["behavior"]["planning_ratio_explore_to_doing"])
+        # doing is unchanged: plan tools were never a doing class, and must not become one.
+        self.assertEqual(as_plan["behavior"]["produce_actions"],
+                         as_reads["behavior"]["produce_actions"])
+        self.assertEqual(as_plan["behavior"]["execute_actions"],
+                         as_reads["behavior"]["execute_actions"])
+        self.assertEqual(as_plan["behavior"]["delegate_actions"],
+                         as_reads["behavior"]["delegate_actions"])
+
+    def test_monthly_slice_uses_the_same_ratio_definition_as_the_corpus(self):
+        # Honest scope: this passes with or without the taxonomy change, because both the
+        # corpus and the monthly rebuild in scoring/inputs.py go through classify_tool, so
+        # a name-decidable change lands on both for free. It is here as the standing guard
+        # for the half that is NOT name-decidable — excluding planning Skill/Agent calls
+        # from `doing` needs a counter threaded into the monthly path, and if that
+        # threading is ever dropped the two implementations diverge silently.
+        stats = self._transcript(["Read", "Edit", "ExitPlanMode", "TodoWrite"])
+        block = paxel.build_summary(stats)["scoring_inputs_by_source"]["claude"]
+        may = next(m for m in block["monthly"] if m["month"] == "2026-05")
+        self.assertEqual(may["behavior"]["planning_ratio_explore_to_doing"],
+                         stats["behavior"]["planning_ratio_explore_to_doing"])
+
+    def test_plan_category_is_still_reported_in_the_tool_mix(self):
+        # Neutral in the ratio, but not invisible: the descriptive breakdown keeps it.
+        stats = self._transcript(["ExitPlanMode", "TodoWrite"])
+        self.assertEqual(stats["tools"]["category_breakdown"].get("plan"), 2)
+
+
 class TestCrossSourcePlanToolNormalization(unittest.TestCase):
     """FU-3: close the chain — each source's NATIVE plan tool must normalize to a name
     the plan-ceremony counter recognizes ("EnterPlanMode"/"ExitPlanMode"/"TodoWrite").

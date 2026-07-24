@@ -238,7 +238,14 @@ def classify_mcp_subcategory(server_name, tool_name=""):
 def classify_tool(name: str) -> str:
     if name in WRITE_TOOLS:
         return "produce"
-    if name in READ_TOOLS or name in DISCOVER_TOOLS or name in PLAN_TOOLS:
+    # Planning/workspace ceremony gets its own class, ahead of the explore branch it used
+    # to share. It is neither exploring nor building: `plan` appears on NEITHER side of
+    # planning_ratio_explore_to_doing, so entering plan mode or updating a todo list no
+    # longer inflates the explore numerator — which matters now that plan mode also feeds
+    # the separate Planning practice term, and one action must not pay twice in one axis.
+    if name in PLAN_TOOLS:
+        return "plan"
+    if name in READ_TOOLS or name in DISCOVER_TOOLS:
         return "explore"
     if name in EXEC_TOOLS:
         return "execute"
