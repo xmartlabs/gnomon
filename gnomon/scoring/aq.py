@@ -3,6 +3,10 @@ from gnomon.config import available_caps
 from gnomon.scoring.versioning import SCORE_CONTRACT_ID
 
 PLANNING_TARGET = 0.50
+# Planning-practice target: fraction of eligible top-level sessions that should carry a
+# planning signal. Lives here (not in gstack) because both the GStack Planning axis and
+# the AQ Discipline axis read it, and gstack already imports from this module.
+PLANNING_PRACTICE_TARGET = 0.40
 CONTEXT_INTELLIGENCE_TARGET = 0.60
 
 # ---- Ordered-planning redesign (C1-C7) calibration placeholders ------------

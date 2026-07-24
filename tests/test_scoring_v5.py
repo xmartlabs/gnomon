@@ -9,6 +9,7 @@ from gnomon.cli.accumulator import Accumulator, derive_ordered_behavior
 from gnomon.scoring.aq import (
     CONTEXT_INTELLIGENCE_TARGET,
     ORCHESTRATION_FREQUENCY_TARGET,
+    PLANNING_PRACTICE_TARGET,
     PLANNING_TARGET,
     MIN_ELIGIBLE_SESSIONS,
     compute_aq,
@@ -472,6 +473,15 @@ class TestConditionalScoring(unittest.TestCase):
         at_labels = {sub["label"] for sub in at_plan_subs}
         self.assertNotIn("Ordered planning readiness", below_labels)
         self.assertIn("Ordered planning readiness", at_labels)
+
+    def test_planning_practice_target_is_single_source_of_truth(self):
+        """The planning-practice target lived as a bare 0.4 literal in three places
+        (compute_scores, the zero-axis fallback, and the live breakdown), kept in sync
+        only by assertions. Pin the named constant so a future retune moves one line."""
+        self.assertEqual(PLANNING_PRACTICE_TARGET, 0.40)
+        subs = score_breakdown(_v5_scoring_stats())["planning"]["subs"]
+        sub = next(s for s in subs if s["label"] == "Planning skill practice")
+        self.assertEqual(sub["target"], PLANNING_PRACTICE_TARGET)
 
     def test_cursor_profile_drops_model_mix_while_routing_inputs_stay_na(self):
         stats = _v5_scoring_stats(source="cursor")

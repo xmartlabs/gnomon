@@ -1,6 +1,7 @@
 import os, sys, unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import paxel
+from gnomon.scoring.aq import PLANNING_PRACTICE_TARGET
 
 
 class TestExtractClis(unittest.TestCase):
@@ -743,6 +744,8 @@ class TestScoreBreakdown(unittest.TestCase):
         zero = _pc(paxel.score_breakdown(_zero_stats()))
         self.assertEqual(zero["target"], live["target"])
         self.assertEqual(zero["unit"], live["unit"])
+        # Both must come from the named constant, not from two hand-synced literals.
+        self.assertEqual(zero["target"], PLANNING_PRACTICE_TARGET)
 
     def test_plan_ceremony_counts_plan_sessions(self):
         """Plan ceremony must reflect the fraction of sessions with a planning signal
