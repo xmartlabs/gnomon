@@ -479,6 +479,123 @@ class TestPlanCeremonyIsNeitherExploreNorDoing(unittest.TestCase):
         self.assertEqual(stats["tools"]["category_breakdown"].get("plan"), 2)
 
 
+class TestPlanningCeremonyCallsLeaveTheDoingDenominator(unittest.TestCase):
+    """The other half of one-home-per-signal. A planning Skill classifies `execute` and a
+    planning Agent dispatch classifies `delegate`, so both land in the `doing` DENOMINATOR
+    of planning_ratio_explore_to_doing — invoking a planning skill LOWERED the very term
+    meant to reward thinking first. They are now subtracted from `doing` only.
+
+    Deliberately narrow: only the Skill call itself and the Agent dispatch itself. NOT
+    attributionSkill, which is a per-TURN field — excluding on that basis would strip
+    every Edit and Bash in a planning-attributed turn out of `doing`."""
+
+    # Every variant carries the SAME two explore calls, so the explore numerator is fixed
+    # at 2 and the ratio moves only when `doing` does. Without a positive numerator the
+    # ratio is 0 regardless of the denominator and every assertion below would be vacuous.
+    _EXPLORE = 2
+
+    def _tool(self, name, inp=None):
+        return {"type": "tool_use", "name": name, "input": inp or {}}
+
+    def _edit(self):
+        return self._tool("Edit", {"file_path": "a.py", "new_string": "x", "old_string": ""})
+
+    def _stats(self, blocks, attribution=None):
+        """One assistant turn, no thinking blocks, prefixed with two Reads so explore is 2."""
+        content = [self._tool("Read", {"file_path": f"r{i}.py"}) for i in range(self._EXPLORE)]
+        content += blocks
+        assistant = {"type": "assistant", "sessionId": "s1", "cwd": "/repo",
+                     "timestamp": "2026-05-15T12:00:00.000Z",
+                     "message": {"role": "assistant", "model": "claude-opus-4-8",
+                                 "content": content}}
+        if attribution:
+            assistant["attributionSkill"] = attribution
+        rows = [
+            {"type": "user", "sessionId": "s1", "cwd": "/repo",
+             "timestamp": "2026-05-15T12:00:00.000Z",
+             "message": {"role": "user", "content": "work"}},
+            assistant,
+        ]
+        return _run_claude_transcript(self, rows)
+
+    def _ratio(self, stats):
+        return stats["behavior"]["planning_ratio_explore_to_doing"]
+
+    def test_planning_skill_call_leaves_doing_but_stays_a_counted_skill(self):
+        stats = self._stats([self._edit(), self._tool("Skill", {"skill": "writing-plans"})])
+        self.assertEqual(stats["behavior"]["plan_ceremony_actions"], 1)
+        # Edit is the only doing call left: 2 explore / 1 doing. Without the subtraction
+        # the planning Skill would also count as doing and this would be 1.0.
+        self.assertEqual(self._ratio(stats), 2.0)
+        # Raw category counts are deliberately untouched — only the ratio is adjusted.
+        self.assertEqual(stats["behavior"]["execute_actions"], 1)
+        # ...and the skill is still a real, counted skill invocation.
+        self.assertEqual(stats["stack"]["skills_total"], 1)
+        self.assertEqual(stats["stack"]["skills_distinct"], 1)
+        self.assertIn("writing-plans", dict(stats["stack"]["skills_all"]))
+
+    def test_planning_agent_dispatch_leaves_doing_but_stays_delegation(self):
+        planning = self._stats([self._edit(),
+                                self._tool("Agent", {"subagent_type": "writing-plans"})])
+        general = self._stats([self._edit(),
+                               self._tool("Agent", {"subagent_type": "general-purpose"})])
+        self.assertEqual(planning["behavior"]["plan_ceremony_actions"], 1)
+        self.assertEqual(general["behavior"]["plan_ceremony_actions"], 0)
+        # The planning dispatch leaves the denominator; the general one does not.
+        self.assertEqual(self._ratio(planning), 2.0)
+        self.assertEqual(self._ratio(general), 1.0)
+        # Delegation is Execution-axis credit and must be identical either way.
+        self.assertEqual(planning["behavior"]["delegate_actions"],
+                         general["behavior"]["delegate_actions"])
+
+    def test_non_planning_skill_and_agent_stay_in_doing(self):
+        stats = self._stats([self._tool("Skill", {"skill": "code-review"}),
+                             self._tool("Agent", {"subagent_type": "general-purpose"})])
+        self.assertEqual(stats["behavior"]["plan_ceremony_actions"], 0)
+        self.assertEqual(self._ratio(stats), 1.0)   # 2 explore / 2 doing
+
+    def test_attribution_skill_does_not_strip_the_whole_turn_from_doing(self):
+        """The regression this narrow predicate exists to prevent. attributionSkill is
+        per-turn, so honouring it here would remove every tool call in the turn from the
+        denominator. On a real corpus most planning-skill evidence arrives this way, so the
+        ratio would be inflated across the board."""
+        stats = self._stats([self._edit(), self._tool("Bash", {"command": "pytest"})],
+                            attribution="writing-plans")
+        self.assertEqual(stats["behavior"]["plan_ceremony_actions"], 0)
+        self.assertEqual(self._ratio(stats), 1.0)   # 2 explore / 2 doing, nothing stripped
+
+    def test_bash_skill_md_read_is_a_read_not_a_ceremony_dispatch(self):
+        stats = self._stats([self._edit(), self._tool(
+            "Bash", {"command": "cat /Users/me/.codex/skills/writing-plans/SKILL.md"})])
+        self.assertEqual(stats["behavior"]["plan_ceremony_actions"], 0)
+        self.assertEqual(self._ratio(stats), 1.0)
+
+    def test_monthly_slice_subtracts_ceremony_like_the_corpus(self):
+        """The monthly ratio is a second implementation in scoring/inputs.py that rebuilds
+        categories from tool NAMES, so it cannot see subagent_type or skill. Without the
+        counter threaded through it would publish 1.0 while the corpus publishes 2.0."""
+        stats = self._stats([self._edit(), self._tool("Skill", {"skill": "writing-plans"})])
+        block = paxel.build_summary(stats)["scoring_inputs_by_source"]["claude"]
+        may = next(m for m in block["monthly"] if m["month"] == "2026-05")
+        self.assertEqual(may["behavior"]["planning_ratio_explore_to_doing"], 2.0)
+        self.assertEqual(may["behavior"]["planning_ratio_explore_to_doing"],
+                         self._ratio(stats))
+        # The corpus slice publishes the subtrahend so its ratio can be reconciled in the
+        # report. The monthly published block deliberately does NOT: that payload is the
+        # mirdash wire contract, pinned by an exact key-set test elsewhere in this file,
+        # and nothing on the other side reads it.
+        self.assertEqual(stats["behavior"]["plan_ceremony_actions"], 1)
+        self.assertNotIn("plan_ceremony_actions", may["behavior"])
+
+    def test_ceremony_only_corpus_never_produces_a_negative_denominator(self):
+        # produce+execute+delegate == plan_ceremony_calls == 2, so the raw subtraction is
+        # exactly 0; one more ceremony call than doing calls would go negative unclamped.
+        stats = self._stats([self._tool("Skill", {"skill": "writing-plans"}),
+                             self._tool("Agent", {"subagent_type": "sdd-design"})])
+        self.assertEqual(stats["behavior"]["plan_ceremony_actions"], 2)
+        self.assertEqual(self._ratio(stats), 0)   # guarded: no ZeroDivision, no negative
+
+
 class TestCrossSourcePlanToolNormalization(unittest.TestCase):
     """FU-3: close the chain — each source's NATIVE plan tool must normalize to a name
     the plan-ceremony counter recognizes ("EnterPlanMode"/"ExitPlanMode"/"TodoWrite").
