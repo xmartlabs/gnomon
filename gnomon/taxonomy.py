@@ -8,11 +8,18 @@ EXEC_TOOLS = {"Bash", "BashOutput", "KillShell"}
 DELEGATE_TOOLS = {"Agent", "Task"}
 PLAN_TOOLS = {"TodoWrite", "TodoRead", "ExitPlanMode", "EnterPlanMode", "EnterWorktree",
               "ExitWorktree", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet"}
-# Plan-ceremony signal tools (a subset of PLAN_TOOLS): a plan was produced/tracked.
-# EnterPlanMode = Cursor create_plan; ExitPlanMode = Claude Code native plan mode;
-# TodoWrite = Codex update_plan / Antigravity manage_task / Cursor todos. TodoRead and
-# the Task*/Worktree tools are reads/bookkeeping, not planning acts.
-PLAN_SIGNAL_TOOLS = {"EnterPlanMode", "ExitPlanMode", "TodoWrite"}
+# Explicit plan-mode ceremony: the human chose to plan and a plan was produced before any
+# code. EnterPlanMode = Cursor create_plan / switch_mode(plan); ExitPlanMode = Claude Code
+# native plan mode (shift+tab -> present plan -> approve). These carry the same construct as
+# a planning Skill, so they feed the QUALIFIED planning numerator too, not just the legacy
+# union. TodoWrite deliberately does NOT: see PLAN_SIGNAL_TOOLS below.
+PLAN_MODE_TOOLS = {"EnterPlanMode", "ExitPlanMode"}
+# Plan-ceremony signal tools (a subset of PLAN_TOOLS): a plan was produced/tracked. Adds
+# TodoWrite = Codex update_plan / Antigravity manage_task / Cursor todos — execution
+# bookkeeping the agent maintains on its own, which earns "Ordered planning readiness" via
+# the PLAN_MIN_STEPS distinct-step gate instead. TodoRead and the Task*/Worktree tools are
+# reads/bookkeeping, not planning acts. Derived from PLAN_MODE_TOOLS so the two can't drift.
+PLAN_SIGNAL_TOOLS = PLAN_MODE_TOOLS | {"TodoWrite"}
 # Substrings that mark a Skill invocation as a planning skill (shared by the accumulator's
 # per-session plan detection and scoring). Keep in sync with the planning intent.
 PLAN_SKILL_NEEDLES = ("brainstorm", "writing-plan", "plan", "spec", "office-hours",

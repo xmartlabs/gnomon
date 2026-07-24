@@ -506,7 +506,10 @@ class TestPlanningSkillSessions(unittest.TestCase):
             event["attributionSkill"] = attribution
         return event
 
-    def test_plan_tools_do_not_count_as_planning_skill_in_window_source_or_month(self):
+    def test_todo_tools_do_not_count_as_planning_practice_in_window_source_or_month(self):
+        """The todo family stays legacy-only. It is the agent's own execution bookkeeping,
+        and it already earns "Ordered planning readiness" through the PLAN_MIN_STEPS
+        distinct-step gate — admitting it here would double-count inside one axis."""
         acc = Accumulator()
         acc.begin_file("claude", "plans.jsonl")
         acc.observe(self._event("tool-plan", "2026-01-01T00:00:00Z", "TodoWrite",
@@ -523,6 +526,43 @@ class TestPlanningSkillSessions(unittest.TestCase):
         self.assertEqual(corpus["behavior"]["planning_skill_sessions"], 2)
         self.assertEqual(source["behavior"]["planning_skill_sessions"], 2)
         self.assertEqual(month["behavior"]["planning_skill_sessions"], 2)
+
+    def test_plan_mode_counts_as_planning_practice_in_window_source_or_month(self):
+        """Claude Code plan mode (ExitPlanMode) and Cursor's create_plan (EnterPlanMode)
+        must reach the qualified numerator in every slice, not just the legacy union."""
+        acc = Accumulator()
+        acc.begin_file("claude", "plans.jsonl")
+        # Mid-month timestamps on purpose: parse_ts localizes, so a 2026-01-01T0X:00Z
+        # event can land in the previous month's slice and split the assertion.
+        acc.observe(self._event("todo-only", "2026-01-15T12:00:00Z", "TodoWrite",
+                                {"todos": [{"content": "inspect"}, {"content": "change"}]}),
+                    None, None)
+        acc.observe(self._event("skill-plan", "2026-01-15T13:00:00Z", "Skill",
+                                {"skill": "writing-plans"}), None, None)
+        acc.observe(self._event("exit-plan-mode", "2026-01-15T14:00:00Z", "ExitPlanMode"),
+                    None, None)
+        acc.observe(self._event("enter-plan-mode", "2026-01-15T15:00:00Z", "EnterPlanMode"),
+                    None, None)
+        corpus = acc.to_corpus_stats(None, None, False)
+        source = acc.to_source_stats("claude", None, None)
+        month = source["_scoring_monthly_full"][0]["stats_full"]
+        self.assertEqual(corpus["behavior"]["plan_sessions"], 4)
+        # skill-plan + exit-plan-mode + enter-plan-mode; todo-only stays out.
+        self.assertEqual(corpus["behavior"]["planning_skill_sessions"], 3)
+        self.assertEqual(source["behavior"]["planning_skill_sessions"], 3)
+        self.assertEqual(month["behavior"]["planning_skill_sessions"], 3)
+
+    def test_plan_mode_in_a_child_session_does_not_credit_the_numerator(self):
+        """A subagent entering plan mode is the agent's own ceremony, not the human's.
+        The child guard that already covers Skill/Agent markers must cover this one too."""
+        acc = Accumulator()
+        acc.begin_file("claude", "plans.jsonl")
+        child = self._event("child-plan", "2026-01-01T00:00:00Z", "ExitPlanMode")
+        child["isSidechain"] = True
+        acc.observe(child, None, None)
+        corpus = acc.to_corpus_stats(None, None, False)
+        self.assertEqual(corpus["behavior"]["planning_skill_sessions"], 0)
+        self.assertEqual(corpus["behavior"]["planning_skill_eligible_sessions"], 0)
 
     def test_codex_shell_skill_read_counts_planning_skill_practice(self):
         acc = Accumulator()

@@ -302,12 +302,49 @@ class TestPlanCeremonyToolCounting(unittest.TestCase):
         acc.begin_file("claude", "/c/s.jsonl")
         for row in _claude_turn(sid, "2026-05-01T10:00:00.000Z",
                                 tool=tool, prompt="plan it"):
-            acc.observe(row, None, None)
+            # sources.iter_events stamps isSidechain=False on Claude root transcripts;
+            # feed rows the same way so planning identity resolves as it does in
+            # production instead of failing closed to `unmeasured`.
+            acc.observe(dict(row, isSidechain=False), None, None)
         acc.end_file()
         return acc.to_source_stats("claude", None, None)
 
     def _plan_count(self, tool):
         return self._source_stats(tool)["behavior"]["plan_sessions"]
+
+    def _qualified_count(self, tool):
+        """The QUALIFIED numerator that actually scores (planning_skill_sessions),
+        as opposed to the legacy plan_sessions union."""
+        return self._source_stats(tool)["behavior"]["planning_skill_sessions"]
+
+    def test_exit_plan_mode_is_a_qualified_planning_signal(self):
+        # Claude Code native plan mode (shift+tab -> present plan -> approve) produces an
+        # approved plan before any code is written. That is the same construct a planning
+        # Skill expresses, so it must reach the numerator that scores, not only the dead
+        # legacy union.
+        self.assertEqual(self._qualified_count("ExitPlanMode"), 1)
+
+    def test_enter_plan_mode_is_a_qualified_planning_signal(self):
+        # Cursor's create_plan / switch_mode(plan) normalize to EnterPlanMode.
+        self.assertEqual(self._qualified_count("EnterPlanMode"), 1)
+
+    def test_todo_write_is_not_a_qualified_planning_signal(self):
+        # The todo family is execution bookkeeping the agent maintains on its own, not a
+        # plan produced before building. It already earns "Ordered planning readiness" via
+        # the PLAN_MIN_STEPS distinct-step gate, and TaskCreate appears in a large majority
+        # of sessions — admitting it here would saturate the term with no behavior change.
+        # The legacy union must keep counting it.
+        self.assertEqual(self._qualified_count("TodoWrite"), 0)
+        self.assertEqual(self._plan_count("TodoWrite"), 1)
+
+    def test_task_create_is_not_a_qualified_planning_signal(self):
+        self.assertEqual(self._qualified_count("TaskCreate"), 0)
+
+    def test_todo_read_is_not_a_qualified_planning_signal(self):
+        self.assertEqual(self._qualified_count("TodoRead"), 0)
+
+    def test_non_plan_tool_is_not_a_qualified_planning_signal(self):
+        self.assertEqual(self._qualified_count("Read"), 0)
 
     def test_exit_plan_mode_counts(self):
         # The bug: Claude Code native plan mode emits ExitPlanMode, not EnterPlanMode.
@@ -343,10 +380,14 @@ class TestPlanCeremonyToolCounting(unittest.TestCase):
     def test_plan_tools_do_not_pollute_raw_skill_exports(self):
         # Issue 1: plan-tool counting must NOT fabricate a 'plan' skill in top_skills/
         # skills_all — those exports are for real Skill invocations only.
-        st = self._source_stats("ExitPlanMode")["stack"]
+        stats = self._source_stats("ExitPlanMode")
+        st = stats["stack"]
         self.assertNotIn("plan", dict(st["top_skills"]))
         self.assertNotIn("plan", dict(st["skills_all"]))
         self.assertEqual(st["skills_total"], 0)
+        # ...even though the same session now credits the qualified planning numerator.
+        # Proves the plan-mode marker does not route through _record_skill.
+        self.assertEqual(stats["behavior"]["planning_skill_sessions"], 1)
 
     def test_plan_sessions_never_exceeds_total_sessions(self):
         # Invariant: plan_sessions (numerator) must never exceed total_sessions
@@ -377,6 +418,7 @@ class TestPlanCeremonyToolCounting(unittest.TestCase):
         block = paxel.build_summary(stats)["scoring_inputs_by_source"]["claude"]
         may = next(m for m in block["monthly"] if m["month"] == "2026-05")
         self.assertEqual(may["behavior"]["plan_sessions"], 1)
+        self.assertEqual(may["behavior"]["planning_skill_sessions"], 1)
 
 
 class TestCrossSourcePlanToolNormalization(unittest.TestCase):

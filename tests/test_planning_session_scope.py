@@ -211,6 +211,12 @@ class TestQualifiedPlanningAggregation(unittest.TestCase):
                                                "input": {"skill": "writing-plans"}}),
             _event("s", sidechain=True, tool={"type": "tool_use", "name": "Bash",
                                                "input": {"command": "cat /x/skills/writing-plans/SKILL.md"}}),
+            # Plan-mode ceremony is the fifth marker path into the qualified numerator;
+            # it must land on the same child guard as the four skill paths above.
+            _event("s", sidechain=True, tool={"type": "tool_use", "name": "ExitPlanMode",
+                                               "input": {}}),
+            _event("s", sidechain=True, tool={"type": "tool_use", "name": "EnterPlanMode",
+                                               "input": {}}),
         ]
         for marker in markers:
             with self.subTest(marker=marker):

@@ -27,8 +27,8 @@ from datetime import datetime, timedelta
 
 from gnomon.config import parse_ts, line_count, strip_injections, planning_session_scope
 from gnomon.taxonomy import (
-    SCHEDULE_TOOLS, ASK_TOOLS, PLAN_SIGNAL_TOOLS, PLAN_SKILL_NEEDLES,
-    KNOWLEDGE_SKILL_NEEDLES,
+    SCHEDULE_TOOLS, ASK_TOOLS, PLAN_MODE_TOOLS, PLAN_SIGNAL_TOOLS,
+    PLAN_SKILL_NEEDLES, KNOWLEDGE_SKILL_NEEDLES,
     classify_tool, classify_mcp_subcategory, CI_CONTEXT_SUBCATS,
     is_substantive_tool, classify_change_target, is_plan_file_target,
     bash_writes_file, bash_runs_tests, bash_runs_knowledge, _extract_clis,
@@ -957,8 +957,20 @@ class Accumulator:
                         # Cursor todos). We count DISTINCT SESSIONS, not tool calls, so TodoWrite
                         # firing many times per session (todo bookkeeping) can't inflate the metric.
                         # Subset of taxonomy.PLAN_TOOLS: TodoRead/TaskList/TaskGet are reads.
+                        #
+                        # Only the PLAN_MODE subset also reaches the QUALIFIED numerator: entering
+                        # or exiting plan mode is a human deciding to plan and a plan existing
+                        # before code, the same construct a planning Skill expresses. TodoWrite /
+                        # TaskCreate stay legacy-only — they are the agent's own execution
+                        # bookkeeping, they already earn "Ordered planning readiness" through the
+                        # PLAN_MIN_STEPS distinct-step gate in derive_session_ordered_facts, and
+                        # TaskCreate alone appears in most sessions, so admitting it here would
+                        # saturate the term without anyone changing how they work.
                         if name in PLAN_SIGNAL_TOOLS:
                             self._mark_plan_session(sid, mkey)
+                            if name in PLAN_MODE_TOOLS:
+                                self._record_planning_skill_signal(
+                                    sid, mkey, event_eligible=planning_event_eligible)
                         if name == "Agent":
                             _turn_agent_count += 1
                             if self._cur_src == "codex" and sid:
