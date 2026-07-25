@@ -100,15 +100,23 @@ class TestScoringVectorsFile(unittest.TestCase):
 
 
 class TestCapabilityContract(unittest.TestCase):
-    def test_cursor_only_drops_tasktool_terms(self):
-        """Cursor has no TaskCreate/TaskUpdate and no first-class Skill tool — Discipline
-        drops entirely; Skill fluency stays (skills via Read / manually_attached)."""
+    def test_cursor_only_drops_tasktool_term_but_keeps_planning_habit(self):
+        """Cursor has no TaskCreate/TaskUpdate and no first-class Skill tool, so the
+        task-tool term drops. Discipline as a whole no longer does: its planning term reads
+        the qualified planning share, which Cursor CAN earn — `create_plan` and
+        `switch_mode(plan)` normalize to EnterPlanMode, and cursor is a measured planning
+        scope. Telling Cursor users their planning is unmeasurable would be false."""
         out = score_by_source({"cursor": {"window": CURSOR_BLOCK, "monthly": []}})
         breadth = next(p for p in out["by_source"]["cursor"]["aq"]["pillars"]
                        if p["name"] == "Breadth")
         axis_names = {a["name"] for a in breadth["axes"]}
         self.assertIn("Skill fluency", axis_names)
-        self.assertIn("Discipline", breadth.get("not_applicable", []))
+        self.assertIn("Discipline", axis_names)
+        self.assertNotIn("Discipline", breadth.get("not_applicable", []))
+        # Earned from the share alone (0.2 against the 0.30 target), with the task-tool and
+        # ordered terms dropped and the weight renormalized onto the planning habit.
+        discipline = next(a for a in breadth["axes"] if a["name"] == "Discipline")
+        self.assertGreater(discipline["score"], 0)
 
     def test_claude_keeps_skills_terms(self):
         """A full-capability (claude) slice keeps every Breadth axis — no drops."""

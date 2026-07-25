@@ -596,6 +596,120 @@ class TestPlanningSkillSessions(unittest.TestCase):
         self.assertEqual(stats["behavior"]["planning_skill_sessions"], 1)
 
 
+class TestDisciplinePlanningHabit(unittest.TestCase):
+    """AQ Discipline used to score planning as a BINARY skill-presence check: invoke a
+    planning skill once in a thousand sessions and the term was maxed forever. It could not
+    tell someone who planned once from someone who plans in a third of their sessions. It
+    now reads the same qualified share the GStack Planning practice term reads, so both
+    scoring systems agree on what planning discipline means."""
+
+    @staticmethod
+    def _stats(share=None, eligible=40, skills=(("writing-plans", 60),)):
+        stats = _v5_scoring_stats()
+        stats["stack"]["skills_all"] = list(skills)
+        stats["stack"]["top_skills"] = list(skills)
+        if share is None:
+            stats["behavior"].update({
+                "planning_skill_sessions": 0,
+                "planning_skill_eligible_sessions": 0,
+                "planning_skill_unmeasured_sessions": 3,
+                "planning_skill_session_scope_state": "unmeasured",
+                "planning_skill_session_share": None,
+                "planning_skill_session_coverage": None,
+            })
+            return stats
+        planning = round(share * eligible)
+        stats["behavior"].update({
+            "planning_skill_sessions": planning,
+            "planning_skill_eligible_sessions": eligible,
+            "planning_skill_unmeasured_sessions": 0,
+            "planning_skill_session_scope_state": "measured",
+            "planning_skill_session_share": planning / eligible,
+            "planning_skill_session_coverage": 1.0,
+        })
+        return stats
+
+    @staticmethod
+    def _discipline(stats):
+        aq = compute_aq(stats)
+        breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
+        return next(a for a in breadth["axes"] if a["name"] == "Discipline")
+
+    def test_planning_term_tracks_the_share_not_skill_presence(self):
+        low = self._stats(share=0.10)
+        high = self._stats(share=0.30)
+        self.assertLess(self._discipline(low)["score"],
+                        self._discipline(high)["score"])
+
+    def test_planning_term_saturates_at_the_shared_target(self):
+        at_target = self._stats(share=PLANNING_PRACTICE_TARGET)
+        double = self._stats(share=min(2 * PLANNING_PRACTICE_TARGET, 1.0))
+        self.assertEqual(self._discipline(at_target)["score"],
+                         self._discipline(double)["score"])
+
+    def test_skill_presence_alone_no_longer_credits_discipline(self):
+        with_plan_skill = self._stats(share=0.15, skills=(("writing-plans", 60),))
+        without = self._stats(share=0.15, skills=(("read-file", 60),))
+        self.assertEqual(self._discipline(with_plan_skill)["score"],
+                         self._discipline(without)["score"])
+
+    def test_unavailable_share_drops_the_term_and_renormalizes(self):
+        """Unmeasured planning scope must not be scored as zero planning discipline."""
+        unmeasured = self._stats(share=None)
+        unmeasured["behavior"]["ordered_facts_state"] = "unmeasured"
+        axis = self._discipline(unmeasured)
+        expected = axis["weight"] * min(
+            (unmeasured["tools"]["task_tool_calls"]
+             + 0) / max(unmeasured["volume"]["total_sessions"], 1) / 1.0, 1.0)
+        self.assertAlmostEqual(axis["score"], expected, places=6)
+        breadth = next(p for p in compute_aq(unmeasured)["pillars"]
+                       if p["name"] == "Breadth")
+        self.assertNotIn("Discipline", set(breadth.get("not_applicable") or []))
+
+    def test_below_eligible_floor_drops_the_planning_habit_term(self):
+        """A 1-of-2 corpus is 0.5 share and would max the term on noise. The floor that
+        already guards ordered planning must guard this one too."""
+        thin = self._stats(share=0.5, eligible=MIN_ELIGIBLE_SESSIONS - 1)
+        thin["behavior"]["ordered_facts_state"] = "unmeasured"
+        unavailable = self._stats(share=None)
+        unavailable["behavior"]["ordered_facts_state"] = "unmeasured"
+        self.assertAlmostEqual(self._discipline(thin)["score"],
+                               self._discipline(unavailable)["score"], places=6)
+
+    def test_source_that_cannot_emit_any_planning_signal_drops_the_term(self):
+        """opencode is a MEASURED planning scope, so its eligible denominator accrues, but
+        it can emit neither plan mode nor any Skill-shaped marker — its numerator is
+        structurally 0. Scoring that as zero planning discipline would punish a source for
+        telemetry it cannot produce, which is exactly what capability caps exist to prevent.
+        The term must drop and renormalize, as the old binary term did via the skills cap."""
+        stats = self._stats(share=0.0, eligible=10)
+        stats["corpus"] = {"sources": {"opencode": {}}}
+        stats["behavior"]["ordered_facts_state"] = "unmeasured"
+        stats["tools"]["task_tool_calls"] = 0
+        breadth = next(p for p in compute_aq(stats)["pillars"] if p["name"] == "Breadth")
+        self.assertIn("Discipline", set(breadth.get("not_applicable") or []))
+
+    def test_planning_capable_source_keeps_the_term_at_a_zero_share(self):
+        """The guard must key off CAPABILITY, not off the share being zero: a claude corpus
+        that genuinely never planned has to score 0, not drop the term."""
+        stats = self._stats(share=0.0, eligible=10)
+        stats["corpus"] = {"sources": {"claude": {}}}
+        breadth = next(p for p in compute_aq(stats)["pillars"] if p["name"] == "Breadth")
+        self.assertNotIn("Discipline", set(breadth.get("not_applicable") or []))
+
+    def test_legacy_block_still_scores_the_habit_from_plan_sessions(self):
+        """A historical payload without the qualified fields must keep a planning term
+        rather than silently losing it, using the legacy all-session denominator."""
+        legacy = _v5_scoring_stats()
+        legacy["behavior"]["plan_sessions"] = 4
+        legacy["behavior"].pop("planning_skill_sessions", None)
+        cold = _v5_scoring_stats()
+        cold["behavior"]["plan_sessions"] = 0
+        cold["behavior"].pop("planning_skill_sessions", None)
+        self.assertGreater(self._discipline(legacy)["score"],
+                           self._discipline(cold)["score"])
+
+
 class TestPlanningPartialCoverageScoring(unittest.TestCase):
     @staticmethod
     def _fields(planning, eligible, unmeasured):
@@ -636,6 +750,23 @@ class TestPlanningPartialCoverageScoring(unittest.TestCase):
         self.assertEqual(
             compute_scores(stats)["Planning"],
             score_breakdown(stats)["planning"]["value"])
+
+    def test_gstack_drops_the_term_for_a_source_with_no_planning_signal(self):
+        """The same capability hole exists in the GStack Planning axis: opencode's eligible
+        denominator accrues while its numerator cannot fire, so the term must drop rather
+        than drag the axis to a zero it cannot escape."""
+        stats = _v5_scoring_stats()
+        stats["corpus"] = {"sources": {"opencode": {}}}
+        stats["behavior"].update(self._fields(0, 10, 0))
+        labels = {s["label"] for s in score_breakdown(stats)["planning"]["subs"]}
+        self.assertNotIn("Planning practice", labels)
+
+    def test_gstack_keeps_the_term_at_a_zero_share_for_a_capable_source(self):
+        stats = _v5_scoring_stats()
+        stats["corpus"] = {"sources": {"claude": {}}}
+        stats["behavior"].update(self._fields(0, 10, 0))
+        labels = {s["label"] for s in score_breakdown(stats)["planning"]["subs"]}
+        self.assertIn("Planning practice", labels)
 
     def test_zero_tool_root_preserves_authoritative_planning_evidence(self):
         acc = Accumulator()

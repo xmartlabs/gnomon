@@ -347,6 +347,9 @@
                     "normalized_score": 1.0,
                     "score": 17.0,
                     "signals": {
+                      "planning_practice_eligible_sessions": 40,
+                      "planning_practice_share": 0.4,
+                      "planning_practice_target": 0.3,
                       "task_tool_calls": 300
                     },
                     "weight": 17
@@ -887,11 +890,11 @@
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 43,
+          "aq_0_100": 46,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 18.4,
+              "score": 26.6,
               "weight": 30
             },
             {
@@ -911,11 +914,11 @@
             }
           ],
           "score_contract_id": "5:5:5",
-          "tier": "Apprentice"
+          "tier": "Adequate"
         },
         "archetype": {
-          "quote": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is breadth \u2014 that's where the next gain is.",
-          "title": "Apprentice"
+          "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is craft \u2014 that's where the next gain is.",
+          "title": "Adequate"
         },
         "combination": {
           "axes": {
@@ -1170,7 +1173,7 @@
       "by_source": {
         "cursor": {
           "aq": {
-            "aq_0_100": 43,
+            "aq_0_100": 46,
             "mcp_vs_cli": {
               "cli_calls": 100,
               "cli_distinct": 8,
@@ -1185,7 +1188,7 @@
                     "base_weight": 33,
                     "name": "Orchestration",
                     "normalized_score": 0.2,
-                    "score": 8.0,
+                    "score": 6.6,
                     "signals": {
                       "coordination_quality": 0.2,
                       "delegated_orchestratable_sessions": 0,
@@ -1198,37 +1201,47 @@
                       "orchestratable_sessions": 0,
                       "subagent_types": 0
                     },
-                    "weight": 40
+                    "weight": 33
                   },
                   {
                     "base_weight": 22,
                     "name": "Skill fluency",
                     "normalized_score": 0.18,
-                    "score": 4.9,
+                    "score": 4.0,
                     "signals": {
                       "skills_distinct": 0,
                       "skills_total": 0
                     },
-                    "weight": 27
+                    "weight": 22
                   },
                   {
                     "base_weight": 28,
                     "name": "Tool command (MCP + CLI)",
                     "normalized_score": 0.166666666666667,
-                    "score": 5.5,
+                    "score": 4.7,
                     "signals": {
                       "clis": 8,
                       "mcp_servers": 2,
                       "toolsearch": 0
                     },
-                    "weight": 33
+                    "weight": 28
+                  },
+                  {
+                    "base_weight": 17,
+                    "name": "Discipline",
+                    "normalized_score": 0.666666666666667,
+                    "score": 11.3,
+                    "signals": {
+                      "planning_practice_eligible_sessions": 10,
+                      "planning_practice_share": 0.2,
+                      "planning_practice_target": 0.3,
+                      "task_tool_calls": 0
+                    },
+                    "weight": 17
                   }
                 ],
                 "name": "Breadth",
-                "not_applicable": [
-                  "Discipline"
-                ],
-                "score": 18.4,
+                "score": 26.6,
                 "weight": 30
               },
               {
@@ -1337,15 +1350,15 @@
               }
             ],
             "score_contract_id": "5:5:5",
-            "tier": "Apprentice",
+            "tier": "Adequate",
             "tool_diversity": {
               "distinct": 12,
               "entropy": 0.6
             }
           },
           "archetype": {
-            "quote": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is breadth \u2014 that's where the next gain is.",
-            "title": "Apprentice"
+            "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is craft \u2014 that's where the next gain is.",
+            "title": "Adequate"
           },
           "growth_edges": [
             {
@@ -1670,7 +1683,7 @@
           "pillars": [
             {
               "name": "Breadth",
-              "score": 71.0,
+              "score": 71.9,
               "weight": 30
             },
             {
@@ -2011,6 +2024,9 @@
                     "normalized_score": 1.0,
                     "score": 17.0,
                     "signals": {
+                      "planning_practice_eligible_sessions": 40,
+                      "planning_practice_share": 0.4,
+                      "planning_practice_target": 0.3,
                       "task_tool_calls": 300
                     },
                     "weight": 17
@@ -2393,7 +2409,7 @@
         },
         "cursor": {
           "aq": {
-            "aq_0_100": 43,
+            "aq_0_100": 46,
             "mcp_vs_cli": {
               "cli_calls": 100,
               "cli_distinct": 8,
@@ -2408,7 +2424,7 @@
                     "base_weight": 33,
                     "name": "Orchestration",
                     "normalized_score": 0.2,
-                    "score": 8.0,
+                    "score": 6.6,
                     "signals": {
                       "coordination_quality": 0.2,
                       "delegated_orchestratable_sessions": 0,
@@ -2421,37 +2437,47 @@
                       "orchestratable_sessions": 0,
                       "subagent_types": 0
                     },
-                    "weight": 40
+                    "weight": 33
                   },
                   {
                     "base_weight": 22,
                     "name": "Skill fluency",
                     "normalized_score": 0.18,
-                    "score": 4.9,
+                    "score": 4.0,
                     "signals": {
                       "skills_distinct": 0,
                       "skills_total": 0
                     },
-                    "weight": 27
+                    "weight": 22
                   },
                   {
                     "base_weight": 28,
                     "name": "Tool command (MCP + CLI)",
                     "normalized_score": 0.166666666666667,
-                    "score": 5.5,
+                    "score": 4.7,
                     "signals": {
                       "clis": 8,
                       "mcp_servers": 2,
                       "toolsearch": 0
                     },
-                    "weight": 33
+                    "weight": 28
+                  },
+                  {
+                    "base_weight": 17,
+                    "name": "Discipline",
+                    "normalized_score": 0.666666666666667,
+                    "score": 11.3,
+                    "signals": {
+                      "planning_practice_eligible_sessions": 10,
+                      "planning_practice_share": 0.2,
+                      "planning_practice_target": 0.3,
+                      "task_tool_calls": 0
+                    },
+                    "weight": 17
                   }
                 ],
                 "name": "Breadth",
-                "not_applicable": [
-                  "Discipline"
-                ],
-                "score": 18.4,
+                "score": 26.6,
                 "weight": 30
               },
               {
@@ -2560,15 +2586,15 @@
               }
             ],
             "score_contract_id": "5:5:5",
-            "tier": "Apprentice",
+            "tier": "Adequate",
             "tool_diversity": {
               "distinct": 12,
               "entropy": 0.6
             }
           },
           "archetype": {
-            "quote": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is breadth \u2014 that's where the next gain is.",
-            "title": "Apprentice"
+            "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is craft \u2014 that's where the next gain is.",
+            "title": "Adequate"
           },
           "growth_edges": [
             {
@@ -3382,6 +3408,9 @@
                     "normalized_score": 1.0,
                     "score": 17.0,
                     "signals": {
+                      "planning_practice_eligible_sessions": 40,
+                      "planning_practice_share": 0.4,
+                      "planning_practice_target": 0.3,
                       "task_tool_calls": 300
                     },
                     "weight": 17
@@ -3907,11 +3936,11 @@
     "expected": {
       "aggregate": {
         "aq": {
-          "aq_0_100": 9,
+          "aq_0_100": 7,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 13.1,
+              "score": 8.0,
               "weight": 30
             },
             {
@@ -4186,7 +4215,7 @@
       "by_source": {
         "no-tool-activity": {
           "aq": {
-            "aq_0_100": 9,
+            "aq_0_100": 7,
             "mcp_vs_cli": {
               "cli_calls": 0,
               "cli_distinct": 0,
@@ -4242,16 +4271,19 @@
                   {
                     "base_weight": 17,
                     "name": "Discipline",
-                    "normalized_score": 0.3,
-                    "score": 5.1,
+                    "normalized_score": 0.0,
+                    "score": 0.0,
                     "signals": {
+                      "planning_practice_eligible_sessions": 0,
+                      "planning_practice_share": null,
+                      "planning_practice_target": 0.3,
                       "task_tool_calls": 0
                     },
                     "weight": 17
                   }
                 ],
                 "name": "Breadth",
-                "score": 13.1,
+                "score": 8.0,
                 "weight": 30
               },
               {
@@ -5306,6 +5338,9 @@
                         "normalized_score": 1.0,
                         "score": 17.0,
                         "signals": {
+                          "planning_practice_eligible_sessions": 10,
+                          "planning_practice_share": 0.4,
+                          "planning_practice_target": 0.3,
                           "task_tool_calls": 300
                         }
                       },
@@ -5315,6 +5350,9 @@
                         "normalized_score": 1.0,
                         "score": 17.0,
                         "signals": {
+                          "planning_practice_eligible_sessions": 30,
+                          "planning_practice_share": 0.4,
+                          "planning_practice_target": 0.3,
                           "task_tool_calls": 300
                         }
                       }
@@ -5323,6 +5361,9 @@
                     "normalized_score": 1.0,
                     "score": 17.0,
                     "signals": {
+                      "planning_practice_eligible_sessions": 10,
+                      "planning_practice_share": 0.4,
+                      "planning_practice_target": 0.3,
                       "task_tool_calls": 300
                     },
                     "weight": 17

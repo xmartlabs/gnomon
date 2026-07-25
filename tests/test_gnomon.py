@@ -761,10 +761,12 @@ class TestScoreBreakdown(unittest.TestCase):
         self.assertGreater(_pc(hot), _pc(cold))
 
     def test_aq_discipline_credits_plan_sessions(self):
-        """AQ Discipline's plan term must be satisfied by a planning session
-        (behavior.plan_sessions), not only by a plan-named Skill — mirrors the
-        gstack Planning fix. Strip any plan-named skill from the stack so the only
-        difference between cold and hot is plan_sessions."""
+        """AQ Discipline's planning term must be satisfied by planning SESSIONS, not by the
+        mere presence of a plan-named Skill. The docstring always claimed that, but the
+        assertion used to require hot == cold — it pinned the binary has_skill() behaviour it
+        claimed to reject. Now that the term reads the qualified share, a corpus that planned
+        in 5 of its sessions must outscore one that never planned. Plan-named skills are
+        stripped from both so plan_sessions is the only difference."""
         def _discipline(stats):
             aq = paxel.compute_aq(stats)
             breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
@@ -778,7 +780,7 @@ class TestScoreBreakdown(unittest.TestCase):
         hot["stack"]["top_skills"] = list(neutral_skills)
         hot["stack"]["skills_all"] = list(neutral_skills)
         hot["behavior"]["plan_sessions"] = 5
-        self.assertEqual(_discipline(hot), _discipline(cold))
+        self.assertGreater(_discipline(hot), _discipline(cold))
 
     def test_engineering_has_five_subs(self):
         self.assertEqual(len(self.bd["engineering"]["subs"]), 5)

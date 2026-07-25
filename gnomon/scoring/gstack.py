@@ -54,7 +54,8 @@ AQ_AXIS_NOTES = {
                      "(planning, debugging, brainstorming) are in the rotation.",
     "Tool command (MCP + CLI)": "External reach: distinct MCP servers, distinct CLIs, and "
                                 "loading tool schemas on demand (ToolSearch).",
-    "Discipline": "Structured work: task-tool usage plus planning skills in evidence.",
+    "Discipline": "Structured work: task-tool usage, how often you plan before building, "
+                  "and whether the plan came before the first edit.",
     "Verification": "Whether work gets checked: shell test runs and review-type skill invocations.",
     "Grounding": "Reading before writing — how much the agent explores relative to how much it edits.",
     "Context Intelligence": "Consulting external context before you write. We count the share of "
@@ -337,7 +338,7 @@ def compute_scores(stats):
         (0.30, _clamp(b["planning_ratio_explore_to_doing"] / 0.65), None),
         (0.30, _clamp((v["thinking_blocks"] / sess) / 12.0), "thinking"),
         (plan_evidence["effective_weight"], plan_ceremony,
-         "skills" if plan_legacy else None),
+         "skills" if plan_legacy else "planning_signal"),
         (0.15, ordered_plan, None),
     ], caps)
 
@@ -474,7 +475,7 @@ def score_breakdown(stats):
                    else _clamp(ordered_raw / PLANNING_TARGET))
     planning_val      = _axis_value([(0.30, explore_pct, None), (0.30, thinking_pct, "thinking"),
                                      (plan_evidence["effective_weight"], plan_ceremony_pct,
-                                      "skills" if plan_legacy else None),
+                                      "skills" if plan_legacy else "planning_signal"),
                                      (0.15, ordered_pct, None)], caps)
     plan_subs = [
         {"label": "Explore-before-build",
@@ -497,7 +498,7 @@ def score_breakdown(stats):
          "coverage": plan_evidence["coverage"],
          "base_weight": plan_evidence["base_weight"],
          "effective_weight": plan_evidence["effective_weight"],
-         "_cap": "skills" if plan_legacy else None},
+         "_cap": "skills" if plan_legacy else "planning_signal"},
     ]
     if ordered_pct is not None:
         plan_subs.append({"label": "Ordered planning readiness", "your_value": ordered_raw,

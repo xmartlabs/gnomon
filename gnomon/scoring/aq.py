@@ -1,5 +1,8 @@
 from gnomon.analysis.metrics import _review_skill_uses, _task_skill_uses
 from gnomon.config import available_caps
+# The planning-evidence helper lives in its own module precisely so BOTH scoring systems
+# can share it: gstack imports from this module, so a gstack import here would cycle.
+from gnomon.scoring.planning_evidence import _planning_skill_evidence
 from gnomon.scoring.versioning import SCORE_CONTRACT_ID
 
 PLANNING_TARGET = 0.50
@@ -189,9 +192,27 @@ def compute_aq(stats):
                         or eligible < MIN_ELIGIBLE_SESSIONS
                         else sat(b.get("planned_eligible_sessions", 0) / eligible,
                                  PLANNING_TARGET))
-    planning_skill = 1.0 if has_skill(["writing-plans", "autoplan", "plan"]) else 0.6
+    # Planning HABIT, not planning-tool awareness. This was a binary has_skill() check, so
+    # one planning-skill invocation in a thousand sessions maxed the term forever and AQ
+    # could not tell that apart from planning in a third of your sessions. It now reads the
+    # same qualified share the GStack Planning practice term reads — routed through the
+    # shared evidence helper rather than the raw field so both systems inherit the identical
+    # fail-closed validation and legacy fallback, and produce bit-identical numbers.
+    _plan_practice = _planning_skill_evidence(b, max(sessions, 1))
+    _plan_eligible = _plan_practice["eligible_sessions"] or 0
+    # Same significance floor as ordered_planning above: 1-of-2 sessions is a 0.5 share and
+    # would max the term on noise, so drop it (None -> renormalized) instead of scoring it.
+    planning_habit = (
+        None if _plan_practice["share"] is None or _plan_eligible < MIN_ELIGIBLE_SESSIONS
+        else sat(_plan_practice["share"], PLANNING_PRACTICE_TARGET))
     discipline = wsum((.40, rate(task_calls, 1.0), "tasktool"),
-                      (.40, planning_skill, "skills"),
+                      # The legacy path derives the share from plan_sessions over ALL
+                      # sessions, which only a Skill-capable source populates. The qualified
+                      # path is earnable by plan mode OR a skill signal, hence the broader
+                      # planning_signal cap — which a measured planning scope does NOT imply
+                      # (opencode has authoritative identity but emits neither signal).
+                      (.40, planning_habit,
+                       "skills" if _plan_practice["legacy"] else "planning_signal"),
                       (.20, ordered_planning, None))
     breadth_axes = [
         # Orchestration needs subagent delegation; a source that can't fan out by design
@@ -211,7 +232,16 @@ def compute_aq(stats):
          "skills_total": st.get("skills_total", 0)}, "skills"),
         ("Tool command (MCP + CLI)", 28, tool_command, {"mcp_servers": t.get("mcp_servers_distinct", 0),
          "clis": t.get("clis_distinct", 0), "toolsearch": t.get("toolsearch_calls", 0)}),
-        ("Discipline", 17, discipline, {"task_tool_calls": task_calls}),
+        # Surface the planning inputs, not just the task-tool count: the axis now moves with
+        # planning FREQUENCY, and a score with no visible driver is not actionable.
+        ("Discipline", 17, discipline, {
+            "task_tool_calls": task_calls,
+            "planning_practice_share": (
+                round(_plan_practice["share"], 4)
+                if _plan_practice["share"] is not None else None),
+            "planning_practice_target": PLANNING_PRACTICE_TARGET,
+            "planning_practice_eligible_sessions": _plan_practice["eligible_sessions"],
+        }),
     ]
 
     # ---- Pillar 2: Craft ----

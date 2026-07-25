@@ -46,6 +46,14 @@ directly — no external dependency). Both decode to the same normalized events.
   `switch_mode(plan)` normalize to `EnterPlanMode`, and Codex has no plan mode but does
   reach the term through shell `SKILL.md` reads. Cursor cannot emit a first-class `Skill`
   at all, so plan mode is its only path in.
+- Authoritative root/child identity does **not** imply the planning signal is reachable.
+  OpenCode has the identity (so its eligible denominator accrues) but emits no plan-mode
+  tool and no skill signal, so its numerator can never fire. It therefore lacks the
+  `planning_signal` capability and both the **Planning practice** term and AQ
+  **Discipline**'s planning term are dropped and renormalized for OpenCode-only corpora,
+  rather than scored 0 on telemetry the source cannot produce. A source that *can* emit the
+  signal and simply never planned still scores 0 — the cap keys off capability, not off the
+  share being zero.
 - `git_churn` is parser-independent once source yields a real `cwd`. Antigravity CLI yields a real
   `cwd` (from `trajectory_metadata_blob`); the IDE derives it best-effort from edit/command paths.
 - Codex now counts `apply_patch` churn per file, so churn, deletions, and iteration depth are meaningful there.

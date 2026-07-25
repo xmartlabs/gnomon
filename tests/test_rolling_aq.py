@@ -467,7 +467,13 @@ class TestPerSourceRollingBlend(unittest.TestCase):
             result["aggregate"]["combination"]["weights"],
             {"claude": 10, "cursor": 20},
         )
-        self.assertEqual(result["aggregate"]["aq"]["aq_0_100"], 57)
+        # Derive the aggregate from the per-source scores and those weights instead of
+        # pinning a literal: this test is about the WEIGHTING, and a hardcoded AQ turns any
+        # legitimate scoring change into a spurious failure here.
+        claude_aq = result["by_source"]["claude"]["aq"]["aq_0_100"]
+        cursor_aq = result["by_source"]["cursor"]["aq"]["aq_0_100"]
+        self.assertEqual(result["aggregate"]["aq"]["aq_0_100"],
+                         round((claude_aq * 10 + cursor_aq * 20) / 30))
 
     def test_nonempty_bucket_without_metadata_uses_full_profile_and_legacy_weight(self):
         full_inputs = {"claude": {"window": self._block(
