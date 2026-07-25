@@ -25,6 +25,7 @@ ROOT = os.path.dirname(HERE)
 FIX = os.path.join(HERE, "fixtures")
 sys.path.insert(0, ROOT)
 import paxel  # noqa: E402
+from gnomon.scoring.versioning import SCORING_INPUTS_VERSION  # noqa: E402
 
 # Redirect every source-discovery global at the fixtures so the run is hermetic
 # (never touches the developer's real ~/.claude, ~/.codex, etc.).
@@ -197,7 +198,9 @@ class TestPipeline(unittest.TestCase):
         for banned in ("prompt_text",):
             self.assertNotIn(banned, raw, f"verbatim field leaked: {banned}")
         # scoring inputs are present and re-scorable
-        self.assertEqual(summary["scoring_inputs_version"], 5)
+        # Constant, not a literal: the smoke test checks the version reaches the summary,
+        # while the value itself stays hard-pinned in the three contract tests.
+        self.assertEqual(summary["scoring_inputs_version"], SCORING_INPUTS_VERSION)
         self.assertIsInstance(summary["scoring_inputs_by_source"], dict)
 
     def test_no_summary_without_flag(self):

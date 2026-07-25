@@ -9,6 +9,7 @@ import unittest
 from unittest import mock
 
 import paxel
+from gnomon.scoring.versioning import SCORING_INPUTS_VERSION
 from gnomon.cli.accumulator import Accumulator
 from tests.test_smoke import _claude_turn, _run_claude_transcript
 
@@ -123,7 +124,11 @@ class TestScoringInputsBySource(unittest.TestCase):
     def test_payload_has_version_and_by_source(self):
         stats = self._stats()
         summary = paxel.build_summary(stats)
-        self.assertEqual(summary["scoring_inputs_version"], 5)
+        # Compared against the constant on purpose: this test is about the payload WIRING
+        # (does build_summary echo the version at all), not about which version is current.
+        # The literal is hard-pinned in test_scoring_vectors, test_scoring_v5 and
+        # test_documentation_contract, so an accidental bump still fails three tests.
+        self.assertEqual(summary["scoring_inputs_version"], SCORING_INPUTS_VERSION)
         self.assertIn("claude", summary["scoring_inputs_by_source"])
 
     def test_block_field_set_window_and_monthly(self):

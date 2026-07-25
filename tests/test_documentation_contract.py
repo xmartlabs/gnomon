@@ -33,14 +33,14 @@ class TestPublicDocumentationContract(unittest.TestCase):
         self.assertIn("Prompts and file contents are not uploaded", self.readme)
         self.assertNotIn("No prompts, no quotes, no project names are ever sent", self.readme)
 
-    def test_public_docs_publish_runtime_scoring_contract_v5(self):
+    def test_public_docs_publish_runtime_scoring_contract_v6(self):
         metrics = (ROOT / "docs" / "metrics-by-source.md").read_text(encoding="utf-8")
         for document in (self.readme, metrics):
-            self.assertIn("scoring inputs version 5", document)
-            self.assertIn("AQ version 5", document)
-            self.assertIn("GStack version 5", document)
-            self.assertIn("5:5:5", document)
-            self.assertNotIn("scoring contract version 4", document)
+            self.assertIn("scoring inputs version 6", document)
+            self.assertIn("AQ version 6", document)
+            self.assertIn("GStack version 6", document)
+            self.assertIn("6:6:6", document)
+            self.assertNotIn("scoring contract version 5", document)
 
     def test_readme_model_mix_describes_explicit_provider_tiers(self):
         self.assertIn("explicit provider tier tables", self.readme)

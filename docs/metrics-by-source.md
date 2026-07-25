@@ -93,7 +93,7 @@ directly — no external dependency). Both decode to the same normalized events.
 
 ## Uploaded summary contract
 
-Current runtime contract: **scoring inputs version 5**, **AQ version 5**, and **GStack version 5** (`score_contract_id = 5:5:5`). Previous-contract scores
+Current runtime contract: **scoring inputs version 6**, **AQ version 6**, and **GStack version 6** (`score_contract_id = 6:6:6`). Previous-contract scores
 must not be shown as improvement or regression against v5. AQ is blended as
 65% recent (rolling 30-day) + 35%
 full-window (cumulative). The full window includes recent activity, so
