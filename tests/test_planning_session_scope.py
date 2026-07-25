@@ -440,7 +440,7 @@ class TestPlanningScoringContract(unittest.TestCase):
         self.assertNotEqual(compute_scores(measured)["Planning"],
                             compute_scores(unavailable)["Planning"])
         sub = next(s for s in score_breakdown(unavailable)["planning"]["subs"]
-                   if s["label"] == "Planning skill practice")
+                   if s["label"] == "Planning practice")
         self.assertIsNone(sub["your_value"])
         self.assertIsNone(sub["score_pct"])
         self.assertEqual(sub["display_value"], "unavailable")
@@ -470,7 +470,7 @@ class TestPlanningScoringContract(unittest.TestCase):
                                   "gemini": {"window": unavailable}})
         aggregate = result["aggregate"]
         sub = next(s for s in aggregate["scores"]["planning"]["subs"]
-                   if s["label"] == "Planning skill practice")
+                   if s["label"] == "Planning practice")
         self.assertEqual(sub["your_value"], 1.0)
         self.assertEqual(sub["scope_state"], "partial")
         self.assertEqual(sub["coverage"], 0.5)
@@ -483,7 +483,7 @@ class TestPlanningScoringContract(unittest.TestCase):
         malformed = build_scoring_inputs(_rich_stats(malformed_fields))
         aggregate = score_by_source({"claude": {"window": malformed}})["aggregate"]
         sub = next(s for s in aggregate["scores"]["planning"]["subs"]
-                   if s["label"] == "Planning skill practice")
+                   if s["label"] == "Planning practice")
         self.assertIsNone(sub["your_value"])
 
     def test_all_non_integral_planning_counters_are_unmeasured(self):
@@ -499,7 +499,7 @@ class TestPlanningScoringContract(unittest.TestCase):
                     aggregate = score_by_source({"claude": {"window": malformed}})[
                         "aggregate"]
                     sub = next(s for s in aggregate["scores"]["planning"]["subs"]
-                               if s["label"] == "Planning skill practice")
+                               if s["label"] == "Planning practice")
                     self.assertIsNone(sub["your_value"])
 
     def test_single_source_aggregate_preserves_ordered_planning_inputs(self):
@@ -532,7 +532,7 @@ class TestPlanningScoringContract(unittest.TestCase):
                                   "gemini": {"window": zero_weight}})
         aggregate = result["aggregate"]["scores"]["planning"]
         sub = next(s for s in aggregate["subs"]
-                   if s["label"] == "Planning skill practice")
+                   if s["label"] == "Planning practice")
         self.assertEqual(sub["scope_state"], "partial")
         self.assertEqual(sub["planning_skill_unmeasured_sessions"], 4)
         self.assertLess(
@@ -552,7 +552,7 @@ class TestPlanningScoringContract(unittest.TestCase):
         aggregate = score_by_source({"claude": {"window": legacy},
                                      "codex": {"window": measured}})["aggregate"]
         sub = next(s for s in aggregate["scores"]["planning"]["subs"]
-                   if s["label"] == "Planning skill practice")
+                   if s["label"] == "Planning practice")
         self.assertIsNone(sub["your_value"])
 
 

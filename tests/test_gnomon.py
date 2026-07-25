@@ -739,7 +739,7 @@ class TestScoreBreakdown(unittest.TestCase):
         """The empty-corpus breakdown must show the SAME Plan ceremony target/unit as an
         active corpus — the zero-axis fallback drifted stale in a prior round."""
         def _pc(bd):
-            return next(s for s in bd["planning"]["subs"] if s["label"] == "Planning skill practice")
+            return next(s for s in bd["planning"]["subs"] if s["label"] == "Planning practice")
         live = _pc(paxel.score_breakdown(_full_stats()))
         zero = _pc(paxel.score_breakdown(_zero_stats()))
         self.assertEqual(zero["target"], live["target"])
@@ -753,7 +753,7 @@ class TestScoreBreakdown(unittest.TestCase):
         Claude Code's ExitPlanMode."""
         def _pc(stats):
             subs = paxel.score_breakdown(stats)["planning"]["subs"]
-            return next(s for s in subs if s["label"] == "Planning skill practice")["your_value"]
+            return next(s for s in subs if s["label"] == "Planning practice")["your_value"]
         cold = _full_stats()
         cold["behavior"]["plan_sessions"] = 0
         hot = _full_stats()
@@ -839,7 +839,7 @@ class TestScoreBreakdown(unittest.TestCase):
         tol = 1e-6
         checked = {
             "execution": {"Tool output rate"},
-            "planning": {"Explore-before-build", "Planning skill practice"},
+            "planning": {"Explore-before-build", "Planning practice"},
         }
         for axis, labels in checked.items():
             for sub in self.bd[axis]["subs"]:
@@ -1501,7 +1501,7 @@ class TestScoringDoesNotPenalizeMissingCaps(unittest.TestCase):
     def test_gstack_cursor_breakdown_drops_planning_skill(self):
         from gnomon.scoring.gstack import score_breakdown
         planning = score_breakdown(self._gstack_stats("cursor"))["planning"]["subs"]
-        self.assertNotIn("Planning skill practice", {sub["label"] for sub in planning})
+        self.assertNotIn("Planning practice", {sub["label"] for sub in planning})
         self.assertAlmostEqual(sum(sub["weight"] for sub in planning), 1.0, places=3)
 
     def test_aq_drops_unsupported_axes_for_ide(self):

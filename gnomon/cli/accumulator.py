@@ -166,7 +166,7 @@ class Accumulator:
         # planning Skill. Counting distinct sessions (not tool calls) stops TodoWrite,
         # which fires many times per session, from inflating the metric.
         self.plan_sessions = set()
-        # Qualified Planning Skill Practice uses source-qualified session IDs so
+        # The qualified Planning practice numerator uses source-qualified session IDs so
         # pooled sources cannot collide. Numerator and denominator are admitted
         # by the same event-level predicate.
         self.planning_skill_sessions = set()

@@ -26,8 +26,9 @@ when a formal plan or retrieval adds no value.
 
 | Area | Decision | Why |
 |---|---|---|
-| Planning readiness | Grade ordered planning readiness only on eligible non-trivial changes and target 50% coverage | Small tasks should stay direct; larger work benefits from an explicit plan before editing. Planning Skill practice remains a separate educational term. |
-| Planning skill practice | Measure recognized planning-skill use per authoritative human-started top-level session and scale its weight by session coverage | Child, fabricated synthetic, undated, and routing events are excluded. `__synth_ts__` is timestamp provenance only: it may credit an already-eligible root but can never create eligibility. Partial identity coverage remains numeric and auditable instead of becoming zero or erasing measured evidence. |
+| Planning readiness | Grade ordered planning readiness only on eligible non-trivial changes and target 50% coverage | Small tasks should stay direct; larger work benefits from an explicit plan before editing. Planning practice remains a separate educational term. |
+| Planning practice | Measure planning per authoritative human-started top-level session — plan mode OR a recognized planning Skill, either one — and scale its weight by session coverage. Target 30% of sessions | Plan mode and a planning Skill express the same practice: a plan existed before code. Counting only Skills penalized planning in plan mode, which is a tool preference and not a discipline difference. The todo family is excluded because it is the agent's own execution bookkeeping and already earns ordered readiness. 30% is anchored on the share of eligible sessions that carry a substantive code change at all (374/1181 on a real corpus), so NOT planning the rest is correct rather than a gap. Child, fabricated synthetic, undated, and routing events are excluded. `__synth_ts__` is timestamp provenance only: it may credit an already-eligible root but can never create eligibility. Partial identity coverage remains numeric and auditable instead of becoming zero or erasing measured evidence. |
+| One home per planning signal | Plan-mode, todo and task tools form their own tool category, counted on neither side of the explore-to-doing ratio, and planning Skill/subagent dispatches are subtracted from that ratio's denominator | Before this, entering plan mode raised the explore numerator while invoking a planning Skill raised the doing denominator — the axis rewarded one way of planning and penalized the other. Once plan mode also scored the practice term, the same action would have paid twice inside one axis. |
 | Context Intelligence | Target evidence gathering before the first write in 60% of eligible changes | Grounding should inform implementation, not become after-the-fact ceremony. |
 | Model routing | Reward completed, substantive work routed to a lower-tier model when linkage is observable | This teaches efficient model selection without guessing from incomplete telemetry. |
 | Existing signals | Keep skills, MCPs, CLIs, ToolSearch, fanout, output, delegation, and model diversity scored | They are educational prompts for capabilities users should learn, not claims of output quality. |
@@ -39,8 +40,8 @@ config, lockfile, and test-only sessions are excluded (a mixed code+test session
 via its code files). Unsupported or incomplete telemetry is `N/A`, not zero. Score contracts are
 versioned; changes between incompatible contracts are not labeled improvement or regression.
 
-Eligibility conditions the ordered readiness signal, not every planning-related metric. Actual
-planning Skill use remains separately scored to teach the reusable practice. A substantive
+Eligibility conditions the ordered readiness signal, not every planning-related metric. Planning
+practice remains separately scored to teach the reusable habit. A substantive
 plan-file write, a planning-skill invocation paired with a plan-file, or at least three distinct
 plan/task steps before the first code write prove ordered readiness (raised from two steps). A
 bare Plan Mode toggle or a two-step throwaway todo, with no plan-file and no skill, does not
@@ -48,8 +49,14 @@ count: planning theater isn't planning. A plan produced in one session can also 
 session's eligible execution in the same working directory within a bounded time window
 (consume-once — one plan credits exactly one execution), so planning in one session and
 executing in another still counts. Below a minimum number of eligible sessions the signal is
-dropped (and the remaining terms renormalized) rather than scored on too little data. These
-readiness signals do not count as planning Skill practice.
+dropped (and the remaining terms renormalized) rather than scored on too little data.
+
+The two planning terms measure different things and the distinction is deliberate. Ordered
+readiness asks whether a plan existed *before the first write*, with substance, on changes that
+matter. Planning practice asks how *often* you plan at all, across every eligible session. So a
+bare Plan Mode toggle earns planning practice but still does not earn ordered readiness: deciding
+to plan is a habit worth counting, and producing a substantive plan before editing is a separate,
+stricter claim.
 
 ## Volume is descriptive, not AQ
 

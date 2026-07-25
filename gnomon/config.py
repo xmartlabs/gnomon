@@ -42,7 +42,7 @@ SOURCE_CAPS = {
 _ALL_CAPS = {"skills", "skill_reads", "toolsearch", "tasktool", "delegate", "model", "thinking", "linked_model_routing"}
 
 # Whether a source adapter can authoritatively distinguish human-started root
-# events from delegated child events.  Planning Skill Practice is scored only
+# events from delegated child events.  Planning practice is scored only
 # for measured sources; unknown/unsupported sources remain visible but cannot
 # silently contribute a numeric value.
 PLANNING_SESSION_SCOPE_BY_SOURCE = {

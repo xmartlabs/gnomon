@@ -451,7 +451,7 @@ class TestConditionalScoring(unittest.TestCase):
                        score_breakdown(without_ordered_success)["planning"]["subs"]}
         after_subs = {sub["label"]: sub["pct"] for sub in
                       score_breakdown(with_ordered_success)["planning"]["subs"]}
-        old_terms = {"Explore-before-build", "Reasoning depth", "Planning skill practice"}
+        old_terms = {"Explore-before-build", "Reasoning depth", "Planning practice"}
         self.assertEqual({name: before_subs[name] for name in old_terms},
                          {name: after_subs[name] for name in old_terms})
 
@@ -475,13 +475,34 @@ class TestConditionalScoring(unittest.TestCase):
         self.assertIn("Ordered planning readiness", at_labels)
 
     def test_planning_practice_target_is_single_source_of_truth(self):
-        """The planning-practice target lived as a bare 0.4 literal in three places
-        (compute_scores, the zero-axis fallback, and the live breakdown), kept in sync
-        only by assertions. Pin the named constant so a future retune moves one line."""
-        self.assertEqual(PLANNING_PRACTICE_TARGET, 0.40)
+        """The planning-practice target lived as a bare 0.4 literal in four places
+        (compute_scores, the zero-axis fallback, and twice in the live breakdown), kept in
+        sync only by assertions. Pin the named constant so a retune moves one line."""
+        self.assertEqual(PLANNING_PRACTICE_TARGET, 0.30)
         subs = score_breakdown(_v5_scoring_stats())["planning"]["subs"]
-        sub = next(s for s in subs if s["label"] == "Planning skill practice")
+        sub = next(s for s in subs if s["label"] == "Planning practice")
         self.assertEqual(sub["target"], PLANNING_PRACTICE_TARGET)
+
+    def test_planning_practice_target_is_measured_not_rounded(self):
+        """0.30 is not a round number picked for looks. It is the fraction of eligible
+        top-level sessions that carry a substantive code change on a real corpus
+        (374/1181 = 0.317), i.e. "plan in about every session where you touch real code".
+        The prior 0.40 predated any measurement. The band is asserted rather than the exact
+        value so a recalibration against a bigger corpus does not have to fight this test,
+        but a drift back toward an unanchored round number does."""
+        self.assertGreaterEqual(PLANNING_PRACTICE_TARGET, 0.25)
+        self.assertLessEqual(PLANNING_PRACTICE_TARGET, 0.35)
+
+    def test_no_planning_sub_still_carries_the_stale_skill_label(self):
+        """The term counts plan mode as well as planning Skills, so "skill practice" is a
+        false name. Guard the rename: mirdash keys its per-metric explanations off this
+        exact string, and a silent drift there leaves the row with no explanation."""
+        stale = "Planning skill" + " practice"   # split so a blind rename cannot eat it
+        breakdown = score_breakdown(_v5_scoring_stats())
+        for axis in breakdown.values():
+            self.assertNotIn(stale, {sub["label"] for sub in axis["subs"]})
+        self.assertIn("Planning practice",
+                      {sub["label"] for sub in breakdown["planning"]["subs"]})
 
     def test_cursor_profile_drops_model_mix_while_routing_inputs_stay_na(self):
         stats = _v5_scoring_stats(source="cursor")
@@ -605,12 +626,13 @@ class TestPlanningPartialCoverageScoring(unittest.TestCase):
             evidence["effective_weight"], 0.25 * (1180 / 1185))
 
         sub = next(s for s in score_breakdown(stats)["planning"]["subs"]
-                   if s["label"] == "Planning skill practice")
+                   if s["label"] == "Planning practice")
         self.assertAlmostEqual(sub["your_value"], evidence["share"])
         self.assertAlmostEqual(sub["coverage"], evidence["coverage"])
         self.assertAlmostEqual(
             sub["effective_weight"], evidence["effective_weight"])
-        self.assertEqual(sub["score_pct"], round(100 * (187 / 1180) / 0.4))
+        self.assertEqual(sub["score_pct"],
+                         round(100 * (187 / 1180) / PLANNING_PRACTICE_TARGET))
         self.assertEqual(
             compute_scores(stats)["Planning"],
             score_breakdown(stats)["planning"]["value"])
@@ -639,7 +661,7 @@ class TestPlanningPartialCoverageScoring(unittest.TestCase):
         scores = compute_scores(stats)
         breakdown = score_breakdown(stats)
         sub = next(s for s in breakdown["planning"]["subs"]
-                   if s["label"] == "Planning skill practice")
+                   if s["label"] == "Planning practice")
         self.assertEqual(sub["your_value"], 1.0)
         self.assertEqual(sub["pct"], 1.0)
         self.assertEqual(sub["scope_state"], "measured")

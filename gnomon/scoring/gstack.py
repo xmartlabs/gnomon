@@ -314,10 +314,12 @@ def compute_scores(stats):
     # produces TERSER, more precise prompts, so the term paid for verbosity. It's the main reason a
     # 4-month vibe-coder maxed Planning over a 30-year engineer (an expert-elicitation validity
     # review caught this). Weight redistributed to the construct-relevant terms.
-    # Plan ceremony = fraction of sessions with a planning signal (plan-mode/todo tool OR
-    # a planning Skill), NOT a raw plan-tool count. Counting distinct sessions stops
-    # TodoWrite (fires many times/session) from saturating the term; target 0.4 = plan in
-    # ~40% of sessions. See accumulator.plan_sessions.
+    # Planning practice = fraction of eligible top-level SESSIONS carrying a planning
+    # signal — plan mode (EnterPlanMode/ExitPlanMode) or a planning Skill/subagent — not a
+    # raw tool count. Distinct sessions, so a tool that fires repeatedly cannot saturate it.
+    # The todo family is excluded on purpose: it is the agent's own execution bookkeeping
+    # and it already earns "Ordered planning readiness" below via the PLAN_MIN_STEPS gate.
+    # See PLANNING_PRACTICE_TARGET in aq.py for why the target is 0.30 and not a round 0.40.
     plan_share = plan_evidence["share"]
     plan_legacy = plan_evidence["legacy"]
     plan_ceremony = (_clamp(plan_share / PLANNING_PRACTICE_TARGET)
@@ -408,7 +410,7 @@ def score_breakdown(stats):
             "planning": _zero_axis("Think before you build", [
                 ("Explore-before-build", 0.65, "explore/doing ratio", 0.30, "higher"),
                 ("Reasoning depth",     12.0, "thinking blocks/session", 0.30, "higher"),
-                ("Planning skill practice", PLANNING_PRACTICE_TARGET,
+                ("Planning practice", PLANNING_PRACTICE_TARGET,
                  "planning sessions/session", 0.25, "higher"),
                 ("Ordered planning readiness", PLANNING_TARGET,
                  "eligible-session coverage", 0.15, "higher"),
@@ -457,8 +459,8 @@ def score_breakdown(stats):
     explore_pct       = _clamp(b.get("planning_ratio_explore_to_doing", 0) / 0.65)
     thinking_raw      = v.get("thinking_blocks", 0) / sess
     thinking_pct      = _clamp(thinking_raw / 12.0)
-    # Plan ceremony = fraction of sessions with a planning signal (see compute_scores);
-    # per-session, so TodoWrite volume can't saturate it. Target 0.4.
+    # Planning practice = fraction of eligible top-level sessions carrying a planning
+    # signal (see compute_scores); per-session, so tool volume can't saturate it.
     plan_sess_raw = plan_evidence["share"]
     plan_scope_state = plan_evidence["state"]
     plan_legacy = plan_evidence["legacy"]
@@ -482,7 +484,7 @@ def score_breakdown(stats):
         {"label": "Reasoning depth", "your_value": thinking_raw,
          "target": 12.0, "unit": "thinking blocks/session", "weight": 0.30, "pct": thinking_pct,
          "direction": "higher", "is_drag": False, "_cap": "thinking"},
-        {"label": "Planning skill practice", "your_value": plan_sess_raw,
+        {"label": "Planning practice", "your_value": plan_sess_raw,
          "target": PLANNING_PRACTICE_TARGET, "unit": "planning sessions/session",
          "weight": plan_evidence["effective_weight"], "pct": plan_ceremony_pct,
          "direction": "higher", "is_drag": False,

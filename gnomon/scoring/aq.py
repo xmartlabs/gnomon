@@ -4,9 +4,17 @@ from gnomon.scoring.versioning import SCORE_CONTRACT_ID
 
 PLANNING_TARGET = 0.50
 # Planning-practice target: fraction of eligible top-level sessions that should carry a
-# planning signal. Lives here (not in gstack) because both the GStack Planning axis and
-# the AQ Discipline axis read it, and gstack already imports from this module.
-PLANNING_PRACTICE_TARGET = 0.40
+# planning signal (plan mode OR a planning Skill). Read today by the GStack Planning axis;
+# it lives here rather than in gstack because gstack already imports from this module, so
+# this is the only side of that edge both scoring systems can share.
+#
+# 0.30 is anchored, not rounded: on a real corpus 374 of 1181 eligible top-level sessions
+# (0.317) carried a substantive code change at all — doc/config/lockfile/test-only sessions
+# are excluded from that count. So the target reads as "plan in about every session where
+# you touch real code", and NOT planning the other two thirds is correct rather than a gap.
+# The previous 0.40 predated any measurement. Recalibrate against a larger corpus if one
+# becomes available; the guard test pins a band, not this exact value.
+PLANNING_PRACTICE_TARGET = 0.30
 CONTEXT_INTELLIGENCE_TARGET = 0.60
 
 # ---- Ordered-planning redesign (C1-C7) calibration placeholders ------------

@@ -38,16 +38,21 @@ directly — no external dependency). Both decode to the same normalized events.
 
 ## Session caveats
 
-- **Planning Skill Practice** has authoritative root/child identity for Claude, Codex,
+- **Planning practice** has authoritative root/child identity for Claude, Codex,
   Cursor, and OpenCode. Other active sources contribute unmeasured sessions (`U`) to
   coverage instead of forcing the measured `P/E` share to zero or unavailable.
+- **Planning practice** counts plan mode as well as planning Skills, so the signal is
+  reachable per source: Claude Code emits `ExitPlanMode`, Cursor's `create_plan` and
+  `switch_mode(plan)` normalize to `EnterPlanMode`, and Codex has no plan mode but does
+  reach the term through shell `SKILL.md` reads. Cursor cannot emit a first-class `Skill`
+  at all, so plan mode is its only path in.
 - `git_churn` is parser-independent once source yields a real `cwd`. Antigravity CLI yields a real
   `cwd` (from `trajectory_metadata_blob`); the IDE derives it best-effort from edit/command paths.
 - Codex now counts `apply_patch` churn per file, so churn, deletions, and iteration depth are meaningful there.
 - Gemini captures tool activity, thinking, tokens, and errors, but deletions stay partial because `write_file` has no old-string diff.
 - Gnomon does not extract delegation signals from Gemini, Pi, or OpenCode, so the
   **Orchestration** AQ axis is dropped (caps lack `delegate`), not scored 0. OpenCode itself
-  supports child sessions; their parent identity is still used to scope Planning Skill Practice.
+  supports child sessions; their parent identity is still used to scope Planning practice.
 - Gemini MCP usage is not captured because tool names do not use `mcp__` naming.
 - **Antigravity CLI** is fully scored offline: prompts, tool calls, tokens, and model are decoded
   from the protobuf step payloads (stdlib decoder, no deps).

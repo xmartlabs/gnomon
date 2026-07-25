@@ -114,7 +114,7 @@ class TestAggregatePlanningSessionPooling(unittest.TestCase):
         })
         sub = next(
             item for item in result["aggregate"]["scores"]["planning"]["subs"]
-            if item["label"] == "Planning skill practice")
+            if item["label"] == "Planning practice")
         self.assertEqual((
             sub["planning_skill_sessions"],
             sub["planning_skill_eligible_sessions"],

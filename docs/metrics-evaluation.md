@@ -93,9 +93,9 @@ Sí sirve como feedback a bajo costo, con tres condiciones:
 Costo total (ambos caminos): ~5 min/persona/mes. Riesgo principal: tratar la rúbrica
 como ranking — mitigado usando solo las métricas medidas.
 
-## Disponibilidad de Planning Skill Practice
+## Disponibilidad de Planning practice
 
-Planning Skill Practice publishes counted planning sessions (`P`), eligible
+Planning practice publishes counted planning sessions (`P`), eligible
 top-level sessions (`E`), unmeasured sessions (`U`), state, share, and coverage
 for corpus, source, month, and rolling-window slices. It preserves
 `0 <= P <= E`, computes `share = P/E`, and computes
@@ -103,3 +103,13 @@ for corpus, source, month, and rolling-window slices. It preserves
 `E>0,U>0`, and `unmeasured` when no confirmed denominator exists. The term's
 effective Planning weight is `0.25 * coverage`; unavailable evidence has zero
 weight and the remaining Planning terms are renormalized.
+
+`P` counts a session when it contains plan mode (`EnterPlanMode` /
+`ExitPlanMode`) **or** a recognized planning Skill or subagent — either signal is
+sufficient, and a session with both still counts once. The todo family
+(`TodoWrite` / `TaskCreate`) is deliberately excluded: it is the agent's own
+execution bookkeeping, it already earns Ordered planning readiness through the
+`PLAN_MIN_STEPS` distinct-step gate, and it appears in a large majority of
+sessions, so admitting it would saturate the term without any behavior change.
+The wire field names still carry the historical `planning_skill_*` prefix; they
+are the dashboard contract and are intentionally not renamed.
