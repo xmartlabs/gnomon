@@ -123,6 +123,13 @@ Mirdash reads `actions_per_prompt` from `churn`, with legacy fallback to `contex
 - `profiles_by_source` / `profile` / AQ — **65/35 blended AQ** (65% recent
   30-day rolling + 35% full window); gstack/archetype/steering remain scoped
   to the requested full-window inputs.
+- **One canonical combined AQ**: `profile.aq`, scored from the merged corpus.
+  `profiles_by_source.by_source[*].aq` are per-source readings. The aggregate's
+  weighted mean of per-source scores is published as
+  `profiles_by_source.aggregate.aq_diagnostic` (with `canonical_aq: "profile.aq"`)
+  and must not be displayed as a combined score: distinct counts are unions, so
+  blending per-source scores under-counts breadth of tooling (7 MCP servers across
+  three tools really is 7). Two combined numbers used to ship in the same payload.
 - `source_usage` — **window** usage share by source.
 - `source_usage_monthly` — **per calendar month** usage share by source.
 

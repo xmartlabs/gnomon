@@ -2,7 +2,7 @@
   {
     "expected": {
       "aggregate": {
-        "aq": {
+        "aq_diagnostic": {
           "aq_0_100": 87,
           "pillars": [
             {
@@ -33,6 +33,7 @@
           "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is breadth \u2014 that's where the next gain is.",
           "title": "Advanced"
         },
+        "canonical_aq": "profile.aq",
         "combination": {
           "axes": {
             "engineering": "tool_volume_weighted_mean",
@@ -889,7 +890,7 @@
   {
     "expected": {
       "aggregate": {
-        "aq": {
+        "aq_diagnostic": {
           "aq_0_100": 46,
           "pillars": [
             {
@@ -920,6 +921,7 @@
           "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is craft \u2014 that's where the next gain is.",
           "title": "Adequate"
         },
+        "canonical_aq": "profile.aq",
         "combination": {
           "axes": {
             "engineering": "tool_volume_weighted_mean",
@@ -1678,7 +1680,7 @@
   {
     "expected": {
       "aggregate": {
-        "aq": {
+        "aq_diagnostic": {
           "aq_0_100": 82,
           "pillars": [
             {
@@ -1709,6 +1711,7 @@
           "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is breadth \u2014 that's where the next gain is.",
           "title": "Advanced"
         },
+        "canonical_aq": "profile.aq",
         "combination": {
           "axes": {
             "engineering": "tool_volume_weighted_mean",
@@ -3063,7 +3066,7 @@
   {
     "expected": {
       "aggregate": {
-        "aq": {
+        "aq_diagnostic": {
           "aq_0_100": 81,
           "pillars": [
             {
@@ -3094,6 +3097,7 @@
           "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is craft \u2014 that's where the next gain is.",
           "title": "Advanced"
         },
+        "canonical_aq": "profile.aq",
         "combination": {
           "axes": {
             "engineering": "tool_volume_weighted_mean",
@@ -3935,7 +3939,7 @@
   {
     "expected": {
       "aggregate": {
-        "aq": {
+        "aq_diagnostic": {
           "aq_0_100": 7,
           "pillars": [
             {
@@ -3966,6 +3970,7 @@
           "quote": "Just getting started. Broad gaps to close before the rest pays off. Your thinnest axis is craft \u2014 that's where the next gain is.",
           "title": "Novice"
         },
+        "canonical_aq": "profile.aq",
         "combination": {
           "axes": {
             "engineering": "tool_volume_weighted_mean",
@@ -4884,7 +4889,7 @@
     },
     "expected": {
       "aggregate": {
-        "aq": {
+        "aq_diagnostic": {
           "aq_0_100": 87,
           "pillars": [
             {
@@ -4915,6 +4920,7 @@
           "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is breadth \u2014 that's where the next gain is.",
           "title": "Advanced"
         },
+        "canonical_aq": "profile.aq",
         "combination": {
           "axes": {
             "engineering": "tool_volume_weighted_mean",

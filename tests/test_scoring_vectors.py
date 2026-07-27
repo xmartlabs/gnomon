@@ -95,8 +95,14 @@ class TestScoringVectorsFile(unittest.TestCase):
                 for axis in ("execution", "planning", "engineering"):
                     self.assertIn("value", prof["scores"][axis])
             if c["expected"]["aggregate"]:
+                # The aggregate carries the same shape EXCEPT its combined AQ, which is a
+                # diagnostic (`aq_diagnostic`) and not a published score — `profile.aq`,
+                # scored from the merged corpus, is the one canonical combined AQ.
                 agg = c["expected"]["aggregate"]
-                self.assertEqual(set(agg) & expected_keys, expected_keys)
+                self.assertEqual(set(agg) & expected_keys, expected_keys - {"aq"})
+                self.assertNotIn("aq", agg)
+                self.assertEqual(agg["canonical_aq"], "profile.aq")
+                self.assertIn("aq_0_100", agg["aq_diagnostic"])
 
 
 class TestCapabilityContract(unittest.TestCase):
@@ -175,10 +181,10 @@ class TestAggregateIsWeightedMean(unittest.TestCase):
         wa = CLAUDE_BLOCK["volume"]["tool_calls_total"]
         wu = CURSOR_BLOCK["volume"]["tool_calls_total"]
         expected = round((ca * wa + cu * wu) / (wa + wu))
-        self.assertEqual(out["aggregate"]["aq"]["aq_0_100"], expected)
+        self.assertEqual(out["aggregate"]["aq_diagnostic"]["aq_0_100"], expected)
         # sanity: the weighted mean lands strictly between the two per-source scores
-        self.assertLess(out["aggregate"]["aq"]["aq_0_100"], ca)
-        self.assertGreater(out["aggregate"]["aq"]["aq_0_100"], cu)
+        self.assertLess(out["aggregate"]["aq_diagnostic"]["aq_0_100"], ca)
+        self.assertGreater(out["aggregate"]["aq_diagnostic"]["aq_0_100"], cu)
 
     def test_aggregate_pillars_and_axes_are_weighted_means(self):
         sibs = {"claude": {"window": CLAUDE_BLOCK, "monthly": []},
@@ -204,7 +210,7 @@ class TestAggregateIsWeightedMean(unittest.TestCase):
     def test_single_source_aggregate_equals_that_source(self):
         """With one source the aggregate is just that source's profile numbers."""
         out = score_by_source({"claude": {"window": CLAUDE_BLOCK, "monthly": []}})
-        self.assertEqual(out["aggregate"]["aq"]["aq_0_100"],
+        self.assertEqual(out["aggregate"]["aq_diagnostic"]["aq_0_100"],
                          out["by_source"]["claude"]["aq"]["aq_0_100"])
 
 
