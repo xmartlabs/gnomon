@@ -101,8 +101,16 @@ components — recent behavior dominates while the full window provides
 stability. When the recent window has no sessions the blend falls back to the
 unblended full-window AQ.
 
-This runtime emits **scoring inputs version 6**, **AQ version 6**, and **GStack version 6** (`score_contract_id = 6:6:6`). Scores from the previous
-contract must not be presented as an improvement or regression against v5.
+This runtime emits **scoring inputs version 7**, **AQ version 7**, and **GStack version 7** (`score_contract_id = 7:7:7`). Scores from the previous
+contract must not be presented as an improvement or regression against v6.
+
+Per-session rate terms (test runs, review skills, ToolSearch, task planning,
+skills, compounding writes) are scored across sources as an **activity-weighted
+mean of per-source rates**, weighted by each source's tool volume — not as one
+count divided by the merged session count. One session is not one unit of work
+across tools: a batch of 2-minute one-shot CLI sessions would otherwise act as
+pure denominator and collapse the rate of a habit you actually practise. Only
+the weighting changes; absolute volume still does not raise AQ.
 
 What happens when you run it (without `--local`):
 

@@ -38,6 +38,14 @@ directly — no external dependency). Both decode to the same normalized events.
 
 ## Session caveats
 
+- **Per-session rates are activity-weighted across sources.** Test runs, review skills,
+  ToolSearch, task planning, skills and compounding writes are scored as the mean of the
+  per-source rates weighted by each source's `tool_calls_total`, not as one count over the
+  merged session count — a Codex one-shot (~18 calls, ~2.7 min) is not one Claude session
+  (~68 calls, ~37 min), and pooling let the short ones act as pure denominator. A source
+  that cannot record a signal at all (ToolSearch on Cursor/Codex) is excluded from that
+  mean rather than weighted in at zero. Single-source corpora are unaffected, and a payload
+  without `scoring_inputs_by_source` falls back to the pooled denominator.
 - **Planning practice** has authoritative root/child identity for Claude, Codex,
   Cursor, and OpenCode. Other active sources contribute unmeasured sessions (`U`) to
   coverage instead of forcing the measured `P/E` share to zero or unavailable.
@@ -93,8 +101,8 @@ directly — no external dependency). Both decode to the same normalized events.
 
 ## Uploaded summary contract
 
-Current runtime contract: **scoring inputs version 6**, **AQ version 6**, and **GStack version 6** (`score_contract_id = 6:6:6`). Previous-contract scores
-must not be shown as improvement or regression against v5. AQ is blended as
+Current runtime contract: **scoring inputs version 7**, **AQ version 7**, and **GStack version 7** (`score_contract_id = 7:7:7`). Previous-contract scores
+must not be shown as improvement or regression against v6. AQ is blended as
 65% recent (rolling 30-day) + 35%
 full-window (cumulative). The full window includes recent activity, so
 improvements are reflected in both components. Empty recent windows fall back
@@ -118,6 +126,8 @@ Mirdash reads `actions_per_prompt` from `churn`, with legacy fallback to `contex
 ### Three time scales in the payload
 
 - `scoring_inputs_by_source[*].window` — **window** (up to 6-month) raw scoring input per source.
+  Since `7:7:7` these blocks are also SCORING inputs for the corpus AQ, not only per-source
+  diagnostics: they carry the per-source denominators of every per-session rate term.
 - `noticed_stats_monthly` — **per calendar month** evidence, one entry per month with its own `git_churn`, tokens, errors, etc.
 - `scoring_inputs_by_source[*].monthly` — **per source per calendar month** raw scoring inputs.
 - `profiles_by_source` / `profile` / AQ — **65/35 blended AQ** (65% recent

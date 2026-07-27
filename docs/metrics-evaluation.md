@@ -44,7 +44,10 @@ Sí sirve como feedback a bajo costo, con tres condiciones:
   pagás, no qué tan bien trabajás. Sesgo directo contra cuentas de USD 20.
 - **Model mix** — mejoró (ahora ve GPT vía Codex), pero sigue premiando diversidad de
   modelos, que es función del presupuesto/acceso, no de skill.
-- **Token economy (ToolSearch)** — señal exclusiva de Claude Code; lee 0 para el resto.
+- **Token economy (ToolSearch)** — señal exclusiva de Claude Code. No lee 0 para el
+  resto: si ninguna fuente puede registrarla el término se descarta y se renormaliza, y
+  en un corpus mixto se puntúa solo sobre las fuentes que sí pueden registrarla (ver
+  "Cross-source rate denominators" abajo).
 
 ## Sesgos conocidos (post-fixes de hoy)
 
@@ -92,6 +95,23 @@ Sí sirve como feedback a bajo costo, con tres condiciones:
 
 Costo total (ambos caminos): ~5 min/persona/mes. Riesgo principal: tratar la rúbrica
 como ranking — mitigado usando solo las métricas medidas.
+
+## Cross-source rate denominators
+
+AQ's per-session rate terms (test runs, review skills, ToolSearch, task planning,
+skills, compounding writes) are NOT one pooled count divided by the merged session
+count. One session is not one unit of work across tools: on a measured corpus, Claude
+sessions averaged ~68 tool calls and ~37 active minutes while one-shot `codex exec`
+sessions averaged ~18 calls and ~2.7 minutes. Pooling made the short ones act as pure
+denominator — Verification read 34.4/35 on the Claude slice alone and 22.9/35 merged,
+for identical behavior.
+
+Each term is now the mean of the PER-SOURCE rates, weighted by each source's tool
+volume, and then scored against the same per-session target. A source that cannot
+record a signal at all is excluded from that mean instead of contributing a structural
+zero. Single-source corpora are unaffected; a payload without
+`scoring_inputs_by_source` falls back to the pooled denominator. Absolute volume still
+does not raise AQ — only the relative weight between sources changed.
 
 ## Disponibilidad de Planning practice
 
