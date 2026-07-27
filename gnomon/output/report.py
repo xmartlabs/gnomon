@@ -65,13 +65,13 @@ def write_report(s, output_dir=None):
     A(f"- Shell-authored work the Edit/Write path misses entirely: {vel['shell_write_calls']:,} file-writing Bash "
       f"calls, ~{vel['shell_authored_lines_est']:,} lines of heredoc/redirect content\n")
     A("## Behavior")
-    # Planning ceremony is subtracted from the denominator (see accumulator), so print the
+    # Planning dispatches are subtracted from the denominator (see accumulator), so print the
     # same doing the ratio was computed from — otherwise the line does not reconcile.
     _doing = max(b['produce_actions'] + b['execute_actions'] + b['delegate_actions']
-                 - b.get('plan_ceremony_actions', 0), 0)
+                 - b.get('planning_dispatch_actions', 0), 0)
     A(f"- Planning ratio (explore : doing): **{b['planning_ratio_explore_to_doing']}** "
       f"(explore {b['explore_actions']:,} vs doing {_doing:,}, "
-      f"excluding {b.get('plan_ceremony_actions', 0):,} planning-ceremony calls)")
+      f"excluding {b.get('planning_dispatch_actions', 0):,} planning dispatches)")
     A(f"- Avg session: **{b['avg_session_minutes']:.0f} min** (median {b['median_session_minutes']:.0f})")
     _err_rate = b['error_rate_per_100_tools']
     _err_recov = b['error_recovery_ratio']

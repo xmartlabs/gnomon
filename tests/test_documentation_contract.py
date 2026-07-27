@@ -53,8 +53,15 @@ class TestPublicDocumentationContract(unittest.TestCase):
                       normalized)
         self.assertIn("Context Intelligence | Target evidence gathering before the first "
                       "write in 60% of eligible changes", normalized)
-        self.assertIn("50% Planning and 60% Context Intelligence targets are explicit, "
-                      "versioned product hypotheses", normalized)
+        # Planning practice was never pinned here even though it is an executable target
+        # like the other two. Pin it WITH its denominator: the two Planning figures differ
+        # only by denominator, and that is precisely what a reader conflates.
+        self.assertIn("Target 30% of sessions", normalized)
+        self.assertIn("50% Planning readiness, 30% Planning practice and 60% Context "
+                      "Intelligence targets are explicit, versioned product hypotheses",
+                      normalized)
+        self.assertIn("50% of eligible *non-trivial changes* for readiness, 30% of *all "
+                      "eligible top-level sessions* for practice", normalized)
 
     def test_context_intelligence_note_matches_executable_contract(self):
         note = AQ_AXIS_NOTES["Context Intelligence"]

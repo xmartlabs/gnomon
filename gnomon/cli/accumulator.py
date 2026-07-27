@@ -26,6 +26,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 
 from gnomon.config import parse_ts, line_count, strip_injections, planning_session_scope
+from gnomon.scoring.inputs import _adjusted_doing
 from gnomon.taxonomy import (
     SCHEDULE_TOOLS, ASK_TOOLS, PLAN_MODE_TOOLS, PLAN_SIGNAL_TOOLS,
     PLAN_SKILL_NEEDLES, KNOWLEDGE_SKILL_NEEDLES,
@@ -108,12 +109,15 @@ class Accumulator:
         self.tool_use_total = 0
         self.tool_counter = Counter()
         self.cat_counter = Counter()
-        # Planning-ceremony dispatches, tracked SEPARATELY rather than re-routed through
+        # Planning DISPATCHES — the Skill call or Agent dispatch itself. Named 'dispatch',
+        # not 'ceremony', because gstack already uses plan_ceremony for the CREDITED
+        # Planning-practice score; this counter is the opposite, a count to EXCLUDE.
+        # Tracked separately rather than re-routed through
         # cat_counter: delegate_actions is derived from cat_counter["delegate"], so moving
         # a planning Agent into another category would silently cut Execution-axis
         # delegation credit and desync the corpus from the independent month_delegate
         # counter. Subtracted from `doing` at the ratio sites only.
-        self.plan_ceremony_calls = 0
+        self.planning_dispatch_calls = 0
         self.mcp_calls = 0
         self.native_calls = 0
 
@@ -201,7 +205,7 @@ class Accumulator:
         self.month_polite = Counter()
         self.month_questions = Counter()
         self.month_delegate = Counter()
-        self.month_plan_ceremony_calls = Counter()
+        self.month_planning_dispatch_calls = Counter()
         self.month_background = Counter()
         self.month_scheduled = Counter()
         self.month_fanouts = defaultdict(lambda: defaultdict(int))
@@ -289,8 +293,8 @@ class Accumulator:
         return any(nd in sl for nd in PLAN_SKILL_NEEDLES)
 
     @classmethod
-    def _is_plan_ceremony_call(cls, name, inp):
-        """Whether THIS tool call is a planning-ceremony DISPATCH, so the ratio can leave
+    def _is_planning_dispatch(cls, name, inp):
+        """Whether THIS tool call is a planning DISPATCH, so the ratio can leave
         it out of `doing`. A planning Skill classifies `execute` and a planning Agent
         classifies `delegate`, which would otherwise make thinking first lower the very
         term that rewards it.
@@ -931,10 +935,10 @@ class Accumulator:
                             if _cat == "delegate":
                                 self.month_delegate[mkey] += 1
                         self.cat_counter[_cat] += 1
-                        if self._is_plan_ceremony_call(name, inp):
-                            self.plan_ceremony_calls += 1
+                        if self._is_planning_dispatch(name, inp):
+                            self.planning_dispatch_calls += 1
                             if mkey:
-                                self.month_plan_ceremony_calls[mkey] += 1
+                                self.month_planning_dispatch_calls[mkey] += 1
                         if name.startswith("mcp__"):
                             self.mcp_calls += 1
                             parts = name.split("__")
@@ -1231,11 +1235,17 @@ class Accumulator:
         produce = self.cat_counter.get("produce", 0)
         execute = self.cat_counter.get("execute", 0)
         delegate = self.cat_counter.get("delegate", 0)
-        # Planning ceremony leaves the denominator: invoking a planning Skill (execute) or
+        # Planning dispatches leave the denominator: invoking a planning Skill (execute) or
         # dispatching a planning subagent (delegate) is thinking first, not building, so it
-        # must not lower the term that rewards thinking first. Clamped at 0 because a corpus
-        # of nothing but ceremony would otherwise produce a negative denominator.
-        doing = max(produce + execute + delegate - self.plan_ceremony_calls, 0)
+        # must not lower the term that rewards thinking first.
+        #
+        # But the subtraction must never EMPTY the denominator. A corpus whose only
+        # execute/delegate activity is planning dispatch, with no writes, would otherwise
+        # publish a ratio of 0 — the worst value for a term that rewards exploring, handed to
+        # someone who did nothing but explore and plan. Inverting a score is worse than not
+        # adjusting it, so we fall back to the raw denominator: a corpus with no build has
+        # nothing to compare its exploring against.
+        doing = _adjusted_doing(produce + execute + delegate, self.planning_dispatch_calls)
         planning_ratio = (explore / doing) if doing else 0
 
         tool_diversity = len(self.tool_counter)
@@ -1399,7 +1409,7 @@ class Accumulator:
                 # Published so the ratio reconciles against its own components in the
                 # report (explore vs produce+execute+delegate MINUS this) and so the
                 # subtraction is auditable rather than invisible.
-                "plan_ceremony_actions": self.plan_ceremony_calls,
+                "planning_dispatch_actions": self.planning_dispatch_calls,
                 "avg_session_minutes": round(avg_session_min, 1),
                 "median_session_minutes": round(median_session_min, 1),
                 "longest_run_minutes": round(longest_run_min, 1),
@@ -1547,7 +1557,7 @@ class Accumulator:
             month_grounded_sessions=self.month_grounded_sessions,
             month_write_sessions=self.month_write_sessions,
             month_session_ordered_tools=self.month_session_ordered_tools,
-            month_plan_ceremony_calls=self.month_plan_ceremony_calls,
+            month_planning_dispatch_calls=self.month_planning_dispatch_calls,
             month_compounding=self.month_compounding, month_shell_test_runs=self.month_shell_test_runs,
             month_plan_sessions=self.month_plan_sessions,
             month_planning_skill_sessions=self.month_planning_skill_sessions,
@@ -1555,7 +1565,6 @@ class Accumulator:
             month_planning_skill_unmeasured_sessions=(
                 self.month_planning_skill_unmeasured_sessions),
             month_api_errors=self.month_api_errors,
-            planning_ratio_window=planning_ratio,
             cwds=self._git_cwds(),
             gap_cap_s=GAP_CAP_S, burst_gap_s=BURST_GAP_S,
             no_tool_activity=no_tool_activity, all_sources_no_agent=all_sources_no_agent,
@@ -1618,9 +1627,10 @@ class Accumulator:
         _s_explore = _s_cats.get("explore", 0) + self.thinking_blocks
         _s_produce = _s_cats.get("produce", 0)
         _s_execute = _s_cats.get("execute", 0)
-        # Mirrors the corpus path above: planning ceremony leaves the denominator, clamped at 0.
-        _s_doing = max(_s_produce + _s_execute + _s_cats.get("delegate", 0)
-                       - self.plan_ceremony_calls, 0)
+        # Mirrors the corpus path above, including the empty-denominator fallback.
+        _s_doing = _adjusted_doing(
+            _s_produce + _s_execute + _s_cats.get("delegate", 0),
+            self.planning_dispatch_calls)
         _s_planning_ratio = round((_s_explore / _s_doing) if _s_doing else 0, 2)
 
         # Source-local git window: requested --since/--until, else this source's own
@@ -1691,7 +1701,7 @@ class Accumulator:
                 "linked_model_pairs": _s_routing_pairs,
                 "linked_model_routing_state": _s_routing_state,
                 "delegate_actions": _s_cats.get("delegate", 0),
-                "plan_ceremony_actions": self.plan_ceremony_calls,
+                "planning_dispatch_actions": self.planning_dispatch_calls,
                 "background_tasks": self.background_tasks,
                 "scheduled_actions": self.scheduled_actions,
                 "iteration_depth_mean": (round(_s_ids["mean"], 2)

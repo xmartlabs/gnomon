@@ -493,7 +493,7 @@ class TestConditionalScoring(unittest.TestCase):
         self.assertGreaterEqual(PLANNING_PRACTICE_TARGET, 0.25)
         self.assertLessEqual(PLANNING_PRACTICE_TARGET, 0.35)
 
-    def test_no_planning_sub_still_carries_the_stale_skill_label(self):
+    def test_stale_planning_skill_label_is_gone_from_every_axis(self):
         """The term counts plan mode as well as planning Skills, so "skill practice" is a
         false name. Guard the rename: mirdash keys its per-metric explanations off this
         exact string, and a silent drift there leaves the row with no explanation."""
@@ -767,6 +767,39 @@ class TestPlanningPartialCoverageScoring(unittest.TestCase):
         stats["behavior"].update(self._fields(0, 10, 0))
         labels = {s["label"] for s in score_breakdown(stats)["planning"]["subs"]}
         self.assertIn("Planning practice", labels)
+
+    def test_axis_and_breakdown_agree_on_the_split_capability_path(self):
+        """The cap for this term is `"skills" if legacy else "planning_signal"`, written out
+        three times: the compute_scores axis term, the score_breakdown axis term, and the sub
+        `_cap`. The pre-existing equality test uses a claude corpus, which holds BOTH caps, so
+        a swapped key in one of the three would go unnoticed. Cursor is the discriminating
+        case: it has `planning_signal` (create_plan normalizes to EnterPlanMode) but NOT
+        `skills` (no first-class Skill tool)."""
+        for source in ("cursor", "claude"):
+            with self.subTest(source=source):
+                stats = _v5_scoring_stats(source=source)
+                stats["behavior"].update(self._fields(3, 10, 0))
+                self.assertEqual(compute_scores(stats)["Planning"],
+                                 score_breakdown(stats)["planning"]["value"])
+                labels = {s["label"] for s in score_breakdown(stats)["planning"]["subs"]}
+                self.assertIn("Planning practice", labels)
+
+    def test_legacy_evidence_needs_the_skills_cap_so_cursor_drops_it(self):
+        """The ternary's other branch: on the LEGACY path the share comes from plan_sessions
+        over all sessions, which only a Skill-capable source populates, so cursor must drop
+        the term and the axis and breakdown must still agree about that."""
+        stats = _v5_scoring_stats(source="cursor")
+        stats["behavior"]["plan_sessions"] = 4
+        for field in ("planning_skill_eligible_sessions",
+                      "planning_skill_unmeasured_sessions",
+                      "planning_skill_session_scope_state",
+                      "planning_skill_session_share",
+                      "planning_skill_session_coverage"):
+            stats["behavior"].pop(field, None)
+        self.assertEqual(compute_scores(stats)["Planning"],
+                         score_breakdown(stats)["planning"]["value"])
+        labels = {s["label"] for s in score_breakdown(stats)["planning"]["subs"]}
+        self.assertNotIn("Planning practice", labels)
 
     def test_zero_tool_root_preserves_authoritative_planning_evidence(self):
         acc = Accumulator()

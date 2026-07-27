@@ -18,9 +18,12 @@ The scoring review considered these external recommendations:
 
 Those sources support the direction—conditional planning, relevant pre-write evidence,
 evaluated routing, and descriptive volume—but do not establish universal healthy thresholds.
-The 50% Planning and 60% Context Intelligence targets are explicit, versioned product
+The 50% Planning readiness, 30% Planning practice and 60% Context Intelligence targets are
+explicit, versioned product
 hypotheses: trivial work is excluded and eligible work still has room for direct execution
-when a formal plan or retrieval adds no value.
+when a formal plan or retrieval adds no value. The two Planning figures are different
+denominators, not a contradiction — 50% of eligible *non-trivial changes* for readiness, 30%
+of *all eligible top-level sessions* for practice.
 
 ## Decisions
 

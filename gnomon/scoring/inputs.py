@@ -12,6 +12,22 @@ from gnomon.scoring.versioning import SCORING_INPUTS_VERSION
 from gnomon.scoring.versioning import AQ_VERSION, GSTACK_VERSION, SCORE_CONTRACT_ID
 
 
+def _adjusted_doing(raw_doing, planning_dispatch_calls):
+    """The `doing` denominator of planning_ratio_explore_to_doing, with planning dispatches
+    removed — but never emptied.
+
+    Planning dispatches classify `execute`/`delegate`, so leaving them in makes thinking
+    first lower the very term that rewards it. Taking them out can, for a corpus whose only
+    execute/delegate activity IS planning, drive the denominator to 0 and publish a ratio of
+    0 — the worst value for a term that rewards exploring, handed to someone who did nothing
+    but explore and plan. Inverting a score is worse than not adjusting it, so we fall back
+    to the raw denominator: a corpus with no build has nothing to compare its exploring
+    against. Shared by the corpus, per-source and monthly paths so all three agree.
+    """
+    adjusted = raw_doing - planning_dispatch_calls
+    return adjusted if adjusted > 0 else raw_doing
+
+
 def _pairs(seq):
     return [[str(k), int(n)] for k, n in (seq or [])]
 
@@ -68,7 +84,7 @@ def build_scoring_inputs(stats):
             } for pair in (b.get("linked_model_pairs", []) or [])],
             "linked_model_routing_state": b.get("linked_model_routing_state", "unsupported"),
             "delegate_actions": b.get("delegate_actions", 0),
-            # NOTE: plan_ceremony_actions is deliberately NOT forwarded here. This payload
+            # NOTE: planning_dispatch_actions is deliberately NOT forwarded here. This payload
             # is the wire contract with the mirdash dashboard (pinned by an exact key-set
             # test), the ratio already travels as a single number, and nothing on the other
             # side reads the subtrahend. It stays on the internal stats for the report and
@@ -144,7 +160,7 @@ def build_monthly_scoring_stats(
     month_scheduled, month_fanouts, month_tool_counter, month_session_ts,
     month_skill_counter, month_subagent_counter, month_mcp_server_counter,
     month_cli_counter, month_compounding, month_shell_test_runs, month_api_errors,
-    planning_ratio_window, cwds, gap_cap_s, burst_gap_s,
+    cwds, gap_cap_s, burst_gap_s,
     no_tool_activity, all_sources_no_agent, month_plan_sessions=None,
     month_planning_skill_sessions=None,
     month_planning_skill_eligible_sessions=None,
@@ -152,7 +168,7 @@ def build_monthly_scoring_stats(
     month_session_subagent_types=None,
     month_mcp_subcategory_counter=None, month_mcp_subcategory_servers=None,
     month_grounded_sessions=None, month_write_sessions=None,
-    month_session_ordered_tools=None, month_plan_ceremony_calls=None,
+    month_session_ordered_tools=None, month_planning_dispatch_calls=None,
 ):
     out = []
     for mk in months:
@@ -194,14 +210,15 @@ def build_monthly_scoring_stats(
         for name, c in tcounter.items():
             cats[classify_tool(name)] += c
         explore = cats.get("explore", 0) + month_thinking_blocks.get(mk, 0)
-        # Planning ceremony leaves the denominator, mirroring the corpus and per-source
+        # Planning dispatches leave the denominator, mirroring the corpus and per-source
         # paths. This path can only see tool NAMES, so whether a Skill or Agent call was a
         # planning one is not decidable here — the count has to be threaded in, or corpus
         # and monthly would publish two different definitions of the same ratio and the
         # rolling-AQ blend would mix them.
-        m_ceremony = (month_plan_ceremony_calls or {}).get(mk, 0)
-        doing = max(cats.get("produce", 0) + cats.get("execute", 0)
-                    + cats.get("delegate", 0) - m_ceremony, 0)
+        m_dispatch = (month_planning_dispatch_calls or {}).get(mk, 0)
+        doing = _adjusted_doing(
+            cats.get("produce", 0) + cats.get("execute", 0) + cats.get("delegate", 0),
+            m_dispatch)
         planning_ratio = (explore / doing) if doing else 0
         # C4: cross-session consume-once credit, scoped to this month's sessions
         # (a plan artifact only credits an execution in the SAME calendar month
@@ -283,7 +300,7 @@ def build_monthly_scoring_stats(
                 "evidence_eligible_sessions": _month_agg["evidence"],
                 "ordered_facts_state": "measured" if m_tool_total else "unmeasured",
                 "delegate_actions": delegate_m,
-                # No plan_ceremony_actions here, unlike the corpus and per-source slices.
+                # No planning_dispatch_actions here, unlike the corpus and per-source slices.
                 # It would be unreachable: this dict is only consumed through
                 # build_scoring_inputs (which deliberately drops the field to keep the
                 # mirdash wire contract stable), and the raw monthly stats are discarded

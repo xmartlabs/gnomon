@@ -528,7 +528,7 @@ class TestPlanningCeremonyCallsLeaveTheDoingDenominator(unittest.TestCase):
 
     def test_planning_skill_call_leaves_doing_but_stays_a_counted_skill(self):
         stats = self._stats([self._edit(), self._tool("Skill", {"skill": "writing-plans"})])
-        self.assertEqual(stats["behavior"]["plan_ceremony_actions"], 1)
+        self.assertEqual(stats["behavior"]["planning_dispatch_actions"], 1)
         # Edit is the only doing call left: 2 explore / 1 doing. Without the subtraction
         # the planning Skill would also count as doing and this would be 1.0.
         self.assertEqual(self._ratio(stats), 2.0)
@@ -544,8 +544,8 @@ class TestPlanningCeremonyCallsLeaveTheDoingDenominator(unittest.TestCase):
                                 self._tool("Agent", {"subagent_type": "writing-plans"})])
         general = self._stats([self._edit(),
                                self._tool("Agent", {"subagent_type": "general-purpose"})])
-        self.assertEqual(planning["behavior"]["plan_ceremony_actions"], 1)
-        self.assertEqual(general["behavior"]["plan_ceremony_actions"], 0)
+        self.assertEqual(planning["behavior"]["planning_dispatch_actions"], 1)
+        self.assertEqual(general["behavior"]["planning_dispatch_actions"], 0)
         # The planning dispatch leaves the denominator; the general one does not.
         self.assertEqual(self._ratio(planning), 2.0)
         self.assertEqual(self._ratio(general), 1.0)
@@ -556,7 +556,7 @@ class TestPlanningCeremonyCallsLeaveTheDoingDenominator(unittest.TestCase):
     def test_non_planning_skill_and_agent_stay_in_doing(self):
         stats = self._stats([self._tool("Skill", {"skill": "code-review"}),
                              self._tool("Agent", {"subagent_type": "general-purpose"})])
-        self.assertEqual(stats["behavior"]["plan_ceremony_actions"], 0)
+        self.assertEqual(stats["behavior"]["planning_dispatch_actions"], 0)
         self.assertEqual(self._ratio(stats), 1.0)   # 2 explore / 2 doing
 
     def test_attribution_skill_does_not_strip_the_whole_turn_from_doing(self):
@@ -566,13 +566,13 @@ class TestPlanningCeremonyCallsLeaveTheDoingDenominator(unittest.TestCase):
         ratio would be inflated across the board."""
         stats = self._stats([self._edit(), self._tool("Bash", {"command": "pytest"})],
                             attribution="writing-plans")
-        self.assertEqual(stats["behavior"]["plan_ceremony_actions"], 0)
+        self.assertEqual(stats["behavior"]["planning_dispatch_actions"], 0)
         self.assertEqual(self._ratio(stats), 1.0)   # 2 explore / 2 doing, nothing stripped
 
     def test_bash_skill_md_read_is_a_read_not_a_ceremony_dispatch(self):
         stats = self._stats([self._edit(), self._tool(
             "Bash", {"command": "cat /Users/me/.codex/skills/writing-plans/SKILL.md"})])
-        self.assertEqual(stats["behavior"]["plan_ceremony_actions"], 0)
+        self.assertEqual(stats["behavior"]["planning_dispatch_actions"], 0)
         self.assertEqual(self._ratio(stats), 1.0)
 
     def test_monthly_slice_subtracts_ceremony_like_the_corpus(self):
@@ -589,16 +589,29 @@ class TestPlanningCeremonyCallsLeaveTheDoingDenominator(unittest.TestCase):
         # report. The monthly published block deliberately does NOT: that payload is the
         # mirdash wire contract, pinned by an exact key-set test elsewhere in this file,
         # and nothing on the other side reads it.
-        self.assertEqual(stats["behavior"]["plan_ceremony_actions"], 1)
-        self.assertNotIn("plan_ceremony_actions", may["behavior"])
+        self.assertEqual(stats["behavior"]["planning_dispatch_actions"], 1)
+        self.assertNotIn("planning_dispatch_actions", may["behavior"])
 
-    def test_ceremony_only_corpus_never_produces_a_negative_denominator(self):
-        # produce+execute+delegate == plan_ceremony_calls == 2, so the raw subtraction is
-        # exactly 0; one more ceremony call than doing calls would go negative unclamped.
+    def test_a_planning_only_corpus_keeps_a_meaningful_ratio(self):
+        """The subtraction must never zero the denominator out from under a real numerator.
+
+        A corpus whose ONLY execute/delegate activity is planning dispatch, with no writes,
+        would otherwise clamp `doing` to 0 and publish a ratio of 0 — the WORST value for a
+        term that rewards exploring, awarded to someone who did nothing but explore and plan.
+        Before the subtraction existed this corpus scored 2.0. Inverting a score is worse than
+        not adjusting it, so when the subtraction would empty the denominator we keep the raw
+        one: a corpus with no build has nothing to compare its exploring against."""
         stats = self._stats([self._tool("Skill", {"skill": "writing-plans"}),
                              self._tool("Agent", {"subagent_type": "sdd-design"})])
-        self.assertEqual(stats["behavior"]["plan_ceremony_actions"], 2)
-        self.assertEqual(self._ratio(stats), 0)   # guarded: no ZeroDivision, no negative
+        self.assertEqual(stats["behavior"]["planning_dispatch_actions"], 2)
+        self.assertEqual(self._ratio(stats), 1.0)   # 2 explore / 2 raw doing, not 2/0
+
+    def test_the_subtraction_still_applies_whenever_real_doing_survives(self):
+        # One Edit survives the subtraction, so the adjusted denominator is used: 2/1.
+        stats = self._stats([self._edit(),
+                             self._tool("Skill", {"skill": "writing-plans"})])
+        self.assertEqual(stats["behavior"]["planning_dispatch_actions"], 1)
+        self.assertEqual(self._ratio(stats), 2.0)
 
 
 class TestCrossSourcePlanToolNormalization(unittest.TestCase):
