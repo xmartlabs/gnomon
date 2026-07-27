@@ -2,7 +2,9 @@ from gnomon.analysis.metrics import _review_skill_uses, _task_skill_uses
 from gnomon.config import available_caps
 # The planning-evidence helper lives in its own module precisely so BOTH scoring systems
 # can share it: gstack imports from this module, so a gstack import here would cycle.
-from gnomon.scoring.planning_evidence import _planning_skill_evidence
+from gnomon.scoring.planning_evidence import (
+    _nonnegative_integral_count, _planning_skill_evidence,
+)
 from gnomon.scoring.versioning import SCORE_CONTRACT_ID
 
 PLANNING_TARGET = 0.50
@@ -84,19 +86,127 @@ def score_linked_routing(pairs, state):
             "eligible_completed_substantive_pairs": eligible, "excluded_reasons": excluded}
 
 
+def _weighted_mean(pairs):
+    """Σ(w·v)/Σw over (weight, value) pairs; unweighted mean when all weights are 0.
+
+    Shared with gnomon.scoring.aggregate, which imports it from here: the module edge
+    already runs aggregate -> aq, so this is the one side both cross-source combination
+    paths can see. Keeping ONE implementation is the point — the per-source rate
+    denominators below and the per-source score aggregate must not drift into two
+    different notions of "combined across sources".
+    """
+    tot_w = sum(w for w, _ in pairs)
+    if tot_w:
+        return sum(w * v for w, v in pairs) / tot_w
+    vals = [v for _, v in pairs]
+    return (sum(vals) / len(vals)) if vals else 0.0
+
+
+def _source_activity_weight(block):
+    """The ONE cross-source activity weight: that source's tool volume.
+
+    Tool calls, not sessions and not wall-clock hours: it is the only activity measure
+    every adapter records exactly (see docs/metrics-by-source.md), and it is already the
+    weight the per-source score aggregate uses.
+    """
+    return (block.get("volume") or {}).get("tool_calls_total", 0)
+
+
+def _window_block(blocks):
+    """A source's `window` scoring-input block, or None when the payload is unreadable.
+
+    Foreign/legacy payloads reach scoring as plain JSON, so nothing guarantees the shape.
+    Returning None (rather than trusting `.get`) keeps every caller fail-closed.
+    """
+    if not isinstance(blocks, dict):
+        return None
+    window = blocks.get("window")
+    return window if isinstance(window, dict) else None
+
+
 def _models_for_scoring(stats, fallback):
     """Pool model rows only from sources where model choice is scoreable."""
     by_source = stats.get("scoring_inputs_by_source")
-    if not by_source:
+    if not isinstance(by_source, dict) or not by_source:
         return fallback
     counts = {}
     for source, blocks in by_source.items():
         if "model" not in available_caps([source]):
             continue
-        window = (blocks or {}).get("window") or {}
+        window = _window_block(blocks) or {}
         for model, turns in ((window.get("stack") or {}).get("models") or []):
             counts[model] = counts.get(model, 0) + turns
     return list(counts.items())
+
+
+def _rate_source_slices(stats):
+    """(source, weight, sessions, block) per source for the activity-weighted rate
+    denominators, or [] when the pooled denominator must be used instead.
+
+    Returns [] — not a partial list — for any payload we cannot fully read, so a malformed
+    or foreign block can never contribute a phantom zero to a rate.
+    """
+    by_source = stats.get("scoring_inputs_by_source")
+    if not isinstance(by_source, dict) or len(by_source) < 2:
+        # A single-source corpus has nothing to reweight: its per-source rate IS the pooled
+        # rate. Short-circuiting keeps single-source scores bit-identical to the old path.
+        return []
+    slices = []
+    for source, blocks in by_source.items():
+        block = _window_block(blocks)
+        if block is None:
+            return []
+        volume = block.get("volume") or {}
+        sessions = _nonnegative_integral_count(volume.get("total_sessions"))
+        weight = _nonnegative_integral_count(volume.get("tool_calls_total"))
+        if sessions is None or weight is None:
+            return []
+        if sessions == 0:
+            continue          # no sessions, no rate to contribute (and no zero division)
+        slices.append((source, weight, sessions, block))
+    if len(slices) < 2 or not sum(weight for _, weight, _, _ in slices):
+        # No tool activity anywhere would make _weighted_mean fall back to an UNWEIGHTED
+        # mean, which is a third rule nobody asked for. Stay on the pooled denominator.
+        return []
+    return slices
+
+
+# Skill counts are observable through a first-class Skill tool OR through read/injected
+# skills (Cursor SKILL.md reads, Codex shell reads) — the same either/or build_pillar uses
+# for the Skill fluency axis. A source with neither cannot contribute a skill rate.
+_SKILL_OBSERVING_CAPS = frozenset({"skills", "skill_reads"})
+
+
+def _block_skills(block):
+    """A source block's skill counts, mirroring the corpus-level skills_all fallback."""
+    st = block.get("stack") or {}
+    return st.get("skills_all") or st.get("top_skills") or []
+
+
+def _block_test_runs(block):
+    return (block.get("behavior") or {}).get("shell_test_runs", 0)
+
+
+def _block_review_uses(block):
+    return _review_skill_uses(_block_skills(block))
+
+
+def _block_skills_total(block):
+    return (block.get("stack") or {}).get("skills_total", 0)
+
+
+def _block_toolsearch_calls(block):
+    return (block.get("tools") or {}).get("toolsearch_calls", 0)
+
+
+def _block_task_calls(block):
+    # Mirrors the corpus-level `task_calls`: the task TOOL plus SDD task-planning skills.
+    return ((block.get("tools") or {}).get("task_tool_calls", 0)
+            + _task_skill_uses(_block_skills(block)))
+
+
+def _block_compounding_writes(block):
+    return (block.get("stack") or {}).get("compounding_writes", 0)
 
 
 def compute_aq(stats):
@@ -123,9 +233,48 @@ def compute_aq(stats):
     # against a PER-SESSION target instead. Targets calibrated from prod non-zero-user p40-50
     # (2026-07, n~6-10) — PROVISIONAL; recalibrate as adoption grows (see --tools diagnostic).
     sessions = max((stats.get("volume", {}) or {}).get("total_sessions", 0), 1)
+    # ...but "one session" is not one unit of work across sources, and a per-session rate over
+    # the MERGED session count silently assumes it is. Measured on a real three-source corpus:
+    # 397 Claude sessions carried 68.6% of the tool calls and 91.1% of the active hours (~68
+    # calls / ~37 min each) while 540 `codex exec` one-shots carried 8.9% of the active hours
+    # (~18 calls / ~2.7 min each). Those short sessions are real, not a segmentation bug — but
+    # inside a per-session rate they act as near-pure denominator: Verification scored 34.4/35
+    # on the Claude slice alone, 4/35 on the codex slice alone, and 22.9/35 merged.
+    #
+    # So keep the rate semantics and change only how sessions are WEIGHTED. The pooled rate is
+    # already a mean of per-source rates weighted by session share (Σx_s/Σn_s = Σ(n_s/N)·rate_s);
+    # this swaps that session-count weight for the tool-volume weight the per-source score
+    # aggregate uses, then scores the result against the same target. Capping each source
+    # before averaging would ALSO move where the cap applies — letting a quiet source clamp a
+    # source that genuinely exceeds the target — so the cap stays where it was, at the end.
+    _rate_slices = _rate_source_slices(stats)
 
-    def rate(x, per_session_target):
-        return sat(x / sessions, per_session_target)
+    def rate(x, per_session_target, per_source=None, needs_caps=None):
+        """Score a per-session rate against a per-session target.
+
+        `x` is the corpus-pooled count; `per_source` extracts the SAME count from one
+        source's scoring-input block. The rate call sites do not share an upstream shape
+        (two derive from a skills list, one sums a tool count with skill uses), so the
+        per-source side has to be a callable, not a field name.
+
+        `needs_caps` names the capabilities a source must have to be able to record this
+        signal at all. A source that cannot record it is EXCLUDED from the mean rather than
+        weighted in at zero — the same rule `_models_for_scoring` applies to model rows.
+        Weighting in a structural zero would fabricate a per-source value.
+        """
+        if per_source is None or not _rate_slices:
+            return sat(x / sessions, per_session_target)
+        pairs = []
+        for source, weight, source_sessions, block in _rate_slices:
+            if needs_caps and not (needs_caps & available_caps([source])):
+                continue
+            count = _nonnegative_integral_count(per_source(block))
+            if count is None:      # unreadable block -> pooled, never a phantom zero
+                return sat(x / sessions, per_session_target)
+            pairs.append((weight, count / source_sessions))
+        if not pairs:
+            return sat(x / sessions, per_session_target)
+        return sat(_weighted_mean(pairs), per_session_target)
 
     def wsum(*terms):
         """Weighted mean of (coef, value, required_cap) terms, dropping terms whose cap is
@@ -172,14 +321,17 @@ def compute_aq(stats):
                      + o_frequency_weight * o_frequency_score
                      if o_frequency_score is not None else o_quality)
     # skills_total -> per-session rate; skills_distinct stays (diversity, correctly absolute)
-    skill_fluency = (.40 * sat(st.get("skills_distinct", 0), 40) + .30 * rate(st.get("skills_total", 0), 10)
+    skill_fluency = (.40 * sat(st.get("skills_distinct", 0), 40)
+                     + .30 * rate(st.get("skills_total", 0), 10, _block_skills_total,
+                                  _SKILL_OBSERVING_CAPS)
                      + .30 * (1.0 if has_skill(["subagent-driven", "brainstorm", "writing-plans",
                                                 "cerberus", "systematic-debugging"]) else 0.6))
     # mcp_servers/clis are distinct-counts (kept absolute); toolsearch -> per-session rate.
     # toolsearch term drops out (renormalized) when no present source can record it
     tool_command = wsum((.40, sat(t.get("mcp_servers_distinct", 0), 15), None),
                         (.40, sat(t.get("clis_distinct", 0), 40), None),
-                        (.20, rate(t.get("toolsearch_calls", 0), 0.30), "toolsearch"))
+                        (.20, rate(t.get("toolsearch_calls", 0), 0.30,
+                                   _block_toolsearch_calls, {"toolsearch"}), "toolsearch"))
     # task-tool -> per-session rate; TaskCreate/Update + SDD sdd-tasks skill invocations
     # both count as structured task planning. plan-skill term needs the Skill capability.
     task_calls = t.get("task_tool_calls", 0) + _task_skill_uses(skills)
@@ -205,7 +357,12 @@ def compute_aq(stats):
     planning_habit = (
         None if _plan_practice["share"] is None or _plan_eligible < MIN_ELIGIBLE_SESSIONS
         else sat(_plan_practice["share"], PLANNING_PRACTICE_TARGET))
-    discipline = wsum((.40, rate(task_calls, 1.0), "tasktool"),
+    # The per-source admission set is WIDER than the term's own "tasktool" cap on purpose:
+    # task_calls also counts SDD task-planning SKILLS, which a source without the task tool
+    # (codex) can still record. Admitting only tasktool-capable sources would drop that
+    # source's real task planning from the mean while the pooled numerator kept counting it.
+    discipline = wsum((.40, rate(task_calls, 1.0, _block_task_calls,
+                                 {"tasktool"} | _SKILL_OBSERVING_CAPS), "tasktool"),
                       # The legacy path derives the share from plan_sessions over ALL
                       # sessions, which only a Skill-capable source populates. The qualified
                       # path is earnable by plan mode OR a skill signal, hence the broader
@@ -249,8 +406,9 @@ def compute_aq(stats):
     # review-skill term needs observable skill data (first-class Skill tool OR SKILL.md reads /
     # injected skills on Cursor). Skill fluency / Discipline still require `skills` only.
     # test runs + review skills -> per-session rates (matches gstack's per-session test handling)
-    verification = wsum((.5, rate(b.get("shell_test_runs", 0), 1.5), None),
-                        (.5, rate(review_n, 1.5), "skill_reads"))
+    verification = wsum((.5, rate(b.get("shell_test_runs", 0), 1.5, _block_test_runs), None),
+                        (.5, rate(review_n, 1.5, _block_review_uses,
+                                  _SKILL_OBSERVING_CAPS), "skill_reads"))
     grounding = sat(b.get("planning_ratio_explore_to_doing", 0), 1.0)
     # Context Intelligence: PURE per-session grounding COVERAGE, not knowledge-MCP call/
     # server volume (the old `<50 calls` gate was gameable by auto-fired knowledge-MCP
@@ -274,7 +432,8 @@ def compute_aq(stats):
                               or b.get("no_tool_activity") or grounded is None or not ci_denom)
                      else sat(coverage, CONTEXT_INTELLIGENCE_TARGET))
     # compounding writes -> per-session rate (rewards the habit, not raw volume)
-    compounding = wsum((.6, rate(st.get("compounding_writes", 0), 0.25), None),
+    compounding = wsum((.6, rate(st.get("compounding_writes", 0), 0.25,
+                                 _block_compounding_writes), None),
                        (.4, (1.0 if has_skill(["retro", "writing-plans", "brainstorm"]) else 0.6), "skill_reads"))
     _review_skills_applicable = "skill_reads" in caps
     verification_signals = {"test_runs": b.get("shell_test_runs", 0)}
@@ -334,7 +493,8 @@ def compute_aq(stats):
     cli_calls, mcp_calls = t.get("cli_calls", 0), t.get("mcp_calls", 0)
     cli_share = cli_calls / (cli_calls + mcp_calls) if (cli_calls + mcp_calls) else 0
     # toolsearch term drops out (renormalized) when unsupported, leaving CLI-share
-    token_economy = wsum((.5, rate(t.get("toolsearch_calls", 0), 0.30), "toolsearch"),
+    token_economy = wsum((.5, rate(t.get("toolsearch_calls", 0), 0.30,
+                                   _block_toolsearch_calls, {"toolsearch"}), "toolsearch"),
                          (.5, sat(cli_share, 0.70), None))
     savvy_axes = [
         # Model mix needs a real per-turn model id; a source that masks it (Antigravity IDE)

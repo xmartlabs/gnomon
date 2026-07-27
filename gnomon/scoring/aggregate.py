@@ -37,7 +37,7 @@ AGGREGATE RULE (documented contract — mirdash mirrors this in TS):
     the combined score (e.g. tier is the band the aggregate aq_0_100 lands in).
 """
 
-from gnomon.scoring.aq import compute_aq
+from gnomon.scoring.aq import compute_aq, _source_activity_weight, _weighted_mean
 from gnomon.scoring.gstack import (
     compute_scores, score_breakdown, _axis_verdict, _nonnegative_integral_count,
     _planning_skill_evidence,
@@ -98,15 +98,6 @@ def _profile_from_block(block):
     stats = _slice_to_stats(block)
     stats["agentic"] = compute_aq(stats)
     return build_profile(stats, model_usage=[])
-
-
-def _weighted_mean(pairs):
-    """Σ(w·v)/Σw over (weight, value) pairs; unweighted mean when all weights are 0."""
-    tot_w = sum(w for w, _ in pairs)
-    if tot_w:
-        return sum(w * v for w, v in pairs) / tot_w
-    vals = [v for _, v in pairs]
-    return (sum(vals) / len(vals)) if vals else 0.0
 
 
 def _aggregate_profile(per_source):
@@ -646,7 +637,7 @@ def score_by_source(scoring_inputs_by_source, bucket_scoring_inputs_by_source=No
         weight = (sum(component["configured_weight"] * component["tool_calls_total"]
                       for component in components)
                   if components
-                  else (window.get("volume") or {}).get("tool_calls_total", 0))
+                  else _source_activity_weight(window))
         per_source_meta[src] = {
             "profile": profile,
             "block": window,
