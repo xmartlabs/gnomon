@@ -61,6 +61,11 @@ class TestCodexInjected(unittest.TestCase):
 
 def _sample_stats():
     return {
+        # AQ's rate terms divide by TOOL CALLS, so the fixture has to carry a denominator or
+        # every rate term reads 0. 12k is consistent with the mcp_calls + cli_calls below.
+        # total_sessions stays absent (it falls back to 1) so the session-scoped terms this
+        # fixture was built around are untouched by adding the rate denominator.
+        "volume": {"tool_calls_total": 12000},
         "tools": {
             "tool_diversity": 111, "tool_entropy_normalized": 0.435,
             "mcp_calls": 1984, "mcp_servers_distinct": 12,
@@ -211,7 +216,12 @@ class TestComputeAqV2(unittest.TestCase):
 
     def _craft_ci(self, grounded, sessions, no_tool_activity=False):
         s = _sample_stats()
-        s["volume"] = {"total_sessions": sessions}
+        # Override total_sessions only. Replacing the whole block would drop
+        # tool_calls_total, and an ABSENT tool-call denominator now drops every rate term
+        # (a missing field is backward-compat, not a measured zero), which renormalizes
+        # Craft and would make these Context-Intelligence weight assertions measure
+        # something other than what they name.
+        s["volume"] = {**s["volume"], "total_sessions": sessions}
         s["tools"]["mcp_grounded_sessions"] = grounded
         s["behavior"]["no_tool_activity"] = no_tool_activity
         return paxel.compute_aq(s)
@@ -1748,39 +1758,44 @@ class TestConfigurablePlanNeedles(unittest.TestCase):
         self.assertIn("brainstorm", tax.PLAN_SKILL_NEEDLES)
 
 
-class TestPerSessionRates(unittest.TestCase):
-    """The converted metrics score per-session RATE, not absolute volume: the same rate at
-    different session counts scores identically (kills the volume artifact), and a higher rate
-    scores higher regardless of total sessions."""
+class TestPerToolCallRates(unittest.TestCase):
+    """The converted metrics score a per-TOOL-CALL rate: the same rate at different corpus
+    sizes scores identically (kills the volume artifact), a denser rate scores higher, and
+    re-cutting the same work into more sessions moves nothing (a session boundary is a UI
+    artifact of whichever tool produced the transcript)."""
 
-    def _discipline(self, task_calls, sessions):
+    def _discipline(self, task_calls, tool_calls, sessions=100):
         s = _sample_stats()
-        s["volume"] = {"total_sessions": sessions}
+        s["volume"] = {"total_sessions": sessions, "tool_calls_total": tool_calls}
         s["tools"]["task_tool_calls"] = task_calls
         aq = paxel.compute_aq(s)
         breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
         return next(a for a in breadth["axes"] if a["name"] == "Discipline")["score"]
 
     def test_same_rate_same_score(self):
-        # 0.5 task-tool/session either way -> identical Discipline (volume artifact gone)
-        self.assertEqual(self._discipline(50, 100), self._discipline(500, 1000))
+        # 0.010 task-tool/call either way -> identical Discipline (volume artifact gone)
+        self.assertEqual(self._discipline(50, 5000), self._discipline(500, 50000))
 
-    def test_low_session_high_intensity_beats_high_session_low_intensity(self):
-        # fede-like (few sessions, dense) vs volume-heavy but sparse per session
-        dense = self._discipline(150, 100)   # 1.5/session
-        sparse = self._discipline(300, 1000)  # 0.3/session
-        self.assertGreater(dense, sparse)
+    def test_denser_rate_beats_sparser_rate_at_equal_count(self):
+        # Same 50 task-tool calls; the corpus that spent a quarter of the tool budget
+        # getting there is the one planning more per unit of work.
+        self.assertGreater(self._discipline(50, 5000), self._discipline(50, 20000))
 
-    def test_zero_sessions_guarded(self):
+    def test_resegmenting_the_same_work_does_not_move_the_score(self):
+        self.assertEqual(self._discipline(50, 5000, sessions=10),
+                         self._discipline(50, 5000, sessions=1000))
+
+    def test_zero_tool_calls_guarded(self):
         self._discipline(10, 0)  # must not divide by zero
 
 
 class TestToolsDiagnostic(unittest.TestCase):
-    """--tools diagnostic: per-session tool rates from the already-computed agentic signals."""
+    """--tools diagnostic: per-TOOL-CALL rates read off the already-computed agentic signals."""
 
-    def _stats(self, sessions):
+    def _stats(self, tool_calls):
         return {
-            "volume": {"total_sessions": sessions, "total_prompts": sessions * 4},
+            "volume": {"total_sessions": 100, "total_prompts": 400,
+                       "tool_calls_total": tool_calls},
             "velocity": {"active_hours": 50.0},
             "agentic": {"pillars": [
                 {"name": "Breadth", "axes": [
@@ -1797,19 +1812,39 @@ class TestToolsDiagnostic(unittest.TestCase):
 
     def test_rates_and_record(self):
         from gnomon.cli.local import tools_diagnostic
-        lines, rec = tools_diagnostic(self._stats(100))
+        lines, rec = tools_diagnostic(self._stats(10000))
         self.assertEqual(rec["sessions"], 100)
-        self.assertEqual(rec["rates"]["task_tool_calls"], 0.5)   # 50/100
-        self.assertEqual(rec["counts"]["orchestratable"], 200)     # absolute, not rate
-        self.assertEqual(rec["rates"]["toolsearch_calls"], 0.3)  # 30/100
+        self.assertEqual(rec["tool_calls"], 10000)
+        self.assertEqual(rec["rates"]["task_tool_calls"], 0.005)   # 50/10000
+        self.assertEqual(rec["counts"]["orchestratable"], 200)     # absolute, not a rate
+        self.assertEqual(rec["rates"]["toolsearch_calls"], 0.003)  # 30/10000
         self.assertEqual(rec["counts"]["review_skills"], 20)
         self.assertTrue(any("task_tool_calls" in l for l in lines))
 
-    def test_zero_sessions_no_crash(self):
+    def test_zero_tool_calls_no_crash(self):
         from gnomon.cli.local import tools_diagnostic
         lines, rec = tools_diagnostic({"volume": {"total_sessions": 0}, "agentic": {"pillars": []}})
-        self.assertEqual(rec["sessions"], 0)
+        self.assertEqual(rec["tool_calls"], 0)
         self.assertEqual(rec["rates"]["task_tool_calls"], 0.0)
+
+    def test_percent_column_equals_what_aq_scored(self):
+        """The header comment claims the % column matches AQ's scoring. Pin the claim: read
+        AQ's own normalized term back out of the published per-call rate + target and require
+        the diagnostic to print the same percentage, for every rate row."""
+        from gnomon.cli.local import _TOOLS_DIAG, tools_diagnostic
+        stats = _sample_stats()
+        stats["agentic"] = paxel.compute_aq(stats)
+        _, rec = tools_diagnostic(stats)
+        sig = {}
+        for p in stats["agentic"]["pillars"]:
+            for a in p["axes"]:
+                sig.update(a["signals"])
+        for label, key, target, is_rate in _TOOLS_DIAG:
+            if not is_rate:
+                continue
+            with self.subTest(metric=label):
+                self.assertEqual(rec["rates"][label], sig[f"{key}_per_call"])
+                self.assertEqual(target, sig[f"{key}_per_call_target"])
 
 
 class TestAggregateKnowledgeServerUnion(unittest.TestCase):

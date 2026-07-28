@@ -34,7 +34,29 @@ AGGREGATE RULE (documented contract — mirdash mirrors this in TS):
     The aggregate's non-numeric fields (tier, archetype, steering, growth_edges,
     signature_moves) are derived from the WEIGHTED-MEAN numbers via the same vocabulary /
     selection logic the single-source path uses, so they stay internally consistent with
-    the combined score (e.g. tier is the band the aggregate aq_0_100 lands in).
+    the combined score (e.g. tier is the band the aggregate aq_diagnostic lands in).
+
+ONE CANONICAL COMBINED AQ:
+    The aggregate AQ is a DIAGNOSTIC (`aggregate.aq_diagnostic`), not a published score.
+    `profile.aq` — compute_aq over the merged corpus — is the canonical combined AQ, because
+    distinct counts are UNIONS. Measured on a real three-source corpus: the merged stats see
+    7 MCP servers where the Claude slice alone sees 6, and 42 CLIs where it sees 41, so merged
+    Tool command scores 22.5/28 against 21.5/28 for Claude alone. A user who commands 7 MCP
+    servers spread across three tools genuinely commands 7; blending per-source SCORES
+    systematically under-counts breadth of tooling, and no post-hoc weighting recovers a union
+    from already-collapsed numbers. Publishing two combined numbers also forced every consumer
+    to pick one, which is a scoring decision no dashboard should be making.
+
+    Why the blend stays computed at all: the aggregate's Planning axis, archetype, steering,
+    growth edges and signature moves are derived from it, and they remain useful per-source
+    diagnostics. Only its status as a published score is retired.
+
+    The two numbers do NOT converge, and that is the argument for picking the merged one:
+    distinct counts are unions. Measured on a real three-source corpus, the merged stats
+    carried 24 MCP servers against 19 for Claude alone and 6 for Codex, and 95 distinct
+    skills against 65 and 66 — a user who commands 24 servers spread across three tools
+    genuinely commands 24, and a mean of already-scored per-source numbers cannot recover
+    that. The gap stays around 5 points; publishing one answer is what retires the choice.
 """
 
 from gnomon.scoring.aq import compute_aq
@@ -166,7 +188,13 @@ def _aggregate_profile(per_source):
     # weighted means of those so the narrative matches the combined numbers.
     arch_title, arch_quote = pick_archetype(synth, arch_scores)
     return {
-        "aq": agg_aq,
+        # NOT `aq`: the canonical combined AQ is `profile.aq`, scored from the merged corpus
+        # so distinct counts stay unions (see the module docstring). This weighted mean of
+        # per-source scores remains as an auditable per-source diagnostic and as the input the
+        # aggregate's own Planning axis and narratives are derived from — it is deliberately
+        # NOT a second published score.
+        "aq_diagnostic": agg_aq,
+        "canonical_aq": "profile.aq",
         "archetype": {"title": arch_title, "quote": arch_quote},
         "scores": _expand_axes(agg_scores, synth),
         "steering": steering_reading(synth),
@@ -602,7 +630,11 @@ def _blend_profiles(full_profile, components, full_block):
 def score_by_source(scoring_inputs_by_source, bucket_scoring_inputs_by_source=None,
                     bucket_metadata=None):
     """Given build_summary's scoring_inputs_by_source, return:
-        {"by_source": {<source>: <profile>}, "aggregate": <profile>}
+        {"by_source": {<source>: <profile>}, "aggregate": <diagnostic>}
+
+    `aggregate` is deliberately NOT the same shape as a per-source `<profile>`: its combined
+    score is published as `aq_diagnostic` (plus a `canonical_aq` pointer to `profile.aq`),
+    not as `aq`, so exactly one combined AQ ships in the payload. See the module docstring.
 
     Each per-source profile is computed from that source's WINDOW slice using that
     source's own caps (single-source → no union dilution). The aggregate combines the

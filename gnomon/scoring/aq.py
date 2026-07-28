@@ -20,6 +20,32 @@ PLANNING_TARGET = 0.50
 PLANNING_PRACTICE_TARGET = 0.30
 CONTEXT_INTELLIGENCE_TARGET = 0.60
 
+# ---- Per-tool-call rate targets ---------------------------------------------------
+# Every rate term in compute_aq is `count / tool_calls_total` (see `rate`), so its target is
+# a per-TOOL-CALL figure and had to be fitted on that basis — not divided out of the old
+# per-session numbers by a calls-per-session constant, because that is not a constant: it
+# spans 39 to 179 calls/session across the users measured below, and picking one would just
+# hide the old session denominator inside a magic number.
+#
+# Sample: the 16 real corpora in the mirdash upload archive that still carry raw scoring
+# inputs — each a full 6-month window pooled across every source that user runs, 15 of them
+# anchored at 2026-07. Basis is the one the previous per-session targets documented: p40-50
+# of the users who record the signal AT ALL (a source that cannot record it drops the term
+# in `wsum`, so those zeros are structural, not weak practice). Each value is a round number
+# inside its own [p40, p50] band; the band is quoted so a later recalibration can tell a
+# population shift from a rounding choice. Six constants cover seven rate call sites —
+# ToolSearch is scored on both Tool command and Token economy against the same target.
+SKILLS_TOTAL_PER_CALL_TARGET = 0.25          # p40 .2248 / p50 .2538, n=16 — 1 skill use per 4 calls
+TOOLSEARCH_PER_CALL_TARGET = 0.0075          # p40 .00732 / p50 .00773, n=15 — ~7 per 1000 calls
+TASK_CALLS_PER_CALL_TARGET = 0.011           # p40 .00817 / p50 .01475, n=13 — ~11 per 1000 calls
+TEST_RUNS_PER_CALL_TARGET = 0.025            # p40 .02219 / p50 .02715, n=16 — 1 test run per 40 calls
+REVIEW_SKILLS_PER_CALL_TARGET = 0.060        # p40 .04412 / p50 .08306, n=13 — widest band of the six
+COMPOUNDING_WRITES_PER_CALL_TARGET = 0.0018  # p40 .00170 / p50 .00207, n=16 — ~2 per 1000 calls
+# Still PROVISIONAL, in the same sense the per-session targets were: n=16 is the entire
+# population that has uploaded raw inputs, not a sample drawn from a larger one. Recalibrate
+# the six TOGETHER — they share one denominator, so a shift in how tool-heavy the population
+# is moves every band at once.
+
 # ---- Ordered-planning redesign (C1-C7) calibration placeholders ------------
 # All five constants below are PROVISIONAL calibration placeholders (proposal C5):
 # picked from qualitative guidance (Anthropic plan-mode guidance, Fowler's Design
@@ -84,16 +110,28 @@ def score_linked_routing(pairs, state):
             "eligible_completed_substantive_pairs": eligible, "excluded_reasons": excluded}
 
 
+def _window_block(blocks):
+    """A source's `window` scoring-input block, or None when the payload is unreadable.
+
+    Foreign/legacy payloads reach scoring as plain JSON, so nothing guarantees the shape.
+    Returning None (rather than trusting `.get`) keeps every caller fail-closed.
+    """
+    if not isinstance(blocks, dict):
+        return None
+    window = blocks.get("window")
+    return window if isinstance(window, dict) else None
+
+
 def _models_for_scoring(stats, fallback):
     """Pool model rows only from sources where model choice is scoreable."""
     by_source = stats.get("scoring_inputs_by_source")
-    if not by_source:
+    if not isinstance(by_source, dict) or not by_source:
         return fallback
     counts = {}
     for source, blocks in by_source.items():
         if "model" not in available_caps([source]):
             continue
-        window = (blocks or {}).get("window") or {}
+        window = _window_block(blocks) or {}
         for model, turns in ((window.get("stack") or {}).get("models") or []):
             counts[model] = counts.get(model, 0) + turns
     return list(counts.items())
@@ -117,15 +155,63 @@ def compute_aq(stats):
     def sat(x, target):
         return min(1.0, x / target) if target else 0.0
 
-    # Per-session rate score. An absolute cumulative count over the window penalizes low-session
-    # users by their exact session deficit (a volume artifact — verified: same per-session
-    # behavior scores 2.4x lower for a user with 2.4x fewer sessions). Score count/session
-    # against a PER-SESSION target instead. Targets calibrated from prod non-zero-user p40-50
-    # (2026-07, n~6-10) — PROVISIONAL; recalibrate as adoption grows (see --tools diagnostic).
+    # Rate score. An absolute cumulative count over the window penalizes low-volume users by
+    # their exact volume deficit (a volume artifact — verified: identical behavior scored
+    # 2.4x lower for a user with 2.4x less window), so score a RATE, not a count.
+    #
+    # The denominator is TOOL CALLS, not sessions. A session boundary is a UI artifact of
+    # whichever tool produced it, and one session is not one unit of work across tools:
+    # measured on a real three-source corpus, 397 Claude sessions carried 68.6% of the tool
+    # calls and 91.1% of the active hours (~68 calls / ~37 min each) while 540 `codex exec`
+    # one-shots carried 8.9% of the active hours (~18 calls / ~2.7 min each). Inside a
+    # per-session rate the short ones act as near-pure denominator — Verification scored
+    # 34.4/35 on the Claude slice alone, 4/35 on the codex slice alone and 22.9/35 merged,
+    # for identical behavior.
+    #
+    # Pooling numerator and denominator over the SAME unit is what makes that safe rather
+    # than merely different: Σx/Σc is exactly the tool-call-share-weighted mean of the
+    # per-source rates, so the corpus rate can never land outside the range its sources
+    # span, and no per-source reweighting is needed to get there. Weighting per-SESSION
+    # rates by tool volume instead mixes units (tool_calls × things/session is not a
+    # quantity) and inverts: 5 sessions / 2000 calls / 0 test runs beside 50 sessions / 500
+    # calls / 75 test runs scored 0.10 that way against 0.45 pooled — a 78% drop for a
+    # corpus where 50 of 55 sessions hit target. Targets are per tool call to match; see the
+    # calibrated constants at module top.
+    # `sessions` is still the right unit for the terms that count SESSIONS rather than work
+    # inside them — the planning-evidence share, ordered-planning readiness and the Context
+    # Intelligence coverage denominator all ask "in what fraction of your sessions did X
+    # happen". The unit argument above is about RATES of activity, not about those.
     sessions = max((stats.get("volume", {}) or {}).get("total_sessions", 0), 1)
+    _volume = stats.get("volume", {}) or {}
+    tool_calls = _volume.get("tool_calls_total", 0)
+    # Absent field vs measured zero. profiles.py setdefaults this to 0, so a legacy or
+    # foreign payload that simply omits it is indistinguishable from an idle corpus unless we
+    # look for the key itself. Scoring 0 there floors SIX terms across all four pillars at
+    # once (measured: AQ 47 -> 33) and publishes it as if it were behaviour. Same fail-closed
+    # rule Context Intelligence applies below: a missing field means backward-compat, so stay
+    # N/A instead of scoring a phantom 0.
+    _tool_calls_measured = "tool_calls_total" in _volume and isinstance(tool_calls, (int, float))
 
-    def rate(x, per_session_target):
-        return sat(x / sessions, per_session_target)
+    def rate(x, per_call_target):
+        # None -> wsum drops the term and renormalizes. 0.0 is reserved for a MEASURED zero:
+        # real tool activity, none of this particular signal.
+        if not _tool_calls_measured:
+            return None
+        # `> 0`, not truthiness: a corrupt negative denominator would otherwise flip the sign
+        # and escape sat()'s [0,1] range (a normalized_score of -2.9 propagating into the
+        # pillar and the AQ total).
+        return sat(x / tool_calls, per_call_target) if tool_calls > 0 else 0.0
+
+    def rate_facts(key, x, per_call_target):
+        """The three numbers that explain a rate term, for the axis `signals`: the count, the
+        per-tool-call rate it became, and the target it was scored against. The denominator
+        is corpus-wide, so a term can fall while its own count rises — publishing only the
+        count leaves that move unattributable. The rate is None when there is no usable
+        denominator, matching what the term itself scored."""
+        usable = _tool_calls_measured and tool_calls > 0
+        return {key: x,
+                f"{key}_per_call": round(x / tool_calls, 6) if usable else None,
+                f"{key}_per_call_target": per_call_target}
 
     def wsum(*terms):
         """Weighted mean of (coef, value, required_cap) terms, dropping terms whose cap is
@@ -171,16 +257,22 @@ def compute_aq(stats):
     orchestration = ((1.0 - o_frequency_weight) * o_quality
                      + o_frequency_weight * o_frequency_score
                      if o_frequency_score is not None else o_quality)
-    # skills_total -> per-session rate; skills_distinct stays (diversity, correctly absolute)
-    skill_fluency = (.40 * sat(st.get("skills_distinct", 0), 40) + .30 * rate(st.get("skills_total", 0), 10)
-                     + .30 * (1.0 if has_skill(["subagent-driven", "brainstorm", "writing-plans",
-                                                "cerberus", "systematic-debugging"]) else 0.6))
-    # mcp_servers/clis are distinct-counts (kept absolute); toolsearch -> per-session rate.
+    # skills_total -> per-tool-call rate; skills_distinct stays (diversity, correctly absolute).
+    # Via wsum, not raw arithmetic: `rate` returns None when there is no usable tool-call
+    # denominator, and wsum is what drops such a term and renormalizes the rest. Multiplying
+    # by a coefficient directly would raise a TypeError instead.
+    skill_fluency = wsum(
+        (.40, sat(st.get("skills_distinct", 0), 40), None),
+        (.30, rate(st.get("skills_total", 0), SKILLS_TOTAL_PER_CALL_TARGET), None),
+        (.30, 1.0 if has_skill(["subagent-driven", "brainstorm", "writing-plans",
+                                "cerberus", "systematic-debugging"]) else 0.6, None))
+    # mcp_servers/clis are distinct-counts (kept absolute); toolsearch -> per-tool-call rate.
     # toolsearch term drops out (renormalized) when no present source can record it
     tool_command = wsum((.40, sat(t.get("mcp_servers_distinct", 0), 15), None),
                         (.40, sat(t.get("clis_distinct", 0), 40), None),
-                        (.20, rate(t.get("toolsearch_calls", 0), 0.30), "toolsearch"))
-    # task-tool -> per-session rate; TaskCreate/Update + SDD sdd-tasks skill invocations
+                        (.20, rate(t.get("toolsearch_calls", 0), TOOLSEARCH_PER_CALL_TARGET),
+                         "toolsearch"))
+    # task-tool -> per-tool-call rate; TaskCreate/Update + SDD sdd-tasks skill invocations
     # both count as structured task planning. plan-skill term needs the Skill capability.
     task_calls = t.get("task_tool_calls", 0) + _task_skill_uses(skills)
     ordered_state = b.get("ordered_facts_state")
@@ -205,7 +297,7 @@ def compute_aq(stats):
     planning_habit = (
         None if _plan_practice["share"] is None or _plan_eligible < MIN_ELIGIBLE_SESSIONS
         else sat(_plan_practice["share"], PLANNING_PRACTICE_TARGET))
-    discipline = wsum((.40, rate(task_calls, 1.0), "tasktool"),
+    discipline = wsum((.40, rate(task_calls, TASK_CALLS_PER_CALL_TARGET), "tasktool"),
                       # The legacy path derives the share from plan_sessions over ALL
                       # sessions, which only a Skill-capable source populates. The qualified
                       # path is earnable by plan mode OR a skill signal, hence the broader
@@ -228,14 +320,20 @@ def compute_aq(stats):
          "orchestratable_sessions": _o_orchestratable,
          "delegated_orchestratable_sessions": _o_delegated},
          "delegate"),
-        ("Skill fluency", 22, skill_fluency, {"skills_distinct": st.get("skills_distinct", 0),
-         "skills_total": st.get("skills_total", 0)}, "skills"),
-        ("Tool command (MCP + CLI)", 28, tool_command, {"mcp_servers": t.get("mcp_servers_distinct", 0),
-         "clis": t.get("clis_distinct", 0), "toolsearch": t.get("toolsearch_calls", 0)}),
+        ("Skill fluency", 22, skill_fluency, {
+            "skills_distinct": st.get("skills_distinct", 0), "tool_calls": tool_calls,
+            **rate_facts("skills_total", st.get("skills_total", 0),
+                         SKILLS_TOTAL_PER_CALL_TARGET)}, "skills"),
+        ("Tool command (MCP + CLI)", 28, tool_command, {
+            "mcp_servers": t.get("mcp_servers_distinct", 0),
+            "clis": t.get("clis_distinct", 0), "tool_calls": tool_calls,
+            **rate_facts("toolsearch", t.get("toolsearch_calls", 0),
+                         TOOLSEARCH_PER_CALL_TARGET)}),
         # Surface the planning inputs, not just the task-tool count: the axis now moves with
         # planning FREQUENCY, and a score with no visible driver is not actionable.
         ("Discipline", 17, discipline, {
-            "task_tool_calls": task_calls,
+            "tool_calls": tool_calls,
+            **rate_facts("task_tool_calls", task_calls, TASK_CALLS_PER_CALL_TARGET),
             "planning_practice_share": (
                 round(_plan_practice["share"], 4)
                 if _plan_practice["share"] is not None else None),
@@ -248,9 +346,9 @@ def compute_aq(stats):
     review_n = _review_skill_uses(skills)
     # review-skill term needs observable skill data (first-class Skill tool OR SKILL.md reads /
     # injected skills on Cursor). Skill fluency / Discipline still require `skills` only.
-    # test runs + review skills -> per-session rates (matches gstack's per-session test handling)
-    verification = wsum((.5, rate(b.get("shell_test_runs", 0), 1.5), None),
-                        (.5, rate(review_n, 1.5), "skill_reads"))
+    # test runs + review skills -> per-tool-call rates
+    verification = wsum((.5, rate(b.get("shell_test_runs", 0), TEST_RUNS_PER_CALL_TARGET), None),
+                        (.5, rate(review_n, REVIEW_SKILLS_PER_CALL_TARGET), "skill_reads"))
     grounding = sat(b.get("planning_ratio_explore_to_doing", 0), 1.0)
     # Context Intelligence: PURE per-session grounding COVERAGE, not knowledge-MCP call/
     # server volume (the old `<50 calls` gate was gameable by auto-fired knowledge-MCP
@@ -273,13 +371,17 @@ def compute_aq(stats):
     context_intel = (None if ((_v5_ordered and ordered_state != "measured")
                               or b.get("no_tool_activity") or grounded is None or not ci_denom)
                      else sat(coverage, CONTEXT_INTELLIGENCE_TARGET))
-    # compounding writes -> per-session rate (rewards the habit, not raw volume)
-    compounding = wsum((.6, rate(st.get("compounding_writes", 0), 0.25), None),
+    # compounding writes -> per-tool-call rate (rewards the habit, not raw volume)
+    compounding = wsum((.6, rate(st.get("compounding_writes", 0),
+                                 COMPOUNDING_WRITES_PER_CALL_TARGET), None),
                        (.4, (1.0 if has_skill(["retro", "writing-plans", "brainstorm"]) else 0.6), "skill_reads"))
     _review_skills_applicable = "skill_reads" in caps
-    verification_signals = {"test_runs": b.get("shell_test_runs", 0)}
+    verification_signals = {
+        "tool_calls": tool_calls,
+        **rate_facts("test_runs", b.get("shell_test_runs", 0), TEST_RUNS_PER_CALL_TARGET)}
     if _review_skills_applicable:
-        verification_signals["review_skills"] = review_n
+        verification_signals.update(
+            rate_facts("review_skills", review_n, REVIEW_SKILLS_PER_CALL_TARGET))
     else:
         verification_signals["review_skills_applicable"] = False
     craft_axes = [
@@ -294,7 +396,10 @@ def compute_aq(stats):
           "score_formula": (f"coverage = evidence_eligible_sessions / eligible_change_sessions; score = min(1, coverage / {CONTEXT_INTELLIGENCE_TARGET:.2f})"
                             if _v5_ordered else
                             f"coverage = grounded_sessions / write_sessions; score = min(1, coverage / {CONTEXT_INTELLIGENCE_TARGET:.2f})")}),
-        ("Compounding", 20, compounding, {"compounding_writes": st.get("compounding_writes", 0)}),
+        ("Compounding", 20, compounding, {
+            "tool_calls": tool_calls,
+            **rate_facts("compounding_writes", st.get("compounding_writes", 0),
+                         COMPOUNDING_WRITES_PER_CALL_TARGET)}),
     ]
 
     # ---- Pillar 3: Efficiency ----
@@ -310,7 +415,6 @@ def compute_aq(stats):
     # API-error hygiene is scored as a RATE (per 100 tool calls), not an absolute count:
     # an absolute threshold penalizes volume and is window-size dependent. Target 2/100 =
     # full penalty (healthy env < 0.5/100; retry-storm / broken setup > 2/100).
-    tool_calls = stats.get("volume", {}).get("tool_calls_total", 0)
     api_per_100 = 100 * b.get("api_errors_retries", 0) / tool_calls if tool_calls else 0
     recovery = .85 * sat(b.get("error_recovery_ratio") or 0, 1.0) + .15 * (1 - sat(api_per_100, 2.0))
     eff_axes = [
@@ -334,7 +438,8 @@ def compute_aq(stats):
     cli_calls, mcp_calls = t.get("cli_calls", 0), t.get("mcp_calls", 0)
     cli_share = cli_calls / (cli_calls + mcp_calls) if (cli_calls + mcp_calls) else 0
     # toolsearch term drops out (renormalized) when unsupported, leaving CLI-share
-    token_economy = wsum((.5, rate(t.get("toolsearch_calls", 0), 0.30), "toolsearch"),
+    token_economy = wsum((.5, rate(t.get("toolsearch_calls", 0), TOOLSEARCH_PER_CALL_TARGET),
+                          "toolsearch"),
                          (.5, sat(cli_share, 0.70), None))
     savvy_axes = [
         # Model mix needs a real per-turn model id; a source that masks it (Antigravity IDE)
@@ -342,7 +447,10 @@ def compute_aq(stats):
         ("Model mix", 50, model_mix, {"distinct_models": len(models), "offload_share": round(offload_share, 2),
          "routing": routing},
          "model"),
-        ("Token economy", 50, token_economy, {"toolsearch": t.get("toolsearch_calls", 0), "cli_share": round(cli_share, 2)}),
+        ("Token economy", 50, token_economy, {
+            "tool_calls": tool_calls, "cli_share": round(cli_share, 2),
+            **rate_facts("toolsearch", t.get("toolsearch_calls", 0),
+                         TOOLSEARCH_PER_CALL_TARGET)}),
     ]
 
     def build_pillar(name, weight, axes):

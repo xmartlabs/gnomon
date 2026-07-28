@@ -73,6 +73,43 @@ class TestProfilesBySourceAndUsage(unittest.TestCase):
         self.assertIn("profile", summary)
         self.assertIn("aq", summary["profile"])
 
+    def test_exactly_one_canonical_combined_aq_is_published(self):
+        """The payload used to ship TWO combined AQ numbers — `profile.aq` (scored from the
+        merged corpus) and `profiles_by_source.aggregate.aq` (a weighted mean of per-source
+        scores). Merged is canonical because distinct counts are UNIONS: a user who commands
+        7 MCP servers spread across three tools genuinely commands 7, and averaging per-source
+        scores systematically under-counts breadth of tooling. The aggregate blend survives
+        only as a diagnostic, under a key nobody can mistake for the published score."""
+        summary, _ = self._summary()
+
+        def combined_aq_paths(node, path=()):
+            """Every dict in the payload that IS an AQ score, by path."""
+            if isinstance(node, dict):
+                if "aq_0_100" in node and "pillars" in node:
+                    yield ".".join(path)
+                for key, value in node.items():
+                    yield from combined_aq_paths(value, path + (str(key),))
+            elif isinstance(node, list):
+                for i, value in enumerate(node):
+                    yield from combined_aq_paths(value, path + (str(i),))
+
+        paths = set(combined_aq_paths(summary))
+        self.assertIn("profile.aq", paths)
+        # Per-source AQs are per-source readings, not combined scores, so they stay published;
+        # `*.aq_diagnostic` is combined but explicitly not a score. Everything else that looks
+        # like a combined AQ is a second published score, which is what must never come back.
+        published = {p for p in paths
+                     if not p.startswith("profiles_by_source.by_source.")
+                     and not p.endswith(".aq_diagnostic")}
+        self.assertEqual(published, {"profile.aq"},
+                         "exactly one combined AQ may be published; found: "
+                         f"{sorted(published)}")
+        self.assertIn("profiles_by_source.aggregate.aq_diagnostic", paths)
+        aggregate = summary["profiles_by_source"]["aggregate"]
+        self.assertNotIn("aq", aggregate)
+        self.assertEqual(aggregate["canonical_aq"], "profile.aq")
+        self.assertIn("aq_0_100", aggregate["aq_diagnostic"])
+
 
 class TestAggregatePlanningSessionPooling(unittest.TestCase):
     @staticmethod
