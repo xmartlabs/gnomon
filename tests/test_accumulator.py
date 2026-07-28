@@ -327,6 +327,14 @@ class TestAggregateOrderedC4(unittest.TestCase):
         self.assertEqual(result["eligible"], 2)
         self.assertEqual(result["planned"], 1)  # only one of the two executions
 
+    def test_intra_session_plan_is_consumed_before_cross_session_matching(self):
+        session_a = self._plan_only_session(order=1000) + self._execution_session(order=1100)
+        result = aggregate_ordered([
+            session_a,
+            self._execution_session(order=1000 + 3600),
+        ])
+        self.assertEqual((result["eligible"], result["planned"]), (2, 1))
+
     def test_plan_outside_window_not_credited(self):
         result = aggregate_ordered([
             self._plan_only_session(order=1000),

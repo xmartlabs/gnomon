@@ -1288,6 +1288,48 @@ class TestRouting(unittest.TestCase):
         })
         self.assertEqual((name, inp), ("exec", {}))
 
+    def test_codex_exec_compositor_rejects_ambiguous_scopes(self):
+        call = 'tools.exec_command({cmd:"phantom"})'
+        for script in (f"if (false) {{ await {call}; }}",
+                       f"function unused() {{ return {call}; }}",
+                       f"for (; false;) await {call};",
+                       f"if (true) {{}} else await {call};",
+                       f"false && await {call};"):
+            with self.subTest(script=script):
+                self.assertEqual(_codex_tool({
+                    "type": "custom_tool_call", "name": "exec", "input": script,
+                }), ("exec", {}))
+        self.assertEqual(_codex_tool({
+            "type": "custom_tool_call", "name": "exec", "input": f"await {call};",
+        }), ("Bash", {"command": "phantom"}))
+        self.assertEqual(_codex_tool({
+            "type": "custom_tool_call", "name": "exec",
+            "input": f"await {call}; function unused() {{}}",
+        }), ("Bash", {"command": "phantom"}))
+
+    def test_codex_exec_compositor_keeps_call_after_semicolon_free_block(self):
+        script = (
+            'if (true) {\n'
+            '  text("completed")\n'
+            '}\n'
+            'await tools.exec_command({cmd:"real"});'
+        )
+        self.assertEqual(_codex_tool({
+            "type": "custom_tool_call", "name": "exec", "input": script,
+        }), ("Bash", {"command": "real"}))
+
+    def test_codex_exec_compositor_keeps_eager_expression_calls(self):
+        scripts = (
+            'await Promise.all([tools.exec_command({cmd:"real"})]);',
+            '[await tools.exec_command({cmd:"real"})];',
+            'const result = {value: await tools.exec_command({cmd:"real"})};',
+        )
+        for script in scripts:
+            with self.subTest(script=script):
+                self.assertEqual(_codex_tool({
+                    "type": "custom_tool_call", "name": "exec", "input": script,
+                }), ("Bash", {"command": "real"}))
+
     def test_codex_exec_compositor_ignores_tool_text_inside_strings(self):
         name, inp = _codex_tool({
             "type": "custom_tool_call", "name": "exec",

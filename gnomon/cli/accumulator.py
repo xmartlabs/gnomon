@@ -1929,10 +1929,13 @@ def aggregate_ordered(sessions):
     shared artifact (one plan credits exactly one execution)."""
     derived = [derive_session_ordered_facts(facts) for facts in sessions]
 
-    artifacts = [
-        {"cwd": cwd, "order": order, "consumed": False}
-        for d in derived for cwd, order in d["plan_artifacts"]
-    ]
+    artifacts = []
+    for d in derived:
+        own = [{"cwd": cwd, "order": order, "consumed": False}
+               for cwd, order in d["plan_artifacts"]]
+        artifacts.extend(own)
+        if d["eligible"] and d["planned_intra"] and own:
+            min(own, key=lambda a: (a["order"] is None, a["order"]))["consumed"] = True
 
     pending = [d for d in derived
                if d["eligible"] and not d["planned_intra"]

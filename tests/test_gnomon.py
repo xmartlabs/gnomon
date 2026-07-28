@@ -1448,6 +1448,18 @@ class TestAntigravityDirOverride(unittest.TestCase):
         self.assertEqual(_resolve_source_dir(root, "conversations"), leaf)   # root -> subdir
         self.assertEqual(_resolve_source_dir(leaf, "conversations"), leaf)    # leaf -> no double-nest
 
+    def test_explicit_ide_dir_never_falls_back_to_local_ide(self):
+        import contextlib, io
+        from unittest import mock
+        from gnomon.cli import local
+        with mock.patch.object(local, "discover_sources", return_value=[]), \
+                mock.patch.object(local, "antigravity_summary") as summary, \
+                mock.patch.object(local, "export_antigravity_ide") as export, \
+                contextlib.redirect_stdout(io.StringIO()):
+            local.main(["antigravity-ide", "--antigravity-ide-dir=/missing", "--no-open"])
+        summary.assert_not_called()
+        export.assert_not_called()
+
 
 class TestAntigravityUnifiedSummary(unittest.TestCase):
     def test_reads_unified_trajectory_summaries_key(self):
