@@ -1,21 +1,30 @@
-"""Activity-weighted rate denominators for AQ's per-session rate terms.
+"""AQ rate denominators: tool calls, not sessions.
 
-`compute_aq`'s `rate()` used to divide a corpus-pooled count by the corpus-pooled session
+`compute_aq`'s `rate()` used to divide a corpus-pooled count by the corpus-pooled SESSION
 count. On a mixed corpus that is a volume artifact: 540 one-shot `codex exec` sessions of
 ~2.7 active minutes each weigh exactly as much in the denominator as a 37-minute Claude
 session, so they act as near-pure denominator and collapse every rate. Measured on a real
 three-source corpus, Verification scored 34.4/35 on the Claude slice alone and 22.9/35 on
 the merged corpus — same behavior, different session mix.
 
-The fix scores the TOOL-VOLUME-weighted mean of the PER-SOURCE rates instead, reusing the
-same activity weight `gnomon.scoring.aggregate` already combines per-source scores with.
-These tests pin the arithmetic of every converted term, the single-source no-op, the
-capability guard, and the fail-closed fallbacks.
+The fix pools numerator and denominator over the SAME unit: `Σ x / Σ tool_calls`. A session
+is not a unit of work; a tool call is the unit every adapter records exactly, so the ratio
+is a quantity and the pooled rate is always the tool-call-share-weighted mean of the
+per-source rates. That makes the "one quiet source drags the corpus below its own worst
+slice" inversion impossible by construction — no per-source weighting needed.
+
+These tests pin the arithmetic of every converted term, the segmentation-indifference that
+was the point of the change, the betweenness guarantee, the zero-activity fail-closed, and
+the published denominator that makes a moved score explainable.
 """
 import copy
 import unittest
 
-from gnomon.scoring.aq import compute_aq
+from gnomon.scoring.aq import (
+    COMPOUNDING_WRITES_PER_CALL_TARGET, REVIEW_SKILLS_PER_CALL_TARGET,
+    SKILLS_TOTAL_PER_CALL_TARGET, TASK_CALLS_PER_CALL_TARGET,
+    TEST_RUNS_PER_CALL_TARGET, TOOLSEARCH_PER_CALL_TARGET, compute_aq,
+)
 
 # Planning practice deliberately reports "unmeasured" in these fixtures (all six selector
 # fields present, empty denominator) so AQ's Discipline axis keeps exactly ONE live term —
@@ -142,6 +151,10 @@ def _norm(stats, pillar, axis):
     return _axis(compute_aq(stats), pillar, axis)["normalized_score"]
 
 
+def _signals(stats, pillar, axis):
+    return _axis(compute_aq(stats), pillar, axis)["signals"]
+
+
 # One long-session source (Claude-shaped) and one many-tiny-sessions source
 # (codex-shaped: 90 sessions carrying a ninth of the tool volume).
 LONG = _block(source="claude", sessions=10, tool_calls=900, test_runs=12,
@@ -150,176 +163,145 @@ LONG = _block(source="claude", sessions=10, tool_calls=900, test_runs=12,
               cli_calls=700, mcp_calls=200, mcp_servers=3, clis=4)
 TINY = _block(source="codex", sessions=90, tool_calls=100, mcp_servers=1, clis=1,
               cli_calls=80, mcp_calls=20)
-# Weights are tool volume: 900/1000 and 100/1000.
-W_LONG, W_TINY = 0.9, 0.1
+CALLS = 1000  # LONG + TINY pooled tool calls
 
 
-class TestActivityWeightedRates(unittest.TestCase):
-    """Every converted rate term scores the tool-volume-weighted mean of per-source rates."""
+def _sat(x, target):
+    return min(1.0, x / target)
 
-    def test_verification_terms_score_the_weighted_mean_of_per_source_rates(self):
-        # tests: 0.9 * (12/10) = 1.08 -> 1.08/1.5 = 0.72
-        # review: 0.9 * (6/10)  = 0.54 -> 0.54/1.5 = 0.36   (both sources CAN record skills)
-        expected = 0.5 * (W_LONG * 1.2 / 1.5) + 0.5 * (W_LONG * 0.6 / 1.5)
+
+class TestRatesAreScoredPerToolCall(unittest.TestCase):
+    """Every rate term is `pooled count / pooled tool calls` against a per-tool-call target."""
+
+    def test_verification_terms_score_counts_over_tool_calls(self):
+        expected = (0.5 * _sat(12 / CALLS, TEST_RUNS_PER_CALL_TARGET)
+                    + 0.5 * _sat(6 / CALLS, REVIEW_SKILLS_PER_CALL_TARGET))
         self.assertAlmostEqual(_norm(_corpus([LONG, TINY]), "Craft", "Verification"),
                                expected, places=9)
 
-    def test_skill_fluency_scores_the_weighted_mean_of_per_source_rates(self):
-        # .40*sat(8,40) + .30*sat(0.9*(60/10), 10) + .30*0.6 (no signature planning skill)
-        expected = .40 * (8 / 40) + .30 * (W_LONG * 6.0 / 10) + .30 * 0.6
+    def test_skill_fluency_scores_skills_over_tool_calls(self):
+        # .40*sat(8,40) + .30*rate(60 skill uses) + .30*0.6 (no signature planning skill)
+        expected = (.40 * (8 / 40)
+                    + .30 * _sat(60 / CALLS, SKILLS_TOTAL_PER_CALL_TARGET)
+                    + .30 * 0.6)
         self.assertAlmostEqual(_norm(_corpus([LONG, TINY]), "Breadth", "Skill fluency"),
                                expected, places=9)
 
-    def test_tool_command_scores_the_weighted_mean_of_per_source_toolsearch_rates(self):
-        # Only claude can record ToolSearch, so codex is excluded (not weighted in as a
-        # structural zero): the rate is claude's own 2/10 = 0.20 against the 0.30 target.
-        expected = .40 * (3 / 15) + .40 * (4 / 40) + .20 * (0.2 / 0.30)
+    def test_tool_command_scores_toolsearch_over_tool_calls(self):
+        expected = (.40 * (3 / 15) + .40 * (4 / 40)
+                    + .20 * _sat(2 / CALLS, TOOLSEARCH_PER_CALL_TARGET))
         self.assertAlmostEqual(
             _norm(_corpus([LONG, TINY]), "Breadth", "Tool command (MCP + CLI)"),
             expected, places=9)
 
-    def test_discipline_scores_the_weighted_mean_of_per_source_task_rates(self):
-        # task_calls is COMPUTED (task tool calls + SDD task-skill uses), so the per-source
-        # extractor must recompute it per block: (3 + 3)/10 = 0.6 for claude, 0 for codex.
-        expected = W_LONG * 0.6 / 1.0
+    def test_discipline_scores_task_calls_over_tool_calls(self):
+        # task_calls = task tool calls (3) + SDD task-skill uses (3)
+        expected = _sat(6 / CALLS, TASK_CALLS_PER_CALL_TARGET)
         self.assertAlmostEqual(_norm(_corpus([LONG, TINY]), "Breadth", "Discipline"),
                                expected, places=9)
 
-    def test_compounding_scores_the_weighted_mean_of_per_source_rates(self):
-        expected = .6 * (W_LONG * 0.2 / 0.25) + .4 * 0.6
+    def test_compounding_scores_writes_over_tool_calls(self):
+        expected = (.6 * _sat(2 / CALLS, COMPOUNDING_WRITES_PER_CALL_TARGET)
+                    + .4 * 0.6)
         self.assertAlmostEqual(_norm(_corpus([LONG, TINY]), "Craft", "Compounding"),
                                expected, places=9)
 
-    def test_token_economy_scores_the_weighted_mean_of_per_source_toolsearch_rates(self):
-        # cli_share = 780/1000 = 0.78 -> saturated; toolsearch as in Tool command.
-        expected = .5 * (0.2 / 0.30) + .5 * 1.0
+    def test_token_economy_scores_toolsearch_over_tool_calls(self):
+        # cli_share = 780/1000 = 0.78 -> saturated against the 0.70 target.
+        expected = .5 * _sat(2 / CALLS, TOOLSEARCH_PER_CALL_TARGET) + .5 * 1.0
         self.assertAlmostEqual(_norm(_corpus([LONG, TINY]), "Savvy", "Token economy"),
                                expected, places=9)
 
-    def test_many_tiny_sessions_no_longer_collapse_the_rate(self):
-        pooled = _norm(_corpus([LONG, TINY], per_source=False), "Craft", "Verification")
-        weighted = _norm(_corpus([LONG, TINY]), "Craft", "Verification")
-        long_source_alone = _norm(_corpus([LONG]), "Craft", "Verification")
-        # Pooling over 100 sessions scores the same behavior an order of magnitude lower.
-        self.assertAlmostEqual(pooled, 0.5 * (0.12 / 1.5) + 0.5 * (0.06 / 1.5), places=9)
-        self.assertGreater(weighted, pooled * 5)
-        # ...and the weighted number sits near the honest single-source reading.
-        self.assertGreater(weighted, long_source_alone * 0.85)
-        self.assertLessEqual(weighted, long_source_alone)
 
-    def test_weight_is_tool_volume_not_session_count(self):
-        """Swapping only the tool-call split moves the score; session counts are untouched."""
-        flipped_long = dict(LONG, volume=dict(LONG["volume"], tool_calls_total=100))
-        flipped_tiny = dict(TINY, volume=dict(TINY["volume"], tool_calls_total=900))
-        self.assertLess(_norm(_corpus([flipped_long, flipped_tiny]), "Craft", "Verification"),
-                        _norm(_corpus([LONG, TINY]), "Craft", "Verification"))
+class TestSegmentationIndifference(unittest.TestCase):
+    """The point of the change: identical work scores identically however it is cut into
+    sessions. A session boundary is a UI artifact of the tool that produced it."""
 
-    def test_source_that_cannot_record_the_signal_is_excluded_not_scored_zero(self):
-        """Cursor cannot emit ToolSearch at all. Weighting its zero in would fabricate a
-        per-source value; the term is scored from the sources that CAN record it."""
-        cursor = _block(source="cursor", sessions=90, tool_calls=100, mcp_servers=1,
-                        clis=1, cli_calls=80, mcp_calls=20)
-        term = (_axis(compute_aq(_corpus([LONG, cursor])), "Savvy", "Token economy")
-                ["normalized_score"] - .5 * 1.0) / .5
-        self.assertAlmostEqual(term, 0.2 / 0.30, places=9)
+    def test_splitting_the_same_work_into_ten_times_more_sessions_changes_nothing(self):
+        few = _block(source="claude", sessions=10, tool_calls=900, test_runs=12,
+                     review_uses=6, task_skill_uses=3, other_skill_uses=51,
+                     skills_distinct=8, toolsearch=2, task_tool=3, compounding=2,
+                     cli_calls=700, mcp_calls=200, mcp_servers=3, clis=4)
+        many = dict(copy.deepcopy(few),
+                    volume=dict(few["volume"], total_sessions=100, total_prompts=300))
+        for pillar, axis in (("Craft", "Verification"), ("Craft", "Compounding"),
+                             ("Breadth", "Skill fluency"), ("Breadth", "Discipline"),
+                             ("Breadth", "Tool command (MCP + CLI)"),
+                             ("Savvy", "Token economy")):
+            with self.subTest(axis=axis):
+                self.assertAlmostEqual(_norm(_corpus([few]), pillar, axis),
+                                       _norm(_corpus([many]), pillar, axis), places=12)
+
+    def test_many_tiny_sessions_no_longer_collapse_a_practised_habit(self):
+        """The dilution case from the review: 90 one-shot sessions carrying a tenth of the
+        tool volume must not bury the source that did the verification work."""
+        merged = _norm(_corpus([LONG, TINY]), "Craft", "Verification")
+        long_alone = _norm(_corpus([LONG]), "Craft", "Verification")
+        self.assertGreater(merged, long_alone * 0.85)
+        self.assertLessEqual(merged, long_alone)
 
 
-class TestSingleSourceAndFallbacks(unittest.TestCase):
-    """The pooled path stays in force wherever per-source rates cannot be trusted."""
+class TestNoCrossSourceInversion(unittest.TestCase):
+    """Pooling over one unit makes the corpus rate a tool-call-share-weighted mean of the
+    per-source rates, so it can never fall outside the range they span."""
 
-    def test_single_source_corpus_is_bit_identical_to_the_pooled_path(self):
-        """The most important guarantee: no Claude-only user's score moves at all."""
-        with_inputs = _corpus([LONG])
-        without_inputs = _corpus([LONG], per_source=False)
-        self.assertEqual(compute_aq(with_inputs), compute_aq(without_inputs))
+    def test_merged_score_is_the_tool_call_share_weighted_mean_of_per_source_scores(self):
+        # Deliberately below target on both sides so nothing saturates and the identity
+        # `Σx/Σc = Σ (c_s/C)·(x_s/c_s)` is visible in the SCORES, not just the rates.
+        a = _block(source="claude", sessions=5, tool_calls=2000, test_runs=20)
+        b = _block(source="codex", sessions=50, tool_calls=500, test_runs=10)
+        term = lambda stats: _signals(stats, "Craft", "Verification")["test_runs_per_call"]
+        rate_a, rate_b = term(_corpus([a])), term(_corpus([b]))
+        merged = term(_corpus([a, b]))
+        self.assertAlmostEqual(merged, 0.8 * rate_a + 0.2 * rate_b, places=12)
+        self.assertGreaterEqual(merged, min(rate_a, rate_b))
+        self.assertLessEqual(merged, max(rate_a, rate_b))
 
-    def test_single_source_scores_the_corpus_numbers_even_if_its_block_disagrees(self):
-        """The single-source short-circuit is what makes the no-regression guarantee hold
-        unconditionally. A one-source payload whose slice disagrees with the corpus totals
-        (dedup, a foreign upload, a field the slice never carried) must still be scored from
-        the corpus totals — otherwise "bit-identical for one source" would depend on the two
-        never diverging."""
-        stats = _corpus([LONG])
-        stats["scoring_inputs_by_source"]["claude"]["window"]["behavior"]["shell_test_runs"] = 0
-        self.assertAlmostEqual(_norm(stats, "Craft", "Verification"),
-                               _norm(_corpus([LONG], per_source=False), "Craft", "Verification"),
-                               places=9)
+    def test_adversarial_corpus_does_not_invert(self):
+        """The case that rejected the activity-weighted-per-session design: a quiet, very
+        tool-heavy source next to a source sitting exactly on target. The merged reading
+        must not land BELOW what the productive source earns on its own share of the work."""
+        a = _block(source="claude", sessions=5, tool_calls=2000, test_runs=0)
+        b = _block(source="codex", sessions=50, tool_calls=500, test_runs=75)
+        merged = _norm(_corpus([a, b]), "Craft", "Verification")
+        a_alone = _norm(_corpus([a]), "Craft", "Verification")
+        b_alone = _norm(_corpus([b]), "Craft", "Verification")
+        self.assertGreaterEqual(merged, a_alone)
+        self.assertLessEqual(merged, b_alone)
+        # 75 test runs over 2500 pooled calls = 0.03/call, above the target -> full credit
+        # on the test-run half of the axis. The rejected design scored this 0.1.
+        self.assertAlmostEqual(merged, 0.5, places=9)
 
-    def test_corpus_without_per_source_inputs_falls_back_to_pooled(self):
-        """Legacy / external blocks predating scoring_inputs_by_source keep scoring."""
-        stats = _corpus([LONG, TINY], per_source=False)
-        self.assertNotIn("scoring_inputs_by_source", stats)
-        self.assertAlmostEqual(_norm(stats, "Craft", "Verification"),
-                               0.5 * (0.12 / 1.5) + 0.5 * (0.06 / 1.5), places=9)
 
-    def test_malformed_per_source_block_falls_back_to_pooled_not_a_phantom_zero(self):
-        pooled = _norm(_corpus([LONG, TINY], per_source=False), "Craft", "Verification")
-        for label, by_source in (
-            ("block is not a dict", {"claude": None, "codex": 7}),
-            ("no window", {"claude": {"monthly": []}, "codex": {"monthly": []}}),
-            ("window is not a dict", {"claude": {"window": 3}, "codex": {"window": 4}}),
-            ("sessions missing", {"claude": {"window": {"volume": {}}},
-                                  "codex": {"window": {"volume": {}}}}),
-            ("sessions not a count", {"claude": {"window": {"volume": {
-                                          "total_sessions": "ten", "tool_calls_total": 900}}},
-                                      "codex": {"window": copy.deepcopy(TINY)}}),
-            ("tool calls not a count", {"claude": {"window": {"volume": {
-                                            "total_sessions": 10, "tool_calls_total": None}}},
-                                        "codex": {"window": copy.deepcopy(TINY)}}),
+class TestFailClosedAndObservability(unittest.TestCase):
+    def test_corpus_with_no_tool_activity_scores_zero_not_a_phantom_maximum(self):
+        """No tool calls means no rate to read. Clamping the denominator to 1 instead would
+        turn any stray count into a saturated score."""
+        idle = _block(source="claude", sessions=40, tool_calls=0, test_runs=7,
+                      review_uses=7)
+        self.assertEqual(_norm(_corpus([idle]), "Craft", "Verification"), 0.0)
+
+    def test_every_rate_axis_publishes_the_denominator_it_used(self):
+        """A score that moved must be attributable to numerator or denominator. Only
+        Discipline used to export its driver; a rate with an invisible denominator is not
+        an explainable score."""
+        stats = _corpus([LONG, TINY])
+        for pillar, axis, key, target in (
+            ("Craft", "Verification", "test_runs", TEST_RUNS_PER_CALL_TARGET),
+            ("Craft", "Verification", "review_skills", REVIEW_SKILLS_PER_CALL_TARGET),
+            ("Craft", "Compounding", "compounding_writes",
+             COMPOUNDING_WRITES_PER_CALL_TARGET),
+            ("Breadth", "Skill fluency", "skills_total", SKILLS_TOTAL_PER_CALL_TARGET),
+            ("Breadth", "Discipline", "task_tool_calls", TASK_CALLS_PER_CALL_TARGET),
+            ("Breadth", "Tool command (MCP + CLI)", "toolsearch",
+             TOOLSEARCH_PER_CALL_TARGET),
+            ("Savvy", "Token economy", "toolsearch", TOOLSEARCH_PER_CALL_TARGET),
         ):
-            with self.subTest(case=label):
-                stats = _corpus([LONG, TINY], per_source=False)
-                stats["scoring_inputs_by_source"] = by_source
-                self.assertAlmostEqual(_norm(stats, "Craft", "Verification"), pooled,
-                                       places=9)
-
-    def test_malformed_count_degrades_only_its_own_term(self):
-        """A single unreadable count falls back per TERM, not per axis: the review-skill
-        rate is still trustworthy when the test-run count is garbage."""
-        stats = _corpus([LONG, TINY], per_source=False)
-        stats["scoring_inputs_by_source"] = {
-            "claude": {"window": dict(copy.deepcopy(LONG),
-                                      behavior=dict(LONG["behavior"], shell_test_runs="lots"))},
-            "codex": {"window": copy.deepcopy(TINY)},
-        }
-        expected = 0.5 * (0.12 / 1.5) + 0.5 * (W_LONG * 0.6 / 1.5)
-        self.assertAlmostEqual(_norm(stats, "Craft", "Verification"), expected, places=9)
-
-    def test_sources_without_tool_activity_fall_back_to_pooled(self):
-        """Zero total weight must not silently become an unweighted mean."""
-        idle_long = dict(LONG, volume=dict(LONG["volume"], tool_calls_total=0))
-        idle_tiny = dict(TINY, volume=dict(TINY["volume"], tool_calls_total=0))
-        stats = _corpus([idle_long, idle_tiny])
-        pooled = _corpus([idle_long, idle_tiny], per_source=False)
-        self.assertAlmostEqual(_norm(stats, "Craft", "Verification"),
-                               _norm(pooled, "Craft", "Verification"), places=9)
-
-    def test_source_with_no_sessions_contributes_nothing(self):
-        """An empty source must neither divide by zero nor dilute the live ones."""
-        empty = _block(source="cursor", sessions=0, tool_calls=0)
-        expected = 0.5 * (W_LONG * 1.2 / 1.5) + 0.5 * (W_LONG * 0.6 / 1.5)
-        self.assertAlmostEqual(_norm(_corpus([LONG, TINY, empty]), "Craft", "Verification"),
-                               expected, places=9)
-        self.assertAlmostEqual(_norm(_corpus([LONG, TINY, empty]), "Craft", "Verification"),
-                               _norm(_corpus([LONG, TINY]), "Craft", "Verification"),
-                               places=9)
-
-
-class TestRecencyBucketPath(unittest.TestCase):
-    """gnomon/cli/local.py hands each rolling AQ bucket its own per-source inputs
-    (`bucket_stats["scoring_inputs_by_source"] = {src: {"window": <block>}}`), so the
-    bucketed AQ must take the weighted path too — buckets are where a short window of
-    one-shot sessions distorts a rate most."""
-
-    def test_bucket_shaped_per_source_inputs_use_the_weighted_path(self):
-        stats = _corpus([LONG, TINY], per_source=False)
-        # Bucket blocks carry only "window" — no "monthly" key, unlike the window payload.
-        stats["scoring_inputs_by_source"] = {
-            "claude": {"window": copy.deepcopy(LONG)},
-            "codex": {"window": copy.deepcopy(TINY)},
-        }
-        expected = 0.5 * (W_LONG * 1.2 / 1.5) + 0.5 * (W_LONG * 0.6 / 1.5)
-        self.assertAlmostEqual(_norm(stats, "Craft", "Verification"), expected, places=9)
+            with self.subTest(axis=axis, key=key):
+                sig = _signals(stats, pillar, axis)
+                self.assertEqual(sig["tool_calls"], CALLS)
+                self.assertAlmostEqual(sig[f"{key}_per_call"], sig[key] / CALLS, places=9)
+                self.assertEqual(sig[f"{key}_per_call_target"], target)
 
 
 if __name__ == "__main__":

@@ -3,16 +3,16 @@
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 87,
+          "aq_0_100": 83,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 77.6,
+              "score": 76.9,
               "weight": 30
             },
             {
               "name": "Craft",
-              "score": 92.5,
+              "score": 80.8,
               "weight": 35
             },
             {
@@ -289,7 +289,7 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 87,
+            "aq_0_100": 83,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -322,11 +322,14 @@
                   {
                     "base_weight": 22,
                     "name": "Skill fluency",
-                    "normalized_score": 0.85,
-                    "score": 18.7,
+                    "normalized_score": 0.82,
+                    "score": 18.0,
                     "signals": {
                       "skills_distinct": 25,
-                      "skills_total": 900
+                      "skills_total": 900,
+                      "skills_total_per_call": 0.225,
+                      "skills_total_per_call_target": 0.25,
+                      "tool_calls": 4000
                     },
                     "weight": 22
                   },
@@ -338,7 +341,10 @@
                     "signals": {
                       "clis": 25,
                       "mcp_servers": 10,
-                      "toolsearch": 150
+                      "tool_calls": 4000,
+                      "toolsearch": 150,
+                      "toolsearch_per_call": 0.0375,
+                      "toolsearch_per_call_target": 0.0075
                     },
                     "weight": 28
                   },
@@ -351,13 +357,16 @@
                       "planning_practice_eligible_sessions": 40,
                       "planning_practice_share": 0.4,
                       "planning_practice_target": 0.3,
-                      "task_tool_calls": 300
+                      "task_tool_calls": 300,
+                      "task_tool_calls_per_call": 0.075,
+                      "task_tool_calls_per_call_target": 0.011,
+                      "tool_calls": 4000
                     },
                     "weight": 17
                   }
                 ],
                 "name": "Breadth",
-                "score": 77.6,
+                "score": 76.9,
                 "weight": 30
               },
               {
@@ -365,11 +374,16 @@
                   {
                     "base_weight": 35,
                     "name": "Verification",
-                    "normalized_score": 1.0,
-                    "score": 35.0,
+                    "normalized_score": 0.666666666666667,
+                    "score": 23.3,
                     "signals": {
                       "review_skills": 80,
-                      "test_runs": 120
+                      "review_skills_per_call": 0.02,
+                      "review_skills_per_call_target": 0.06,
+                      "test_runs": 120,
+                      "test_runs_per_call": 0.03,
+                      "test_runs_per_call_target": 0.025,
+                      "tool_calls": 4000
                     },
                     "weight": 35
                   },
@@ -405,13 +419,16 @@
                     "normalized_score": 1.0,
                     "score": 20.0,
                     "signals": {
-                      "compounding_writes": 20
+                      "compounding_writes": 20,
+                      "compounding_writes_per_call": 0.005,
+                      "compounding_writes_per_call_target": 0.0018,
+                      "tool_calls": 4000
                     },
                     "weight": 20
                   }
                 ],
                 "name": "Craft",
-                "score": 92.5,
+                "score": 80.8,
                 "weight": 35
               },
               {
@@ -470,7 +487,10 @@
                     "score": 50.0,
                     "signals": {
                       "cli_share": 0.79,
-                      "toolsearch": 150
+                      "tool_calls": 4000,
+                      "toolsearch": 150,
+                      "toolsearch_per_call": 0.0375,
+                      "toolsearch_per_call_target": 0.0075
                     },
                     "weight": 50
                   }
@@ -891,7 +911,7 @@
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 46,
+          "aq_0_100": 49,
           "pillars": [
             {
               "name": "Breadth",
@@ -900,7 +920,7 @@
             },
             {
               "name": "Craft",
-              "score": 22.9,
+              "score": 31.3,
               "weight": 35
             },
             {
@@ -918,7 +938,7 @@
           "tier": "Adequate"
         },
         "archetype": {
-          "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is craft \u2014 that's where the next gain is.",
+          "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is breadth \u2014 that's where the next gain is.",
           "title": "Adequate"
         },
         "canonical_aq": "profile.aq",
@@ -1175,7 +1195,7 @@
       "by_source": {
         "cursor": {
           "aq": {
-            "aq_0_100": 46,
+            "aq_0_100": 49,
             "mcp_vs_cli": {
               "cli_calls": 100,
               "cli_distinct": 8,
@@ -1212,7 +1232,10 @@
                     "score": 4.0,
                     "signals": {
                       "skills_distinct": 0,
-                      "skills_total": 0
+                      "skills_total": 0,
+                      "skills_total_per_call": 0.0,
+                      "skills_total_per_call_target": 0.25,
+                      "tool_calls": 500
                     },
                     "weight": 22
                   },
@@ -1224,7 +1247,10 @@
                     "signals": {
                       "clis": 8,
                       "mcp_servers": 2,
-                      "toolsearch": 0
+                      "tool_calls": 500,
+                      "toolsearch": 0,
+                      "toolsearch_per_call": 0.0,
+                      "toolsearch_per_call_target": 0.0075
                     },
                     "weight": 28
                   },
@@ -1237,7 +1263,10 @@
                       "planning_practice_eligible_sessions": 10,
                       "planning_practice_share": 0.2,
                       "planning_practice_target": 0.3,
-                      "task_tool_calls": 0
+                      "task_tool_calls": 0,
+                      "task_tool_calls_per_call": 0.0,
+                      "task_tool_calls_per_call_target": 0.011,
+                      "tool_calls": 500
                     },
                     "weight": 17
                   }
@@ -1251,11 +1280,16 @@
                   {
                     "base_weight": 35,
                     "name": "Verification",
-                    "normalized_score": 0.166666666666667,
-                    "score": 5.8,
+                    "normalized_score": 0.2,
+                    "score": 7.0,
                     "signals": {
                       "review_skills": 0,
-                      "test_runs": 5
+                      "review_skills_per_call": 0.0,
+                      "review_skills_per_call_target": 0.06,
+                      "test_runs": 5,
+                      "test_runs_per_call": 0.01,
+                      "test_runs_per_call_target": 0.025,
+                      "tool_calls": 500
                     },
                     "weight": 35
                   },
@@ -1288,16 +1322,19 @@
                   {
                     "base_weight": 20,
                     "name": "Compounding",
-                    "normalized_score": 0.48,
-                    "score": 9.6,
+                    "normalized_score": 0.84,
+                    "score": 16.8,
                     "signals": {
-                      "compounding_writes": 1
+                      "compounding_writes": 1,
+                      "compounding_writes_per_call": 0.002,
+                      "compounding_writes_per_call_target": 0.0018,
+                      "tool_calls": 500
                     },
                     "weight": 20
                   }
                 ],
                 "name": "Craft",
-                "score": 22.9,
+                "score": 31.3,
                 "weight": 35
               },
               {
@@ -1338,7 +1375,10 @@
                     "score": 95.2,
                     "signals": {
                       "cli_share": 0.67,
-                      "toolsearch": 0
+                      "tool_calls": 500,
+                      "toolsearch": 0,
+                      "toolsearch_per_call": 0.0,
+                      "toolsearch_per_call_target": 0.0075
                     },
                     "weight": 100
                   }
@@ -1359,7 +1399,7 @@
             }
           },
           "archetype": {
-            "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is craft \u2014 that's where the next gain is.",
+            "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is breadth \u2014 that's where the next gain is.",
             "title": "Adequate"
           },
           "growth_edges": [
@@ -1681,16 +1721,16 @@
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 82,
+          "aq_0_100": 79,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 71.9,
+              "score": 71.3,
               "weight": 30
             },
             {
               "name": "Craft",
-              "score": 84.8,
+              "score": 75.3,
               "weight": 35
             },
             {
@@ -1968,7 +2008,7 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 87,
+            "aq_0_100": 83,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -2001,11 +2041,14 @@
                   {
                     "base_weight": 22,
                     "name": "Skill fluency",
-                    "normalized_score": 0.85,
-                    "score": 18.7,
+                    "normalized_score": 0.82,
+                    "score": 18.0,
                     "signals": {
                       "skills_distinct": 25,
-                      "skills_total": 900
+                      "skills_total": 900,
+                      "skills_total_per_call": 0.225,
+                      "skills_total_per_call_target": 0.25,
+                      "tool_calls": 4000
                     },
                     "weight": 22
                   },
@@ -2017,7 +2060,10 @@
                     "signals": {
                       "clis": 25,
                       "mcp_servers": 10,
-                      "toolsearch": 150
+                      "tool_calls": 4000,
+                      "toolsearch": 150,
+                      "toolsearch_per_call": 0.0375,
+                      "toolsearch_per_call_target": 0.0075
                     },
                     "weight": 28
                   },
@@ -2030,13 +2076,16 @@
                       "planning_practice_eligible_sessions": 40,
                       "planning_practice_share": 0.4,
                       "planning_practice_target": 0.3,
-                      "task_tool_calls": 300
+                      "task_tool_calls": 300,
+                      "task_tool_calls_per_call": 0.075,
+                      "task_tool_calls_per_call_target": 0.011,
+                      "tool_calls": 4000
                     },
                     "weight": 17
                   }
                 ],
                 "name": "Breadth",
-                "score": 77.6,
+                "score": 76.9,
                 "weight": 30
               },
               {
@@ -2044,11 +2093,16 @@
                   {
                     "base_weight": 35,
                     "name": "Verification",
-                    "normalized_score": 1.0,
-                    "score": 35.0,
+                    "normalized_score": 0.666666666666667,
+                    "score": 23.3,
                     "signals": {
                       "review_skills": 80,
-                      "test_runs": 120
+                      "review_skills_per_call": 0.02,
+                      "review_skills_per_call_target": 0.06,
+                      "test_runs": 120,
+                      "test_runs_per_call": 0.03,
+                      "test_runs_per_call_target": 0.025,
+                      "tool_calls": 4000
                     },
                     "weight": 35
                   },
@@ -2084,13 +2138,16 @@
                     "normalized_score": 1.0,
                     "score": 20.0,
                     "signals": {
-                      "compounding_writes": 20
+                      "compounding_writes": 20,
+                      "compounding_writes_per_call": 0.005,
+                      "compounding_writes_per_call_target": 0.0018,
+                      "tool_calls": 4000
                     },
                     "weight": 20
                   }
                 ],
                 "name": "Craft",
-                "score": 92.5,
+                "score": 80.8,
                 "weight": 35
               },
               {
@@ -2149,7 +2206,10 @@
                     "score": 50.0,
                     "signals": {
                       "cli_share": 0.79,
-                      "toolsearch": 150
+                      "tool_calls": 4000,
+                      "toolsearch": 150,
+                      "toolsearch_per_call": 0.0375,
+                      "toolsearch_per_call_target": 0.0075
                     },
                     "weight": 50
                   }
@@ -2412,7 +2472,7 @@
         },
         "cursor": {
           "aq": {
-            "aq_0_100": 46,
+            "aq_0_100": 49,
             "mcp_vs_cli": {
               "cli_calls": 100,
               "cli_distinct": 8,
@@ -2449,7 +2509,10 @@
                     "score": 4.0,
                     "signals": {
                       "skills_distinct": 0,
-                      "skills_total": 0
+                      "skills_total": 0,
+                      "skills_total_per_call": 0.0,
+                      "skills_total_per_call_target": 0.25,
+                      "tool_calls": 500
                     },
                     "weight": 22
                   },
@@ -2461,7 +2524,10 @@
                     "signals": {
                       "clis": 8,
                       "mcp_servers": 2,
-                      "toolsearch": 0
+                      "tool_calls": 500,
+                      "toolsearch": 0,
+                      "toolsearch_per_call": 0.0,
+                      "toolsearch_per_call_target": 0.0075
                     },
                     "weight": 28
                   },
@@ -2474,7 +2540,10 @@
                       "planning_practice_eligible_sessions": 10,
                       "planning_practice_share": 0.2,
                       "planning_practice_target": 0.3,
-                      "task_tool_calls": 0
+                      "task_tool_calls": 0,
+                      "task_tool_calls_per_call": 0.0,
+                      "task_tool_calls_per_call_target": 0.011,
+                      "tool_calls": 500
                     },
                     "weight": 17
                   }
@@ -2488,11 +2557,16 @@
                   {
                     "base_weight": 35,
                     "name": "Verification",
-                    "normalized_score": 0.166666666666667,
-                    "score": 5.8,
+                    "normalized_score": 0.2,
+                    "score": 7.0,
                     "signals": {
                       "review_skills": 0,
-                      "test_runs": 5
+                      "review_skills_per_call": 0.0,
+                      "review_skills_per_call_target": 0.06,
+                      "test_runs": 5,
+                      "test_runs_per_call": 0.01,
+                      "test_runs_per_call_target": 0.025,
+                      "tool_calls": 500
                     },
                     "weight": 35
                   },
@@ -2525,16 +2599,19 @@
                   {
                     "base_weight": 20,
                     "name": "Compounding",
-                    "normalized_score": 0.48,
-                    "score": 9.6,
+                    "normalized_score": 0.84,
+                    "score": 16.8,
                     "signals": {
-                      "compounding_writes": 1
+                      "compounding_writes": 1,
+                      "compounding_writes_per_call": 0.002,
+                      "compounding_writes_per_call_target": 0.0018,
+                      "tool_calls": 500
                     },
                     "weight": 20
                   }
                 ],
                 "name": "Craft",
-                "score": 22.9,
+                "score": 31.3,
                 "weight": 35
               },
               {
@@ -2575,7 +2652,10 @@
                     "score": 95.2,
                     "signals": {
                       "cli_share": 0.67,
-                      "toolsearch": 0
+                      "tool_calls": 500,
+                      "toolsearch": 0,
+                      "toolsearch_per_call": 0.0,
+                      "toolsearch_per_call_target": 0.0075
                     },
                     "weight": 100
                   }
@@ -2596,7 +2676,7 @@
             }
           },
           "archetype": {
-            "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is craft \u2014 that's where the next gain is.",
+            "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is breadth \u2014 that's where the next gain is.",
             "title": "Adequate"
           },
           "growth_edges": [
@@ -3067,16 +3147,16 @@
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 81,
+          "aq_0_100": 77,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 77.6,
+              "score": 76.9,
               "weight": 30
             },
             {
               "name": "Craft",
-              "score": 76.5,
+              "score": 64.8,
               "weight": 35
             },
             {
@@ -3353,7 +3433,7 @@
       "by_source": {
         "claude-boundary": {
           "aq": {
-            "aq_0_100": 81,
+            "aq_0_100": 77,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -3386,11 +3466,14 @@
                   {
                     "base_weight": 22,
                     "name": "Skill fluency",
-                    "normalized_score": 0.85,
-                    "score": 18.7,
+                    "normalized_score": 0.82,
+                    "score": 18.0,
                     "signals": {
                       "skills_distinct": 25,
-                      "skills_total": 900
+                      "skills_total": 900,
+                      "skills_total_per_call": 0.225,
+                      "skills_total_per_call_target": 0.25,
+                      "tool_calls": 4000
                     },
                     "weight": 22
                   },
@@ -3402,7 +3485,10 @@
                     "signals": {
                       "clis": 25,
                       "mcp_servers": 10,
-                      "toolsearch": 150
+                      "tool_calls": 4000,
+                      "toolsearch": 150,
+                      "toolsearch_per_call": 0.0375,
+                      "toolsearch_per_call_target": 0.0075
                     },
                     "weight": 28
                   },
@@ -3415,13 +3501,16 @@
                       "planning_practice_eligible_sessions": 40,
                       "planning_practice_share": 0.4,
                       "planning_practice_target": 0.3,
-                      "task_tool_calls": 300
+                      "task_tool_calls": 300,
+                      "task_tool_calls_per_call": 0.075,
+                      "task_tool_calls_per_call_target": 0.011,
+                      "tool_calls": 4000
                     },
                     "weight": 17
                   }
                 ],
                 "name": "Breadth",
-                "score": 77.6,
+                "score": 76.9,
                 "weight": 30
               },
               {
@@ -3429,11 +3518,16 @@
                   {
                     "base_weight": 35,
                     "name": "Verification",
-                    "normalized_score": 1.0,
-                    "score": 35.0,
+                    "normalized_score": 0.666666666666667,
+                    "score": 23.3,
                     "signals": {
                       "review_skills": 80,
-                      "test_runs": 120
+                      "review_skills_per_call": 0.02,
+                      "review_skills_per_call_target": 0.06,
+                      "test_runs": 120,
+                      "test_runs_per_call": 0.03,
+                      "test_runs_per_call_target": 0.025,
+                      "tool_calls": 4000
                     },
                     "weight": 35
                   },
@@ -3469,13 +3563,16 @@
                     "normalized_score": 1.0,
                     "score": 20.0,
                     "signals": {
-                      "compounding_writes": 20
+                      "compounding_writes": 20,
+                      "compounding_writes_per_call": 0.005,
+                      "compounding_writes_per_call_target": 0.0018,
+                      "tool_calls": 4000
                     },
                     "weight": 20
                   }
                 ],
                 "name": "Craft",
-                "score": 76.5,
+                "score": 64.8,
                 "weight": 35
               },
               {
@@ -3534,7 +3631,10 @@
                     "score": 50.0,
                     "signals": {
                       "cli_share": 0.79,
-                      "toolsearch": 150
+                      "tool_calls": 4000,
+                      "toolsearch": 150,
+                      "toolsearch_per_call": 0.0375,
+                      "toolsearch_per_call_target": 0.0075
                     },
                     "weight": 50
                   }
@@ -4257,7 +4357,10 @@
                     "score": 4.0,
                     "signals": {
                       "skills_distinct": 0,
-                      "skills_total": 0
+                      "skills_total": 0,
+                      "skills_total_per_call": 0.0,
+                      "skills_total_per_call_target": 0.25,
+                      "tool_calls": 0
                     },
                     "weight": 22
                   },
@@ -4269,7 +4372,10 @@
                     "signals": {
                       "clis": 0,
                       "mcp_servers": 0,
-                      "toolsearch": 0
+                      "tool_calls": 0,
+                      "toolsearch": 0,
+                      "toolsearch_per_call": 0.0,
+                      "toolsearch_per_call_target": 0.0075
                     },
                     "weight": 28
                   },
@@ -4282,7 +4388,10 @@
                       "planning_practice_eligible_sessions": 0,
                       "planning_practice_share": null,
                       "planning_practice_target": 0.3,
-                      "task_tool_calls": 0
+                      "task_tool_calls": 0,
+                      "task_tool_calls_per_call": 0.0,
+                      "task_tool_calls_per_call_target": 0.011,
+                      "tool_calls": 0
                     },
                     "weight": 17
                   }
@@ -4300,7 +4409,12 @@
                     "score": 0.0,
                     "signals": {
                       "review_skills": 0,
-                      "test_runs": 0
+                      "review_skills_per_call": 0.0,
+                      "review_skills_per_call_target": 0.06,
+                      "test_runs": 0,
+                      "test_runs_per_call": 0.0,
+                      "test_runs_per_call_target": 0.025,
+                      "tool_calls": 0
                     },
                     "weight": 44
                   },
@@ -4320,7 +4434,10 @@
                     "normalized_score": 0.24,
                     "score": 6.0,
                     "signals": {
-                      "compounding_writes": 0
+                      "compounding_writes": 0,
+                      "compounding_writes_per_call": 0.0,
+                      "compounding_writes_per_call_target": 0.0018,
+                      "tool_calls": 0
                     },
                     "weight": 25
                   }
@@ -4388,7 +4505,10 @@
                     "score": 0.0,
                     "signals": {
                       "cli_share": 0,
-                      "toolsearch": 0
+                      "tool_calls": 0,
+                      "toolsearch": 0,
+                      "toolsearch_per_call": 0.0,
+                      "toolsearch_per_call_target": 0.0075
                     },
                     "weight": 50
                   }
@@ -4890,16 +5010,16 @@
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 87,
+          "aq_0_100": 81,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 77.6,
+              "score": 76.9,
               "weight": 30
             },
             {
               "name": "Craft",
-              "score": 91.3,
+              "score": 77.3,
               "weight": 35
             },
             {
@@ -5176,11 +5296,11 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 87,
+            "aq_0_100": 81,
             "blend": {
               "buckets": [
                 {
-                  "component_aq": 90,
+                  "component_aq": 85,
                   "configured_weight": 0.65,
                   "day_bounds": {
                     "lower": 0,
@@ -5190,14 +5310,14 @@
                   "id": "recent_30d"
                 },
                 {
-                  "component_aq": 81,
+                  "component_aq": 74,
                   "configured_weight": 0.35,
                   "day_bounds": null,
                   "effective_weight": 0.35,
                   "id": "full_window"
                 }
               ],
-              "full_aq": 81
+              "full_aq": 74
             },
             "mcp_vs_cli": {
               "cli_calls": 1500,
@@ -5272,30 +5392,39 @@
                       {
                         "effective_weight": 0.65,
                         "id": "recent_30d",
-                        "normalized_score": 0.85,
-                        "score": 18.7,
+                        "normalized_score": 0.82,
+                        "score": 18.0,
                         "signals": {
                           "skills_distinct": 25,
-                          "skills_total": 900
+                          "skills_total": 900,
+                          "skills_total_per_call": 0.225,
+                          "skills_total_per_call_target": 0.25,
+                          "tool_calls": 4000
                         }
                       },
                       {
                         "effective_weight": 0.35,
                         "id": "full_window",
-                        "normalized_score": 0.85,
-                        "score": 18.7,
+                        "normalized_score": 0.82,
+                        "score": 18.0,
                         "signals": {
                           "skills_distinct": 25,
-                          "skills_total": 900
+                          "skills_total": 900,
+                          "skills_total_per_call": 0.225,
+                          "skills_total_per_call_target": 0.25,
+                          "tool_calls": 4000
                         }
                       }
                     ],
                     "name": "Skill fluency",
-                    "normalized_score": 0.85,
-                    "score": 18.7,
+                    "normalized_score": 0.8200000000000001,
+                    "score": 18.0,
                     "signals": {
                       "skills_distinct": 25,
-                      "skills_total": 900
+                      "skills_total": 900,
+                      "skills_total_per_call": 0.225,
+                      "skills_total_per_call_target": 0.25,
+                      "tool_calls": 4000
                     },
                     "weight": 22
                   },
@@ -5310,7 +5439,10 @@
                         "signals": {
                           "clis": 25,
                           "mcp_servers": 10,
-                          "toolsearch": 150
+                          "tool_calls": 4000,
+                          "toolsearch": 150,
+                          "toolsearch_per_call": 0.0375,
+                          "toolsearch_per_call_target": 0.0075
                         }
                       },
                       {
@@ -5321,7 +5453,10 @@
                         "signals": {
                           "clis": 25,
                           "mcp_servers": 10,
-                          "toolsearch": 150
+                          "tool_calls": 4000,
+                          "toolsearch": 150,
+                          "toolsearch_per_call": 0.0375,
+                          "toolsearch_per_call_target": 0.0075
                         }
                       }
                     ],
@@ -5331,7 +5466,10 @@
                     "signals": {
                       "clis": 25,
                       "mcp_servers": 10,
-                      "toolsearch": 150
+                      "tool_calls": 4000,
+                      "toolsearch": 150,
+                      "toolsearch_per_call": 0.0375,
+                      "toolsearch_per_call_target": 0.0075
                     },
                     "weight": 28
                   },
@@ -5347,7 +5485,10 @@
                           "planning_practice_eligible_sessions": 10,
                           "planning_practice_share": 0.4,
                           "planning_practice_target": 0.3,
-                          "task_tool_calls": 300
+                          "task_tool_calls": 300,
+                          "task_tool_calls_per_call": 0.075,
+                          "task_tool_calls_per_call_target": 0.011,
+                          "tool_calls": 4000
                         }
                       },
                       {
@@ -5359,7 +5500,10 @@
                           "planning_practice_eligible_sessions": 30,
                           "planning_practice_share": 0.4,
                           "planning_practice_target": 0.3,
-                          "task_tool_calls": 300
+                          "task_tool_calls": 300,
+                          "task_tool_calls_per_call": 0.075,
+                          "task_tool_calls_per_call_target": 0.011,
+                          "tool_calls": 4000
                         }
                       }
                     ],
@@ -5370,13 +5514,16 @@
                       "planning_practice_eligible_sessions": 10,
                       "planning_practice_share": 0.4,
                       "planning_practice_target": 0.3,
-                      "task_tool_calls": 300
+                      "task_tool_calls": 300,
+                      "task_tool_calls_per_call": 0.075,
+                      "task_tool_calls_per_call_target": 0.011,
+                      "tool_calls": 4000
                     },
                     "weight": 17
                   }
                 ],
                 "name": "Breadth",
-                "score": 77.6,
+                "score": 76.9,
                 "weight": 30
               },
               {
@@ -5387,30 +5534,45 @@
                       {
                         "effective_weight": 0.65,
                         "id": "recent_30d",
-                        "normalized_score": 1.0,
-                        "score": 35.0,
+                        "normalized_score": 0.666666666666667,
+                        "score": 23.3,
                         "signals": {
                           "review_skills": 80,
-                          "test_runs": 100
+                          "review_skills_per_call": 0.02,
+                          "review_skills_per_call_target": 0.06,
+                          "test_runs": 100,
+                          "test_runs_per_call": 0.025,
+                          "test_runs_per_call_target": 0.025,
+                          "tool_calls": 4000
                         }
                       },
                       {
                         "effective_weight": 0.35,
                         "id": "full_window",
-                        "normalized_score": 0.833333333333333,
-                        "score": 29.2,
+                        "normalized_score": 0.316666666666667,
+                        "score": 11.1,
                         "signals": {
                           "review_skills": 80,
-                          "test_runs": 30
+                          "review_skills_per_call": 0.02,
+                          "review_skills_per_call_target": 0.06,
+                          "test_runs": 30,
+                          "test_runs_per_call": 0.0075,
+                          "test_runs_per_call_target": 0.025,
+                          "tool_calls": 4000
                         }
                       }
                     ],
                     "name": "Verification",
-                    "normalized_score": 0.9416666666666665,
-                    "score": 33.0,
+                    "normalized_score": 0.5441666666666669,
+                    "score": 19.0,
                     "signals": {
                       "review_skills": 80,
-                      "test_runs": 100
+                      "review_skills_per_call": 0.02,
+                      "review_skills_per_call_target": 0.06,
+                      "test_runs": 100,
+                      "test_runs_per_call": 0.025,
+                      "test_runs_per_call_target": 0.025,
+                      "tool_calls": 4000
                     },
                     "weight": 35
                   },
@@ -5501,7 +5663,10 @@
                         "normalized_score": 1.0,
                         "score": 20.0,
                         "signals": {
-                          "compounding_writes": 20
+                          "compounding_writes": 20,
+                          "compounding_writes_per_call": 0.005,
+                          "compounding_writes_per_call_target": 0.0018,
+                          "tool_calls": 4000
                         }
                       },
                       {
@@ -5510,7 +5675,10 @@
                         "normalized_score": 1.0,
                         "score": 20.0,
                         "signals": {
-                          "compounding_writes": 20
+                          "compounding_writes": 20,
+                          "compounding_writes_per_call": 0.005,
+                          "compounding_writes_per_call_target": 0.0018,
+                          "tool_calls": 4000
                         }
                       }
                     ],
@@ -5518,13 +5686,16 @@
                     "normalized_score": 1.0,
                     "score": 20.0,
                     "signals": {
-                      "compounding_writes": 20
+                      "compounding_writes": 20,
+                      "compounding_writes_per_call": 0.005,
+                      "compounding_writes_per_call_target": 0.0018,
+                      "tool_calls": 4000
                     },
                     "weight": 20
                   }
                 ],
                 "name": "Craft",
-                "score": 91.3,
+                "score": 77.3,
                 "weight": 35
               },
               {
@@ -5666,7 +5837,10 @@
                         "score": 50.0,
                         "signals": {
                           "cli_share": 0.79,
-                          "toolsearch": 150
+                          "tool_calls": 4000,
+                          "toolsearch": 150,
+                          "toolsearch_per_call": 0.0375,
+                          "toolsearch_per_call_target": 0.0075
                         }
                       },
                       {
@@ -5676,7 +5850,10 @@
                         "score": 50.0,
                         "signals": {
                           "cli_share": 0.79,
-                          "toolsearch": 150
+                          "tool_calls": 4000,
+                          "toolsearch": 150,
+                          "toolsearch_per_call": 0.0375,
+                          "toolsearch_per_call_target": 0.0075
                         }
                       }
                     ],
@@ -5685,7 +5862,10 @@
                     "score": 50.0,
                     "signals": {
                       "cli_share": 0.79,
-                      "toolsearch": 150
+                      "tool_calls": 4000,
+                      "toolsearch": 150,
+                      "toolsearch_per_call": 0.0375,
+                      "toolsearch_per_call_target": 0.0075
                     },
                     "weight": 50
                   }
@@ -5703,8 +5883,8 @@
             }
           },
           "archetype": {
-            "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is craft \u2014 that's where the next gain is.",
-            "title": "Advanced"
+            "quote": "Proficient and consistent, but not yet at the top tier. Your thinnest axis is craft \u2014 that's where the next gain is.",
+            "title": "Proficient"
           },
           "growth_edges": [
             {

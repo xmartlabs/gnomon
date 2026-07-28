@@ -21,7 +21,11 @@ from gnomon.sources.antigravity import antigravity_summary, export_antigravity_i
 from gnomon.analysis.churn import git_churn
 from gnomon.analysis.quotes import _safe_quote, _cryptic_score, _crashout_score, _RAGE_RE, _FILLER
 from gnomon.scoring.gstack import compute_scores
-from gnomon.scoring.aq import compute_aq
+from gnomon.scoring.aq import (
+    COMPOUNDING_WRITES_PER_CALL_TARGET, REVIEW_SKILLS_PER_CALL_TARGET,
+    SKILLS_TOTAL_PER_CALL_TARGET, TASK_CALLS_PER_CALL_TARGET,
+    TEST_RUNS_PER_CALL_TARGET, TOOLSEARCH_PER_CALL_TARGET, compute_aq,
+)
 from gnomon.scoring.archetype import pick_archetype
 from gnomon.scoring.inputs import SCORING_INPUTS_VERSION, build_scoring_inputs
 from gnomon.scoring.aggregate import AQ_BUCKETS, RECENCY_BLEND_ENABLED, RECENT_WEIGHT, HISTORY_WEIGHT, _blend_aq
@@ -33,18 +37,21 @@ from gnomon.output.profile_html import write_profile_html
 
 
 # Tool metrics surfaced by --tools: (label, signal key in stats['agentic'], target, is_rate).
-# The 7 rate-scored metrics use PER-SESSION targets that mirror scoring/aq.py's rate() targets,
-# so the % column matches what AQ actually scores. knowledge_calls is a self-check diagnostic
-# only (it feeds the Research signature move, not an AQ axis) -> reported as absolute, is_rate=False.
+# The rate-scored metrics import scoring/aq.py's PER-TOOL-CALL targets rather than restating
+# them, and are divided by the same tool-call denominator AQ divides by, so the % column is
+# the number AQ actually scored — not a parallel reading that can drift from it. The two
+# ToolSearch call sites in AQ share one target, hence one row here. knowledge_calls is a
+# self-check diagnostic only (it feeds the Research signature move, not an AQ axis) and
+# orchestratable is a session count, so both are reported absolute (is_rate=False).
 _TOOLS_DIAG = [
-    ("task_tool_calls", "task_tool_calls", 1.0, True),
-    ("toolsearch_calls", "toolsearch", 0.30, True),
-    ("skills_total", "skills_total", 10, True),
-    ("review_skills", "review_skills", 1.5, True),
-    ("shell_test_runs", "test_runs", 1.5, True),
-    ("compounding_writes", "compounding_writes", 0.25, True),
+    ("task_tool_calls", "task_tool_calls", TASK_CALLS_PER_CALL_TARGET, True),
+    ("toolsearch_calls", "toolsearch", TOOLSEARCH_PER_CALL_TARGET, True),
+    ("skills_total", "skills_total", SKILLS_TOTAL_PER_CALL_TARGET, True),
+    ("review_skills", "review_skills", REVIEW_SKILLS_PER_CALL_TARGET, True),
+    ("shell_test_runs", "test_runs", TEST_RUNS_PER_CALL_TARGET, True),
+    ("compounding_writes", "compounding_writes", COMPOUNDING_WRITES_PER_CALL_TARGET, True),
     ("orchestratable", "orchestratable_sessions", 1.0, False),
-    ("knowledge_calls", "knowledge_calls", 200, False),  # gated, absolute (not per-session)
+    ("knowledge_calls", "knowledge_calls", 200, False),  # gated, absolute (not a rate)
 ]
 
 
@@ -65,30 +72,35 @@ def _rolling_aq_bucket_windows(until_dt=None, now=None):
 
 
 def tools_diagnostic(stats):
-    """Return (table_lines, json_record) reporting per-session tool usage. The % column matches
-    AQ's scoring: rate metrics score count/session vs a per-session target; knowledge is absolute.
-    A self-check for the user and the calibration sample for per-session targets. Reads the
-    already-computed signals in stats['agentic']; no recomputation."""
+    """Return (table_lines, json_record) reporting per-TOOL-CALL tool usage. The % column
+    matches AQ's scoring because it uses AQ's own denominator and targets: rate metrics score
+    count/tool_call against a per-tool-call target, absolutes score the raw count. A self-check
+    for the user and the calibration sample for those targets. Reads the already-computed
+    signals in stats['agentic']; no recomputation.
+
+    A zero tool-call corpus reports 0.000, matching aq.rate's fail-closed: clamping the
+    denominator to 1 would print a saturated rate for a corpus that did no tool work."""
     vol = stats.get("volume", {}) or {}
     sessions = vol.get("total_sessions", 0) or 0
-    denom = max(sessions, 1)
+    tool_calls = vol.get("tool_calls_total", 0) or 0
     sig = {}
     for p in (stats.get("agentic", {}) or {}).get("pillars", []):
         for a in p.get("axes", []):
             sig.update(a.get("signals", {}) or {})
     rates, counts = {}, {}
-    lines = [f"{'metric':<20}{'count':>8}{'/session':>10}{'target':>9}{'%':>6}"]
+    lines = [f"{'metric':<20}{'count':>8}{'/call':>10}{'target':>10}{'%':>6}"]
     for label, key, target, is_rate in _TOOLS_DIAG:
         c = sig.get(key, 0) or 0
-        per_session = c / denom
-        rates[label] = round(per_session, 4)
+        per_call = (c / tool_calls) if tool_calls else 0.0
+        rates[label] = round(per_call, 6)
         counts[label] = c
-        # % against the SAME basis AQ uses: per-session rate for rate metrics, absolute otherwise
-        scored = per_session if is_rate else c
+        # % against the SAME basis AQ uses: per-tool-call rate for rate metrics, absolute otherwise
+        scored = per_call if is_rate else c
         pct = min(100, round(100 * scored / target)) if target else 0
-        tgt = f"{target:g}/s" if is_rate else f"{target:g}"
-        lines.append(f"{label:<20}{c:>8}{per_session:>10.3f}{tgt:>9}{pct:>5}%")
-    record = {"sessions": sessions, "prompts": vol.get("total_prompts", 0),
+        tgt = f"{target:g}/c" if is_rate else f"{target:g}"
+        lines.append(f"{label:<20}{c:>8}{per_call:>10.4f}{tgt:>10}{pct:>5}%")
+    record = {"sessions": sessions, "tool_calls": tool_calls,
+              "prompts": vol.get("total_prompts", 0),
               "active_hours": (stats.get("velocity", {}) or {}).get("active_hours", 0),
               "rates": rates, "counts": counts}
     return lines, record
