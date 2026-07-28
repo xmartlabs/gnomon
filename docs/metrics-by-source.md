@@ -38,14 +38,21 @@ directly — no external dependency). Both decode to the same normalized events.
 
 ## Session caveats
 
-- **Per-session rates are activity-weighted across sources.** Test runs, review skills,
-  ToolSearch, task planning, skills and compounding writes are scored as the mean of the
-  per-source rates weighted by each source's `tool_calls_total`, not as one count over the
-  merged session count — a Codex one-shot (~18 calls, ~2.7 min) is not one Claude session
-  (~68 calls, ~37 min), and pooling let the short ones act as pure denominator. A source
-  that cannot record a signal at all (ToolSearch on Cursor/Codex) is excluded from that
-  mean rather than weighted in at zero. Single-source corpora are unaffected, and a payload
-  without `scoring_inputs_by_source` falls back to the pooled denominator.
+- **Rate terms are scored per tool call, not per session.** Test runs, review skills,
+  ToolSearch, task planning, skills and compounding writes are `count / tool_calls_total`
+  over the whole corpus — a Codex one-shot (~18 calls, ~2.7 min) is not one Claude session
+  (~68 calls, ~37 min), and a per-session denominator let the short ones act as pure
+  denominator. There is no per-source weighting: pooling both sides over the same unit
+  already makes the corpus rate the tool-call-share-weighted mean of its sources' rates.
+  A payload that omits `volume.tool_calls_total` scores those terms N/A (dropped and
+  renormalized) rather than zero, so a legacy block does not publish a phantom collapse.
+- **Capability dilution is a known limitation, not something rates correct.** The
+  denominator is every tool call in the corpus, including calls from a source that could
+  never emit the signal being scored — `available_caps` is a UNION, so one capable source
+  keeps a term live for the whole corpus. Adding an OpenCode corpus alongside Claude lowers
+  ToolSearch-based axes with no behavior change (measured: Token economy 1.00 -> 0.63).
+  This predates the per-tool-call change and is unchanged by it; excluding an incapable
+  source's calls from cap-gated denominators is tracked separately.
 - **Planning practice** has authoritative root/child identity for Claude, Codex,
   Cursor, and OpenCode. Other active sources contribute unmeasured sessions (`U`) to
   coverage instead of forcing the measured `P/E` share to zero or unavailable.
@@ -126,8 +133,9 @@ Mirdash reads `actions_per_prompt` from `churn`, with legacy fallback to `contex
 ### Three time scales in the payload
 
 - `scoring_inputs_by_source[*].window` — **window** (up to 6-month) raw scoring input per source.
-  Since `7:7:7` these blocks are also SCORING inputs for the corpus AQ, not only per-source
-  diagnostics: they carry the per-source denominators of every per-session rate term.
+  These feed the per-source profiles and model-routing eligibility; the corpus AQ's rate
+  terms do NOT read them, since the per-tool-call denominator is the merged
+  `volume.tool_calls_total`.
 - `noticed_stats_monthly` — **per calendar month** evidence, one entry per month with its own `git_churn`, tokens, errors, etc.
 - `scoring_inputs_by_source[*].monthly` — **per source per calendar month** raw scoring inputs.
 - `profiles_by_source` / `profile` / AQ — **65/35 blended AQ** (65% recent

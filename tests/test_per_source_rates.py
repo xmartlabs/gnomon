@@ -304,5 +304,42 @@ class TestFailClosedAndObservability(unittest.TestCase):
                 self.assertEqual(sig[f"{key}_per_call_target"], target)
 
 
+class TestTargetsStayInsideTheirMeasuredBands(unittest.TestCase):
+    """Pin each per-tool-call target inside the [p40, p50] band its comment cites.
+
+    The bands are HARDCODED here on purpose. Every other test in this file imports the
+    constants into its own expected values, so both sides move together and a mistyped
+    target stays green — a 10x fat-finger on TEST_RUNS_PER_CALL_TARGET would surface only
+    as a scoring_vectors.json diff, in the very commit that caused it, reading as
+    intentional. Same convention as test_scoring_v5's band guard on
+    PLANNING_PRACTICE_TARGET: pin the range the measurement supports rather than the exact
+    value, so recalibration stays free but walking outside the measured population does not.
+    """
+
+    # (constant, p40, p50, n) exactly as documented at aq.py's module top.
+    BANDS = (
+        ("skills_total", SKILLS_TOTAL_PER_CALL_TARGET, 0.2248, 0.2538, 16),
+        ("toolsearch", TOOLSEARCH_PER_CALL_TARGET, 0.00732, 0.00773, 15),
+        ("task_calls", TASK_CALLS_PER_CALL_TARGET, 0.00817, 0.01475, 13),
+        ("test_runs", TEST_RUNS_PER_CALL_TARGET, 0.02219, 0.02715, 16),
+        ("review_skills", REVIEW_SKILLS_PER_CALL_TARGET, 0.04412, 0.08306, 13),
+        ("compounding_writes", COMPOUNDING_WRITES_PER_CALL_TARGET, 0.00170, 0.00207, 16),
+    )
+
+    def test_every_target_sits_between_its_measured_p40_and_p50(self):
+        for name, value, p40, p50, n in self.BANDS:
+            with self.subTest(target=name, n=n):
+                self.assertGreaterEqual(value, p40)
+                self.assertLessEqual(value, p50)
+
+    def test_each_band_is_a_real_split_of_a_usable_sample(self):
+        """A band only means something with the n it was drawn from. Guards against a
+        later recalibration quietly pasting a narrower band or a smaller population."""
+        for name, value, p40, p50, n in self.BANDS:
+            with self.subTest(target=name):
+                self.assertGreaterEqual(n, 13, "n < 13 cannot support a p40/p50 split")
+                self.assertLess(p40, p50, "p40 must sit below p50")
+
+
 if __name__ == "__main__":
     unittest.main()

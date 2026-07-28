@@ -49,9 +49,14 @@ ONE CANONICAL COMBINED AQ:
 
     Why the blend stays computed at all: the aggregate's Planning axis, archetype, steering,
     growth edges and signature moves are derived from it, and they remain useful per-source
-    diagnostics. Only its status as a published score is retired. Now that the rate
-    denominators are activity-weighted (see aq.rate) the two numbers largely converge anyway,
-    so this stops being a loaded choice between two different answers.
+    diagnostics. Only its status as a published score is retired.
+
+    The two numbers do NOT converge, and that is the argument for picking the merged one:
+    distinct counts are unions. Measured on a real three-source corpus, the merged stats
+    carried 24 MCP servers against 19 for Claude alone and 6 for Codex, and 95 distinct
+    skills against 65 and 66 — a user who commands 24 servers spread across three tools
+    genuinely commands 24, and a mean of already-scored per-source numbers cannot recover
+    that. The gap stays around 5 points; publishing one answer is what retires the choice.
 """
 
 from gnomon.scoring.aq import compute_aq
@@ -625,7 +630,11 @@ def _blend_profiles(full_profile, components, full_block):
 def score_by_source(scoring_inputs_by_source, bucket_scoring_inputs_by_source=None,
                     bucket_metadata=None):
     """Given build_summary's scoring_inputs_by_source, return:
-        {"by_source": {<source>: <profile>}, "aggregate": <profile>}
+        {"by_source": {<source>: <profile>}, "aggregate": <diagnostic>}
+
+    `aggregate` is deliberately NOT the same shape as a per-source `<profile>`: its combined
+    score is published as `aq_diagnostic` (plus a `canonical_aq` pointer to `profile.aq`),
+    not as `aq`, so exactly one combined AQ ships in the payload. See the module docstring.
 
     Each per-source profile is computed from that source's WINDOW slice using that
     source's own caps (single-source → no union dilution). The aggregate combines the

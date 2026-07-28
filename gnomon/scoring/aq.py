@@ -177,21 +177,40 @@ def compute_aq(stats):
     # calls / 75 test runs scored 0.10 that way against 0.45 pooled — a 78% drop for a
     # corpus where 50 of 55 sessions hit target. Targets are per tool call to match; see the
     # calibrated constants at module top.
+    # `sessions` is still the right unit for the terms that count SESSIONS rather than work
+    # inside them — the planning-evidence share, ordered-planning readiness and the Context
+    # Intelligence coverage denominator all ask "in what fraction of your sessions did X
+    # happen". The unit argument above is about RATES of activity, not about those.
     sessions = max((stats.get("volume", {}) or {}).get("total_sessions", 0), 1)
-    tool_calls = (stats.get("volume", {}) or {}).get("tool_calls_total", 0)
+    _volume = stats.get("volume", {}) or {}
+    tool_calls = _volume.get("tool_calls_total", 0)
+    # Absent field vs measured zero. profiles.py setdefaults this to 0, so a legacy or
+    # foreign payload that simply omits it is indistinguishable from an idle corpus unless we
+    # look for the key itself. Scoring 0 there floors SIX terms across all four pillars at
+    # once (measured: AQ 47 -> 33) and publishes it as if it were behaviour. Same fail-closed
+    # rule Context Intelligence applies below: a missing field means backward-compat, so stay
+    # N/A instead of scoring a phantom 0.
+    _tool_calls_measured = "tool_calls_total" in _volume and isinstance(tool_calls, (int, float))
 
     def rate(x, per_call_target):
-        # No tool calls means there is no rate to read. Returning 0 rather than clamping the
-        # denominator to 1 keeps a stray count on an idle corpus from saturating a term.
-        return sat(x / tool_calls, per_call_target) if tool_calls else 0.0
+        # None -> wsum drops the term and renormalizes. 0.0 is reserved for a MEASURED zero:
+        # real tool activity, none of this particular signal.
+        if not _tool_calls_measured:
+            return None
+        # `> 0`, not truthiness: a corrupt negative denominator would otherwise flip the sign
+        # and escape sat()'s [0,1] range (a normalized_score of -2.9 propagating into the
+        # pillar and the AQ total).
+        return sat(x / tool_calls, per_call_target) if tool_calls > 0 else 0.0
 
     def rate_facts(key, x, per_call_target):
         """The three numbers that explain a rate term, for the axis `signals`: the count, the
         per-tool-call rate it became, and the target it was scored against. The denominator
         is corpus-wide, so a term can fall while its own count rises — publishing only the
-        count leaves that move unattributable."""
+        count leaves that move unattributable. The rate is None when there is no usable
+        denominator, matching what the term itself scored."""
+        usable = _tool_calls_measured and tool_calls > 0
         return {key: x,
-                f"{key}_per_call": round(x / tool_calls, 6) if tool_calls else 0.0,
+                f"{key}_per_call": round(x / tool_calls, 6) if usable else None,
                 f"{key}_per_call_target": per_call_target}
 
     def wsum(*terms):
@@ -238,11 +257,15 @@ def compute_aq(stats):
     orchestration = ((1.0 - o_frequency_weight) * o_quality
                      + o_frequency_weight * o_frequency_score
                      if o_frequency_score is not None else o_quality)
-    # skills_total -> per-tool-call rate; skills_distinct stays (diversity, correctly absolute)
-    skill_fluency = (.40 * sat(st.get("skills_distinct", 0), 40)
-                     + .30 * rate(st.get("skills_total", 0), SKILLS_TOTAL_PER_CALL_TARGET)
-                     + .30 * (1.0 if has_skill(["subagent-driven", "brainstorm", "writing-plans",
-                                                "cerberus", "systematic-debugging"]) else 0.6))
+    # skills_total -> per-tool-call rate; skills_distinct stays (diversity, correctly absolute).
+    # Via wsum, not raw arithmetic: `rate` returns None when there is no usable tool-call
+    # denominator, and wsum is what drops such a term and renormalizes the rest. Multiplying
+    # by a coefficient directly would raise a TypeError instead.
+    skill_fluency = wsum(
+        (.40, sat(st.get("skills_distinct", 0), 40), None),
+        (.30, rate(st.get("skills_total", 0), SKILLS_TOTAL_PER_CALL_TARGET), None),
+        (.30, 1.0 if has_skill(["subagent-driven", "brainstorm", "writing-plans",
+                                "cerberus", "systematic-debugging"]) else 0.6, None))
     # mcp_servers/clis are distinct-counts (kept absolute); toolsearch -> per-tool-call rate.
     # toolsearch term drops out (renormalized) when no present source can record it
     tool_command = wsum((.40, sat(t.get("mcp_servers_distinct", 0), 15), None),

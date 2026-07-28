@@ -4358,7 +4358,7 @@
                     "signals": {
                       "skills_distinct": 0,
                       "skills_total": 0,
-                      "skills_total_per_call": 0.0,
+                      "skills_total_per_call": null,
                       "skills_total_per_call_target": 0.25,
                       "tool_calls": 0
                     },
@@ -4374,7 +4374,7 @@
                       "mcp_servers": 0,
                       "tool_calls": 0,
                       "toolsearch": 0,
-                      "toolsearch_per_call": 0.0,
+                      "toolsearch_per_call": null,
                       "toolsearch_per_call_target": 0.0075
                     },
                     "weight": 28
@@ -4389,7 +4389,7 @@
                       "planning_practice_share": null,
                       "planning_practice_target": 0.3,
                       "task_tool_calls": 0,
-                      "task_tool_calls_per_call": 0.0,
+                      "task_tool_calls_per_call": null,
                       "task_tool_calls_per_call_target": 0.011,
                       "tool_calls": 0
                     },
@@ -4409,10 +4409,10 @@
                     "score": 0.0,
                     "signals": {
                       "review_skills": 0,
-                      "review_skills_per_call": 0.0,
+                      "review_skills_per_call": null,
                       "review_skills_per_call_target": 0.06,
                       "test_runs": 0,
-                      "test_runs_per_call": 0.0,
+                      "test_runs_per_call": null,
                       "test_runs_per_call_target": 0.025,
                       "tool_calls": 0
                     },
@@ -4435,7 +4435,7 @@
                     "score": 6.0,
                     "signals": {
                       "compounding_writes": 0,
-                      "compounding_writes_per_call": 0.0,
+                      "compounding_writes_per_call": null,
                       "compounding_writes_per_call_target": 0.0018,
                       "tool_calls": 0
                     },
@@ -4507,7 +4507,7 @@
                       "cli_share": 0,
                       "tool_calls": 0,
                       "toolsearch": 0,
-                      "toolsearch_per_call": 0.0,
+                      "toolsearch_per_call": null,
                       "toolsearch_per_call_target": 0.0075
                     },
                     "weight": 50

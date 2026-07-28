@@ -593,6 +593,13 @@ class TestCapabilityAwareScoring(unittest.TestCase):
     def _stats(self, sources, **over):
         base = {
             "corpus": {"sources": {s: {} for s in sources}},
+            # These cases are about which axes a source's CAPABILITIES keep or drop, so the
+            # corpus has to look active: rate terms need a tool-call denominator, and an
+            # ABSENT one now drops the term (a missing field is backward-compat, not a
+            # measured zero — same rule Context Intelligence applies). Without this block
+            # the axes would drop for the wrong reason and the assertions would pass or
+            # fail for nothing to do with capabilities.
+            "volume": {"total_sessions": 20, "total_prompts": 200, "tool_calls_total": 500},
             "tools": {"mcp_servers_distinct": 4, "clis_distinct": 10, "toolsearch_calls": 0,
                       "task_tool_calls": 0, "cli_calls": 100, "mcp_calls": 5},
             "stack": {"models": [["a", 10], ["b", 5]], "skills_all": [], "top_skills": [],

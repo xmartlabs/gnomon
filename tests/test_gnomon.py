@@ -216,7 +216,12 @@ class TestComputeAqV2(unittest.TestCase):
 
     def _craft_ci(self, grounded, sessions, no_tool_activity=False):
         s = _sample_stats()
-        s["volume"] = {"total_sessions": sessions}
+        # Override total_sessions only. Replacing the whole block would drop
+        # tool_calls_total, and an ABSENT tool-call denominator now drops every rate term
+        # (a missing field is backward-compat, not a measured zero), which renormalizes
+        # Craft and would make these Context-Intelligence weight assertions measure
+        # something other than what they name.
+        s["volume"] = {**s["volume"], "total_sessions": sessions}
         s["tools"]["mcp_grounded_sessions"] = grounded
         s["behavior"]["no_tool_activity"] = no_tool_activity
         return paxel.compute_aq(s)

@@ -35,7 +35,7 @@ of *all eligible top-level sessions* for practice.
 | Context Intelligence | Target evidence gathering before the first write in 60% of eligible changes | Grounding should inform implementation, not become after-the-fact ceremony. |
 | Model routing | Reward completed, substantive work routed to a lower-tier model when linkage is observable | This teaches efficient model selection without guessing from incomplete telemetry. |
 | Existing signals | Keep skills, MCPs, CLIs, ToolSearch, fanout, output, delegation, and model diversity scored | They are educational prompts for capabilities users should learn, not claims of output quality. |
-| Rate denominators | Score per-session rates as the activity-weighted mean of per-source rates, weighted by each source's tool volume, and exclude sources that cannot record the signal | One session is not one unit of work across tools. A batch of one-shot two-minute CLI invocations weighed the same as a multi-hour session, so it acted as pure denominator and reported a habit as absent where it was practised. Weighting by tool volume judges the same behavior against the work it accompanied. |
+| Rate denominators | Score rate terms per tool call, not per session, against targets recalibrated into per-tool-call units | One session is not one unit of work across tools. A batch of one-shot two-minute CLI invocations weighed the same as a multi-hour session, so it acted as pure denominator and reported a habit as absent where it was practised. Measuring against work done judges the same behavior against the effort it accompanied, and pooling numerator and denominator over the same unit keeps the corpus rate inside the range its sources span. |
 | One combined score | Publish exactly one combined AQ, scored from the merged corpus | Distinct counts are unions: seven MCP servers spread across three tools really is seven. A weighted mean of already-scored per-source numbers cannot recover a union, and shipping two combined scores pushed the choice between them onto whoever read the payload. |
 | Recency | Keep the 65% recent / 35% full-window blend | Recent improvement stays visible while established habits retain influence. |
 
@@ -81,10 +81,10 @@ adoption globally, with a per-tool breakdown:
 These bands describe adoption only. They do not change AQ, normalize by subscription, or ship
 Mirdash behavior in this change.
 
-Weighting rate denominators by tool volume does not break this rule. The weights are relative
-shares between the sources in one corpus and always sum to one, so doubling every source's
-volume leaves every score untouched: what changed is which sessions a per-session rate is
-measured against, not how much usage is rewarded.
+Scoring rate terms per tool call does not break this rule. Tool calls are the DENOMINATOR, so
+doubling every count and every call leaves each score untouched: what changed is the unit the
+same behavior is measured against, not how much usage is rewarded. More work with no more
+testing lowers the rate — which is the point.
 
 ## Interpretation
 
