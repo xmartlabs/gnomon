@@ -19,7 +19,9 @@ from gnomon.upload.mirdash import (
     _anchor_window,
     month_windows,
     months_to_upload,
+    plan_upload,
     windows_for_anchors,
+    _history_from_query,
     _uploaded_from_query,
 )
 
@@ -392,6 +394,214 @@ class TestMonthsToUpload(unittest.TestCase):
         result = months_to_upload(self.TODAY, server, max_months=3)
         self.assertEqual(len(result), 3)
         self.assertEqual(result[-1], self.CURRENT)
+
+
+# ---------------------------------------------------------------------------
+# Explicit upload-history protocol
+# ---------------------------------------------------------------------------
+
+
+class TestContractAwareHistory(unittest.TestCase):
+    TODAY = datetime.date(2026, 1, 15)
+    CONTRACT = "7:7:7"
+
+    @staticmethod
+    def _query(payload):
+        raw = urllib.parse.urlencode({"uploaded_history": json.dumps(payload)})
+        return urllib.parse.parse_qs(raw)
+
+    def test_parser_preserves_valid_empty_distinct_from_unavailable(self):
+        self.assertEqual(
+            _history_from_query(self._query({"outcome": "valid", "months": []})),
+            {"state": "valid", "months": []},
+        )
+        self.assertEqual(
+            _history_from_query(self._query({"outcome": "unavailable"})),
+            {"state": "unavailable", "months": []},
+        )
+
+    def test_parser_keeps_latest_same_row_tuple_and_optional_contract(self):
+        payload = {
+            "outcome": "valid",
+            "months": [
+                {"monthKey": "2025-12", "uploadedAt": 100, "scoreContractId": "6:6:6"},
+                {
+                    "monthKey": "2025-12",
+                    "uploadedAt": 200,
+                    "scoreContractId": self.CONTRACT,
+                },
+                {"monthKey": "2025-11", "uploadedAt": 50},
+            ],
+        }
+        self.assertEqual(
+            _history_from_query(self._query(payload)),
+            {
+                "state": "valid",
+                "months": [
+                    {"monthKey": "2025-11", "uploadedAt": 50},
+                    {
+                        "monthKey": "2025-12",
+                        "uploadedAt": 200,
+                        "scoreContractId": self.CONTRACT,
+                    },
+                ],
+            },
+        )
+
+    def test_parser_is_all_or_nothing_and_legacy_is_not_a_transition(self):
+        malformed = {
+            "outcome": "valid",
+            "months": [
+                {"monthKey": "2025-12", "uploadedAt": 1},
+                {"monthKey": "2025-13", "uploadedAt": 2},
+            ],
+        }
+        self.assertEqual(
+            _history_from_query(self._query(malformed)),
+            {"state": "malformed", "months": []},
+        )
+        legacy = urllib.parse.parse_qs(
+            urllib.parse.urlencode(
+                {"uploaded": json.dumps([{"monthKey": "2025-12", "uploadedAt": 1}])}
+            )
+        )
+        self.assertEqual(_history_from_query(legacy), {"state": "legacy", "months": []})
+
+    def test_huge_uploaded_at_is_malformed_without_raising(self):
+        payload = {"outcome": "valid", "months": [
+            {"monthKey": "2025-12", "uploadedAt": 10**1000},
+        ]}
+        self.assertEqual(
+            _history_from_query(self._query(payload)),
+            {"state": "malformed", "months": []},
+        )
+
+    def test_valid_empty_and_degraded_states_plan_current_only(self):
+        for history in (
+            {"state": "valid", "months": []},
+            {"state": "unavailable", "months": []},
+            {"state": "legacy", "months": []},
+            {"state": "malformed", "months": []},
+        ):
+            with self.subTest(state=history["state"]):
+                self.assertEqual(
+                    plan_upload(self.TODAY, history, active_contract=self.CONTRACT),
+                    [("2026-01", "current")],
+                )
+
+    def test_exact_prior_contract_match_plans_current_only(self):
+        history = {
+            "state": "valid",
+            "months": [
+                {
+                    "monthKey": "2025-12",
+                    "uploadedAt": 1,
+                    "scoreContractId": self.CONTRACT,
+                }
+            ],
+        }
+        self.assertEqual(
+            months_to_upload(self.TODAY, history, active_contract=self.CONTRACT),
+            ["2026-01"],
+        )
+
+    def test_missing_unstamped_or_different_prior_contract_plans_adjacent_pair(self):
+        cases = (
+            [{"monthKey": "2025-11", "uploadedAt": 1, "scoreContractId": self.CONTRACT}],
+            [{"monthKey": "2025-12", "uploadedAt": 1}],
+            [{"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": "6:6:6"}],
+        )
+        for months in cases:
+            with self.subTest(months=months):
+                history = {"state": "valid", "months": months}
+                self.assertEqual(
+                    plan_upload(self.TODAY, history, active_contract=self.CONTRACT),
+                    [("2025-12", "contract-bridge"), ("2026-01", "current")],
+                )
+
+    def test_force_preserves_explicit_backfill(self):
+        history = {"state": "unavailable", "months": []}
+        result = months_to_upload(
+            self.TODAY, history, force=True, max_months=3, active_contract=self.CONTRACT
+        )
+        self.assertEqual(result, ["2025-11", "2025-12", "2026-01"])
+
+    def test_partial_pair_retries_only_remaining_non_aligned_work(self):
+        previous_succeeded = {
+            "state": "valid",
+            "months": [
+                {
+                    "monthKey": "2025-12",
+                    "uploadedAt": 2,
+                    "scoreContractId": self.CONTRACT,
+                }
+            ],
+        }
+        previous_failed = {
+            "state": "valid",
+            "months": [
+                {
+                    "monthKey": "2025-12",
+                    "uploadedAt": 1,
+                    "scoreContractId": "6:6:6",
+                }
+            ],
+        }
+        self.assertEqual(
+            months_to_upload(self.TODAY, previous_succeeded, active_contract=self.CONTRACT),
+            ["2026-01"],
+        )
+        self.assertEqual(
+            months_to_upload(self.TODAY, previous_failed, active_contract=self.CONTRACT),
+            ["2025-12", "2026-01"],
+        )
+
+    def test_client_version_is_ignored_for_compatibility(self):
+        same_contract_old_client = {
+            "state": "valid",
+            "months": [
+                {
+                    "monthKey": "2025-12",
+                    "uploadedAt": 1,
+                    "scoreContractId": self.CONTRACT,
+                    "clientVersion": "0.1.0",
+                }
+            ],
+        }
+        different_contract_same_client = {
+            "state": "valid",
+            "months": [
+                {
+                    "monthKey": "2025-12",
+                    "uploadedAt": 1,
+                    "scoreContractId": "6:6:6",
+                    "clientVersion": "current-client",
+                }
+            ],
+        }
+
+        self.assertEqual(
+            plan_upload(self.TODAY, same_contract_old_client, active_contract=self.CONTRACT),
+            [("2026-01", "current")],
+        )
+        self.assertEqual(
+            plan_upload(self.TODAY, different_contract_same_client, active_contract=self.CONTRACT),
+            [("2025-12", "contract-bridge"), ("2026-01", "current")],
+        )
+
+    def test_legacy_and_malformed_history_stay_current_only_on_repeated_runs(self):
+        for state in ("legacy", "malformed"):
+            history = {"state": state, "months": []}
+            with self.subTest(state=state):
+                first_run = plan_upload(
+                    self.TODAY, history, active_contract=self.CONTRACT
+                )
+                second_run = plan_upload(
+                    self.TODAY, history, active_contract=self.CONTRACT
+                )
+                self.assertEqual(first_run, [("2026-01", "current")])
+                self.assertEqual(second_run, first_run)
+                self.assertNotIn("contract-bridge", [reason for _, reason in second_run])
 
 
 # ---------------------------------------------------------------------------

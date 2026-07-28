@@ -1,6 +1,7 @@
 import calendar
 import datetime
 import json
+import math
 import os
 import re
 import shutil
@@ -8,6 +9,8 @@ import subprocess
 import sys
 import tempfile
 import urllib.parse
+
+from gnomon.scoring.versioning import SCORE_CONTRACT_ID
 
 
 _COPIED_OUTPUTS = (
@@ -373,16 +376,30 @@ def windows_for_anchors(anchor_labels, window_months=1):
     return result
 
 
-def plan_upload(today, server_months, force=False, max_months=_MAX_BACKFILL):
+def plan_upload(
+    today,
+    server_months,
+    force=False,
+    max_months=_MAX_BACKFILL,
+    *,
+    active_contract=SCORE_CONTRACT_ID,
+):
     """Return sorted list (oldest first) of (anchor 'YYYY-MM', reason) pairs to upload.
 
     today:         datetime.date — caller must supply; this function never calls date.today().
-    server_months: list of dicts {'monthKey': 'YYYY-MM', 'uploadedAt': <int ms epoch>}.
-                   Malformed entries are silently skipped.
+    server_months: explicit history-state dict for contract-aware auto mode.
+                   Legacy list inputs retain the pre-protocol planner for
+                   internal backward compatibility only.
     force:         bool — when True, behave as if server were empty (full backfill).
     max_months:    hard cap; never return more than this many anchors.
 
-    reason ∈ {'force', 'initial', 'current', 'gap', 'refresh'}
+    reason ∈ {'force', 'initial', 'current', 'gap', 'refresh', 'contract-bridge'}
+      explicit valid history:
+        previous contract matches active → current only
+        previous missing/unstamped/different → previous then current
+      unavailable/legacy/malformed/valid-empty → current only
+      force=True → full explicit backfill
+    Legacy list compatibility:
       force=True                      → each anchor gets reason 'force'
       server empty (no valid entries) → each anchor gets reason 'initial'
       incremental:
@@ -392,6 +409,31 @@ def plan_upload(today, server_months, force=False, max_months=_MAX_BACKFILL):
         Precedence if overlap: current > gap > refresh (disjoint in practice)
     """
     current = f"{today.year:04d}-{today.month:02d}"
+
+    if isinstance(server_months, dict) and "state" in server_months:
+        if force:
+            return [(w[2], "force") for w in month_windows(max_months, today, 1)]
+
+        state = server_months.get("state")
+        months = server_months.get("months")
+        if state != "valid" or not isinstance(months, list) or not months:
+            return [(current, "current")]
+
+        current_total = today.year * 12 + (today.month - 1)
+        previous_total = current_total - 1
+        previous = f"{previous_total // 12:04d}-{previous_total % 12 + 1:02d}"
+        by_month = {
+            entry.get("monthKey"): entry
+            for entry in months
+            if isinstance(entry, dict) and isinstance(entry.get("monthKey"), str)
+        }
+        previous_entry = by_month.get(previous)
+        if (
+            previous_entry is not None
+            and previous_entry.get("scoreContractId") == active_contract
+        ):
+            return [(current, "current")]
+        return [(previous, "contract-bridge"), (current, "current")]
 
     # Parse server_months defensively; skip malformed entries
     valid_server = {}
@@ -462,12 +504,19 @@ def plan_upload(today, server_months, force=False, max_months=_MAX_BACKFILL):
     return sorted_pairs
 
 
-def months_to_upload(today, server_months, force=False, max_months=_MAX_BACKFILL):
+def months_to_upload(
+    today,
+    server_months,
+    force=False,
+    max_months=_MAX_BACKFILL,
+    *,
+    active_contract=SCORE_CONTRACT_ID,
+):
     """Return sorted list (oldest first) of anchor 'YYYY-MM' labels to upload.
 
     today:         datetime.date — caller must supply; this function never calls date.today().
-    server_months: list of dicts {'monthKey': 'YYYY-MM', 'uploadedAt': <int ms epoch>}.
-                   Malformed entries are silently skipped.
+    server_months: explicit history-state dict, or a legacy list accepted only
+                   for internal backward compatibility.
     force:         bool — when True, behave as if server were empty (full backfill).
     max_months:    hard cap; never return more than this many anchors.
 
@@ -481,7 +530,70 @@ def months_to_upload(today, server_months, force=False, max_months=_MAX_BACKFILL
            (i.e. the snapshot did not yet capture the full month).
         4. Dedup → sort → keep max_months most recent.
     """
-    return [m for m, _ in plan_upload(today, server_months, force, max_months)]
+    return [
+        m
+        for m, _ in plan_upload(
+            today,
+            server_months,
+            force,
+            max_months,
+            active_contract=active_contract,
+        )
+    ]
+
+
+def _history_from_query(parsed_qs):
+    """Parse the explicit uploaded-history callback parameter without partial trust.
+
+    Returns {'state': valid|unavailable|legacy|malformed, 'months': [...]}. A
+    missing explicit object is legacy even when the old `uploaded` alias exists.
+    """
+    raw = (parsed_qs.get("uploaded_history") or [""])[0]
+    if not raw:
+        return {"state": "legacy", "months": []}
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return {"state": "malformed", "months": []}
+    if not isinstance(data, dict):
+        return {"state": "malformed", "months": []}
+
+    outcome = data.get("outcome")
+    if outcome == "unavailable":
+        return {"state": "unavailable", "months": []}
+    if outcome != "valid" or not isinstance(data.get("months"), list):
+        return {"state": "malformed", "months": []}
+
+    best = {}
+    for entry in data["months"]:
+        if not isinstance(entry, dict):
+            return {"state": "malformed", "months": []}
+        month_key = entry.get("monthKey")
+        if (
+            not isinstance(month_key, str)
+            or not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month_key)
+        ):
+            return {"state": "malformed", "months": []}
+        uploaded_at = entry.get("uploadedAt")
+        if isinstance(uploaded_at, bool) or not isinstance(uploaded_at, (int, float)):
+            return {"state": "malformed", "months": []}
+        if isinstance(uploaded_at, float):
+            if not math.isfinite(uploaded_at) or not uploaded_at.is_integer():
+                return {"state": "malformed", "months": []}
+            uploaded_at = int(uploaded_at)
+        if uploaded_at < 0 or uploaded_at > 9_007_199_254_740_991:
+            return {"state": "malformed", "months": []}
+        contract = entry.get("scoreContractId")
+        if contract is not None and (not isinstance(contract, str) or not contract):
+            return {"state": "malformed", "months": []}
+        normalized = {"monthKey": month_key, "uploadedAt": uploaded_at}
+        if contract is not None:
+            normalized["scoreContractId"] = contract
+        existing = best.get(month_key)
+        if existing is None or normalized["uploadedAt"] > existing["uploadedAt"]:
+            best[month_key] = normalized
+
+    return {"state": "valid", "months": [best[key] for key in sorted(best)]}
 
 
 def _uploaded_from_query(parsed_qs):
