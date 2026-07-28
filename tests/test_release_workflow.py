@@ -76,6 +76,18 @@ class TestReleaseWorkflowContract(unittest.TestCase):
         self.assertIn("Release $TAG already exists at expected tag", self.text)
         self.assertNotIn('git push --atomic origin "refs/tags/$TAG" "+refs/tags/latest"', self.text)
 
+    def test_latest_promotion_is_serialized_live_main_and_monotonic(self):
+        self.assertIn("concurrency:", self.text)
+        self.assertIn("group: stable-release", self.text)
+        self.assertIn("cancel-in-progress: false", self.text)
+        self.assertIn("queue: max", self.text)
+        guard = _workflow_run_block(
+            self.text, "Guard latest promotion against stale releases")
+        self.assertIn('refs/heads/main', guard)
+        self.assertIn('"$LIVE_MAIN_SHA" != "$GITHUB_SHA"', guard)
+        self.assertIn("sort -V", guard)
+        self.assertIn('"$VERSION" != "$HIGHEST_VERSION"', guard)
+
     def test_workflow_input_is_passed_through_env_not_shell_interpolation(self):
         self.assertIn("REQUESTED_VERSION: ${{ inputs.version }}", self.text)
         self.assertIn('REQUESTED="$REQUESTED_VERSION"', self.text)

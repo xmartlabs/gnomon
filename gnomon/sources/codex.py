@@ -233,6 +233,40 @@ def _js_code_mask(text):
     return "".join(masked)
 
 
+def _codex_call_is_unconditional(code, position):
+    """Accept eager calls while rejecting conditional or deferred scopes."""
+    frames = []
+    statement_start = 0
+    for index, char in enumerate(code[:position]):
+        if char in "([{":
+            blocked = False
+            if char == "{":
+                statement = code[statement_start:index]
+                blocked = bool(re.search(
+                    r"\b(?:if|else|for|while|do|switch|function|class|try|"
+                    r"catch|finally)\b|=>|&&|\|\|",
+                    statement,
+                ) or statement.rstrip().endswith(")"))
+            frames.append((char, blocked))
+        elif char in ")]}":
+            opener = {")": "(", "]": "[", "}": "{"}[char]
+            if frames and frames[-1][0] == opener:
+                frames.pop()
+            if char == "}" and not frames:
+                statement_start = index + 1
+        elif char == ";" and not frames:
+            statement_start = index + 1
+
+    if any(blocked for _, blocked in frames):
+        return False
+    statement = code[statement_start:position]
+    return not re.search(
+        r"\b(?:if|else|for|while|do|switch|function|class|try|catch|finally)\b"
+        r"|=>|&&|\|\|",
+        statement,
+    )
+
+
 def _codex_exec_tools(script):
     """Recover literal nested tool payloads from a modern Codex exec compositor."""
     code = _js_code_mask(script)
@@ -246,6 +280,8 @@ def _codex_exec_tools(script):
 
     recovered = []
     for match in re.finditer(r"\btools\.([A-Za-z0-9_]+)\s*\(", code):
+        if not _codex_call_is_unconditional(code, match.start()):
+            continue
         nested_name = match.group(1)
         try:
             value, end = _js_literal(script, match.end(), variables)

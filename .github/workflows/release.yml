@@ -11,6 +11,11 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: stable-release
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   release:
     if: github.ref == 'refs/heads/main'
@@ -113,6 +118,26 @@ jobs:
           fi
           RELEASE_TAG="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .tag_name)"
           test "$RELEASE_TAG" = "$TAG"
+
+      - name: Guard latest promotion against stale releases
+        shell: bash
+        run: |
+          set -euo pipefail
+          LIVE_MAIN_SHA="$(git ls-remote origin refs/heads/main | awk 'NR == 1 {print $1}')"
+          if [[ "$LIVE_MAIN_SHA" != "$GITHUB_SHA" ]]; then
+            echo "Refusing latest promotion: main is now $LIVE_MAIN_SHA, not $GITHUB_SHA." >&2
+            exit 1
+          fi
+          HIGHEST_VERSION="$(
+            git ls-remote --tags --refs origin 'refs/tags/v*' |
+              sed -n 's#.*refs/tags/v##p' |
+              grep -E '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' |
+              sort -V | tail -n 1
+          )"
+          if [[ "$VERSION" != "$HIGHEST_VERSION" ]]; then
+            echo "Refusing latest promotion: v$HIGHEST_VERSION is newer than $TAG." >&2
+            exit 1
+          fi
 
       - name: Move latest after release publication
         shell: bash

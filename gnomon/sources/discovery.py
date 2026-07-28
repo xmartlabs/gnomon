@@ -160,11 +160,21 @@ def discover_sources(selected):
             out.append(("pi", fp, "pi"))
     if "opencode" in selected and os.path.isdir(OPENCODE_DIR):
         session_glob = os.path.join(OPENCODE_DIR, "storage", "session", "*", "*.json")
-        for fp in sorted(glob.glob(session_glob)):
-            out.append(("opencode", fp, "opencode"))
+        legacy_sessions = sorted(glob.glob(session_glob))
         db_path = os.path.join(OPENCODE_DIR, "opencode.db")
         if os.path.isfile(db_path):
+            from gnomon.sources.opencode import _opencode_sqlite_events
+            migrated = {
+                event["sessionId"] for event in _opencode_sqlite_events(db_path)
+                if event.get("sessionId")
+            }
+            legacy_sessions = [
+                fp for fp in legacy_sessions
+                if os.path.splitext(os.path.basename(fp))[0] not in migrated
+            ]
             out.append(("opencode", db_path, "opencode-sqlite"))
+        for fp in legacy_sessions:
+            out.append(("opencode", fp, "opencode"))
     if "cursor" in selected and os.path.isdir(CURSOR_DIR):
         for fp in sorted(_cursor_jsonl_files()):
             out.append(("cursor", fp, "cursor-jsonl"))

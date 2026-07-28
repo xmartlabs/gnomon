@@ -4,6 +4,8 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import paxel
 from gnomon.cli.accumulator import Accumulator
+from gnomon.sources import iter_events
+from gnomon.sources import discovery
 from gnomon.sources.codex import _codex_events
 from gnomon.sources.opencode import _opencode_events, _opencode_sqlite_events
 
@@ -130,6 +132,14 @@ class TestPlanningSessionIdentity(unittest.TestCase):
                       json.dumps({"id": "m1", "role": "user",
                                   "time": {"created": 1782900000000},
                                   "summary": {"title": "plan"}})))
+        conn.execute("INSERT INTO message VALUES (?, ?, ?, ?)",
+                     ("m2", "session", 1782900001000,
+                      json.dumps({"id": "m2", "role": "assistant",
+                                  "time": {"created": 1782900001000}})))
+        conn.execute("INSERT INTO part VALUES (?, ?, ?, ?, ?)",
+                     ("p1", "session", "m2", 1782900001000,
+                      json.dumps({"id": "p1", "type": "tool", "tool": "bash",
+                                  "state": {"status": "completed", "input": {}}})))
         conn.commit()
         conn.close()
         return path
@@ -149,6 +159,126 @@ class TestPlanningSessionIdentity(unittest.TestCase):
                 events = list(_opencode_sqlite_events(path))
                 self.assertTrue(events)
                 self.assertTrue(all(e["isSidechain"] is expected for e in events))
+
+    def test_opencode_coexistence_counts_shared_session_once(self):
+        root = tempfile.mkdtemp(prefix="opencode-coexist-")
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        db = self._opencode_db(with_parent_column=True)
+        shutil.move(db, os.path.join(root, "opencode.db"))
+        session_dir = os.path.join(root, "storage", "session", "project")
+        message_dir = os.path.join(root, "storage", "message", "session")
+        part_dir = os.path.join(root, "storage", "part", "m2")
+        os.makedirs(session_dir)
+        os.makedirs(message_dir)
+        os.makedirs(part_dir)
+        for sid in ("session", "legacy-only"):
+            with open(os.path.join(session_dir, f"{sid}.json"), "w") as handle:
+                json.dump({"id": sid, "directory": "/x"}, handle)
+        with open(os.path.join(message_dir, "m1.json"), "w") as handle:
+            json.dump({"id": "m1", "role": "user", "time": {"created": 1782900000000},
+                       "summary": {"title": "plan"}}, handle)
+        with open(os.path.join(message_dir, "m2.json"), "w") as handle:
+            json.dump({"id": "m2", "role": "assistant", "time": {"created": 1782900001000}}, handle)
+        with open(os.path.join(part_dir, "p1.json"), "w") as handle:
+            json.dump({"id": "p1", "type": "tool", "tool": "bash",
+                       "state": {"status": "completed", "input": {}}}, handle)
+        acc = Accumulator()
+        with mock.patch.object(discovery, "OPENCODE_DIR", root):
+            sources = discovery.discover_sources(["opencode"])
+            self.assertIn(("opencode", os.path.join(session_dir, "legacy-only.json"), "opencode"), sources)
+            for source, path, fmt in sources:
+                acc.begin_file(source, path)
+                for event in iter_events(path, fmt):
+                    acc.observe(event, None, None)
+                acc.end_file()
+        volume = acc.to_source_stats("opencode", None, None)["volume"]
+        self.assertEqual((volume["total_sessions"], volume["total_prompts"],
+                          volume["assistant_turns"], volume["tool_calls_total"]), (1, 1, 1, 1))
+
+    def test_opencode_degraded_sqlite_keeps_legacy_session(self):
+        root = tempfile.mkdtemp(prefix="opencode-partial-")
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        db = self._opencode_db(with_parent_column=True)
+        with sqlite3.connect(db) as conn:
+            conn.execute("DROP TABLE part")
+        shutil.move(db, os.path.join(root, "opencode.db"))
+        session_dir = os.path.join(root, "storage", "session", "project")
+        os.makedirs(session_dir)
+        legacy = os.path.join(session_dir, "session.json")
+        with open(legacy, "w") as handle:
+            json.dump({"id": "session", "directory": "/x"}, handle)
+        with mock.patch.object(discovery, "OPENCODE_DIR", root):
+            self.assertIn(("opencode", legacy, "opencode"),
+                          discovery.discover_sources(["opencode"]))
+
+    def test_opencode_missing_session_table_keeps_legacy_session(self):
+        root = tempfile.mkdtemp(prefix="opencode-no-session-")
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        db = self._opencode_db(with_parent_column=True)
+        with sqlite3.connect(db) as conn:
+            conn.execute("DROP TABLE session")
+        shutil.move(db, os.path.join(root, "opencode.db"))
+        session_dir = os.path.join(root, "storage", "session", "project")
+        os.makedirs(session_dir)
+        legacy = os.path.join(session_dir, "session.json")
+        with open(legacy, "w") as handle:
+            json.dump({"id": "session", "directory": "/x"}, handle)
+        with mock.patch.object(discovery, "OPENCODE_DIR", root):
+            self.assertIn(("opencode", legacy, "opencode"),
+                          discovery.discover_sources(["opencode"]))
+
+    def test_opencode_incompatible_sqlite_columns_keep_legacy_session(self):
+        root = tempfile.mkdtemp(prefix="opencode-incompatible-")
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        db = os.path.join(root, "opencode.db")
+        with sqlite3.connect(db) as conn:
+            conn.execute(
+                "CREATE TABLE session "
+                "(id TEXT, directory TEXT, time_created INTEGER)")
+            conn.execute(
+                "CREATE TABLE message "
+                "(id TEXT, session_id TEXT, time_created INTEGER)")
+            conn.execute(
+                "CREATE TABLE part "
+                "(id TEXT, session_id TEXT, message_id TEXT, "
+                "time_created INTEGER, data TEXT)")
+            conn.execute("INSERT INTO session VALUES (?, ?, ?)",
+                         ("session", "/x", 1782900000000))
+            conn.execute("INSERT INTO message VALUES (?, ?, ?)",
+                         ("m1", "session", 1782900000000))
+
+        session_dir = os.path.join(root, "storage", "session", "project")
+        os.makedirs(session_dir)
+        legacy = os.path.join(session_dir, "session.json")
+        with open(legacy, "w") as handle:
+            json.dump({"id": "session", "directory": "/x"}, handle)
+
+        self.assertEqual(list(_opencode_sqlite_events(db)), [])
+        with mock.patch.object(discovery, "OPENCODE_DIR", root):
+            self.assertIn(("opencode", legacy, "opencode"),
+                          discovery.discover_sources(["opencode"]))
+
+    def test_opencode_undecodable_sqlite_session_keeps_legacy_copy(self):
+        root = tempfile.mkdtemp(prefix="opencode-undecodable-")
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        db = self._opencode_db(with_parent_column=True)
+        with sqlite3.connect(db) as conn:
+            conn.execute("UPDATE message SET data = 'not-json'")
+        shutil.move(db, os.path.join(root, "opencode.db"))
+
+        session_dir = os.path.join(root, "storage", "session", "project")
+        os.makedirs(session_dir)
+        legacy = os.path.join(session_dir, "session.json")
+        with open(legacy, "w") as handle:
+            json.dump({"id": "session", "directory": "/x"}, handle)
+
+        self.assertEqual(
+            list(_opencode_sqlite_events(os.path.join(root, "opencode.db"))),
+            [],
+        )
+        with mock.patch.object(discovery, "OPENCODE_DIR", root):
+            self.assertIn(("opencode", legacy, "opencode"),
+                          discovery.discover_sources(["opencode"]))
 
 
 # ---------------------------------------------------------------------------

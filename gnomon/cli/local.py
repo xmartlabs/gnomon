@@ -160,7 +160,7 @@ def main(argv=None, output_dir=None):
     if since_dt or until_dt:
         print(f"  window: {since_dt.date() if since_dt else '...'} -> "
               f"{(until_dt - timedelta(days=1)).date() if until_dt else 'now'}")
-    antigravity = None if _ide_dir_override else antigravity_summary()
+    antigravity = None if (_ide_dir_override or _ide_dir_explicit) else antigravity_summary()
     # Antigravity IDE fallback: if no IDE SQLite DBs were discovered (older Antigravity
     # versions that only expose data via the Language Server), try the LS CORTEX export.
     # The LS path masks model identity but still captures volume/tools/timestamps.
