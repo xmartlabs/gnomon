@@ -327,6 +327,26 @@ class TestMainConsoleDryRun(unittest.TestCase):
         mock_upload.assert_not_called()
         self.assertEqual(code, 0)
 
+    def test_contract_bridge_dry_run_reports_only_previous_and_current(self):
+        history = {
+            "state": "valid",
+            "months": [
+                {
+                    "monthKey": "2025-06",
+                    "uploadedAt": 1,
+                    "scoreContractId": "old-contract",
+                }
+            ],
+        }
+        out, mock_paxel, mock_upload, _, code = self._run_dry_run_console(uploaded=history)
+        self.assertIn("2 month(s)", out)
+        self.assertIn("2025-06  rebuild comparable baseline", out)
+        self.assertIn("2025-07  current month", out)
+        self.assertNotIn("2025-05", out)
+        mock_paxel.assert_not_called()
+        mock_upload.assert_not_called()
+        self.assertEqual(code, 0)
+
     def test_force_mode_shows_force_reason(self):
         out, _, _, _, _ = self._run_dry_run_console(mode="force")
         self.assertIn("force re-upload", out)
@@ -442,6 +462,10 @@ class TestMainWebDryRun(unittest.TestCase):
 class TestDryRunHelpText(unittest.TestCase):
     def test_dry_run_in_help_text(self):
         self.assertIn("--dry-run", _insights._HELP_TEXT)
+
+    def test_help_describes_adjacent_bridge_instead_of_automatic_long_backfill(self):
+        self.assertIn("rebuilds the previous month", _insights._HELP_TEXT)
+        self.assertNotIn("first run uploads everything automatically", _insights._HELP_TEXT)
 
     def test_help_prints_dry_run(self):
         buf = io.StringIO()

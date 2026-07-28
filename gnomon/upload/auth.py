@@ -3,7 +3,7 @@ import json
 import time
 import urllib.parse
 
-from gnomon.upload.mirdash import _uploaded_from_query
+from gnomon.upload.mirdash import _history_from_query
 
 
 def _tokens_from_query(parsed_qs):
@@ -116,9 +116,9 @@ def _capture_cli_token(port=8799, timeout=_SHARE_AUTH_TIMEOUT):
     Waits up to *timeout* seconds for a single GET /callback?token=<JWT>
     (and optionally tokens=<url-encoded JSON array>).
 
-    Returns a tuple (tokens, uploaded) where tokens is a list of token strings
-    on success (at least one element) or None on timeout or error, and uploaded
-    is a list of already-uploaded month dicts (may be empty).
+    Returns a tuple (tokens, history) where tokens is a list of token strings
+    on success (at least one element) or None on timeout or error, and history
+    has an explicit valid, unavailable, legacy, or malformed state.
     """
     import http.server
 
@@ -131,7 +131,7 @@ def _capture_cli_token(port=8799, timeout=_SHARE_AUTH_TIMEOUT):
             tokens = _tokens_from_query(params)
             if parsed.path == "/callback" and tokens:
                 captured["tokens"] = tokens
-                captured["uploaded"] = _uploaded_from_query(params)
+                captured["history"] = _history_from_query(params)
                 body = _SUCCESS_PAGE
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -150,19 +150,22 @@ def _capture_cli_token(port=8799, timeout=_SHARE_AUTH_TIMEOUT):
         server.timeout = 1  # poll interval for the outer loop
     except OSError as exc:
         print(f"  warning: could not bind localhost:{port} for auth callback: {exc}")
-        return (None, [])
+        return (None, {"state": "legacy", "months": []})
 
     deadline = time.time() + timeout
     try:
         while "tokens" not in captured:
             if time.time() > deadline:
                 print(f"  warning: timed out waiting for auth callback after {timeout}s")
-                return (None, [])
+                return (None, {"state": "legacy", "months": []})
             server.handle_request()
     finally:
         server.server_close()
 
-    return (captured.get("tokens"), captured.get("uploaded") or [])
+    return (
+        captured.get("tokens"),
+        captured.get("history") or {"state": "legacy", "months": []},
+    )
 
 
 _ORIGINAL_CAPTURE_CLI_TOKEN = _capture_cli_token
@@ -171,17 +174,25 @@ _ORIGINAL_CAPTURE_CLI_TOKEN = _capture_cli_token
 def _wait_for_auth_tokens(server, port):
     """Prefer progress-server auth, but keep legacy token mocks usable in tests.
 
-    Always returns just the token list (not the uploaded state) — the ProgressServer
-    path stores uploaded in server._uploaded; the mock path stashes it there too.
+    Always returns just the token list (not history) — the ProgressServer path
+    stores history on the server; the mock path stashes it there too.
     """
     if _capture_cli_token is not _ORIGINAL_CAPTURE_CLI_TOKEN:
         result = _capture_cli_token(port=port, timeout=_SHARE_AUTH_TIMEOUT)
-        # Normalize: updated mocks return (tokens, uploaded); legacy mocks return list.
+        # Normalize: updated mocks return (tokens, history); legacy mocks return list.
         if isinstance(result, tuple):
-            tokens, uploaded = result
-            server._uploaded = uploaded
+            tokens, history = result
+            if isinstance(history, dict) and "state" in history:
+                server._upload_history = history
+                server._uploaded = (
+                    history.get("months", []) if history.get("state") == "valid" else []
+                )
+            else:
+                server._upload_history = {"state": "legacy", "months": []}
+                server._uploaded = history if isinstance(history, list) else []
         else:
             tokens = result
+            server._upload_history = {"state": "legacy", "months": []}
             server._uploaded = []
         return tokens
     return server.wait_for_auth(timeout=_WEB_AUTH_TIMEOUT)

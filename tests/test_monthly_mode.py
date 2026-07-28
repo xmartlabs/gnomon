@@ -250,7 +250,7 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
     """
 
     def _run_main(self, argv, run_paxel_side_effect, upload_return_values,
-                  tokens=None, uploaded=None):
+                  tokens=None, uploaded=None, capture_exit=False):
         if tokens is None:
             tokens = ["tok1"]
         if uploaded is None:
@@ -275,10 +275,13 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
             patch.object(_insights.sys, "argv", ["xl-ai-insights"] + argv),
         ):
             mock_wb.open.return_value = True
+            exit_code = None
             try:
                 _insights.main()
-            except SystemExit:
-                pass
+            except SystemExit as exc:
+                exit_code = exc.code
+            if capture_exit:
+                return mock_paxel, mock_upload, exit_code
             return mock_paxel, mock_upload
 
     def test_current_month_nonempty_uploads_once(self):
@@ -364,6 +367,91 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         self.assertEqual(mock_paxel.call_count, 2)
         self.assertEqual(mock_upload.call_count, 2)
 
+    def test_contract_bridge_runs_previous_then_current_with_matching_tokens(self):
+        today = datetime.date.today()
+        cur_total = today.year * 12 + (today.month - 1)
+        prev_total = cur_total - 1
+        prev = f"{prev_total // 12:04d}-{prev_total % 12 + 1:02d}"
+        history = {
+            "state": "valid",
+            "months": [
+                {"monthKey": prev, "uploadedAt": 1, "scoreContractId": "old-contract"}
+            ],
+        }
+        mock_paxel, mock_upload = self._run_main(
+            argv=["--no-open"],
+            run_paxel_side_effect=[_make_summary(sessions=2), _make_summary(sessions=3)],
+            upload_return_values=["/r/prev", "/r/current"],
+            tokens=["previous-token", "current-token"],
+            uploaded=history,
+        )
+        self.assertEqual(mock_paxel.call_count, 2)
+        self.assertEqual(
+            [call.args[1] for call in mock_upload.call_args_list],
+            ["previous-token", "current-token"],
+        )
+
+    def test_failed_previous_bridge_still_runs_current_and_warns(self):
+        today = datetime.date.today()
+        cur_total = today.year * 12 + (today.month - 1)
+        prev_total = cur_total - 1
+        prev = f"{prev_total // 12:04d}-{prev_total % 12 + 1:02d}"
+        history = {
+            "state": "valid",
+            "months": [
+                {"monthKey": prev, "uploadedAt": 1, "scoreContractId": "old-contract"}
+            ],
+        }
+        with patch("builtins.print") as mock_print:
+            mock_paxel, mock_upload = self._run_main(
+                argv=["--no-open"],
+                run_paxel_side_effect=[None, _make_summary(sessions=3)],
+                upload_return_values=["/r/current"],
+                tokens=["previous-token", "current-token"],
+                uploaded=history,
+            )
+        self.assertEqual(mock_paxel.call_count, 2)
+        self.assertEqual(mock_upload.call_count, 1)
+        self.assertEqual(mock_upload.call_args.args[1], "current-token")
+        self.assertTrue(
+            any(
+                "comparable baseline was not rebuilt" in str(call)
+                for call in mock_print.call_args_list
+            )
+        )
+
+    def test_empty_previous_bridge_still_runs_current_and_warns(self):
+        today = datetime.date.today()
+        cur_total = today.year * 12 + (today.month - 1)
+        prev_total = cur_total - 1
+        prev = f"{prev_total // 12:04d}-{prev_total % 12 + 1:02d}"
+        history = {
+            "state": "valid",
+            "months": [
+                {"monthKey": prev, "uploadedAt": 1, "scoreContractId": "old-contract"}
+            ],
+        }
+        with patch("builtins.print") as mock_print:
+            mock_paxel, mock_upload = self._run_main(
+                argv=["--no-open"],
+                run_paxel_side_effect=[
+                    _make_summary(sessions=0),
+                    _make_summary(sessions=3),
+                ],
+                upload_return_values=["/r/current"],
+                tokens=["previous-token", "current-token"],
+                uploaded=history,
+            )
+        self.assertEqual(mock_paxel.call_count, 2)
+        self.assertEqual(mock_upload.call_count, 1)
+        self.assertEqual(mock_upload.call_args.args[1], "current-token")
+        self.assertTrue(
+            any(
+                "comparable baseline was not rebuilt" in str(call)
+                for call in mock_print.call_args_list
+            )
+        )
+
     def test_current_month_paxel_error_does_not_fall_back(self):
         """A paxel run FAILURE (None) for the only window must NOT trigger any
         historical-month fallback — that path no longer exists. Expect exactly 1
@@ -385,6 +473,143 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         )
         self.assertEqual(mock_paxel.call_count, 1)
         self.assertEqual(mock_upload.call_count, 0)
+
+    def test_console_bridge_enforces_cardinality_exceptions_and_current_success(self):
+        history = TestWebContractBridgeOrchestration._bridge_history()
+        paxel, upload, exit_code = self._run_main(
+            ["--no-open"], [], [], ["previous-token"], history, True
+        )
+        self.assertEqual((paxel.call_count, upload.call_count, exit_code), (0, 0, 1))
+
+        _, _, exit_code = self._run_main(
+            ["--no-open"], [_make_summary(), _make_summary()],
+            ["/r/previous", RuntimeError("current upload failed")],
+            ["previous-token", "current-token"], history, True,
+        )
+        self.assertEqual(exit_code, 1)
+
+        with patch("builtins.print") as printed:
+            paxel, upload, exit_code = self._run_main(
+                ["--no-open"], [RuntimeError("previous crashed"), _make_summary()],
+                ["/r/current"], ["previous-token", "current-token"], history, True,
+            )
+        self.assertIsNone(exit_code)
+        self.assertEqual((paxel.call_count, upload.call_args.args[1]), (2, "current-token"))
+        self.assertTrue(any("comparable baseline was not rebuilt" in str(c) for c in printed.call_args_list))
+
+
+class TestWebContractBridgeOrchestration(unittest.TestCase):
+    """Web progress mode must preserve the same ordered bridge semantics as console mode."""
+
+    def _run_web(self, history, upload_results, tokens=None):
+        server = MagicMock()
+        server.url = "http://localhost:8799"
+        server.history = history
+        tokens = tokens or ["previous-token", "current-token"]
+
+        with (
+            patch("gnomon.upload.progress_server.ProgressServer", return_value=server),
+            patch.object(_insights, "_wait_for_auth_tokens", return_value=tokens),
+            patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
+            patch.object(_insights.webbrowser, "open", return_value=True),
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(
+                _insights,
+                "_upload_window_web",
+                side_effect=upload_results,
+            ) as mock_upload_window,
+        ):
+            exit_code = None
+            try:
+                _insights.main(["--no-open"])
+            except SystemExit as exc:
+                exit_code = exc.code
+
+        return server, mock_upload_window, exit_code
+
+    @staticmethod
+    def _bridge_history():
+        today = datetime.date.today()
+        current_total = today.year * 12 + (today.month - 1)
+        previous_total = current_total - 1
+        previous = f"{previous_total // 12:04d}-{previous_total % 12 + 1:02d}"
+        return {
+            "state": "valid",
+            "months": [
+                {
+                    "monthKey": previous,
+                    "uploadedAt": 1,
+                    "scoreContractId": "old-contract",
+                }
+            ],
+        }
+
+    def test_web_bridge_runs_previous_then_current_with_matching_tokens(self):
+        _, mock_upload_window, _ = self._run_web(
+            self._bridge_history(),
+            ["/r/previous", "/r/current"],
+        )
+
+        self.assertEqual(
+            [(call.args[6], call.args[1]) for call in mock_upload_window.call_args_list],
+            [
+                (
+                    month_windows(2, datetime.date.today())[0][2],
+                    "previous-token",
+                ),
+                (
+                    month_windows(1, datetime.date.today())[0][2],
+                    "current-token",
+                ),
+            ],
+        )
+
+    def test_web_bridge_continues_current_after_previous_empty_or_failure(self):
+        for previous_result in (None, _PAXEL_ERROR):
+            with self.subTest(previous_result=previous_result), patch(
+                "builtins.print"
+            ) as mock_print:
+                server, mock_upload_window, _ = self._run_web(
+                    self._bridge_history(),
+                    [previous_result, "/r/current"],
+                )
+
+            self.assertEqual(mock_upload_window.call_count, 2)
+            self.assertEqual(mock_upload_window.call_args_list[1].args[1], "current-token")
+            self.assertTrue(
+                any(
+                    "comparable baseline was not rebuilt" in str(call)
+                    for call in mock_print.call_args_list
+                )
+            )
+            done_events = [
+                call.args[1]
+                for call in server.push_event.call_args_list
+                if call.args[0] == "done"
+            ]
+            self.assertEqual(done_events[-1]["reportUrl"], "/r/current")
+            self.assertEqual(done_events[-1]["uploaded"], 1)
+
+    def test_web_bridge_enforces_cardinality_exceptions_and_current_success(self):
+        history = self._bridge_history()
+        server, upload, exit_code = self._run_web(history, [], ["previous-token"])
+        self.assertEqual((upload.call_count, exit_code), (0, 1))
+        self.assertTrue(server.shutdown.called)
+
+        for current_result in (_UPLOAD_ERROR, RuntimeError("current crashed")):
+            with self.subTest(current_result=current_result):
+                server, _, exit_code = self._run_web(
+                    history, ["/r/previous", current_result]
+                )
+                done = [c.args[1] for c in server.push_event.call_args_list if c.args[0] == "done"][-1]
+                self.assertEqual((exit_code, done["reportUrl"]), (1, ""))
+                self.assertTrue(server.shutdown.called)
+
+        with patch("builtins.print") as printed:
+            server, upload, exit_code = self._run_web(history, [RuntimeError("previous crashed"), "/r/current"])
+        done = [c.args[1] for c in server.push_event.call_args_list if c.args[0] == "done"][-1]
+        self.assertEqual((exit_code, upload.call_count, done["reportUrl"]), (None, 2, "/r/current"))
+        self.assertTrue(any("comparable baseline was not rebuilt" in str(c) for c in printed.call_args_list))
 
 
 # ---------------------------------------------------------------------------

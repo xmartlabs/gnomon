@@ -11,6 +11,7 @@ import urllib.request
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from gnomon.scoring.versioning import SCORE_CONTRACT_ID
 from gnomon.upload.auth import _capture_cli_token, _wait_for_auth_tokens, _SHARE_AUTH_TIMEOUT, _WEB_AUTH_TIMEOUT
 from gnomon.upload.mirdash import (
     _resolve_mirdash_base, _resolve_output_dir, _absolutize_dir_flags,
@@ -48,8 +49,8 @@ _HELP_TEXT = """Usage:
     --output-dir=PATH
                   copy final artifacts into PATH (use . for current directory)
 
-    Without flags, xl-ai-insights auto-detects which months are missing and
-    uploads only what is needed (first run uploads everything automatically).
+    Without flags, xl-ai-insights uploads the current month. When the prior
+    month is missing or uses another scoring contract, it rebuilds the previous month first.
 """
 
 _LATEST_CLI_RELEASE_URL = "https://api.github.com/repos/xmartlabs/gnomon/releases/latest"
@@ -63,8 +64,28 @@ _REASON_LABELS = {
     "current": "current month",
     "gap":     "missing on server",
     "refresh": "refresh (server snapshot predates month end)",
+    "contract-bridge": "rebuild comparable baseline",
     "backfill": "backfill",
 }
+
+
+def _warn_unavailable_comparison(history):
+    if isinstance(history, dict) and history.get("state") in (
+        "unavailable",
+        "legacy",
+        "malformed",
+    ):
+        print(
+            "  warning: uploaded history is unavailable or incompatible; "
+            "uploading current month only and comparison remains unavailable"
+        )
+
+
+def _warn_bridge_not_rebuilt():
+    print(
+        "  warning: comparable baseline was not rebuilt; current month will still upload "
+        "and the previous month will be retried later"
+    )
 
 
 def _release_result(status, current=None, latest=None, reason=None):
@@ -181,7 +202,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
         sys.exit(0)
 
     tokens = _wait_for_auth_tokens(server, port)
-    uploaded = server.uploaded  # consumed in auto-mode (G4)
+    history = server.history
     if not tokens:
         print("  Authentication cancelled or timed out -- nothing was analysed or shared.")
         # Tell any open progress page the truth instead of leaving it spinning.
@@ -203,8 +224,15 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
     if mode == "backfill":
         windows = month_windows(token_count, today, window_months=window_months)
     else:  # auto or force
-        anchors = months_to_upload(today, uploaded, force=(mode == "force"))
+        anchors = months_to_upload(
+            today,
+            history,
+            force=(mode == "force"),
+            active_contract=SCORE_CONTRACT_ID,
+        )
         windows = windows_for_anchors(anchors, window_months=window_months)
+        if mode == "auto":
+            _warn_unavailable_comparison(history)
 
     month_labels = [label for _, _, label in windows]
 
@@ -212,7 +240,12 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
         if mode == "backfill":
             plan_pairs = [label for _, _, label in windows]
         else:
-            plan_pairs = plan_upload(today, uploaded, force=(mode == "force"))
+            plan_pairs = plan_upload(
+                today,
+                history,
+                force=(mode == "force"),
+                active_contract=SCORE_CONTRACT_ID,
+            )
         _print_dry_run_plan(mode, windows, plan_pairs)
         server.push_event("done", {
             "reportUrl": "",
@@ -232,10 +265,16 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
         "months": month_labels,
     })
 
-    # Pre-assign one token per window by index (zip truncates to the shorter
-    # list, which replaces the old `token_idx >= len(tokens)` guard). Each month
-    # runs paxel as a subprocess, so a bounded thread pool gives real multi-core
-    # parallelism without GIL contention.
+    if mode == "auto" and len(tokens) < len(windows):
+        print("  error: authentication returned fewer tokens than the automatic upload plan")
+        server.push_event("done", {"reportUrl": "", "mirdashBase": mirdash_base,
+                                   "uploaded": 0, "failed": len(windows),
+                                   "total": len(windows), "noOpen": no_open})
+        server.shutdown()
+        sys.exit(1)
+
+    # Pre-assign one token per window by index. Each month runs paxel as a
+    # subprocess, so a bounded thread pool gives real multi-core parallelism.
     scheduled = list(enumerate(zip(windows, tokens)))
     total = len(windows)
 
@@ -253,22 +292,32 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
         )
 
     results = {}  # index -> report_url / sentinel
-    workers = min(_UPLOAD_CONCURRENCY, len(scheduled)) or 1
-    with ThreadPoolExecutor(max_workers=workers) as ex:
-        futs = {
-            ex.submit(_run_one, i, since, until, label, tok): i
-            for i, ((since, until, label), tok) in scheduled
-        }
-        for fut in as_completed(futs):
-            results[futs[fut]] = fut.result()
+    if mode == "auto":
+        for i, ((since, until, label), tok) in scheduled:
+            try:
+                results[i] = _run_one(i, since, until, label, tok)
+            except Exception:
+                print(f"  warning: {label} failed unexpectedly")
+                results[i] = _PAXEL_ERROR
+            if i == 0 and len(windows) == 2 and not _is_report_url(results[i]):
+                _warn_bridge_not_rebuilt()
+    else:
+        workers = min(_UPLOAD_CONCURRENCY, len(scheduled)) or 1
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            futs = {
+                ex.submit(_run_one, i, since, until, label, tok): i
+                for i, ((since, until, label), tok) in scheduled
+            }
+            for fut in as_completed(futs):
+                results[futs[fut]] = fut.result()
 
-    # Aggregate deterministically from results keyed by window index. Pick the
-    # highest successful index as last_report_url to preserve "most recent month".
+    # Aggregate deterministically from results keyed by window index. Automatic
+    # success is anchored to the current (last planned) window.
     uploaded_count = sum(1 for r in results.values() if _is_report_url(r))
     failed = sum(1 for r in results.values() if r in (_UPLOAD_ERROR, _PAXEL_ERROR))
     last_report_url = None
     for i in sorted(results):
-        if _is_report_url(results[i]):
+        if _is_report_url(results[i]) and (mode != "auto" or i == len(windows) - 1):
             last_report_url = results[i]
 
     server.push_event("done", {
@@ -296,7 +345,8 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
     server.shutdown()
     # Hard-fail only when nothing made it through; partial success still
     # exits 0 (the UI and terminal already flag the failed months).
-    if failed and uploaded_count == 0:
+    current_failed = results.get(len(windows) - 1) in (_UPLOAD_ERROR, _PAXEL_ERROR)
+    if (mode == "auto" and current_failed) or (failed and uploaded_count == 0):
         sys.exit(1)
 
 
@@ -321,7 +371,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
         print("  warning: no browser available (headless/CI) -- nothing was analysed or shared.")
         sys.exit(0)
 
-    tokens, uploaded = _capture_cli_token(port=port, timeout=_SHARE_AUTH_TIMEOUT)  # uploaded consumed in auto-mode (G4)
+    tokens, history = _capture_cli_token(port=port, timeout=_SHARE_AUTH_TIMEOUT)
     if not tokens:
         print("  Authentication cancelled or timed out -- nothing was analysed or shared.")
         sys.exit(0)
@@ -339,23 +389,35 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
     if mode == "backfill":
         windows = month_windows(token_count, today, window_months=window_months)
     else:  # auto or force
-        anchors = months_to_upload(today, uploaded, force=(mode == "force"))
+        anchors = months_to_upload(
+            today,
+            history,
+            force=(mode == "force"),
+            active_contract=SCORE_CONTRACT_ID,
+        )
         windows = windows_for_anchors(anchors, window_months=window_months)
+        if mode == "auto":
+            _warn_unavailable_comparison(history)
 
     if dry_run:
         if mode == "backfill":
             plan_pairs = [label for _, _, label in windows]
         else:
-            plan_pairs = plan_upload(today, uploaded, force=(mode == "force"))
+            plan_pairs = plan_upload(
+                today,
+                history,
+                force=(mode == "force"),
+                active_contract=SCORE_CONTRACT_ID,
+            )
         _print_dry_run_plan(mode, windows, plan_pairs)
         sys.exit(0)
 
-    # Pre-assign one token per window by index; zip truncates to the shorter
-    # list. If there are fewer tokens than windows, warn (preserves the old
-    # "ran out of tokens" message) before the truncated windows are dropped.
-    scheduled = list(enumerate(zip(windows, tokens)))
     if len(windows) > len(tokens):
+        if mode == "auto":
+            print("  error: authentication returned fewer tokens than the automatic upload plan")
+            sys.exit(1)
         print("  warning: ran out of tokens before all months were uploaded -- stopping")
+    scheduled = list(enumerate(zip(windows, tokens)))
 
     def _run_one(since, until, label, token):
         prefix = f"gnomon-{label}-" if output_dir else ""
@@ -370,18 +432,33 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
         )
 
     results = {}  # index -> (result, summary)
-    workers = min(_UPLOAD_CONCURRENCY, len(scheduled)) or 1
-    with ThreadPoolExecutor(max_workers=workers) as ex:
-        futs = {
-            ex.submit(_run_one, since, until, label, tok): (i, label)
-            for i, ((since, until, label), tok) in scheduled
-        }
-        for fut in as_completed(futs):
-            i, label = futs[fut]
-            result, summary = fut.result()
-            results[i] = (result, summary)
-            if _is_report_url(result) and not quiet:
-                print(f"  ^ {label} uploaded")
+
+    def _record_result(i, label, result, summary):
+        results[i] = (result, summary)
+        if _is_report_url(result) and not quiet:
+            print(f"  ^ {label} uploaded")
+
+    if mode == "auto":
+        for i, ((since, until, label), tok) in scheduled:
+            try:
+                result, summary = _run_one(since, until, label, tok)
+            except Exception:
+                print(f"  warning: {label} failed unexpectedly")
+                result, summary = _PAXEL_ERROR, None
+            _record_result(i, label, result, summary)
+            if i == 0 and len(windows) == 2 and not _is_report_url(result):
+                _warn_bridge_not_rebuilt()
+    else:
+        workers = min(_UPLOAD_CONCURRENCY, len(scheduled)) or 1
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            futs = {
+                ex.submit(_run_one, since, until, label, tok): (i, label)
+                for i, ((since, until, label), tok) in scheduled
+            }
+            for fut in as_completed(futs):
+                i, label = futs[fut]
+                result, summary = fut.result()
+                _record_result(i, label, result, summary)
 
     # Aggregate deterministically from results keyed by window index.
     uploaded_count = sum(1 for r, _ in results.values() if _is_report_url(r))
@@ -390,7 +467,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
     last_summary = None
     for i in sorted(results):
         result, summary = results[i]
-        if _is_report_url(result):
+        if _is_report_url(result) and (mode != "auto" or i == len(windows) - 1):
             last_report_url = result
             last_summary = summary
 

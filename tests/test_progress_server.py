@@ -1,9 +1,14 @@
 import json
+import socket
+import time
 import unittest
+import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 import progress_server
+from gnomon.upload import auth as upload_auth
 
 
 class TestBatchProgressRing(unittest.TestCase):
@@ -219,6 +224,155 @@ class TestUploadedFromCallback(unittest.TestCase):
             self.assertIn("tok789", server._tokens)
         finally:
             server.shutdown(delay=0)
+
+    def test_callback_stores_explicit_valid_history_only_after_token(self):
+        server = progress_server.ProgressServer(port=8824)
+        history = {
+            "outcome": "valid",
+            "months": [
+                {
+                    "monthKey": "2025-12",
+                    "uploadedAt": 1700000000,
+                    "scoreContractId": "7:7:7",
+                }
+            ],
+        }
+        try:
+            no_token = urllib.parse.urlencode({"uploaded_history": json.dumps(history)})
+            self._fetch_callback(server, no_token)
+            self.assertFalse(server._auth_event.is_set())
+            self.assertEqual(server.history, {"state": "legacy", "months": []})
+
+            with_token = urllib.parse.urlencode(
+                {"token": "tok-history", "uploaded_history": json.dumps(history)}
+            )
+            self._fetch_callback(server, with_token)
+            self.assertEqual(
+                server.history,
+                {
+                    "state": "valid",
+                    "months": [
+                        {
+                            "monthKey": "2025-12",
+                            "uploadedAt": 1700000000,
+                            "scoreContractId": "7:7:7",
+                        }
+                    ],
+                },
+            )
+        finally:
+            server.shutdown(delay=0)
+
+    def test_callback_malformed_explicit_history_fails_closed_without_losing_token(self):
+        server = progress_server.ProgressServer(port=8825)
+        try:
+            qs = urllib.parse.urlencode(
+                {"token": "tok-safe", "uploaded_history": '{"outcome":"valid","months":['}
+            )
+            self._fetch_callback(server, qs)
+            self.assertEqual(server.history, {"state": "malformed", "months": []})
+            self.assertEqual(server._tokens, ["tok-safe"])
+        finally:
+            server.shutdown(delay=0)
+
+
+class TestCaptureCliTokenHistory(unittest.TestCase):
+    """The one-shot console callback applies the same token gate as web mode."""
+
+    @staticmethod
+    def _free_port():
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            return sock.getsockname()[1]
+
+    @staticmethod
+    def _request_when_ready(url, expect_http_error=False):
+        deadline = time.time() + 3
+        while True:
+            try:
+                with urllib.request.urlopen(url, timeout=1) as response:
+                    response.read()
+                return
+            except urllib.error.HTTPError:
+                if expect_http_error:
+                    return
+                raise
+            except urllib.error.URLError:
+                if time.time() >= deadline:
+                    raise
+                time.sleep(0.01)
+
+    def test_history_without_token_is_not_persisted(self):
+        port = self._free_port()
+        history = {
+            "outcome": "valid",
+            "months": [{"monthKey": "2026-01", "uploadedAt": 1}],
+        }
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            capture = executor.submit(upload_auth._capture_cli_token, port, 3)
+            no_token_url = (
+                f"http://127.0.0.1:{port}/callback?"
+                + urllib.parse.urlencode({"uploaded_history": json.dumps(history)})
+            )
+            self._request_when_ready(no_token_url, expect_http_error=True)
+            self.assertFalse(capture.done())
+
+            self._request_when_ready(f"http://127.0.0.1:{port}/callback?token=accepted")
+            tokens, captured_history = capture.result(timeout=3)
+
+        self.assertEqual(tokens, ["accepted"])
+        self.assertEqual(captured_history, {"state": "legacy", "months": []})
+
+    def test_valid_history_is_captured_with_token(self):
+        port = self._free_port()
+        history = {
+            "outcome": "valid",
+            "months": [
+                {
+                    "monthKey": "2025-12",
+                    "uploadedAt": 2,
+                    "scoreContractId": "7:7:7",
+                }
+            ],
+        }
+        query = urllib.parse.urlencode(
+            {"token": "accepted", "uploaded_history": json.dumps(history)}
+        )
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            capture = executor.submit(upload_auth._capture_cli_token, port, 3)
+            self._request_when_ready(f"http://127.0.0.1:{port}/callback?{query}")
+            tokens, captured_history = capture.result(timeout=3)
+
+        self.assertEqual(tokens, ["accepted"])
+        self.assertEqual(
+            captured_history,
+            {
+                "state": "valid",
+                "months": [
+                    {
+                        "monthKey": "2025-12",
+                        "uploadedAt": 2,
+                        "scoreContractId": "7:7:7",
+                    }
+                ],
+            },
+        )
+
+    def test_unavailable_history_is_captured_with_token(self):
+        port = self._free_port()
+        query = urllib.parse.urlencode(
+            {
+                "token": "accepted",
+                "uploaded_history": json.dumps({"outcome": "unavailable"}),
+            }
+        )
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            capture = executor.submit(upload_auth._capture_cli_token, port, 3)
+            self._request_when_ready(f"http://127.0.0.1:{port}/callback?{query}")
+            tokens, captured_history = capture.result(timeout=3)
+
+        self.assertEqual(tokens, ["accepted"])
+        self.assertEqual(captured_history, {"state": "unavailable", "months": []})
 
 
 if __name__ == "__main__":
