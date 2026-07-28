@@ -29,17 +29,40 @@ OUT_DIR = os.getcwd()
 #                 ceremony terms AND Skill fluency (which stays live when either `skills` or
 #                 `skill_reads` is present).
 # (errors are emitted by every source, so error_rate/recovery need no cap.)
+#   planning_signal - the source can emit SOME evidence that a session was planned: plan
+#                 mode (EnterPlanMode/ExitPlanMode) or any Skill-shaped planning marker.
+#                 Gates the Planning practice term and AQ Discipline's planning term. Note
+#                 this is NOT implied by planning_session_scope == "measured": opencode has
+#                 authoritative root/child identity, so its eligible DENOMINATOR accrues,
+#                 but it emits no plan-mode tool and no skill signal at all, so its
+#                 numerator can never fire. Without this cap it would be scored 0 on a
+#                 signal it cannot produce.
 SOURCE_CAPS = {
-    "claude":   {"skills", "skill_reads", "toolsearch", "tasktool", "delegate", "model", "thinking", "linked_model_routing"},
-    "codex":    {"skills", "skill_reads", "delegate", "model", "thinking", "linked_model_routing"},   # SKILL.md shell-reads; thread_spawn = delegate
+    "claude":   {"skills", "skill_reads", "toolsearch", "tasktool", "delegate", "model", "thinking", "linked_model_routing", "planning_signal"},
+    "codex":    {"skills", "skill_reads", "delegate", "model", "thinking", "linked_model_routing", "planning_signal"},   # SKILL.md shell-reads; thread_spawn = delegate
     "gemini":   {"model", "thinking"},
     "antigravity": {"delegate", "skills", "skill_reads", "model"},   # CLI: real model; no separate thinking block
     "antigravity-ide": {"skills", "skill_reads", "thinking"},                 # IDE: masks model; no subagent/token
     "pi":       {"model", "thinking"},
-    "opencode": {"model", "thinking"},
-    "cursor":   {"delegate", "skill_reads", "thinking"},   # SKILL.md reads + manually_attached; no first-class Skill/ToolSearch/Task tool; model id recorded but not scored (flat request billing)
+    "opencode": {"model", "thinking"},   # no plan-mode tool, no skill signal -> no planning_signal
+    "cursor":   {"delegate", "skill_reads", "thinking", "planning_signal"},   # SKILL.md reads + manually_attached + create_plan/switch_mode -> EnterPlanMode; no first-class Skill/ToolSearch/Task tool; model id recorded but not scored (flat request billing)
 }
-_ALL_CAPS = {"skills", "skill_reads", "toolsearch", "tasktool", "delegate", "model", "thinking", "linked_model_routing"}
+_ALL_CAPS = {"skills", "skill_reads", "toolsearch", "tasktool", "delegate", "model", "thinking", "linked_model_routing", "planning_signal"}
+
+# Whether a source adapter can authoritatively distinguish human-started root
+# events from delegated child events.  Planning practice is scored only
+# for measured sources; unknown/unsupported sources remain visible but cannot
+# silently contribute a numeric value.
+PLANNING_SESSION_SCOPE_BY_SOURCE = {
+    "claude": "measured",
+    "codex": "measured",
+    "opencode": "measured",
+    "cursor": "measured",
+}
+
+
+def planning_session_scope(source):
+    return PLANNING_SESSION_SCOPE_BY_SOURCE.get(str(source or "").lower(), "unmeasured")
 
 
 def available_caps(sources):

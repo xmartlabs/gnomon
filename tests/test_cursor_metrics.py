@@ -215,6 +215,43 @@ class TestCursorPlanModeMetrics(unittest.TestCase):
         stats = acc.to_source_stats("cursor", None, None)
         self.assertEqual(stats["behavior"]["plan_sessions"], 1)
 
+    def test_dated_plan_mode_session_is_qualified_when_identity_is_authoritative(self):
+        """Cursor cannot emit a first-class Skill, so plan mode is its only path into the
+        qualified planning numerator. A dated root event must take it."""
+        acc = Accumulator()
+        acc.begin_file("cursor", "s.jsonl")
+        acc.observe({
+            "type": "assistant", "sessionId": "s-plan",
+            "timestamp": "2026-05-15T12:00:00.000Z", "isSidechain": False,
+            "message": {"role": "assistant", "content": [
+                {"type": "tool_use", "name": "EnterPlanMode", "input": {}},
+            ]},
+        }, None, None)
+        acc.end_file()
+        behavior = acc.to_source_stats("cursor", None, None)["behavior"]
+        self.assertEqual(behavior["planning_skill_sessions"], 1)
+        self.assertEqual(behavior["planning_skill_eligible_sessions"], 1)
+
+    def test_synth_only_plan_mode_session_marks_legacy_but_not_the_numerator(self):
+        """cursor-JSONL stamps __synth_ts__ on every event past the first. Timestamp
+        provenance may credit an ALREADY eligible root, but must never create
+        eligibility — so a synth-only plan-mode session stays out of the numerator."""
+        acc = Accumulator()
+        acc.begin_file("cursor", "s.jsonl")
+        acc.observe({
+            "type": "assistant", "sessionId": "synth-plan",
+            "timestamp": "2026-05-15T12:00:00.000Z",
+            "__synth_ts__": True, "isSidechain": False,
+            "message": {"role": "assistant", "content": [
+                {"type": "tool_use", "name": "EnterPlanMode", "input": {}},
+            ]},
+        }, None, None)
+        acc.end_file()
+        behavior = acc.to_source_stats("cursor", None, None)["behavior"]
+        self.assertEqual(behavior["plan_sessions"], 1)
+        self.assertEqual(behavior["planning_skill_sessions"], 0)
+        self.assertEqual(behavior["planning_skill_eligible_sessions"], 0)
+
     def test_degraded_plan_sessions_fallback(self):
         acc = Accumulator()
         acc.begin_file("cursor", "s.jsonl")

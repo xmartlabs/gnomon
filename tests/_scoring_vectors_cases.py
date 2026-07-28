@@ -31,6 +31,12 @@ CLAUDE_BLOCK = {
         "shell_test_runs": 120, "delegate_actions": 200, "background_tasks": 30,
         "iteration_depth_mean": 2.5, "iteration_depth_p90": 4, "iteration_depth_max": 20,
         "files_hammered_over_15x": 2, "plan_sessions": 16,
+        "planning_skill_sessions": 16,
+        "planning_skill_eligible_sessions": 40,
+        "planning_skill_unmeasured_sessions": 0,
+        "planning_skill_session_scope_state": "measured",
+        "planning_skill_session_share": 0.4,
+        "planning_skill_session_coverage": 1.0,
     },
     "stack": {
         "skills_distinct": 25, "skills_total": 900, "compounding_writes": 20,
@@ -69,6 +75,12 @@ CURSOR_BLOCK = {
         "shell_test_runs": 5, "delegate_actions": 2, "background_tasks": 0,
         "iteration_depth_mean": 6.0, "iteration_depth_p90": 12, "iteration_depth_max": 40,
         "files_hammered_over_15x": 5, "plan_sessions": 2,
+        "planning_skill_sessions": 2,
+        "planning_skill_eligible_sessions": 10,
+        "planning_skill_unmeasured_sessions": 0,
+        "planning_skill_session_scope_state": "measured",
+        "planning_skill_session_share": 0.2,
+        "planning_skill_session_coverage": 1.0,
     },
     "stack": {
         "skills_distinct": 0, "skills_total": 0, "compounding_writes": 1,
@@ -118,6 +130,12 @@ NO_TOOL_ACTIVITY_BLOCK = {
         "shell_test_runs": 0, "delegate_actions": 0, "background_tasks": 0,
         "iteration_depth_mean": None, "iteration_depth_p90": None, "iteration_depth_max": None,
         "files_hammered_over_15x": 0, "plan_sessions": 0,
+        "planning_skill_sessions": 0,
+        "planning_skill_eligible_sessions": 0,
+        "planning_skill_unmeasured_sessions": 5,
+        "planning_skill_session_scope_state": "unmeasured",
+        "planning_skill_session_share": None,
+        "planning_skill_session_coverage": None,
         "no_tool_activity": True,
     },
     "stack": {
@@ -167,6 +185,14 @@ def _rolling_block(*, sessions, tests, planning_ratio, grounded_sessions):
     block["volume"]["total_sessions"] = sessions
     block["behavior"]["shell_test_runs"] = tests
     block["behavior"]["planning_ratio_explore_to_doing"] = planning_ratio
+    block["behavior"]["planning_skill_eligible_sessions"] = sessions
+    block["behavior"]["planning_skill_sessions"] = round(sessions * 0.4)
+    block["behavior"]["planning_skill_unmeasured_sessions"] = 0
+    block["behavior"]["planning_skill_session_scope_state"] = (
+        "measured" if sessions else "unmeasured")
+    block["behavior"]["planning_skill_session_share"] = (
+        block["behavior"]["planning_skill_sessions"] / sessions if sessions else None)
+    block["behavior"]["planning_skill_session_coverage"] = 1.0 if sessions else None
     block["tools"]["mcp_grounded_sessions"] = grounded_sessions
     block["tools"]["mcp_write_sessions"] = sessions
     block["tools"]["mcp_grounded_session_names"] = [

@@ -44,7 +44,11 @@ Sí sirve como feedback a bajo costo, con tres condiciones:
   pagás, no qué tan bien trabajás. Sesgo directo contra cuentas de USD 20.
 - **Model mix** — mejoró (ahora ve GPT vía Codex), pero sigue premiando diversidad de
   modelos, que es función del presupuesto/acceso, no de skill.
-- **Token economy (ToolSearch)** — señal exclusiva de Claude Code; lee 0 para el resto.
+- **Token economy (ToolSearch)** — señal exclusiva de Claude Code. No lee 0 para el
+  resto: si ninguna fuente puede registrarla el término se descarta y se renormaliza.
+  Pero con Claude presente el término queda vivo para todo el corpus y su denominador
+  incluye las llamadas de fuentes que nunca podrían registrarla — sesgo conocido y
+  preexistente, ver "Rate denominators" abajo.
 
 ## Sesgos conocidos (post-fixes de hoy)
 
@@ -92,3 +96,51 @@ Sí sirve como feedback a bajo costo, con tres condiciones:
 
 Costo total (ambos caminos): ~5 min/persona/mes. Riesgo principal: tratar la rúbrica
 como ranking — mitigado usando solo las métricas medidas.
+
+## Rate denominators
+
+AQ's rate terms (test runs, review skills, ToolSearch, task planning, skills,
+compounding writes) are `count / volume.tool_calls_total`, per TOOL CALL, not per
+session. One session is not one unit of work across tools: on a measured corpus, Claude
+sessions averaged ~68 tool calls and ~37 active minutes while one-shot `codex exec`
+sessions averaged ~18 calls and ~2.7 minutes. A per-session denominator made the short
+ones act as pure denominator — Verification read 34.4/35 on the Claude slice alone and
+22.9/35 merged, for identical behavior.
+
+The targets were recalibrated into per-tool-call units (see the constants at the top of
+`gnomon/scoring/aq.py`, each with its p40/p50 band and sample size). There is no
+per-source weighting: pooling numerator and denominator over the same unit already makes
+the corpus rate the tool-call-share-weighted mean of the per-source rates, so it can
+never land outside the range its sources span. Absolute volume still does not raise AQ,
+because both sides of the ratio grow together.
+
+A payload that omits `volume.tool_calls_total` scores those terms N/A — dropped and
+renormalized — rather than 0, so a legacy or foreign block does not publish a phantom
+collapse across six terms.
+
+**Known limitation.** The denominator is every tool call in the corpus, including calls
+from a source that could never emit the signal being scored, because `available_caps` is
+a union: one capable source keeps a term live for all of it. Adding an OpenCode corpus
+beside Claude lowers ToolSearch-based axes with zero behavior change (measured: Token
+economy 1.00 -> 0.63). This predates the per-tool-call change and is unchanged by it.
+
+## Disponibilidad de Planning practice
+
+Planning practice publishes counted planning sessions (`P`), eligible
+top-level sessions (`E`), unmeasured sessions (`U`), state, share, and coverage
+for corpus, source, month, and rolling-window slices. It preserves
+`0 <= P <= E`, computes `share = P/E`, and computes
+`coverage = E/(E+U)`. State is `measured` for `E>0,U=0`, `partial` for
+`E>0,U>0`, and `unmeasured` when no confirmed denominator exists. The term's
+effective Planning weight is `0.25 * coverage`; unavailable evidence has zero
+weight and the remaining Planning terms are renormalized.
+
+`P` counts a session when it contains plan mode (`EnterPlanMode` /
+`ExitPlanMode`) **or** a recognized planning Skill or subagent — either signal is
+sufficient, and a session with both still counts once. The todo family
+(`TodoWrite` / `TaskCreate`) is deliberately excluded: it is the agent's own
+execution bookkeeping, it already earns Ordered planning readiness through the
+`PLAN_MIN_STEPS` distinct-step gate, and it appears in a large majority of
+sessions, so admitting it would saturate the term without any behavior change.
+The wire field names still carry the historical `planning_skill_*` prefix; they
+are the dashboard contract and are intentionally not renamed.

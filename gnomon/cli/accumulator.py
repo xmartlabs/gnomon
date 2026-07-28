@@ -25,10 +25,11 @@ import time
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 
-from gnomon.config import parse_ts, line_count, strip_injections
+from gnomon.config import parse_ts, line_count, strip_injections, planning_session_scope
+from gnomon.scoring.inputs import _adjusted_doing
 from gnomon.taxonomy import (
-    SCHEDULE_TOOLS, ASK_TOOLS, PLAN_SIGNAL_TOOLS, PLAN_SKILL_NEEDLES,
-    KNOWLEDGE_SKILL_NEEDLES,
+    SCHEDULE_TOOLS, ASK_TOOLS, PLAN_MODE_TOOLS, PLAN_SIGNAL_TOOLS,
+    PLAN_SKILL_NEEDLES, KNOWLEDGE_SKILL_NEEDLES,
     classify_tool, classify_mcp_subcategory, CI_CONTEXT_SUBCATS,
     is_substantive_tool, classify_change_target, is_plan_file_target,
     bash_writes_file, bash_runs_tests, bash_runs_knowledge, _extract_clis,
@@ -108,6 +109,15 @@ class Accumulator:
         self.tool_use_total = 0
         self.tool_counter = Counter()
         self.cat_counter = Counter()
+        # Planning DISPATCHES — the Skill call or Agent dispatch itself. Named 'dispatch',
+        # not 'ceremony', because gstack already uses plan_ceremony for the CREDITED
+        # Planning-practice score; this counter is the opposite, a count to EXCLUDE.
+        # Tracked separately rather than re-routed through
+        # cat_counter: delegate_actions is derived from cat_counter["delegate"], so moving
+        # a planning Agent into another category would silently cut Execution-axis
+        # delegation credit and desync the corpus from the independent month_delegate
+        # counter. Subtracted from `doing` at the ratio sites only.
+        self.planning_dispatch_calls = 0
         self.mcp_calls = 0
         self.native_calls = 0
 
@@ -160,7 +170,12 @@ class Accumulator:
         # planning Skill. Counting distinct sessions (not tool calls) stops TodoWrite,
         # which fires many times per session, from inflating the metric.
         self.plan_sessions = set()
+        # The qualified Planning practice numerator uses source-qualified session IDs so
+        # pooled sources cannot collide. Numerator and denominator are admitted
+        # by the same event-level predicate.
         self.planning_skill_sessions = set()
+        self.planning_skill_eligible_sessions = set()
+        self.planning_skill_unmeasured_sessions = set()
         self.session_ordered_tools = defaultdict(list)
         self.month_session_ordered_tools = defaultdict(lambda: defaultdict(list))
         self.ordered_facts_complete = True
@@ -190,6 +205,7 @@ class Accumulator:
         self.month_polite = Counter()
         self.month_questions = Counter()
         self.month_delegate = Counter()
+        self.month_planning_dispatch_calls = Counter()
         self.month_background = Counter()
         self.month_scheduled = Counter()
         self.month_fanouts = defaultdict(lambda: defaultdict(int))
@@ -208,6 +224,8 @@ class Accumulator:
         self.month_shell_test_runs = Counter()
         self.month_plan_sessions = defaultdict(set)   # "YYYY-MM" -> {sessionId with planning}
         self.month_planning_skill_sessions = defaultdict(set)
+        self.month_planning_skill_eligible_sessions = defaultdict(set)
+        self.month_planning_skill_unmeasured_sessions = defaultdict(set)
         self.month_api_errors = Counter()
 
         self.model_tokens = defaultdict(_zero_tok)
@@ -255,7 +273,7 @@ class Accumulator:
     def _git_cwds(self):
         return list(self.project_activity.keys())
 
-    def _record_skill(self, name, sid, mkey):
+    def _record_skill(self, name, sid, mkey, planning_event_eligible=False):
         if not name:
             return
         self.skill_counter[name] += 1
@@ -263,7 +281,8 @@ class Accumulator:
             self.month_skill_counter[mkey][name] += 1
         if self._is_plan_skill(name):
             self._mark_plan_session(sid, mkey)
-            self._mark_planning_skill_session(sid, mkey)
+            self._record_planning_skill_signal(
+                sid, mkey, event_eligible=planning_event_eligible)
         if self._is_knowledge_skill(name):
             self._pending_knowledge_grounding[sid] = True
 
@@ -272,6 +291,24 @@ class Accumulator:
     def _is_plan_skill(name):
         sl = str(name).lower()
         return any(nd in sl for nd in PLAN_SKILL_NEEDLES)
+
+    @classmethod
+    def _is_planning_dispatch(cls, name, inp):
+        """Whether THIS tool call is a planning DISPATCH, so the ratio can leave
+        it out of `doing`. A planning Skill classifies `execute` and a planning Agent
+        classifies `delegate`, which would otherwise make thinking first lower the very
+        term that rewards it.
+
+        Deliberately NARROWER than `_fact_plan_skill`: `attributionSkill` is a per-TURN
+        field, so honouring it here would strip every Edit/Bash in a planning-attributed
+        turn out of the denominator — and on a real corpus most planning-skill evidence
+        arrives by attribution. A shell read of a SKILL.md is a read, not a dispatch, and
+        stays in `doing` for the same reason."""
+        if name == "Skill":
+            return cls._is_plan_skill(inp.get("skill"))
+        if name == "Agent":
+            return cls._is_plan_skill(inp.get("subagent_type", "general-purpose"))
+        return False
 
     # ---- ordered-fact enrichment helpers (C1) ------------------------------
     @staticmethod
@@ -330,13 +367,20 @@ class Accumulator:
         if mkey:
             self.month_plan_sessions[mkey].add(sid)
 
-    def _mark_planning_skill_session(self, sid, mkey):
-        """Record actual planning Skill use, separate from plan/todo ceremony."""
-        if not sid:
+    def _record_planning_skill_signal(self, sid, mkey, *, event_eligible):
+        """The sole mutation path for the qualified planning numerator.
+
+        Descriptive skill counters are updated before this guard, so rejecting a
+        child marker changes scoring attribution only. A synthetic timestamp is
+        provenance for a real event: it may credit an already-eligible root at
+        corpus level, but never creates eligibility or a mismatched monthly credit.
+        """
+        if not event_eligible or not sid:
             return
-        self.planning_skill_sessions.add(sid)
-        if mkey:
-            self.month_planning_skill_sessions[mkey].add(sid)
+        key = (self._cur_src, sid)
+        self.planning_skill_sessions.add(key)
+        if mkey and key in self.month_planning_skill_eligible_sessions[mkey]:
+            self.month_planning_skill_sessions[mkey].add(key)
 
     def _counted_plan_sessions(self):
         """Plan sessions restricted to the same universe as total_sessions, so the
@@ -353,9 +397,34 @@ class Accumulator:
         return min(len(self.plan_sessions), len(self.session_files))
 
     def _counted_planning_skill_sessions(self):
-        if self.session_ts:
-            return len(self.planning_skill_sessions & set(self.session_ts))
-        return min(len(self.planning_skill_sessions), len(self.session_files))
+        return len(self.planning_skill_sessions & self.planning_skill_eligible_sessions)
+
+    @staticmethod
+    def _planning_skill_fields(numerator, denominator, unmeasured):
+        assert 0 <= numerator <= denominator
+        assert unmeasured >= 0
+        state = ("measured" if denominator > 0 and unmeasured == 0
+                 else "partial" if denominator > 0 and unmeasured > 0
+                 else "unmeasured")
+        return {
+            "planning_skill_sessions": numerator,
+            "planning_skill_eligible_sessions": denominator,
+            "planning_skill_unmeasured_sessions": unmeasured,
+            "planning_skill_session_scope_state": state,
+            "planning_skill_session_share": (
+                round(numerator / denominator, 6)
+                if state in {"measured", "partial"} else None),
+            "planning_skill_session_coverage": (
+                round(denominator / (denominator + unmeasured), 6)
+                if state in {"measured", "partial"} else None),
+        }
+
+    def _counted_planning_skill_unmeasured_sessions(self, month=None):
+        unresolved = (self.month_planning_skill_unmeasured_sessions.get(month, set())
+                      if month else self.planning_skill_unmeasured_sessions)
+        eligible = (self.month_planning_skill_eligible_sessions.get(month, set())
+                    if month else self.planning_skill_eligible_sessions)
+        return len(unresolved - eligible)
 
     # ---- Context Intelligence (behavioral grounding) helper ----------------
     def _consume_knowledge_grounding(self, sid, mkey):
@@ -601,6 +670,43 @@ class Accumulator:
             return None
         mkey = dt.strftime("%Y-%m") if dt is not None else None
 
+        # Planning eligibility is deliberately event-scoped. In particular,
+        # Cursor root and child events can share a SID, so filtering only after
+        # session dedupe would let a child marker credit its parent.
+        _scope_measured = planning_session_scope(self._cur_src) == "measured"
+        _identity_valid = isinstance(ev.get("isSidechain"), bool)
+        _planning_key = (self._cur_src, sid) if sid else None
+        _planning_candidate = bool(
+            sid and dt is not None
+            and not ev.get("__synth_ts__")
+            and not ev.get("__codex_usage__")
+            and etype != "routing_link")
+        planning_denominator_eligible = bool(
+            _planning_candidate and _scope_measured and _identity_valid
+            and ev.get("isSidechain") is False)
+        if planning_denominator_eligible:
+            self.planning_skill_eligible_sessions.add(_planning_key)
+            if mkey:
+                self.month_planning_skill_eligible_sessions[mkey].add(_planning_key)
+        elif _planning_candidate and (
+                not _scope_measured or not _identity_valid):
+            self.planning_skill_unmeasured_sessions.add(_planning_key)
+            if mkey:
+                self.month_planning_skill_unmeasured_sessions[mkey].add(_planning_key)
+        # ``__synth_ts__`` marks timestamp provenance, not a fabricated event.
+        # Cursor may therefore credit a root admitted by an earlier real event,
+        # but it can never create denominator eligibility by itself.
+        _already_eligible = _planning_key in self.planning_skill_eligible_sessions
+        planning_event_eligible = bool(
+            sid and dt is not None
+            and not ev.get("__codex_usage__")
+            and etype != "routing_link"
+            and _scope_measured
+            and _identity_valid
+            and ev.get("isSidechain") is False
+            and (not ev.get("__synth_ts__") or _already_eligible)
+        )
+
         if dt is not None:
             # Synthetic timestamps (Cursor JSONL events past the first, stamped with
             # the file mtime) must reach the date window / month bucket so windowed
@@ -632,7 +738,7 @@ class Accumulator:
                 self.project_sessions[cwd].add(sid)
 
         for skill in ev.get("injectedSkills") or []:
-            self._record_skill(skill, sid, mkey)
+            self._record_skill(skill, sid, mkey, planning_event_eligible)
 
         msg = ev.get("message") if isinstance(ev.get("message"), dict) else None
 
@@ -750,14 +856,8 @@ class Accumulator:
                     self.month_model_tokens[mkey][mdl]["cache_read"]     += _tcr
                     self.month_model_tokens[mkey][mdl]["cache_creation"] += _tcc
             if ev.get("attributionSkill"):
-                self.skill_counter[ev["attributionSkill"]] += 1
-                if mkey:
-                    self.month_skill_counter[mkey][ev["attributionSkill"]] += 1
-                if self._is_plan_skill(ev["attributionSkill"]):
-                    self._mark_plan_session(sid, mkey)
-                    self._mark_planning_skill_session(sid, mkey)
-                if self._is_knowledge_skill(ev["attributionSkill"]):
-                    self._pending_knowledge_grounding[sid] = True
+                self._record_skill(
+                    ev["attributionSkill"], sid, mkey, planning_event_eligible)
             content = msg.get("content")
             if isinstance(content, list):
                 _turn_agent_count = 0
@@ -835,6 +935,10 @@ class Accumulator:
                             if _cat == "delegate":
                                 self.month_delegate[mkey] += 1
                         self.cat_counter[_cat] += 1
+                        if self._is_planning_dispatch(name, inp):
+                            self.planning_dispatch_calls += 1
+                            if mkey:
+                                self.month_planning_dispatch_calls[mkey] += 1
                         if name.startswith("mcp__"):
                             self.mcp_calls += 1
                             parts = name.split("__")
@@ -877,15 +981,8 @@ class Accumulator:
                         if name == "Skill":
                             s = inp.get("skill")
                             if s:
-                                self.skill_counter[s] += 1
-                                if mkey:
-                                    self.month_skill_counter[mkey][s] += 1
-                                # a planning Skill also marks this a planning session
-                                if self._is_plan_skill(s):
-                                    self._mark_plan_session(sid, mkey)
-                                    self._mark_planning_skill_session(sid, mkey)
-                                if self._is_knowledge_skill(s):
-                                    self._pending_knowledge_grounding[sid] = True
+                                self._record_skill(
+                                    s, sid, mkey, planning_event_eligible)
                         # Plan-ceremony signal: mark this SESSION as a planning session.
                         # PLAN_SIGNAL_TOOLS normalizes across sources (EnterPlanMode = Cursor
                         # create_plan; ExitPlanMode = Claude Code native plan mode, shift+tab ->
@@ -893,8 +990,20 @@ class Accumulator:
                         # Cursor todos). We count DISTINCT SESSIONS, not tool calls, so TodoWrite
                         # firing many times per session (todo bookkeeping) can't inflate the metric.
                         # Subset of taxonomy.PLAN_TOOLS: TodoRead/TaskList/TaskGet are reads.
+                        #
+                        # Only the PLAN_MODE subset also reaches the QUALIFIED numerator: entering
+                        # or exiting plan mode is a human deciding to plan and a plan existing
+                        # before code, the same construct a planning Skill expresses. TodoWrite /
+                        # TaskCreate stay legacy-only — they are the agent's own execution
+                        # bookkeeping, they already earn "Ordered planning readiness" through the
+                        # PLAN_MIN_STEPS distinct-step gate in derive_session_ordered_facts, and
+                        # TaskCreate alone appears in most sessions, so admitting it here would
+                        # saturate the term without anyone changing how they work.
                         if name in PLAN_SIGNAL_TOOLS:
                             self._mark_plan_session(sid, mkey)
+                            if name in PLAN_MODE_TOOLS:
+                                self._record_planning_skill_signal(
+                                    sid, mkey, event_eligible=planning_event_eligible)
                         if name == "Agent":
                             _turn_agent_count += 1
                             if self._cur_src == "codex" and sid:
@@ -922,6 +1031,8 @@ class Accumulator:
                             self.subagent_counter[st] += 1
                             if self._is_plan_skill(st):
                                 self._mark_plan_session(sid, mkey)
+                                self._record_planning_skill_signal(
+                                    sid, mkey, event_eligible=planning_event_eligible)
                             if self._is_knowledge_skill(st):
                                 self._pending_knowledge_grounding[sid] = True
                             if mkey:
@@ -948,7 +1059,8 @@ class Accumulator:
                         if name == "Read":
                             skill_name = extract_skill_name_from_path(inp.get("file_path"))
                             if skill_name:
-                                self._record_skill(skill_name, sid, mkey)
+                                self._record_skill(
+                                    skill_name, sid, mkey, planning_event_eligible)
 
                         # ---- code churn + iteration depth ----------
                         if name == "Edit":
@@ -1031,14 +1143,9 @@ class Accumulator:
                                 # Claude invokes skills via the Skill tool (counted
                                 # above); other CLIs read SKILL.md through the shell
                                 for _sm in _SKILL_MD_RX.finditer(cmd):
-                                    self.skill_counter[_sm.group(1)] += 1
-                                    if mkey:
-                                        self.month_skill_counter[mkey][_sm.group(1)] += 1
-                                    if self._is_plan_skill(_sm.group(1)):
-                                        self._mark_plan_session(sid, mkey)
-                                        self._mark_planning_skill_session(sid, mkey)
-                                    if self._is_knowledge_skill(_sm.group(1)):
-                                        self._pending_knowledge_grounding[sid] = True
+                                    self._record_skill(
+                                        _sm.group(1), sid, mkey,
+                                        planning_event_eligible)
                             if bash_writes_file(cmd):
                                 self.bash_write_calls += 1
                                 _bash_nl = cmd.count("\n")
@@ -1128,7 +1235,17 @@ class Accumulator:
         produce = self.cat_counter.get("produce", 0)
         execute = self.cat_counter.get("execute", 0)
         delegate = self.cat_counter.get("delegate", 0)
-        doing = produce + execute + delegate
+        # Planning dispatches leave the denominator: invoking a planning Skill (execute) or
+        # dispatching a planning subagent (delegate) is thinking first, not building, so it
+        # must not lower the term that rewards thinking first.
+        #
+        # But the subtraction must never EMPTY the denominator. A corpus whose only
+        # execute/delegate activity is planning dispatch, with no writes, would otherwise
+        # publish a ratio of 0 — the worst value for a term that rewards exploring, handed to
+        # someone who did nothing but explore and plan. Inverting a score is worse than not
+        # adjusting it, so we fall back to the raw denominator: a corpus with no build has
+        # nothing to compare its exploring against.
+        doing = _adjusted_doing(produce + execute + delegate, self.planning_dispatch_calls)
         planning_ratio = (explore / doing) if doing else 0
 
         tool_diversity = len(self.tool_counter)
@@ -1289,6 +1406,10 @@ class Accumulator:
                 "produce_actions": produce,
                 "execute_actions": execute,
                 "delegate_actions": delegate,
+                # Published so the ratio reconciles against its own components in the
+                # report (explore vs produce+execute+delegate MINUS this) and so the
+                # subtraction is auditable rather than invisible.
+                "planning_dispatch_actions": self.planning_dispatch_calls,
                 "avg_session_minutes": round(avg_session_min, 1),
                 "median_session_minutes": round(median_session_min, 1),
                 "longest_run_minutes": round(longest_run_min, 1),
@@ -1314,7 +1435,10 @@ class Accumulator:
                 "scheduled_actions": self.scheduled_actions,
                 "shell_test_runs": self.shell_test_runs,
                 "plan_sessions": self._counted_plan_sessions(),
-                "planning_skill_sessions": self._counted_planning_skill_sessions(),
+                **self._planning_skill_fields(
+                    self._counted_planning_skill_sessions(),
+                    len(self.planning_skill_eligible_sessions),
+                    self._counted_planning_skill_unmeasured_sessions()),
                 "eligible_change_sessions": _eligible,
                 "planned_eligible_sessions": _planned,
                 "evidence_eligible_sessions": _evidence,
@@ -1433,11 +1557,14 @@ class Accumulator:
             month_grounded_sessions=self.month_grounded_sessions,
             month_write_sessions=self.month_write_sessions,
             month_session_ordered_tools=self.month_session_ordered_tools,
+            month_planning_dispatch_calls=self.month_planning_dispatch_calls,
             month_compounding=self.month_compounding, month_shell_test_runs=self.month_shell_test_runs,
             month_plan_sessions=self.month_plan_sessions,
             month_planning_skill_sessions=self.month_planning_skill_sessions,
+            month_planning_skill_eligible_sessions=self.month_planning_skill_eligible_sessions,
+            month_planning_skill_unmeasured_sessions=(
+                self.month_planning_skill_unmeasured_sessions),
             month_api_errors=self.month_api_errors,
-            planning_ratio_window=planning_ratio,
             cwds=self._git_cwds(),
             gap_cap_s=GAP_CAP_S, burst_gap_s=BURST_GAP_S,
             no_tool_activity=no_tool_activity, all_sources_no_agent=all_sources_no_agent,
@@ -1500,7 +1627,10 @@ class Accumulator:
         _s_explore = _s_cats.get("explore", 0) + self.thinking_blocks
         _s_produce = _s_cats.get("produce", 0)
         _s_execute = _s_cats.get("execute", 0)
-        _s_doing = _s_produce + _s_execute + _s_cats.get("delegate", 0)
+        # Mirrors the corpus path above, including the empty-denominator fallback.
+        _s_doing = _adjusted_doing(
+            _s_produce + _s_execute + _s_cats.get("delegate", 0),
+            self.planning_dispatch_calls)
         _s_planning_ratio = round((_s_explore / _s_doing) if _s_doing else 0, 2)
 
         # Source-local git window: requested --since/--until, else this source's own
@@ -1557,7 +1687,10 @@ class Accumulator:
                 "parallel_session_share": _s_parallel_session_share,
                 "shell_test_runs": self.shell_test_runs,
                 "plan_sessions": self._counted_plan_sessions(),
-                "planning_skill_sessions": self._counted_planning_skill_sessions(),
+                **self._planning_skill_fields(
+                    self._counted_planning_skill_sessions(),
+                    len(self.planning_skill_eligible_sessions),
+                    self._counted_planning_skill_unmeasured_sessions()),
                 "eligible_change_sessions": _s_eligible,
                 "planned_eligible_sessions": _s_agg["planned"],
                 "evidence_eligible_sessions": _s_agg["evidence"],
@@ -1568,6 +1701,7 @@ class Accumulator:
                 "linked_model_pairs": _s_routing_pairs,
                 "linked_model_routing_state": _s_routing_state,
                 "delegate_actions": _s_cats.get("delegate", 0),
+                "planning_dispatch_actions": self.planning_dispatch_calls,
                 "background_tasks": self.background_tasks,
                 "scheduled_actions": self.scheduled_actions,
                 "iteration_depth_mean": (round(_s_ids["mean"], 2)

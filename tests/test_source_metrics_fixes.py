@@ -1,8 +1,11 @@
-import os, sys, json, io, tempfile, shutil, contextlib, unittest
+import os, sys, json, io, sqlite3, tempfile, shutil, contextlib, unittest
 from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import paxel
+from gnomon.cli.accumulator import Accumulator
+from gnomon.sources.codex import _codex_events
+from gnomon.sources.opencode import _opencode_events, _opencode_sqlite_events
 
 
 def _write_jsonl(rows):
@@ -10,6 +13,142 @@ def _write_jsonl(rows):
     f.write("\n".join(json.dumps(r) for r in rows))
     f.close()
     return f.name
+
+
+class TestPlanningSessionIdentity(unittest.TestCase):
+    @staticmethod
+    def _codex_rows(source):
+        return [
+            {"type": "session_meta", "timestamp": "2026-07-01T10:00:00Z",
+             "payload": {"id": "codex-session", "cwd": "/x", "source": source}},
+            {"type": "response_item", "timestamp": "2026-07-01T10:00:01Z",
+             "payload": {"type": "message", "role": "user",
+                         "content": [{"type": "input_text", "text": "plan this"}]}},
+        ]
+
+    def test_codex_guardian_is_authoritative_child_and_unknown_subagent_fails_closed(self):
+        cases = (
+            ({"subagent": {"other": "guardian"}}, True),
+            ({"subagent": {"thread_spawn": {"parent_thread_id": "parent"}}}, True),
+            ({"subagent": {"other": "unknown"}}, None),
+            ({"subagent": {}}, None),
+        )
+        for source, expected in cases:
+            with self.subTest(source=source):
+                path = _write_jsonl(self._codex_rows(source))
+                self.addCleanup(lambda p=path: os.path.exists(p) and os.unlink(p))
+                event = next(e for e in _codex_events(path) if e.get("type") == "user")
+                self.assertIs(event["isSidechain"], expected)
+
+    def _opencode_json_events(self, session, *, planning_marker=False):
+        root = tempfile.mkdtemp(prefix="opencode-json-")
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        sid = session["id"]
+        session_path = os.path.join(root, f"{sid}.json")
+        with open(session_path, "w") as handle:
+            json.dump(session, handle)
+        message_dir = os.path.join(root, "storage", "message", sid)
+        os.makedirs(message_dir)
+        with open(os.path.join(message_dir, "m1.json"), "w") as handle:
+            json.dump({"id": "m1", "role": "assistant" if planning_marker else "user",
+                       "time": {"created": 1782900000000},
+                       "summary": {"title": "plan"}}, handle)
+        if planning_marker:
+            part_dir = os.path.join(root, "storage", "part", "m1")
+            os.makedirs(part_dir)
+            with open(os.path.join(part_dir, "p1.json"), "w") as handle:
+                json.dump({
+                    "id": "p1", "type": "tool", "tool": "bash",
+                    "time": {"start": 1782900001000},
+                    "state": {
+                        "status": "completed",
+                        "input": {
+                            "command": "cat /x/skills/writing-plans/SKILL.md",
+                        },
+                    },
+                }, handle)
+        with mock.patch("gnomon.sources.opencode.discovery.OPENCODE_DIR", root):
+            return list(_opencode_events(session_path))
+
+    def test_opencode_json_parent_metadata_matrix(self):
+        cases = (
+            ({"id": "root", "directory": "/x", "parentID": None}, False),
+            ({"id": "child", "directory": "/x", "parentID": "parent"}, True),
+            ({"id": "missing", "directory": "/x"}, False),
+            ({"id": "malformed", "directory": "/x", "parentID": 42}, None),
+        )
+        for session, expected in cases:
+            with self.subTest(session=session["id"]):
+                events = self._opencode_json_events(session)
+                self.assertTrue(events)
+                self.assertTrue(all(e["isSidechain"] is expected for e in events))
+
+    def test_opencode_legacy_json_roots_contribute_planning_scope(self):
+        cases = (
+            (False, (0, 1, 0)),
+            (True, (1, 1, 0)),
+        )
+        for planning_marker, expected in cases:
+            with self.subTest(planning_marker=planning_marker):
+                events = self._opencode_json_events(
+                    {"id": f"legacy-{planning_marker}", "directory": "/x"},
+                    planning_marker=planning_marker,
+                )
+                acc = Accumulator()
+                acc.begin_file("opencode", "legacy-session.json")
+                for event in events:
+                    acc.observe(event, None, None)
+                acc.end_file()
+                behavior = acc.to_source_stats("opencode", None, None)["behavior"]
+                self.assertEqual((
+                    behavior["planning_skill_sessions"],
+                    behavior["planning_skill_eligible_sessions"],
+                    behavior["planning_skill_unmeasured_sessions"],
+                ), expected)
+
+    @staticmethod
+    def _opencode_db(*, with_parent_column, parent_value=None):
+        fd, path = tempfile.mkstemp(prefix="opencode-", suffix=".db")
+        os.close(fd)
+        conn = sqlite3.connect(path)
+        parent_sql = ", parent_id" if with_parent_column else ""
+        conn.execute(
+            "CREATE TABLE session (id TEXT, directory TEXT, time_created INTEGER"
+            + (", parent_id" if with_parent_column else "") + ")")
+        conn.execute("CREATE TABLE message "
+                     "(id TEXT, session_id TEXT, time_created INTEGER, data TEXT)")
+        conn.execute("CREATE TABLE part "
+                     "(id TEXT, session_id TEXT, message_id TEXT, time_created INTEGER, data TEXT)")
+        columns = "id, directory, time_created" + parent_sql
+        placeholders = "?, ?, ?" + (", ?" if with_parent_column else "")
+        values = ["session", "/x", 1782900000000]
+        if with_parent_column:
+            values.append(parent_value)
+        conn.execute(f"INSERT INTO session ({columns}) VALUES ({placeholders})", values)
+        conn.execute("INSERT INTO message VALUES (?, ?, ?, ?)",
+                     ("m1", "session", 1782900000000,
+                      json.dumps({"id": "m1", "role": "user",
+                                  "time": {"created": 1782900000000},
+                                  "summary": {"title": "plan"}})))
+        conn.commit()
+        conn.close()
+        return path
+
+    def test_opencode_sqlite_parent_metadata_matrix(self):
+        cases = (
+            (True, None, False),
+            (True, "parent", True),
+            (True, 42, None),
+            (False, None, None),
+        )
+        for with_parent, value, expected in cases:
+            with self.subTest(with_parent=with_parent, value=value):
+                path = self._opencode_db(
+                    with_parent_column=with_parent, parent_value=value)
+                self.addCleanup(lambda p=path: os.path.exists(p) and os.unlink(p))
+                events = list(_opencode_sqlite_events(path))
+                self.assertTrue(events)
+                self.assertTrue(all(e["isSidechain"] is expected for e in events))
 
 
 # ---------------------------------------------------------------------------

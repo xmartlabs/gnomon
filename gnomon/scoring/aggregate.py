@@ -22,9 +22,11 @@ AGGREGATE RULE (documented contract — mirdash mirrors this in TS):
     components, w_s remains the full-window tool_calls_total(s) for backward
     compatibility.
 
-    Applied independently to: the AQ total (aq_0_100), each of the 4 AQ pillars
-    (Breadth/Craft/Efficiency/Savvy), and each of the 3 gstack axes (Execution/Planning/
-    Engineering). A source with zero effective tool activity contributes zero weight. When
+    Applied to the AQ total, each AQ pillar, and the Execution/Engineering
+    gstack axes. Aggregate Planning is recomputed from synthesized corpus stats
+    so unavailable source identity removes and renormalizes its skill-practice
+    term instead of being hidden by an average of already-scored source axes.
+    A source with zero effective tool activity contributes zero weight. When
     every source has zero weight the aggregate falls back to a simple unweighted mean so a
     degenerate corpus still yields a well-formed (zero-ish) profile rather than a
     divide-by-zero.
@@ -32,11 +34,36 @@ AGGREGATE RULE (documented contract — mirdash mirrors this in TS):
     The aggregate's non-numeric fields (tier, archetype, steering, growth_edges,
     signature_moves) are derived from the WEIGHTED-MEAN numbers via the same vocabulary /
     selection logic the single-source path uses, so they stay internally consistent with
-    the combined score (e.g. tier is the band the aggregate aq_0_100 lands in).
+    the combined score (e.g. tier is the band the aggregate aq_diagnostic lands in).
+
+ONE CANONICAL COMBINED AQ:
+    The aggregate AQ is a DIAGNOSTIC (`aggregate.aq_diagnostic`), not a published score.
+    `profile.aq` — compute_aq over the merged corpus — is the canonical combined AQ, because
+    distinct counts are UNIONS. Measured on a real three-source corpus: the merged stats see
+    7 MCP servers where the Claude slice alone sees 6, and 42 CLIs where it sees 41, so merged
+    Tool command scores 22.5/28 against 21.5/28 for Claude alone. A user who commands 7 MCP
+    servers spread across three tools genuinely commands 7; blending per-source SCORES
+    systematically under-counts breadth of tooling, and no post-hoc weighting recovers a union
+    from already-collapsed numbers. Publishing two combined numbers also forced every consumer
+    to pick one, which is a scoring decision no dashboard should be making.
+
+    Why the blend stays computed at all: the aggregate's Planning axis, archetype, steering,
+    growth edges and signature moves are derived from it, and they remain useful per-source
+    diagnostics. Only its status as a published score is retired.
+
+    The two numbers do NOT converge, and that is the argument for picking the merged one:
+    distinct counts are unions. Measured on a real three-source corpus, the merged stats
+    carried 24 MCP servers against 19 for Claude alone and 6 for Codex, and 95 distinct
+    skills against 65 and 66 — a user who commands 24 servers spread across three tools
+    genuinely commands 24, and a mean of already-scored per-source numbers cannot recover
+    that. The gap stays around 5 points; publishing one answer is what retires the choice.
 """
 
 from gnomon.scoring.aq import compute_aq
-from gnomon.scoring.gstack import score_breakdown, _axis_verdict
+from gnomon.scoring.gstack import (
+    compute_scores, score_breakdown, _axis_verdict, _nonnegative_integral_count,
+    _planning_skill_evidence,
+)
 from gnomon.scoring.archetype import pick_archetype
 from gnomon.scoring.insights import (
     steering_reading, growth_edges_structured, signature_moves_structured,
@@ -136,12 +163,20 @@ def _aggregate_profile(per_source):
         "score_contract_id": SCORE_CONTRACT_ID,
     }
 
+    # Synthesize corpus stats before assembling axes. Planning must be scored
+    # from pooled qualified numerator/denominator, not averaged from source
+    # scores (which could hide an unmeasured contributor).
+    synth = _synth_stats_for_aggregate(items, agg_aq)
+
     # ---- gstack axes (Execution/Planning/Engineering) ----
     def axis_mean(axis):
         return round(_weighted_mean(
             [(W(e), e["profile"]["scores"][axis]["value"]) for _, e in items]), 1)
-    agg_scores = {ax: {"value": axis_mean(ax)}
-                  for ax in ("execution", "planning", "engineering")}
+    agg_scores = {
+        "execution": {"value": axis_mean("execution")},
+        "planning": {"value": compute_scores(synth)["Planning"]},
+        "engineering": {"value": axis_mean("engineering")},
+    }
 
     # ---- non-numeric fields derived from the AGGREGATE numbers (internally consistent) ----
     arch_scores = {"Execution": agg_scores["execution"]["value"],
@@ -151,10 +186,15 @@ def _aggregate_profile(per_source):
     # stats["agentic"].pillars stay consistent with the combined score. The archetype /
     # steering / growth / signature pickers read behavior+volume — use the tool-volume
     # weighted means of those so the narrative matches the combined numbers.
-    synth = _synth_stats_for_aggregate(items, agg_aq)
     arch_title, arch_quote = pick_archetype(synth, arch_scores)
     return {
-        "aq": agg_aq,
+        # NOT `aq`: the canonical combined AQ is `profile.aq`, scored from the merged corpus
+        # so distinct counts stay unions (see the module docstring). This weighted mean of
+        # per-source scores remains as an auditable per-source diagnostic and as the input the
+        # aggregate's own Planning axis and narratives are derived from — it is deliberately
+        # NOT a second published score.
+        "aq_diagnostic": agg_aq,
+        "canonical_aq": "profile.aq",
         "archetype": {"title": arch_title, "quote": arch_quote},
         "scores": _expand_axes(agg_scores, synth),
         "steering": steering_reading(synth),
@@ -162,9 +202,14 @@ def _aggregate_profile(per_source):
         "signature_moves": signature_moves_structured(synth),
         "model_usage": [],
         "combination": {
-            "rule": "weighted_mean_of_per_source_scores",
+            "rule": "weighted_mean_except_synthesized_planning",
             "weight": "tool_calls_total",
             "weights": {src: e["weight"] for src, e in items},
+            "axes": {
+                "execution": "tool_volume_weighted_mean",
+                "planning": "recomputed_from_synthesized_corpus",
+                "engineering": "tool_volume_weighted_mean",
+            },
         },
     }
 
@@ -184,9 +229,10 @@ def _expand_axes(agg_scores, synth):
         sb[ax]["score_out_of_10"] = f"{v} / 10"
         sb[ax]["axis_verdict"] = av
         subs = sb[ax].get("subs") or []
-        if subs:
-            best = max(subs, key=lambda s: s.get("pct", 0))
-            drag = next((s for s in subs if s.get("is_drag")), subs[-1])
+        live_subs = [sub for sub in subs if sub.get("pct") is not None]
+        if live_subs:
+            best = max(live_subs, key=lambda s: s.get("pct", 0))
+            drag = next((s for s in live_subs if s.get("is_drag")), live_subs[-1])
             sb[ax]["axis_narrative"] = (
                 f"{ax.capitalize()} scores {v}/10 ({av}). "
                 f"Strongest: {best['label']} ({best['score_pct']}%); "
@@ -210,6 +256,26 @@ def _synth_stats_for_aggregate(items, agg_aq):
     def wsum(path_get):
         return sum(int(path_get(e["block"]) or 0) for _, e in items)
 
+    # Planning is a session-rate metric, so every active source participates even
+    # when it emitted zero tools. Other aggregate axes retain tool-volume weights.
+    planning_items = [
+        (src, entry) for src, entry in items
+        if _nonnegative_integral_count(
+            (entry["block"].get("volume") or {}).get("total_sessions")) not in (None, 0)
+    ]
+
+    def planning_sum(field):
+        total = 0
+        valid = True
+        for _, entry in planning_items:
+            raw = (entry["block"].get("behavior") or {}).get(field, 0)
+            value = _nonnegative_integral_count(raw)
+            if value is None:
+                valid = False
+                continue
+            total += value
+        return total, valid
+
     b = lambda blk: blk.get("behavior") or {}
     v = lambda blk: blk.get("volume") or {}
     vel = lambda blk: blk.get("velocity") or {}
@@ -228,14 +294,37 @@ def _synth_stats_for_aggregate(items, agg_aq):
         for k, n in (st(e["block"]).get("models") or []):
             merged_models[k] = merged_models.get(k, 0) + n
 
+    _planning_evidence = [
+        _planning_skill_evidence(
+            b(entry["block"]), v(entry["block"]).get("total_sessions"))
+        for _, entry in planning_items
+    ]
+    _planning_all_legacy = bool(_planning_evidence) and all(
+        evidence["legacy"] for evidence in _planning_evidence)
+    _planning_all_new = bool(_planning_evidence) and all(
+        not evidence["legacy"] for evidence in _planning_evidence)
+    _planning_new_valid = _planning_all_new and all(
+        evidence["planning_sessions"] is not None
+        and evidence["eligible_sessions"] is not None
+        and evidence["unmeasured_sessions"] is not None
+        for evidence in _planning_evidence)
+    _planning_numerator = sum(
+        evidence["planning_sessions"] or 0 for evidence in _planning_evidence)
+    _planning_denominator = sum(
+        evidence["eligible_sessions"] or 0 for evidence in _planning_evidence)
+    _planning_unmeasured = sum(
+        evidence["unmeasured_sessions"] or 0 for evidence in _planning_evidence)
+
     synth = {
-        "corpus": {"sources": {src: {} for src, _ in items}},
+        "corpus": {"sources": {src: {} for src, _ in planning_items}},
         "agentic": agg_aq,
         "volume": {
-            "total_sessions": wsum(lambda blk: v(blk).get("total_sessions")),
+            "total_sessions": sum(int(v(e["block"]).get("total_sessions") or 0)
+                                  for _, e in planning_items),
             "total_prompts": wsum(lambda blk: v(blk).get("total_prompts")),
             "tool_calls_total": wsum(lambda blk: v(blk).get("tool_calls_total")),
-            "thinking_blocks": wsum(lambda blk: v(blk).get("thinking_blocks")),
+            "thinking_blocks": sum(int(v(e["block"]).get("thinking_blocks") or 0)
+                                   for _, e in planning_items),
         },
         "velocity": {
             "tool_churn_edit_write": wsum(lambda blk: vel(blk).get("tool_churn_edit_write")),
@@ -250,6 +339,14 @@ def _synth_stats_for_aggregate(items, agg_aq):
             "background_tasks": wsum(lambda blk: b(blk).get("background_tasks")),
             "shell_test_runs": wsum(lambda blk: b(blk).get("shell_test_runs")),
             "plan_sessions": wsum(lambda blk: b(blk).get("plan_sessions")),
+            "planning_skill_sessions": _planning_numerator,
+            "eligible_change_sessions": planning_sum("eligible_change_sessions")[0],
+            "planned_eligible_sessions": planning_sum("planned_eligible_sessions")[0],
+            "ordered_facts_state": (
+                "measured" if planning_items and all(
+                    b(e["block"]).get("ordered_facts_state") == "measured"
+                    for _, e in planning_items)
+                else "unmeasured"),
             "fanout_median": wmean(lambda blk: b(blk).get("fanout_median")),
             "max_session_fanout": max((b(e["block"]).get("max_session_fanout") or 0) for _, e in items) if items else 0,
             "parallel_dispatch_turns": wsum(lambda blk: b(blk).get("parallel_dispatch_turns")),
@@ -316,6 +413,34 @@ def _synth_stats_for_aggregate(items, agg_aq):
             "mcp_subcategory_breakdown": {},
         },
     }
+    if _planning_all_legacy:
+        # Keep historical payloads historical: omitting both selector fields is
+        # what activates the old all-session denominator in gstack.
+        return synth
+
+    if not _planning_new_valid or _planning_numerator > _planning_denominator:
+        _planning_numerator = 0
+        _planning_denominator = 0
+        _planning_unmeasured = 0
+    _planning_state = (
+        "measured" if _planning_denominator > 0 and _planning_unmeasured == 0
+        else "partial" if _planning_denominator > 0 and _planning_unmeasured > 0
+        else "unmeasured")
+    synth["behavior"].update({
+        "planning_skill_sessions": _planning_numerator,
+        "planning_skill_eligible_sessions": _planning_denominator,
+        "planning_skill_unmeasured_sessions": _planning_unmeasured,
+        "planning_skill_session_scope_state": _planning_state,
+        "planning_skill_session_share": (
+            _planning_numerator / _planning_denominator
+            if _planning_state in {"measured", "partial"}
+            else None),
+        "planning_skill_session_coverage": (
+            _planning_denominator / (
+                _planning_denominator + _planning_unmeasured)
+            if _planning_state in {"measured", "partial"}
+            else None),
+    })
     return synth
 
 
@@ -505,7 +630,11 @@ def _blend_profiles(full_profile, components, full_block):
 def score_by_source(scoring_inputs_by_source, bucket_scoring_inputs_by_source=None,
                     bucket_metadata=None):
     """Given build_summary's scoring_inputs_by_source, return:
-        {"by_source": {<source>: <profile>}, "aggregate": <profile>}
+        {"by_source": {<source>: <profile>}, "aggregate": <diagnostic>}
+
+    `aggregate` is deliberately NOT the same shape as a per-source `<profile>`: its combined
+    score is published as `aq_diagnostic` (plus a `canonical_aq` pointer to `profile.aq`),
+    not as `aq`, so exactly one combined AQ ships in the payload. See the module docstring.
 
     Each per-source profile is computed from that source's WINDOW slice using that
     source's own caps (single-source → no union dilution). The aggregate combines the

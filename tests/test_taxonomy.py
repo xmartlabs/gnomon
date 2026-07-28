@@ -1,6 +1,9 @@
 import unittest
 
 from gnomon.taxonomy import (
+    ASK_TOOLS, DELEGATE_TOOLS, DISCOVER_TOOLS, EXEC_TOOLS, PLAN_MODE_TOOLS,
+    PLAN_SIGNAL_TOOLS, PLAN_TOOLS, READ_TOOLS, SCHEDULE_TOOLS, SKILL_TOOLS,
+    WRITE_TOOLS, classify_tool, is_substantive_tool,
     classify_change_target, is_plan_file_target, _is_compounding_path, _norm_path_seps,
 )
 
@@ -91,6 +94,76 @@ class TestBackslashPathsCountLikeForwardSlash(unittest.TestCase):
         for path in ("/home/d/.claude/projects/p/memory/note.md", "src/app.py",
                      "docs/adr/0001-x.md", "package-lock.json", ""):
             self.assertEqual(_norm_path_seps(path), path, path)
+
+
+class TestClassifyToolPlanCategory(unittest.TestCase):
+    """Planning ceremony is neither exploring nor building, so it belongs on neither side
+    of planning_ratio_explore_to_doing. It used to classify as `explore`, which meant plan
+    mode raised that ratio's numerator AND — now that plan mode is a qualified planning
+    signal — the separate Planning practice term: one action paid twice inside one axis.
+    Its own category keeps it neutral."""
+
+    def test_every_plan_tool_is_its_own_category(self):
+        for tool in sorted(PLAN_TOOLS):
+            with self.subTest(tool=tool):
+                self.assertEqual(classify_tool(tool), "plan")
+
+    def test_plan_category_is_neither_explore_nor_a_doing_class(self):
+        # The ratio reads explore against produce+execute+delegate; "plan" is in none of them.
+        for tool in sorted(PLAN_TOOLS):
+            with self.subTest(tool=tool):
+                self.assertNotIn(
+                    classify_tool(tool), {"explore", "produce", "execute", "delegate"})
+
+    def test_plan_tools_remain_non_substantive(self):
+        # Containment proof: is_substantive_tool short-circuits on
+        # _NONSUBSTANTIVE_WORK_TOOLS before classify_tool is consulted, so change
+        # eligibility and orchestration counting are untouched by the category change.
+        for tool in sorted(PLAN_TOOLS):
+            with self.subTest(tool=tool):
+                self.assertFalse(is_substantive_tool(tool))
+
+    def test_plan_mode_and_signal_sets_nest_inside_plan_tools(self):
+        self.assertTrue(PLAN_MODE_TOOLS <= PLAN_TOOLS)
+        self.assertTrue(PLAN_SIGNAL_TOOLS <= PLAN_TOOLS)
+        self.assertTrue(PLAN_MODE_TOOLS <= PLAN_SIGNAL_TOOLS)
+
+    def test_todo_write_is_a_plan_signal_but_not_plan_mode(self):
+        self.assertIn("TodoWrite", PLAN_SIGNAL_TOOLS)
+        self.assertNotIn("TodoWrite", PLAN_MODE_TOOLS)
+
+
+class TestClassifyToolOtherCategoriesUnchanged(unittest.TestCase):
+    """Guard: carving `plan` out of the explore branch must not shift anything else."""
+
+    def test_write_read_exec_delegate_skill_ask_are_stable(self):
+        expected = {
+            "Edit": "produce", "Write": "produce", "MultiEdit": "produce",
+            "Read": "explore", "Grep": "explore", "Glob": "explore",
+            "WebSearch": "explore", "WebFetch": "explore", "ToolSearch": "explore",
+            "Bash": "execute", "BashOutput": "execute", "KillShell": "execute",
+            "Agent": "delegate", "Task": "delegate",
+            "Skill": "execute",
+            "CronCreate": "execute", "Monitor": "execute",
+            "AskUserQuestion": "ask",
+        }
+        for tool, category in expected.items():
+            with self.subTest(tool=tool):
+                self.assertEqual(classify_tool(tool), category)
+
+    def test_mcp_tools_still_split_by_inspect_hint(self):
+        self.assertEqual(classify_tool("mcp__linear__search_issues"), "explore")
+        self.assertEqual(classify_tool("mcp__acme__create_thing"), "produce")
+
+    def test_unknown_tool_is_other(self):
+        self.assertEqual(classify_tool("TotallyMadeUpTool"), "other")
+
+    def test_category_sets_stay_disjoint_from_plan_tools(self):
+        # classify_tool's precedence order is only unambiguous while these stay disjoint.
+        for other in (WRITE_TOOLS, READ_TOOLS, DISCOVER_TOOLS, EXEC_TOOLS,
+                      DELEGATE_TOOLS, SKILL_TOOLS, SCHEDULE_TOOLS, ASK_TOOLS):
+            with self.subTest(other=sorted(other)):
+                self.assertEqual(PLAN_TOOLS & other, set())
 
 
 if __name__ == "__main__":

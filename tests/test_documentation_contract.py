@@ -33,13 +33,14 @@ class TestPublicDocumentationContract(unittest.TestCase):
         self.assertIn("Prompts and file contents are not uploaded", self.readme)
         self.assertNotIn("No prompts, no quotes, no project names are ever sent", self.readme)
 
-    def test_public_docs_publish_runtime_scoring_contract_v5(self):
+    def test_public_docs_publish_runtime_scoring_contract_v7(self):
         metrics = (ROOT / "docs" / "metrics-by-source.md").read_text(encoding="utf-8")
         for document in (self.readme, metrics):
-            self.assertIn("scoring inputs version 5", document)
-            self.assertIn("AQ version 5", document)
-            self.assertIn("GStack version 3", document)
-            self.assertNotIn("scoring contract version 4", document)
+            self.assertIn("scoring inputs version 7", document)
+            self.assertIn("AQ version 7", document)
+            self.assertIn("GStack version 7", document)
+            self.assertIn("7:7:7", document)
+            self.assertNotIn("scoring contract version 6", document)
 
     def test_readme_model_mix_describes_explicit_provider_tiers(self):
         self.assertIn("explicit provider tier tables", self.readme)
@@ -52,8 +53,15 @@ class TestPublicDocumentationContract(unittest.TestCase):
                       normalized)
         self.assertIn("Context Intelligence | Target evidence gathering before the first "
                       "write in 60% of eligible changes", normalized)
-        self.assertIn("50% Planning and 60% Context Intelligence targets are explicit, "
-                      "versioned product hypotheses", normalized)
+        # Planning practice was never pinned here even though it is an executable target
+        # like the other two. Pin it WITH its denominator: the two Planning figures differ
+        # only by denominator, and that is precisely what a reader conflates.
+        self.assertIn("Target 30% of sessions", normalized)
+        self.assertIn("50% Planning readiness, 30% Planning practice and 60% Context "
+                      "Intelligence targets are explicit, versioned product hypotheses",
+                      normalized)
+        self.assertIn("50% of eligible *non-trivial changes* for readiness, 30% of *all "
+                      "eligible top-level sessions* for practice", normalized)
 
     def test_context_intelligence_note_matches_executable_contract(self):
         note = AQ_AXIS_NOTES["Context Intelligence"]

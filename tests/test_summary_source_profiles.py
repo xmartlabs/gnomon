@@ -1,6 +1,8 @@
 import unittest
 
 import paxel
+from gnomon.scoring.aggregate import score_by_source
+from gnomon.scoring.inputs import build_scoring_inputs
 from tests.test_smoke import _claude_turn, _run_claude_transcript
 
 
@@ -70,6 +72,94 @@ class TestProfilesBySourceAndUsage(unittest.TestCase):
         summary, _ = self._summary()
         self.assertIn("profile", summary)
         self.assertIn("aq", summary["profile"])
+
+    def test_exactly_one_canonical_combined_aq_is_published(self):
+        """The payload used to ship TWO combined AQ numbers — `profile.aq` (scored from the
+        merged corpus) and `profiles_by_source.aggregate.aq` (a weighted mean of per-source
+        scores). Merged is canonical because distinct counts are UNIONS: a user who commands
+        7 MCP servers spread across three tools genuinely commands 7, and averaging per-source
+        scores systematically under-counts breadth of tooling. The aggregate blend survives
+        only as a diagnostic, under a key nobody can mistake for the published score."""
+        summary, _ = self._summary()
+
+        def combined_aq_paths(node, path=()):
+            """Every dict in the payload that IS an AQ score, by path."""
+            if isinstance(node, dict):
+                if "aq_0_100" in node and "pillars" in node:
+                    yield ".".join(path)
+                for key, value in node.items():
+                    yield from combined_aq_paths(value, path + (str(key),))
+            elif isinstance(node, list):
+                for i, value in enumerate(node):
+                    yield from combined_aq_paths(value, path + (str(i),))
+
+        paths = set(combined_aq_paths(summary))
+        self.assertIn("profile.aq", paths)
+        # Per-source AQs are per-source readings, not combined scores, so they stay published;
+        # `*.aq_diagnostic` is combined but explicitly not a score. Everything else that looks
+        # like a combined AQ is a second published score, which is what must never come back.
+        published = {p for p in paths
+                     if not p.startswith("profiles_by_source.by_source.")
+                     and not p.endswith(".aq_diagnostic")}
+        self.assertEqual(published, {"profile.aq"},
+                         "exactly one combined AQ may be published; found: "
+                         f"{sorted(published)}")
+        self.assertIn("profiles_by_source.aggregate.aq_diagnostic", paths)
+        aggregate = summary["profiles_by_source"]["aggregate"]
+        self.assertNotIn("aq", aggregate)
+        self.assertEqual(aggregate["canonical_aq"], "profile.aq")
+        self.assertIn("aq_0_100", aggregate["aq_diagnostic"])
+
+
+class TestAggregatePlanningSessionPooling(unittest.TestCase):
+    @staticmethod
+    def _block(source, *, planning, eligible, unmeasured, tools, sessions):
+        state = ("measured" if eligible and not unmeasured
+                 else "partial" if eligible else "unmeasured")
+        share = planning / eligible if eligible else None
+        coverage = eligible / (eligible + unmeasured) if eligible else None
+        stats = {
+            "corpus": {"sources": {source: {}}},
+            "volume": {"total_sessions": sessions, "total_prompts": sessions,
+                       "tool_calls_total": tools, "thinking_blocks": 0},
+            "velocity": {"active_hours": 1, "tool_churn_edit_write": 0},
+            "behavior": {
+                "planning_ratio_explore_to_doing": 0,
+                "planning_skill_sessions": planning,
+                "planning_skill_eligible_sessions": eligible,
+                "planning_skill_unmeasured_sessions": unmeasured,
+                "planning_skill_session_scope_state": state,
+                "planning_skill_session_share": share,
+                "planning_skill_session_coverage": coverage,
+                "eligible_change_sessions": 0,
+                "planned_eligible_sessions": 0,
+                "ordered_facts_state": "unmeasured",
+            },
+            "stack": {"skills_all": [], "top_skills": [], "models": []},
+            "tools": {},
+        }
+        return build_scoring_inputs(stats)
+
+    def test_zero_tool_source_contributes_unmeasured_sessions_to_planning(self):
+        measured = self._block(
+            "claude", planning=1, eligible=1, unmeasured=0, tools=100, sessions=1)
+        zero_tool = self._block(
+            "gemini", planning=0, eligible=0, unmeasured=2, tools=0, sessions=2)
+        result = score_by_source({
+            "claude": {"window": measured},
+            "gemini": {"window": zero_tool},
+        })
+        sub = next(
+            item for item in result["aggregate"]["scores"]["planning"]["subs"]
+            if item["label"] == "Planning practice")
+        self.assertEqual((
+            sub["planning_skill_sessions"],
+            sub["planning_skill_eligible_sessions"],
+            sub["planning_skill_unmeasured_sessions"],
+            sub["scope_state"],
+        ), (1, 1, 2, "partial"))
+        self.assertEqual(sub["your_value"], 1.0)
+        self.assertAlmostEqual(sub["coverage"], 1 / 3)
 
 
 if __name__ == "__main__":

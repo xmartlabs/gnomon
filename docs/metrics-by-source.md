@@ -38,12 +38,44 @@ directly — no external dependency). Both decode to the same normalized events.
 
 ## Session caveats
 
+- **Rate terms are scored per tool call, not per session.** Test runs, review skills,
+  ToolSearch, task planning, skills and compounding writes are `count / tool_calls_total`
+  over the whole corpus — a Codex one-shot (~18 calls, ~2.7 min) is not one Claude session
+  (~68 calls, ~37 min), and a per-session denominator let the short ones act as pure
+  denominator. There is no per-source weighting: pooling both sides over the same unit
+  already makes the corpus rate the tool-call-share-weighted mean of its sources' rates.
+  A payload that omits `volume.tool_calls_total` scores those terms N/A (dropped and
+  renormalized) rather than zero, so a legacy block does not publish a phantom collapse.
+- **Capability dilution is a known limitation, not something rates correct.** The
+  denominator is every tool call in the corpus, including calls from a source that could
+  never emit the signal being scored — `available_caps` is a UNION, so one capable source
+  keeps a term live for the whole corpus. Adding an OpenCode corpus alongside Claude lowers
+  ToolSearch-based axes with no behavior change (measured: Token economy 1.00 -> 0.63).
+  This predates the per-tool-call change and is unchanged by it; excluding an incapable
+  source's calls from cap-gated denominators is tracked separately.
+- **Planning practice** has authoritative root/child identity for Claude, Codex,
+  Cursor, and OpenCode. Other active sources contribute unmeasured sessions (`U`) to
+  coverage instead of forcing the measured `P/E` share to zero or unavailable.
+- **Planning practice** counts plan mode as well as planning Skills, so the signal is
+  reachable per source: Claude Code emits `ExitPlanMode`, Cursor's `create_plan` and
+  `switch_mode(plan)` normalize to `EnterPlanMode`, and Codex has no plan mode but does
+  reach the term through shell `SKILL.md` reads. Cursor cannot emit a first-class `Skill`
+  at all, so plan mode is its only path in.
+- Authoritative root/child identity does **not** imply the planning signal is reachable.
+  OpenCode has the identity (so its eligible denominator accrues) but emits no plan-mode
+  tool and no skill signal, so its numerator can never fire. It therefore lacks the
+  `planning_signal` capability and both the **Planning practice** term and AQ
+  **Discipline**'s planning term are dropped and renormalized for OpenCode-only corpora,
+  rather than scored 0 on telemetry the source cannot produce. A source that *can* emit the
+  signal and simply never planned still scores 0 — the cap keys off capability, not off the
+  share being zero.
 - `git_churn` is parser-independent once source yields a real `cwd`. Antigravity CLI yields a real
   `cwd` (from `trajectory_metadata_blob`); the IDE derives it best-effort from edit/command paths.
 - Codex now counts `apply_patch` churn per file, so churn, deletions, and iteration depth are meaningful there.
 - Gemini captures tool activity, thinking, tokens, and errors, but deletions stay partial because `write_file` has no old-string diff.
-- Gemini/Pi/opencode have no subagent support, so the **Orchestration** AQ axis is dropped (caps
-  lack `delegate`), not scored 0 — they aren't penalized for fan-out they can't do.
+- Gnomon does not extract delegation signals from Gemini, Pi, or OpenCode, so the
+  **Orchestration** AQ axis is dropped (caps lack `delegate`), not scored 0. OpenCode itself
+  supports child sessions; their parent identity is still used to scope Planning practice.
 - Gemini MCP usage is not captured because tool names do not use `mcp__` naming.
 - **Antigravity CLI** is fully scored offline: prompts, tool calls, tokens, and model are decoded
   from the protobuf step payloads (stdlib decoder, no deps).
@@ -76,8 +108,8 @@ directly — no external dependency). Both decode to the same normalized events.
 
 ## Uploaded summary contract
 
-Current runtime contract: **scoring inputs version 5**, **AQ version 5**, and **GStack version 3** (`score_contract_id = 5:5:3`). Previous-contract scores
-must not be shown as improvement or regression against v5. AQ is blended as
+Current runtime contract: **scoring inputs version 7**, **AQ version 7**, and **GStack version 7** (`score_contract_id = 7:7:7`). Previous-contract scores
+must not be shown as improvement or regression against v6. AQ is blended as
 65% recent (rolling 30-day) + 35%
 full-window (cumulative). The full window includes recent activity, so
 improvements are reflected in both components. Empty recent windows fall back
@@ -101,11 +133,21 @@ Mirdash reads `actions_per_prompt` from `churn`, with legacy fallback to `contex
 ### Three time scales in the payload
 
 - `scoring_inputs_by_source[*].window` — **window** (up to 6-month) raw scoring input per source.
+  These feed the per-source profiles and model-routing eligibility; the corpus AQ's rate
+  terms do NOT read them, since the per-tool-call denominator is the merged
+  `volume.tool_calls_total`.
 - `noticed_stats_monthly` — **per calendar month** evidence, one entry per month with its own `git_churn`, tokens, errors, etc.
 - `scoring_inputs_by_source[*].monthly` — **per source per calendar month** raw scoring inputs.
 - `profiles_by_source` / `profile` / AQ — **65/35 blended AQ** (65% recent
   30-day rolling + 35% full window); gstack/archetype/steering remain scoped
   to the requested full-window inputs.
+- **One canonical combined AQ**: `profile.aq`, scored from the merged corpus.
+  `profiles_by_source.by_source[*].aq` are per-source readings. The aggregate's
+  weighted mean of per-source scores is published as
+  `profiles_by_source.aggregate.aq_diagnostic` (with `canonical_aq: "profile.aq"`)
+  and must not be displayed as a combined score: distinct counts are unions, so
+  blending per-source scores under-counts breadth of tooling (7 MCP servers across
+  three tools really is 7). Two combined numbers used to ship in the same payload.
 - `source_usage` — **window** usage share by source.
 - `source_usage_monthly` — **per calendar month** usage share by source.
 

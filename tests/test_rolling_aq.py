@@ -449,8 +449,8 @@ class TestPerSourceRollingBlend(unittest.TestCase):
         wa = result["aggregate"]["combination"]["weights"]["claude"]
         wu = result["aggregate"]["combination"]["weights"]["cursor"]
         expected_aggregate = round((claude_aq * wa + cursor_aq * wu) / (wa + wu))
-        self.assertEqual(result["aggregate"]["aq"]["aq_0_100"], expected_aggregate)
-        self.assertNotEqual(result["aggregate"]["aq"]["aq_0_100"], claude_aq)
+        self.assertEqual(result["aggregate"]["aq_diagnostic"]["aq_0_100"], expected_aggregate)
+        self.assertNotEqual(result["aggregate"]["aq_diagnostic"]["aq_0_100"], claude_aq)
 
     def test_aggregate_without_buckets_keeps_full_window_tool_volume_weights(self):
         full_inputs = {
@@ -467,7 +467,13 @@ class TestPerSourceRollingBlend(unittest.TestCase):
             result["aggregate"]["combination"]["weights"],
             {"claude": 10, "cursor": 20},
         )
-        self.assertEqual(result["aggregate"]["aq"]["aq_0_100"], 57)
+        # Derive the aggregate from the per-source scores and those weights instead of
+        # pinning a literal: this test is about the WEIGHTING, and a hardcoded AQ turns any
+        # legitimate scoring change into a spurious failure here.
+        claude_aq = result["by_source"]["claude"]["aq"]["aq_0_100"]
+        cursor_aq = result["by_source"]["cursor"]["aq"]["aq_0_100"]
+        self.assertEqual(result["aggregate"]["aq_diagnostic"]["aq_0_100"],
+                         round((claude_aq * 10 + cursor_aq * 20) / 30))
 
     def test_nonempty_bucket_without_metadata_uses_full_profile_and_legacy_weight(self):
         full_inputs = {"claude": {"window": self._block(

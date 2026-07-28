@@ -1,7 +1,17 @@
 import json
 
 from gnomon.scoring.aq import (
-    CONTEXT_INTELLIGENCE_TARGET, PLANNING_TARGET, MIN_ELIGIBLE_SESSIONS,
+    CONTEXT_INTELLIGENCE_TARGET, PLANNING_PRACTICE_TARGET, PLANNING_TARGET,
+    MIN_ELIGIBLE_SESSIONS,
+)
+# Re-exported for callers that historically imported these from gstack (aggregate.py and
+# the planning test suites). The definitions live in planning_evidence so aq can read them
+# too without an import cycle.
+from gnomon.scoring.planning_evidence import (  # noqa: F401
+    _PLANNING_SKILL_BASE_WEIGHT, _PLANNING_SKILL_NEW_FIELDS,
+    _PLANNING_SKILL_SELECTORS, _nonnegative_integral_count,
+    _planning_skill_evidence, _planning_skill_share,
+    _unmeasured_planning_evidence,
 )
 
 
@@ -44,7 +54,8 @@ AQ_AXIS_NOTES = {
                      "(planning, debugging, brainstorming) are in the rotation.",
     "Tool command (MCP + CLI)": "External reach: distinct MCP servers, distinct CLIs, and "
                                 "loading tool schemas on demand (ToolSearch).",
-    "Discipline": "Structured work: task-tool usage plus planning skills in evidence.",
+    "Discipline": "Structured work: task-tool usage, how often you plan before building, "
+                  "and whether the plan came before the first edit.",
     "Verification": "Whether work gets checked: shell test runs and review-type skill invocations.",
     "Grounding": "Reading before writing — how much the agent explores relative to how much it edits.",
     "Context Intelligence": "Consulting external context before you write. We count the share of "
@@ -103,9 +114,13 @@ def _apply_sub_caps(subs, caps):
         cap = s.pop("_cap", None)
         if cap is None or cap in caps:
             kept.append(s)
-    tot = sum(s["weight"] for s in kept) or 1.0
+    # Unavailable terms remain in the profile as explicit audit evidence, but
+    # carry zero effective weight; measured terms are renormalized exactly as
+    # compute_scores does through _axis_value.
+    tot = sum(s["weight"] for s in kept if s.get("pct") is not None) or 1.0
     for s in kept:
-        s["weight"] = round(s["weight"] / tot, 4)
+        s["weight"] = (round(s["weight"] / tot, 4)
+                       if s.get("pct") is not None else 0.0)
     return kept
 
 
@@ -233,6 +248,15 @@ def _sub_narrative(label, verdict, display_value, display_target, direction, sco
 def _enrich_sub(sub):
     """Add narrative fields to a score_breakdown sub dict, in-place."""
     p = sub["pct"]
+    if p is None:
+        sub.update({
+            "verdict": "unavailable", "score_pct": None,
+            "display_value": "unavailable",
+            "display_target": _fmt_target(
+                sub["target"], sub["unit"], sub["direction"]),
+            "narrative": f"{sub['label']} is unavailable for this scope.",
+        })
+        return sub
     sub["verdict"] = _verdict(p)
     sub["score_pct"] = round(p * 100)
     sub["display_value"] = _fmt_val(sub["your_value"], sub["unit"])
@@ -257,7 +281,11 @@ def compute_scores(stats):
     # Weights sum to 1.0 per axis; every term is clamped 0..1 against a justified target;
     # `_ev` pulls the INVERSE terms toward neutral on a thin corpus.
     v, b, vel = stats["volume"], stats["behavior"], stats["velocity"]
-    if v["total_sessions"] == 0 or v["tool_calls_total"] == 0:
+    plan_evidence = _planning_skill_evidence(b, max(v["total_sessions"], 1))
+    has_authoritative_planning = (
+        plan_evidence["share"] is not None and not plan_evidence["legacy"])
+    if (v["total_sessions"] == 0
+            or (v["tool_calls_total"] == 0 and not has_authoritative_planning)):
         # No real activity → don't manufacture a flattering "Quality Guardian 9.0"
         return {"Execution": 0.0, "Planning": 0.0, "Engineering": 0.0}
     sess = max(v["total_sessions"], 1)
@@ -287,11 +315,16 @@ def compute_scores(stats):
     # produces TERSER, more precise prompts, so the term paid for verbosity. It's the main reason a
     # 4-month vibe-coder maxed Planning over a 30-year engineer (an expert-elicitation validity
     # review caught this). Weight redistributed to the construct-relevant terms.
-    # Plan ceremony = fraction of sessions with a planning signal (plan-mode/todo tool OR
-    # a planning Skill), NOT a raw plan-tool count. Counting distinct sessions stops
-    # TodoWrite (fires many times/session) from saturating the term; target 0.4 = plan in
-    # ~40% of sessions. See accumulator.plan_sessions.
-    plan_ceremony = _clamp((b.get("planning_skill_sessions", b.get("plan_sessions", 0)) / sess) / 0.4)
+    # Planning practice = fraction of eligible top-level SESSIONS carrying a planning
+    # signal — plan mode (EnterPlanMode/ExitPlanMode) or a planning Skill/subagent — not a
+    # raw tool count. Distinct sessions, so a tool that fires repeatedly cannot saturate it.
+    # The todo family is excluded on purpose: it is the agent's own execution bookkeeping
+    # and it already earns "Ordered planning readiness" below via the PLAN_MIN_STEPS gate.
+    # See PLANNING_PRACTICE_TARGET in aq.py for why the target is 0.30 and not a round 0.40.
+    plan_share = plan_evidence["share"]
+    plan_legacy = plan_evidence["legacy"]
+    plan_ceremony = (_clamp(plan_share / PLANNING_PRACTICE_TARGET)
+                     if plan_share is not None else None)
     eligible = b.get("eligible_change_sessions", 0) or 0
     # C7 — significance floor: drop below MIN_ELIGIBLE_SESSIONS (noise, not a
     # real signal), mirroring the aq.py guard.
@@ -304,7 +337,8 @@ def compute_scores(stats):
     planning = _axis_value([
         (0.30, _clamp(b["planning_ratio_explore_to_doing"] / 0.65), None),
         (0.30, _clamp((v["thinking_blocks"] / sess) / 12.0), "thinking"),
-        (0.25, plan_ceremony, "skills"),
+        (plan_evidence["effective_weight"], plan_ceremony,
+         "skills" if plan_legacy else "planning_signal"),
         (0.15, ordered_plan, None),
     ], caps)
 
@@ -334,6 +368,8 @@ def compute_scores(stats):
         + 0.15 * _clamp((eng_skills / sess) / 3.0)                       # quality ceremonies: review/qa/investigate
         + 0.10 * _ev(1 - _clamp((b.get("error_rate_per_100_tools") or 0) / 10), ev))  # low error rate: root-cause discipline
 
+    if v["tool_calls_total"] == 0:
+        execution = engineering = 0.0
     return {"Execution": round(execution, 1), "Planning": round(planning, 1),
             "Engineering": round(engineering, 1)}
 
@@ -346,8 +382,12 @@ def score_breakdown(stats):
     NOTE: keep constants aligned with compute_scores (above) — any formula change must
     be made in BOTH places; the test_value_equals_compute_scores test enforces this."""
     v, b, vel = stats.get("volume", {}), stats.get("behavior", {}), stats.get("velocity", {})
+    plan_evidence = _planning_skill_evidence(b, max(v.get("total_sessions", 0), 1))
+    has_authoritative_planning = (
+        plan_evidence["share"] is not None and not plan_evidence["legacy"])
     # Guard: no real activity → well-formed zeros (mirrors compute_scores early-return)
-    if v.get("total_sessions", 0) == 0 or v.get("tool_calls_total", 0) == 0:
+    if (v.get("total_sessions", 0) == 0
+            or (v.get("tool_calls_total", 0) == 0 and not has_authoritative_planning)):
         def _zero_sub(label, target, unit, weight, direction):
             return {"label": label, "your_value": 0.0, "target": target, "unit": unit,
                     "weight": weight, "pct": 0.5, "direction": direction, "is_drag": False,
@@ -371,7 +411,8 @@ def score_breakdown(stats):
             "planning": _zero_axis("Think before you build", [
                 ("Explore-before-build", 0.65, "explore/doing ratio", 0.30, "higher"),
                 ("Reasoning depth",     12.0, "thinking blocks/session", 0.30, "higher"),
-                ("Planning skill practice", 0.4, "planning sessions/session", 0.25, "higher"),
+                ("Planning practice", PLANNING_PRACTICE_TARGET,
+                 "planning sessions/session", 0.25, "higher"),
                 ("Ordered planning readiness", PLANNING_TARGET,
                  "eligible-session coverage", 0.15, "higher"),
             ]),
@@ -419,10 +460,13 @@ def score_breakdown(stats):
     explore_pct       = _clamp(b.get("planning_ratio_explore_to_doing", 0) / 0.65)
     thinking_raw      = v.get("thinking_blocks", 0) / sess
     thinking_pct      = _clamp(thinking_raw / 12.0)
-    # Plan ceremony = fraction of sessions with a planning signal (see compute_scores);
-    # per-session, so TodoWrite volume can't saturate it. Target 0.4.
-    plan_sess_raw     = b.get("planning_skill_sessions", b.get("plan_sessions", 0)) / sess
-    plan_ceremony_pct = _clamp(plan_sess_raw / 0.4)
+    # Planning practice = fraction of eligible top-level sessions carrying a planning
+    # signal (see compute_scores); per-session, so tool volume can't saturate it.
+    plan_sess_raw = plan_evidence["share"]
+    plan_scope_state = plan_evidence["state"]
+    plan_legacy = plan_evidence["legacy"]
+    plan_ceremony_pct = (_clamp(plan_sess_raw / PLANNING_PRACTICE_TARGET)
+                         if plan_sess_raw is not None else None)
     eligible = b.get("eligible_change_sessions", 0) or 0
     ordered_raw = b.get("planned_eligible_sessions", 0) / eligible if eligible else 0
     # C7 — significance floor (see compute_scores above for rationale).
@@ -430,7 +474,8 @@ def score_breakdown(stats):
                    or eligible < MIN_ELIGIBLE_SESSIONS
                    else _clamp(ordered_raw / PLANNING_TARGET))
     planning_val      = _axis_value([(0.30, explore_pct, None), (0.30, thinking_pct, "thinking"),
-                                     (0.25, plan_ceremony_pct, "skills"),
+                                     (plan_evidence["effective_weight"], plan_ceremony_pct,
+                                      "skills" if plan_legacy else "planning_signal"),
                                      (0.15, ordered_pct, None)], caps)
     plan_subs = [
         {"label": "Explore-before-build",
@@ -440,9 +485,20 @@ def score_breakdown(stats):
         {"label": "Reasoning depth", "your_value": thinking_raw,
          "target": 12.0, "unit": "thinking blocks/session", "weight": 0.30, "pct": thinking_pct,
          "direction": "higher", "is_drag": False, "_cap": "thinking"},
-        {"label": "Planning skill practice", "your_value": plan_sess_raw,
-         "target": 0.4, "unit": "planning sessions/session", "weight": 0.25, "pct": plan_ceremony_pct,
-         "direction": "higher", "is_drag": False, "_cap": "skills"},
+        {"label": "Planning practice", "your_value": plan_sess_raw,
+         "target": PLANNING_PRACTICE_TARGET, "unit": "planning sessions/session",
+         "weight": plan_evidence["effective_weight"], "pct": plan_ceremony_pct,
+         "direction": "higher", "is_drag": False,
+         "scope_state": plan_scope_state,
+         "planning_skill_sessions": plan_evidence["planning_sessions"],
+         "planning_skill_eligible_sessions": plan_evidence["eligible_sessions"],
+         "planning_skill_unmeasured_sessions": plan_evidence["unmeasured_sessions"],
+         "planning_skill_session_share": plan_evidence["share"],
+         "planning_skill_session_coverage": plan_evidence["coverage"],
+         "coverage": plan_evidence["coverage"],
+         "base_weight": plan_evidence["base_weight"],
+         "effective_weight": plan_evidence["effective_weight"],
+         "_cap": "skills" if plan_legacy else "planning_signal"},
     ]
     if ordered_pct is not None:
         plan_subs.append({"label": "Ordered planning readiness", "your_value": ordered_raw,
@@ -462,6 +518,8 @@ def score_breakdown(stats):
     err_pct      = _ev(1 - _clamp((b.get("error_rate_per_100_tools") or 0) / 10), ev)
     engineering_val = round(10 * (0.30 * rework_pct + 0.25 * iter_pct + 0.20 * focus_pct
                                   + 0.15 * qual_pct + 0.10 * err_pct), 1)
+    if v.get("tool_calls_total", 0) == 0:
+        execution_val = engineering_val = 0.0
     eng_subs = [
         {"label": "Low rework", "your_value": b.get("iteration_depth_mean") or 0,
          "target": 2.0, "unit": "mean file-edit depth", "weight": 0.30, "pct": rework_pct,
@@ -483,7 +541,8 @@ def score_breakdown(stats):
 
     def _mark_drag(axis_name, subs, gloss):
         """Flag the sub with the smallest weight*pct contribution; build a drag_note."""
-        drag_idx = min(range(len(subs)), key=lambda i: subs[i]["weight"] * subs[i]["pct"])
+        live_indices = [i for i, sub in enumerate(subs) if sub.get("pct") is not None]
+        drag_idx = min(live_indices, key=lambda i: subs[i]["weight"] * subs[i]["pct"])
         for i, s in enumerate(subs):
             s["is_drag"] = (i == drag_idx)
         d = subs[drag_idx]
@@ -499,7 +558,7 @@ def score_breakdown(stats):
             "engineering": engineering_val,
         }
         drag_sub = subs[drag_idx]
-        best_sub = max(subs, key=lambda s: s["pct"])
+        best_sub = max((subs[i] for i in live_indices), key=lambda s: s["pct"])
         av = _axis_verdict(_axis_values[axis_name])
         dir_hint = "higher is better" if drag_sub["direction"] == "higher" else "lower is better"
         drag_narr = (

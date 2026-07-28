@@ -12,6 +12,22 @@ from gnomon.scoring.versioning import SCORING_INPUTS_VERSION
 from gnomon.scoring.versioning import AQ_VERSION, GSTACK_VERSION, SCORE_CONTRACT_ID
 
 
+def _adjusted_doing(raw_doing, planning_dispatch_calls):
+    """The `doing` denominator of planning_ratio_explore_to_doing, with planning dispatches
+    removed — but never emptied.
+
+    Planning dispatches classify `execute`/`delegate`, so leaving them in makes thinking
+    first lower the very term that rewards it. Taking them out can, for a corpus whose only
+    execute/delegate activity IS planning, drive the denominator to 0 and publish a ratio of
+    0 — the worst value for a term that rewards exploring, handed to someone who did nothing
+    but explore and plan. Inverting a score is worse than not adjusting it, so we fall back
+    to the raw denominator: a corpus with no build has nothing to compare its exploring
+    against. Shared by the corpus, per-source and monthly paths so all three agree.
+    """
+    adjusted = raw_doing - planning_dispatch_calls
+    return adjusted if adjusted > 0 else raw_doing
+
+
 def _pairs(seq):
     return [[str(k), int(n)] for k, n in (seq or [])]
 
@@ -24,7 +40,7 @@ def build_scoring_inputs(stats):
     t = stats.get("tools") or {}
     srcs = sorted((stats.get("corpus", {}).get("sources") or {}).keys())
     source = srcs[0] if len(srcs) == 1 else (",".join(srcs) if srcs else None)
-    return {
+    result = {
         "scoring_inputs_version": SCORING_INPUTS_VERSION,
         "aq_version": AQ_VERSION,
         "gstack_version": GSTACK_VERSION,
@@ -68,6 +84,11 @@ def build_scoring_inputs(stats):
             } for pair in (b.get("linked_model_pairs", []) or [])],
             "linked_model_routing_state": b.get("linked_model_routing_state", "unsupported"),
             "delegate_actions": b.get("delegate_actions", 0),
+            # NOTE: planning_dispatch_actions is deliberately NOT forwarded here. This payload
+            # is the wire contract with the mirdash dashboard (pinned by an exact key-set
+            # test), the ratio already travels as a single number, and nothing on the other
+            # side reads the subtrahend. It stays on the internal stats for the report and
+            # for auditing.
             "background_tasks": b.get("background_tasks", 0),
             "iteration_depth_mean": b.get("iteration_depth_mean"),
             "iteration_depth_p90": b.get("iteration_depth_p90"),
@@ -110,6 +131,25 @@ def build_scoring_inputs(stats):
         },
         "token_usage": stats.get("token_usage") or {"by_model": []},
     }
+    if any(field in b for field in (
+            "planning_skill_eligible_sessions",
+            "planning_skill_unmeasured_sessions",
+            "planning_skill_session_scope_state",
+            "planning_skill_session_share",
+            "planning_skill_session_coverage")):
+        result["behavior"].update({
+            "planning_skill_eligible_sessions": b.get(
+                "planning_skill_eligible_sessions"),
+            "planning_skill_unmeasured_sessions": b.get(
+                "planning_skill_unmeasured_sessions"),
+            "planning_skill_session_scope_state": b.get(
+                "planning_skill_session_scope_state"),
+            "planning_skill_session_share": b.get(
+                "planning_skill_session_share"),
+            "planning_skill_session_coverage": b.get(
+                "planning_skill_session_coverage"),
+        })
+    return result
 
 
 def build_monthly_scoring_stats(
@@ -120,13 +160,15 @@ def build_monthly_scoring_stats(
     month_scheduled, month_fanouts, month_tool_counter, month_session_ts,
     month_skill_counter, month_subagent_counter, month_mcp_server_counter,
     month_cli_counter, month_compounding, month_shell_test_runs, month_api_errors,
-    planning_ratio_window, cwds, gap_cap_s, burst_gap_s,
+    cwds, gap_cap_s, burst_gap_s,
     no_tool_activity, all_sources_no_agent, month_plan_sessions=None,
     month_planning_skill_sessions=None,
+    month_planning_skill_eligible_sessions=None,
+    month_planning_skill_unmeasured_sessions=None,
     month_session_subagent_types=None,
     month_mcp_subcategory_counter=None, month_mcp_subcategory_servers=None,
     month_grounded_sessions=None, month_write_sessions=None,
-    month_session_ordered_tools=None,
+    month_session_ordered_tools=None, month_planning_dispatch_calls=None,
 ):
     out = []
     for mk in months:
@@ -168,7 +210,15 @@ def build_monthly_scoring_stats(
         for name, c in tcounter.items():
             cats[classify_tool(name)] += c
         explore = cats.get("explore", 0) + month_thinking_blocks.get(mk, 0)
-        doing = cats.get("produce", 0) + cats.get("execute", 0) + cats.get("delegate", 0)
+        # Planning dispatches leave the denominator, mirroring the corpus and per-source
+        # paths. This path can only see tool NAMES, so whether a Skill or Agent call was a
+        # planning one is not decidable here — the count has to be threaded in, or corpus
+        # and monthly would publish two different definitions of the same ratio and the
+        # rolling-AQ blend would mix them.
+        m_dispatch = (month_planning_dispatch_calls or {}).get(mk, 0)
+        doing = _adjusted_doing(
+            cats.get("produce", 0) + cats.get("execute", 0) + cats.get("delegate", 0),
+            m_dispatch)
         planning_ratio = (explore / doing) if doing else 0
         # C4: cross-session consume-once credit, scoped to this month's sessions
         # (a plan artifact only credits an execution in the SAME calendar month
@@ -186,6 +236,23 @@ def build_monthly_scoring_stats(
             if d["orchestratable"] and month_fanouts.get(mk, {}).get(sid, 0) > 0:
                 _month_delegated_orch_sids.add(sid)
         _month_delegated_orchestratable = len(_month_delegated_orch_sids)
+
+        _planning_denominator_set = (
+            (month_planning_skill_eligible_sessions or {}).get(mk, set()))
+        _planning_numerator_set = (
+            (month_planning_skill_sessions or {}).get(mk, set())
+            & _planning_denominator_set)
+        _planning_unmeasured_set = (
+            (month_planning_skill_unmeasured_sessions or {}).get(mk, set())
+            - _planning_denominator_set)
+        _planning_numerator = len(_planning_numerator_set)
+        _planning_denominator = len(_planning_denominator_set)
+        _planning_unmeasured = len(_planning_unmeasured_set)
+        _planning_scope_state = (
+            "measured" if _planning_denominator > 0 and _planning_unmeasured == 0
+            else "partial" if _planning_denominator > 0 and _planning_unmeasured > 0
+            else "unmeasured")
+        assert 0 <= _planning_numerator <= _planning_denominator
 
         stats_full = {
             "corpus": {"sources": {s: {} for s in sources_present}},
@@ -217,14 +284,27 @@ def build_monthly_scoring_stats(
                     if fanouts else 0.0),
                 "shell_test_runs": month_shell_test_runs.get(mk, 0),
                 "plan_sessions": len((month_plan_sessions or {}).get(mk, set()) & month_sessions.get(mk, set())),
-                "planning_skill_sessions": len(
-                    (month_planning_skill_sessions or {}).get(mk, set())
-                    & month_sessions.get(mk, set())),
+                "planning_skill_sessions": _planning_numerator,
+                "planning_skill_eligible_sessions": _planning_denominator,
+                "planning_skill_unmeasured_sessions": _planning_unmeasured,
+                "planning_skill_session_scope_state": _planning_scope_state,
+                "planning_skill_session_share": (
+                    round(_planning_numerator / _planning_denominator, 6)
+                    if _planning_scope_state in {"measured", "partial"} else None),
+                "planning_skill_session_coverage": (
+                    round(_planning_denominator / (
+                        _planning_denominator + _planning_unmeasured), 6)
+                    if _planning_scope_state in {"measured", "partial"} else None),
                 "eligible_change_sessions": eligible,
                 "planned_eligible_sessions": _month_agg["planned"],
                 "evidence_eligible_sessions": _month_agg["evidence"],
                 "ordered_facts_state": "measured" if m_tool_total else "unmeasured",
                 "delegate_actions": delegate_m,
+                # No planning_dispatch_actions here, unlike the corpus and per-source slices.
+                # It would be unreachable: this dict is only consumed through
+                # build_scoring_inputs (which deliberately drops the field to keep the
+                # mirdash wire contract stable), and the raw monthly stats are discarded
+                # before stats.json is written. An unread field is worse than an asymmetry.
                 "background_tasks": background_m,
                 "scheduled_actions": scheduled_m,
                 "iteration_depth_mean": round(ids["mean"], 2) if ids["mean"] is not None else None,

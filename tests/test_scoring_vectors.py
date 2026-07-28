@@ -38,8 +38,8 @@ def _roundtrip(obj):
 
 
 class TestScoringVectorsFile(unittest.TestCase):
-    def test_scoring_contract_is_version_five(self):
-        self.assertEqual(SCORING_INPUTS_VERSION, 5)
+    def test_scoring_contract_is_version_seven(self):
+        self.assertEqual(SCORING_INPUTS_VERSION, 7)
 
     def test_file_exists_and_has_cases(self):
         data = _load()
@@ -95,20 +95,34 @@ class TestScoringVectorsFile(unittest.TestCase):
                 for axis in ("execution", "planning", "engineering"):
                     self.assertIn("value", prof["scores"][axis])
             if c["expected"]["aggregate"]:
+                # The aggregate carries the same shape EXCEPT its combined AQ, which is a
+                # diagnostic (`aq_diagnostic`) and not a published score — `profile.aq`,
+                # scored from the merged corpus, is the one canonical combined AQ.
                 agg = c["expected"]["aggregate"]
-                self.assertEqual(set(agg) & expected_keys, expected_keys)
+                self.assertEqual(set(agg) & expected_keys, expected_keys - {"aq"})
+                self.assertNotIn("aq", agg)
+                self.assertEqual(agg["canonical_aq"], "profile.aq")
+                self.assertIn("aq_0_100", agg["aq_diagnostic"])
 
 
 class TestCapabilityContract(unittest.TestCase):
-    def test_cursor_only_drops_tasktool_terms(self):
-        """Cursor has no TaskCreate/TaskUpdate and no first-class Skill tool — Discipline
-        drops entirely; Skill fluency stays (skills via Read / manually_attached)."""
+    def test_cursor_only_drops_tasktool_term_but_keeps_planning_habit(self):
+        """Cursor has no TaskCreate/TaskUpdate and no first-class Skill tool, so the
+        task-tool term drops. Discipline as a whole no longer does: its planning term reads
+        the qualified planning share, which Cursor CAN earn — `create_plan` and
+        `switch_mode(plan)` normalize to EnterPlanMode, and cursor is a measured planning
+        scope. Telling Cursor users their planning is unmeasurable would be false."""
         out = score_by_source({"cursor": {"window": CURSOR_BLOCK, "monthly": []}})
         breadth = next(p for p in out["by_source"]["cursor"]["aq"]["pillars"]
                        if p["name"] == "Breadth")
         axis_names = {a["name"] for a in breadth["axes"]}
         self.assertIn("Skill fluency", axis_names)
-        self.assertIn("Discipline", breadth.get("not_applicable", []))
+        self.assertIn("Discipline", axis_names)
+        self.assertNotIn("Discipline", breadth.get("not_applicable", []))
+        # Earned from the share alone (0.2 against the 0.30 target), with the task-tool and
+        # ordered terms dropped and the weight renormalized onto the planning habit.
+        discipline = next(a for a in breadth["axes"] if a["name"] == "Discipline")
+        self.assertGreater(discipline["score"], 0)
 
     def test_claude_keeps_skills_terms(self):
         """A full-capability (claude) slice keeps every Breadth axis — no drops."""
@@ -167,10 +181,10 @@ class TestAggregateIsWeightedMean(unittest.TestCase):
         wa = CLAUDE_BLOCK["volume"]["tool_calls_total"]
         wu = CURSOR_BLOCK["volume"]["tool_calls_total"]
         expected = round((ca * wa + cu * wu) / (wa + wu))
-        self.assertEqual(out["aggregate"]["aq"]["aq_0_100"], expected)
+        self.assertEqual(out["aggregate"]["aq_diagnostic"]["aq_0_100"], expected)
         # sanity: the weighted mean lands strictly between the two per-source scores
-        self.assertLess(out["aggregate"]["aq"]["aq_0_100"], ca)
-        self.assertGreater(out["aggregate"]["aq"]["aq_0_100"], cu)
+        self.assertLess(out["aggregate"]["aq_diagnostic"]["aq_0_100"], ca)
+        self.assertGreater(out["aggregate"]["aq_diagnostic"]["aq_0_100"], cu)
 
     def test_aggregate_pillars_and_axes_are_weighted_means(self):
         sibs = {"claude": {"window": CLAUDE_BLOCK, "monthly": []},
@@ -182,17 +196,21 @@ class TestAggregateIsWeightedMean(unittest.TestCase):
         def axis_val(prof, ax):
             return prof["scores"][ax]["value"]
 
-        for ax in ("execution", "planning", "engineering"):
+        for ax in ("execution", "engineering"):
             a = axis_val(out["by_source"]["claude"], ax)
             b = axis_val(out["by_source"]["cursor"], ax)
             expected = round((a * wa + b * wu) / (wa + wu), 1)
             self.assertAlmostEqual(out["aggregate"]["scores"][ax]["value"], expected, places=1,
                                    msg=f"axis {ax} aggregate not the weighted mean")
+        self.assertEqual(
+            out["aggregate"]["combination"]["axes"]["planning"],
+            "recomputed_from_synthesized_corpus",
+        )
 
     def test_single_source_aggregate_equals_that_source(self):
         """With one source the aggregate is just that source's profile numbers."""
         out = score_by_source({"claude": {"window": CLAUDE_BLOCK, "monthly": []}})
-        self.assertEqual(out["aggregate"]["aq"]["aq_0_100"],
+        self.assertEqual(out["aggregate"]["aq_diagnostic"]["aq_0_100"],
                          out["by_source"]["claude"]["aq"]["aq_0_100"])
 
 
