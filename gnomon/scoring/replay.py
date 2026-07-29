@@ -91,6 +91,7 @@ field tells a caller which regime it got:
     STRUCTURAL (it inspects the payload's own bucket data directly), never
     dependent on a self-reported `payload_features.omitted` marker string.
 """
+from gnomon.config import SOURCE_CAPS
 from gnomon.scoring.aggregate import HISTORY_WEIGHT, _blend_aq, score_by_source
 from gnomon.scoring.aq import compute_aq
 from gnomon.scoring.profiles import model_usage_from_models, stats_from_scoring_block
@@ -119,6 +120,37 @@ AQ_APPROXIMATE_WEIGHTED_MEAN = "approximate_weighted_mean"
 # semantics stayed 100% full-window (this value) or partially recovered the
 # recency blend (AQ_APPROXIMATE_WEIGHTED_MEAN) should branch on this.
 AQ_APPROXIMATE_WEIGHTED_MEAN_UNBLENDED = "approximate_weighted_mean_unblended"
+
+
+def _claimed_source_ids(block):
+    """The source id(s) a scoring-input block declares, preferring
+    corpus.sources over the composite `source` string -- mirrors
+    stats_from_scoring_block's own preference (profiles.py:33-34)."""
+    corpus_sources = (block.get("corpus") or {}).get("sources")
+    if corpus_sources:
+        return set(corpus_sources.keys())
+    source = block.get("source")
+    return set(str(source).split(",")) if source else set()
+
+
+def _require_known_source_identity(src_key, window_block):
+    """gnomon/config.py::available_caps([]) and available_caps(["unknown"])
+    both fail OPEN to the full capability set (unknown sources are assumed
+    fully capable, by design, for sources gnomon simply hasn't mapped yet in
+    SOURCE_CAPS). That is safe for gnomon's OWN emitted payloads, where every
+    block's declared source is always a real, mapped source id -- but
+    replay() is explicitly a foreign-payload entry point (see the module
+    docstring), so a block that resolves to no KNOWN source id must not
+    silently score with full capabilities and still get labelled exact/
+    approximate as if it were a real, capability-bounded source."""
+    claimed = _claimed_source_ids(window_block)
+    if not (claimed & SOURCE_CAPS.keys()):
+        raise ReplayError(
+            f"scoring_inputs_by_source[{src_key!r}].window resolves to no "
+            f"KNOWN source id ({sorted(claimed) or 'none'}) -- available_caps() "
+            f"would fail OPEN (full capabilities) for an unrecognized source, "
+            f"so replay() refuses rather than silently over-crediting a "
+            f"foreign payload")
 
 
 def _profiles_by_source(sibs, bucket_by_source, bucket_metadata):
@@ -321,6 +353,21 @@ def replay(payload):
         raise ReplayError("scoring_inputs_by_source is empty or missing")
     sources = sorted(sibs.keys())
 
+    for src in sources:
+        _require_known_source_identity(src, (sibs.get(src) or {}).get("window") or {})
+
+    # Prefer source ACTIVITY over raw key count for the single/multi decision:
+    # a payload can carry a key for every source gnomon discovers, even ones
+    # with zero sessions this window, and the merged corpus equals the ONE
+    # genuinely active source exactly in that case (the same equivalence
+    # _replay_single_source_aq already exploits). Falls back to the raw key
+    # set when nothing is active at all (nothing to blend either way).
+    active_sources = sorted(
+        src for src in sources
+        if ((sibs.get(src) or {}).get("window") or {}).get(
+            "volume", {}).get("total_sessions", 0) > 0
+    ) or sources
+
     bucket = payload.get("bucket_scoring_inputs") or {}
     bucket_metadata = bucket.get("metadata") or []
     bucket_corpus = bucket.get("corpus") or {}
@@ -351,9 +398,9 @@ def replay(payload):
         profiles_by_source = _profiles_by_source(sibs, bucket_by_source, bucket_metadata)
 
     # (b) combined AQ -- exact for single-source, approximate for multi-source.
-    if len(sources) == 1:
+    if len(active_sources) == 1:
         aq = _replay_single_source_aq(
-            sibs[sources[0]]["window"], sibs, bucket_metadata, bucket_corpus)
+            sibs[active_sources[0]]["window"], sibs, bucket_metadata, bucket_corpus)
         aq_exactness = AQ_EXACT
     else:
         aq, aq_exactness = _replay_multisource_approximate_aq(

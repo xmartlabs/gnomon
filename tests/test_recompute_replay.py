@@ -32,6 +32,8 @@ from gnomon.scoring.replay import (
     replay, ReplayError, AQ_EXACT, AQ_APPROXIMATE_WEIGHTED_MEAN,
     AQ_APPROXIMATE_WEIGHTED_MEAN_UNBLENDED,
 )
+from gnomon.scoring.aq import compute_aq
+from gnomon.scoring.profiles import stats_from_scoring_block
 
 
 def _run_summary(testcase, sources):
@@ -476,6 +478,68 @@ class BucketInputsWithoutMetadataRaises(unittest.TestCase):
         payload["scoring_inputs_by_source"] = {}
         with self.assertRaises(ReplayError):
             replay(payload)
+
+
+class UnknownSourceIdentityRaises(unittest.TestCase):
+    """Review remediation round 2, Fix 5: gnomon/config.py::available_caps([])
+    and available_caps(["unknown"]) both fail OPEN to the full capability set
+    -- a block whose declared source resolves to no id replay() recognizes
+    would otherwise score with FULL capabilities and still get labelled
+    exact/approximate, as if it were a real, capability-bounded source.
+    replay() is explicitly a foreign-payload entry point (see its module
+    docstring) and must raise loudly instead of silently over-crediting it."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._stats, cls._summary = _run_summary(cls, ["claude"])
+
+    def _payload_with_window_source(self, source_key, window_overrides):
+        payload = json.loads(json.dumps(self._summary))
+        window = payload["scoring_inputs_by_source"].pop("claude")["window"]
+        window.pop("source", None)
+        window.pop("corpus", None)
+        window.update(window_overrides)
+        payload["scoring_inputs_by_source"] = {source_key: {"window": window, "monthly": []}}
+        return payload
+
+    def test_raises_when_block_has_no_source_and_no_corpus_sources(self):
+        payload = self._payload_with_window_source("mystery-tool", {})
+        with self.assertRaises(ReplayError):
+            replay(payload)
+
+    def test_raises_when_block_source_is_unrecognized(self):
+        payload = self._payload_with_window_source("mystery-tool", {"source": "mystery-tool"})
+        with self.assertRaises(ReplayError):
+            replay(payload)
+
+    def test_succeeds_when_block_source_is_recognized(self):
+        payload = self._payload_with_window_source("claude", {"source": "claude"})
+        result = replay(payload)
+        self.assertIn("aq_0_100", result["aq"])
+
+
+class SingleActiveSourceAmongZeroSessionKeysIsExact(unittest.TestCase):
+    """Review remediation round 2, Fix 5 (lower-severity variant): the single/
+    multi split used len(sibs.keys()) rather than source ACTIVITY, so a
+    payload carrying one genuinely active source plus zero-session keys took
+    the approximate path even though the merged corpus equals that one active
+    source exactly (the same equivalence _replay_single_source_aq already
+    exploits). replay() must resolve activity, not raw key count."""
+
+    def test_exact_when_only_one_of_several_keys_is_active(self):
+        active_block = _minimal_scoring_block("claude", sessions=5, tool_calls=50)
+        zero_block = _minimal_scoring_block("codex", sessions=0, tool_calls=0)
+        sibs = {
+            "claude": {"window": active_block, "monthly": []},
+            "codex": {"window": zero_block, "monthly": []},
+        }
+        payload = {
+            "payload_features": {"version": 1, "supported": [], "emitted": [], "omitted": []},
+            "scoring_inputs_by_source": sibs,
+        }
+        result = replay(payload)
+        self.assertEqual(result["aq_exactness"], AQ_EXACT)
+        self.assertEqual(result["aq"], compute_aq(stats_from_scoring_block(active_block)))
 
 
 def _minimal_scoring_block(source, sessions=1, tool_calls=1):
