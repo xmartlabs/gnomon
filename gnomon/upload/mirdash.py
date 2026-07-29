@@ -23,6 +23,51 @@ _COPIED_OUTPUTS = (
 
 _DEFAULT_MIRDASH_BASE = "https://mirdash.xmartlabs.com"
 
+# mirdash's /api/gnomon/ingest route stores the raw summary verbatim in a single
+# Convex document (route.ts's MAX_BODY_BYTES = 900 * 1024, binary KB) against a 1 MiB
+# per-document limit. This is gnomon's mirror of that same arithmetic, checked BEFORE
+# the POST so an over-budget payload fails loudly here instead of a 413 from the
+# server.
+#
+# persist-recompute-grade-inputs SCOPE RELAXATION: an earlier revision of this
+# capability shipped a `scoring_inputs_corpus` merged-corpus block so a future
+# recompute job could reproduce profile.aq EXACTLY for multi-source corpora.
+# Measured on real 8-source data (python3 -m gnomon.cli.insights --local --console),
+# that block alone cost ~487 KB and pushed a real payload from 824,398 bytes
+# (ratio 0.8945, fits) to 1,369,511 bytes (ratio 1.4860, OVER this cap) --
+# exactness was its only value; the same approximate combined AQ it enabled was
+# already reconstructible from the per-source blocks that ship regardless (see
+# gnomon/scoring/replay.py's module docstring). The requirement was relaxed:
+# approximate multi-source recompute is acceptable, so `scoring_inputs_corpus`
+# is no longer built or shipped at all, for any source count. Real measurement
+# after dropping it (keeping bucket_scoring_inputs + payload_features):
+# 839,496 bytes, ratio 0.9109 -- FITS.
+#
+# KNOWN RISK (documented, not a blocker): the real baseline (everything except
+# this capability's two additive blocks) already sits at ~89% of this budget
+# for a heavy 8-source, multi-month user -- a PRE-EXISTING condition this
+# change did not create (it predates this capability entirely) and does not
+# meaningfully worsen (adds only ~1.6 percentage points on real data). A fully
+# synthetic worst-case fixture (every documented per-source/per-month list cap
+# hit simultaneously across all 8 sources, see tests/test_payload_budget.py)
+# shows the PRE-EXISTING scoring_inputs_by_source + profiles_by_source fields
+# can alone exceed this cap in an extreme, never-observed scenario -- unrelated
+# to bucket_scoring_inputs/payload_features. Closing that gap is the deferred
+# mirdash structural split (denormalized scoring-inputs table), tracked as a
+# follow-up, not a blocker for this change. See
+# tests/test_payload_budget.py::WorstCasePayloadBudget for the assertions this
+# capability's own footprint is held to, and
+# docs/metrics-by-source.md's "Upload payload budget" section for the full
+# writeup.
+_INGEST_MAX_BYTES = 900 * 1024
+
+
+class PayloadTooLarge(RuntimeError):
+    """Raised by _upload_summary when the serialized payload exceeds
+    _INGEST_MAX_BYTES. A RuntimeError subclass so nothing that already catches
+    RuntimeError changes shape, but a distinct type so callers can separate a
+    budget violation from a network/HTTP failure and refuse to swallow it."""
+
 
 def _gnomon_config():
     """Read ~/.config/gnomon/config.json; return {} on missing/invalid."""
@@ -89,6 +134,11 @@ def _upload_summary(mirdash_base, token, summary):
     import urllib.error
     import urllib.request
     body = json.dumps(summary, default=str).encode("utf-8")
+    if len(body) >= _INGEST_MAX_BYTES:
+        raise PayloadTooLarge(
+            f"summary payload is {len(body)} bytes, at or over the mirdash "
+            f"ingest budget of {_INGEST_MAX_BYTES} bytes -- refusing to upload "
+            f"a payload the server would reject or truncate")
     req = urllib.request.Request(
         f"{mirdash_base}/api/gnomon/ingest",
         data=body,
@@ -735,6 +785,12 @@ def _upload_window(mirdash_base, token, paxel_src, paxel_args_base, since, until
     summary.setdefault("context", {})["window_months"] = window_months
     try:
         return (_upload_summary(mirdash_base, token, summary), summary)
+    except PayloadTooLarge:
+        # A budget violation is a distinct, unswallowable failure -- unlike
+        # every other upload error (network/HTTP), it must propagate so the
+        # caller can never collapse it into the generic _UPLOAD_ERROR sentinel
+        # (which some exit-code paths treat as a normal, ignorable skip).
+        raise
     except Exception as exc:
         print(f"  warning: {label} upload failed: {exc}")
         return (_UPLOAD_ERROR, None)
@@ -777,6 +833,12 @@ def _upload_window_web(mirdash_base, token, paxel_src, paxel_args_base, since, u
         report_url = _upload_summary(mirdash_base, token, summary)
         server.push_event("uploaded", {"month": label, "label": label, "index": index, "total": total})
         return report_url
+    except PayloadTooLarge as exc:
+        # The browser sees the reason (naming the byte size) via the SSE event,
+        # AND the exception still propagates -- unlike every other upload
+        # failure, a budget violation must not collapse into _UPLOAD_ERROR.
+        server.push_event("error_msg", {"month": label, "label": label, "message": str(exc)})
+        raise
     except Exception as exc:
         server.push_event("error_msg", {"month": label, "label": label, "message": str(exc)})
         return _UPLOAD_ERROR

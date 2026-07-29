@@ -9,6 +9,7 @@ from gnomon.upload.mirdash import (  # noqa: F401
     _format_summary, _PAXEL_ERROR, _UPLOAD_ERROR, _paxel_until_arg,
     _copy_artifacts, latest_month_with_data,
     _upload_window, _upload_window_web,
+    PayloadTooLarge,
 )
 from gnomon.upload.auth import (  # noqa: F401
     _tokens_from_query, _capture_cli_token, _wait_for_auth_tokens,
