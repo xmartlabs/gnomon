@@ -131,7 +131,12 @@ to the unblended full-window AQ.
   block, emitted whenever the recency blend is enabled (see "recompute-grade-payload" below).
 - `payload_features` — always emitted; an additive marker naming which of the above block(s)
   this payload carries and why any are absent (`omitted[].reason`), so a reader can tell
-  "older client, capability never existed" apart from "budget-trimmed".
+  "older client, capability never existed" apart from "budget-trimmed" apart from
+  "recency blend disabled for this run" (`bucket_scoring_inputs` absent entirely, distinct
+  from `bucket_scoring_inputs.by_source` trimmed while `bucket_scoring_inputs.corpus` still
+  ships). A `build_summary()` call that never went through local.py's real computation
+  (e.g. a hand-built stats dict) omits `recency_blend` entirely rather than asserting a
+  guessed enabled/disabled state.
 
   No `scoring_inputs_corpus` block ships, for any source count (scope relaxation:
   approximate multi-source recompute is acceptable, so the merged-corpus block that bought
@@ -155,29 +160,53 @@ payload lacks data the original run genuinely depended on.
 - **Single-source payloads are EXACT** (`aq_exactness == "exact"`): the source's own window
   block IS the corpus block (there is only one source, nothing was pooled away), so
   `replay()` reproduces `payload["profile"]["aq"]` bit-for-bit, including its 65/35 recency
-  blend when `bucket_scoring_inputs` carries one.
-- **Multi-source payloads are APPROXIMATE** (`aq_exactness == "approximate_weighted_mean"`):
-  an earlier revision also shipped a `scoring_inputs_corpus` merged-corpus block so
-  multi-source replay could be exact too, but that block cost ~487 KB on real 8-source data
-  (see "Upload payload budget" below) and bought only exactness — the requirement was
-  relaxed to accept an approximate multi-source recompute, so that block is never shipped
-  now, for any source count. `replay()` instead composes the tool-volume-weighted mean of
-  each source's own scored AQ — the same aggregation `gnomon.scoring.aggregate.score_by_source`
-  already implements and publishes as `profiles_by_source.aggregate.aq_diagnostic`. This is
-  NOT expected to equal `payload["profile"]["aq"]` (the merged-corpus canonical value, where
-  distinct counts stay unions rather than per-source means; see `aggregate.py`'s module
-  docstring for measured gaps of several points on a real corpus).
-- **`profiles_by_source` has its own, independent coverage limit**: `bucket_scoring_inputs.by_source`
-  (the per-source recency-blend breakdown) is trimmed from every shipped payload today (see
-  the payload-budget section below), so when a recency blend genuinely fired for a corpus,
-  `replay()` cannot reconstruct the per-source blended profile from the payload alone. In
-  that case it returns `profiles_by_source: None` and
-  `profiles_by_source_status: "not_replayable_by_source_bucket_trimmed"` instead of a
-  silently wrong (unblended) dict. When no blend fired, or a future payload does carry
-  `bucket_scoring_inputs.by_source`, `profiles_by_source_status` is `"exact"`.
+  blend when `bucket_scoring_inputs` carries one. `profiles_by_source` is exact too for
+  single-source payloads, for the same reason: the source's own
+  `bucket_scoring_inputs.corpus` window block IS that one source's per-source bucket block,
+  so `replay()` synthesizes the per-source breakdown from it even though
+  `bucket_scoring_inputs.by_source` itself is always trimmed from the shipped payload.
+- **Multi-source payloads are APPROXIMATE, but blended when possible.** No
+  `scoring_inputs_corpus` merged-corpus block ships for any source count — an earlier
+  revision shipped one so multi-source replay could be exact too, but it cost ~487 KB on
+  real 8-source data (see "Upload payload budget" below) and bought only exactness, so the
+  requirement was relaxed to accept an approximate multi-source recompute. `replay()`
+  instead composes the tool-volume-weighted mean of each source's own scored AQ — the same
+  aggregation `gnomon.scoring.aggregate.score_by_source` already implements — and then
+  blends that base value (65/35) against the merged `bucket_scoring_inputs.corpus` block,
+  which DOES ship unconditionally whenever the recency blend is enabled. Two distinct
+  exactness values distinguish whether that blend actually fired, since silently mixing an
+  unblended base value with the canonical 65/35 window semantics reproduces the exact
+  divergence this contract exists to prevent:
+    - `aq_exactness == "approximate_weighted_mean"`: the base value WAS blended against the
+      merged-corpus recency bucket. Measured on a real 8-source corpus: replayed
+      `aq_0_100` 93 vs canonical `profile.aq.aq_0_100` 91 — an error of ~2 points, not the
+      ~11-point gap an earlier, unblended revision of this module produced on the same
+      corpus.
+    - `aq_exactness == "approximate_weighted_mean_unblended"`: no bucket data was available
+      to blend at all (recency blend disabled for this payload, or the shipped corpus
+      bucket genuinely carried zero sessions this window) — every source stayed 100%
+      full-window, wider divergence from canonical should be expected here.
+  Neither approximate value is expected to equal `payload["profile"]["aq"]` (the
+  merged-corpus canonical value, where distinct counts stay unions rather than per-source
+  means; see `aggregate.py`'s module docstring for the aggregation-rule difference) or
+  `payload["profiles_by_source"]["aggregate"]["aq_diagnostic"]` once a blend has fired for
+  the corpus (that field is computed from the full, untrimmed per-source bucket breakdown,
+  which a shipped payload never carries).
+- **`profiles_by_source` has its own, independent coverage limit, but only for multi-source
+  payloads**: `bucket_scoring_inputs.by_source` (the per-source recency-blend breakdown) is
+  trimmed from every shipped payload today (see the payload-budget section below), so for a
+  multi-source payload where a recency blend genuinely fired for a corpus, `replay()` cannot
+  reconstruct the per-source blended profile from the payload alone. In that case it returns
+  `profiles_by_source: None` and `profiles_by_source_status:
+  "not_replayable_by_source_bucket_trimmed"` instead of a silently wrong (unblended) dict.
+  When no blend fired, the payload is single-source (always exact, see above), or a future
+  payload does carry `bucket_scoring_inputs.by_source`, `profiles_by_source_status` is
+  `"exact"`.
 - **Raises** for: a payload predating this capability (`payload_features` absent), an empty
-  `scoring_inputs_by_source`, and (single-source only) a recency bucket shipped without
-  complete metadata. Multi-source replay never raises on a model-less source — the
+  `scoring_inputs_by_source`, a scoring-input block that resolves to no known source id
+  (a foreign-payload guard — see `replay.py`'s `_require_known_source_identity`), and
+  (either path) a recency bucket shipped without complete metadata or a non-positive
+  configured weight. Multi-source replay never raises on a model-less source — the
   weighted-mean aggregation already treats a missing per-source capability as N/A, not a
   defect, unlike the retired exact-reconstruction path.
 
