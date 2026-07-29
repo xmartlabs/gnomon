@@ -700,5 +700,58 @@ class RecomputeGradeFieldsExcludedFromStatsAndNarrative(unittest.TestCase):
                               f"only, not in the narrative prompt")
 
 
+class PayloadFeaturesOmittedCoversRecencyBlendDisabled(unittest.TestCase):
+    """Review remediation, Fix 7 minor: docs/metrics-by-source.md documents
+    `payload_features.omitted[].reason` as explaining why any of the
+    recompute-grade blocks is absent from a given payload -- but when the
+    recency blend is disabled (RECENCY_BLEND_ENABLED False),
+    `bucket_scoring_inputs` is absent from the payload while `omitted` stays
+    empty; only the separate `recency_blend.enabled` marker reveals it. Fix
+    1(b)'s explicit blend signal depends on that absence being legible from
+    `omitted` alone, so a recompute job branching on it can tell "blend
+    disabled for this payload" apart from "budget-trimmed" without also
+    having to know to check a second, unrelated field."""
+
+    @classmethod
+    def setUpClass(cls):
+        with mock.patch("gnomon.cli.local.RECENCY_BLEND_ENABLED", False):
+            cls._stats, cls._summary = _run_summary(cls, ["claude"])
+
+    def test_bucket_scoring_inputs_absent_when_blend_disabled(self):
+        self.assertNotIn("bucket_scoring_inputs", self._summary)
+
+    def test_omitted_names_the_recency_blend_disabled_reason(self):
+        omitted = self._summary["payload_features"]["omitted"]
+        self.assertTrue(
+            any(o["feature"] == "bucket_scoring_inputs" and o["reason"] == "recency_blend_disabled"
+                for o in omitted),
+            f"expected an omitted entry naming recency_blend_disabled, got {omitted!r}")
+
+
+class SummaryFallbackPayloadFeaturesOmitsRecencyBlendMarker(unittest.TestCase):
+    """Review remediation, Fix 7 minor: gnomon/output/summary.py::build_summary's
+    fallback `payload_features` (used whenever `stats` never went through
+    local.py's main() -- e.g. any test or caller that builds a stats dict by
+    hand and calls build_summary() directly) positively asserted
+    'recency_blend': {'enabled': False, 'history_weight': 0}. build_summary()
+    cannot actually know that -- it never computed a blend decision for this
+    stats dict at all -- so that was a confident but unfounded claim, not a
+    fact. The field must be omitted (unknown), not answered with a guess."""
+
+    def test_fallback_payload_features_omits_recency_blend_marker(self):
+        from tests.test_gnomon import _zero_stats
+        summary = paxel.build_summary(_zero_stats())
+        payload_features = summary["payload_features"]
+        # Confirms this exercised the FALLBACK branch, not local.py's real
+        # _payload_features computation -- otherwise the assertion below
+        # would be vacuous.
+        self.assertEqual(payload_features["emitted"], [])
+        self.assertNotIn(
+            "recency_blend", payload_features,
+            "build_summary() cannot know whether a recency blend was "
+            "computed for a stats dict it never built _payload_features "
+            "for -- it must not assert a confident enabled/disabled marker")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -385,7 +385,12 @@ def build_summary(stats):
         "supported": ["bucket_scoring_inputs", "upload_size_guard"],
         "emitted": [],
         "omitted": [],
-        "recency_blend": {"enabled": False, "history_weight": 0},
+        # NOTE: no `recency_blend` marker here -- this fallback branch means
+        # `stats` never went through local.py's real _payload_features
+        # computation (e.g. build_summary() called directly on a hand-built
+        # stats dict), so build_summary() has no basis to assert whether a
+        # blend was enabled/computed for it. Asserting a confident "disabled"
+        # marker here would be a guess, not a fact.
     }
     timing = stats.get("timing")
     if timing:

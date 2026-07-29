@@ -311,6 +311,14 @@ def main(argv=None, output_dir=None):
                 "aq": full_corpus_aq,
             })
             stats["agentic"] = _blend_aq(full_corpus_aq, corpus_components)
+    else:
+        # bucket_scoring_inputs is entirely absent from this payload -- name why
+        # in `omitted` too, not only via the separate recency_blend.enabled
+        # marker below, so a reader branching on `omitted` alone (as
+        # docs/metrics-by-source.md documents) can tell "blend disabled for
+        # this run" apart from "budget-trimmed" or "older client".
+        _payload_omitted.append({"feature": "bucket_scoring_inputs",
+                                  "reason": "recency_blend_disabled"})
 
     # NOTE: these two keys (bucket_scoring_inputs, payload_features) are
     # internal-only working fields on `stats`, kept underscore-prefixed on

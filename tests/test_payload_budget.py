@@ -274,11 +274,11 @@ def worst_case_summary(include_bucket_by_source=True):
         "recent_30d": {src: {"window": _block(src)} for src in sources}
     }
     bucket_corpus = {"recent_30d": {"window": _corpus_block(sources)}}
-    bucket_scoring_inputs = {
-        "metadata": bucket_metadata,
-        "by_source": bucket_by_source if include_bucket_by_source else {},
-        "corpus": bucket_corpus,
-    }
+    bucket_scoring_inputs = {"metadata": bucket_metadata, "corpus": bucket_corpus}
+    if include_bucket_by_source:
+        # Matches production (gnomon/cli/local.py): by_source is OMITTED
+        # entirely when trimmed, never shipped as an empty dict.
+        bucket_scoring_inputs["by_source"] = bucket_by_source
     omitted = []
     if not include_bucket_by_source:
         omitted.append({"feature": "bucket_scoring_inputs.by_source",
@@ -389,6 +389,15 @@ class WorstCasePayloadBudget(unittest.TestCase):
     different field. So: this module owns and gates the two fields it
     controls, and documents (does not gate on) the rest.
     """
+
+    def test_trimmed_fixture_omits_by_source_key_entirely(self):
+        """Shape-faithfulness (review remediation, Fix 7 minor): production
+        (gnomon/cli/local.py) never emits a `bucket_scoring_inputs.by_source`
+        key at all when trimmed -- it is OMITTED, not an empty dict. replay()
+        treats `{}` and absent identically, so this was harmless, but the
+        fixture should still mirror what a real payload actually ships."""
+        shipped = worst_case_summary(include_bucket_by_source=False)
+        self.assertNotIn("by_source", shipped["bucket_scoring_inputs"])
 
     def test_recompute_grade_blocks_stay_within_bounded_absolute_size(self):
         """Hard cap: the recompute-grade blocks' own shipped (trimmed) size must
