@@ -235,6 +235,23 @@ def main(argv=None, output_dir=None):
         ]
         scoring_by_source[src] = {"window": window, "monthly": monthly}
     stats["scoring_inputs_by_source"] = scoring_by_source
+
+    # ---- merged-corpus scoring-input block: DROPPED (persist-recompute-grade-inputs
+    # scope relaxation) ---------------------------------------------------------
+    # An earlier revision of this capability shipped a full merged-corpus
+    # scoring-input block (`scoring_inputs_corpus`) here so a future recompute job
+    # could reproduce `profile.aq` EXACTLY from the payload alone, with zero access
+    # to local transcripts. Measured on real 8-source data that block's `.window`
+    # alone cost ~487 KB, pushing the payload from ~89% to ~149% of the mirdash
+    # 900 KB ingest cap -- and the exactness it bought was its ONLY value (see
+    # gnomon/scoring/replay.py's module docstring for the relaxed contract). The
+    # user relaxed the requirement: recompute no longer needs to be exact for
+    # multi-source corpora, only approximate, so this block is no longer emitted at
+    # all (not even for multi-source). `profile.aq` itself is UNCHANGED -- it is
+    # still computed live below from the full merged corpus; only the raw inputs
+    # needed to later RE-derive that exact value from a persisted payload are gone.
+    _payload_omitted = []
+
     # Recompute the public corpus AQ now that source capability boundaries are available.
     stats["agentic"] = compute_aq(stats)
 
@@ -256,6 +273,26 @@ def main(argv=None, output_dir=None):
         stats["_aq_bucket_scoring_inputs_by_source"] = bucket_scoring_by_source
         stats["_aq_bucket_metadata"] = bucket_metadata
 
+        # ---- shippable recency-blend replay block (Gap B, corpus-only) --------
+        # Per-source recent_30d bucket blocks are trimmed from the shipped payload
+        # (the cheapest available payload-budget lever, see tests/test_payload_budget.py),
+        # so only the merged bucket-corpus block ships. gnomon/scoring/replay.py's
+        # single-source path uses this corpus block for an EXACT recency blend
+        # (single-source corpus IS that one source); its multi-source path no
+        # longer depends on it at all -- see that module's docstring for the
+        # approximate multi-source contract.
+        bucket_corpus_blocks = {}
+        for bucket_id, bucket_stats_raw in narrative.get("_aq_bucket_stats", {}).items():
+            bucket_block = build_scoring_inputs(bucket_stats_raw)
+            bucket_block["corpus"] = {"sources": {s: {} for s in srcs_present}}
+            bucket_corpus_blocks[bucket_id] = {"window": bucket_block}
+        stats["_bucket_scoring_inputs"] = {
+            "metadata": bucket_metadata,
+            "corpus": bucket_corpus_blocks,
+        }
+        _payload_omitted.append({"feature": "bucket_scoring_inputs.by_source",
+                                  "reason": "payload_budget_trim"})
+
         corpus_components = []
         metadata_by_id = {entry["id"]: entry for entry in bucket_metadata}
         for bucket_id, bucket_stats in narrative.get("_aq_bucket_stats", {}).items():
@@ -274,12 +311,34 @@ def main(argv=None, output_dir=None):
             })
             stats["agentic"] = _blend_aq(full_corpus_aq, corpus_components)
 
+    # NOTE: these two keys (bucket_scoring_inputs, payload_features) are
+    # internal-only working fields on `stats`, kept underscore-prefixed on
+    # purpose -- see the stats_for_disk filter below and the narrative-input
+    # filter just above write_narrative_input(). summary.py's build_summary()
+    # reads them via their underscored names and publishes them under their
+    # real (non-underscored) names in summary.json only; they must never reach
+    # stats.json or the archetype/traits LLM prompt (narrative_input.md).
+    stats["_payload_features"] = {
+        "version": 1,
+        "supported": ["bucket_scoring_inputs", "upload_size_guard"],
+        "emitted": (["bucket_scoring_inputs"] if "_bucket_scoring_inputs" in stats else []),
+        "omitted": _payload_omitted,
+        "recency_blend": {"enabled": RECENCY_BLEND_ENABLED, "history_weight": HISTORY_WEIGHT},
+    }
+
     _t_scoring_inputs = time.monotonic() - _t0_si
     # internal-only working field (per-month full stats slices); not part of the payload
     stats.pop("_scoring_monthly_full", None)
 
     write_report(stats, output_dir=_out_dir)
-    write_narrative_input(stats, opening_prompts, longest_prompts, output_dir=_out_dir)
+    # The recompute-grade-payload blocks are needed in summary.json only (see
+    # build_summary()) -- they must not inflate the archetype/traits LLM
+    # prompt with data the narrative pass never reads.
+    _narrative_stats = {
+        key: value for key, value in stats.items()
+        if key not in {"_bucket_scoring_inputs", "_payload_features"}
+    }
+    write_narrative_input(_narrative_stats, opening_prompts, longest_prompts, output_dir=_out_dir)
     _t0_scores = time.monotonic()
     scores = compute_scores(stats)
     _t_compute_scores = time.monotonic() - _t0_scores
@@ -304,7 +363,8 @@ def main(argv=None, output_dir=None):
 
     stats_for_disk = {key: value for key, value in stats.items()
                       if key not in {"_aq_bucket_scoring_inputs_by_source",
-                                     "_aq_bucket_metadata", "_full_window_agentic"}}
+                                     "_aq_bucket_metadata", "_full_window_agentic",
+                                     "_bucket_scoring_inputs", "_payload_features"}}
     with open(os.path.join(_out_dir, "stats.json"), "w", encoding="utf-8") as f:
         json.dump(stats_for_disk, f, indent=2, default=str)
 

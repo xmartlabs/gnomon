@@ -185,7 +185,15 @@ class TestPipeline(unittest.TestCase):
             "scoring_inputs_version", "scoring_inputs_by_source",
         "profiles_by_source", "source_usage", "source_usage_monthly", "token_usage",
         "aq_version", "gstack_version", "score_contract_id", "comparison_policy",
-            "timing"})
+            "timing",
+            # recompute-grade-payload (persist-recompute-grade-inputs): an additive
+            # block so a future recompute job can re-derive profile.aq (and its
+            # 65/35 recency blend) from the payload alone -- exact for single-source,
+            # approximate for multi-source (see gnomon/scoring/replay.py). No
+            # merged-corpus block ships (scope relaxation: approximate recompute is
+            # acceptable, so the ~487 KB scoring_inputs_corpus block bought only
+            # exactness and was dropped entirely).
+            "bucket_scoring_inputs", "payload_features"})
         # profile must have the expected sub-keys
         prof = summary["profile"]
         self.assertEqual(set(prof), {"aq", "archetype", "scores", "steering",

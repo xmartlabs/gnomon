@@ -2,8 +2,10 @@
 
 tests/fixtures/scoring_vectors.json holds, per case, the raw scoring inputs
 (scoring_inputs_by_source) and the expected per-source + aggregate profiles snapshotted
-from the Python implementation. mirdash reimplements scoring in TS and tests against the
-SAME file. These tests:
+from the Python implementation. mirdash does NOT reimplement scoring in TS --
+lib/metrics-profile.ts only PARSES this payload; Python is the sole scoring runtime
+(see gnomon/scoring/replay.py). mirdash tests against the SAME file to keep its
+parser's expectations honest with what Python actually produces. These tests:
 
   1. Re-derive `expected` from the live Python impl and assert byte-for-byte equality, so
      the committed snapshot can never silently drift from the code (regenerate with
