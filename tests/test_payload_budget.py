@@ -274,7 +274,7 @@ def worst_case_summary(include_bucket_by_source=True):
     omitted = []
     if not include_bucket_by_source:
         omitted.append({"feature": "bucket_scoring_inputs.by_source",
-                         "reason": "payload_budget_trim"})
+                         "reason": "trimmed_unconditionally"})
     payload_features = {
         "version": 1,
         "supported": ["bucket_scoring_inputs", "upload_size_guard"],

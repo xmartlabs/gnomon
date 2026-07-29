@@ -278,9 +278,10 @@ def main(argv=None, output_dir=None):
         # (the cheapest available payload-budget lever, see tests/test_payload_budget.py),
         # so only the merged bucket-corpus block ships. gnomon/scoring/replay.py's
         # single-source path uses this corpus block for an EXACT recency blend
-        # (single-source corpus IS that one source); its multi-source path no
-        # longer depends on it at all -- see that module's docstring for the
-        # approximate multi-source contract.
+        # (single-source corpus IS that one source); its multi-source path blends
+        # it against the approximate per-source-mean base value for a coarser,
+        # still-approximate recency correction -- see that module's docstring for
+        # the full approximate multi-source contract.
         bucket_corpus_blocks = {}
         for bucket_id, bucket_stats_raw in narrative.get("_aq_bucket_stats", {}).items():
             bucket_block = build_scoring_inputs(bucket_stats_raw)
@@ -291,7 +292,7 @@ def main(argv=None, output_dir=None):
             "corpus": bucket_corpus_blocks,
         }
         _payload_omitted.append({"feature": "bucket_scoring_inputs.by_source",
-                                  "reason": "payload_budget_trim"})
+                                  "reason": "trimmed_unconditionally"})
 
         corpus_components = []
         metadata_by_id = {entry["id"]: entry for entry in bucket_metadata}

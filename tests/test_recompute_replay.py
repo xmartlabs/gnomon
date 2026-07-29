@@ -15,6 +15,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -27,7 +28,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import paxel
 from tests.test_smoke import FIX, SRC_DIRS, _claude_turn
 
-from gnomon.scoring.replay import replay, ReplayError, AQ_EXACT, AQ_APPROXIMATE_WEIGHTED_MEAN
+from gnomon.scoring.replay import (
+    replay, ReplayError, AQ_EXACT, AQ_APPROXIMATE_WEIGHTED_MEAN,
+    AQ_APPROXIMATE_WEIGHTED_MEAN_UNBLENDED,
+)
 
 
 def _run_summary(testcase, sources):
@@ -88,6 +92,76 @@ def _run_claude_summary(testcase, rows, extra_argv=None):
     return stats, summary
 
 
+_ISO_TS_RE = re.compile(r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d+)?Z')
+
+
+def _shift_iso_timestamps(text, delta):
+    """Shift every bare ISO-8601 UTC timestamp in `text` by `delta`, preserving
+    fractional-second suffixes untouched. Used to turn a committed, fixed-date
+    fixture into a genuinely RECENT one without hand-authoring a source's event
+    schema from scratch -- the fixture already round-trips through the real
+    parser with its original dates, so only the dates need to move."""
+    def repl(match):
+        base, frac = match.group(1), match.group(2) or ""
+        dt = datetime.strptime(base, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+        return (dt + delta).strftime("%Y-%m-%dT%H:%M:%S") + frac + "Z"
+    return _ISO_TS_RE.sub(repl, text)
+
+
+def _recent_codex_fixture_dir(testcase, base_ts):
+    """Build a CODEX_DIR combining the committed (fixed-historical-date) codex
+    fixture -- which stays outside any 30-day recency window as time passes --
+    with a SECOND copy of the exact same session whose timestamps are shifted
+    to `base_ts`, giving codex genuine recent_30d activity distinct from its
+    historical baseline. Session identity for codex is derived from the FILE
+    basename (see gnomon/sources/codex.py::_codex_events), so two differently
+    named files parse as two independent sessions."""
+    src = os.path.join(FIX, "codex", "session-codex.jsonl")
+    with open(src, encoding="utf-8") as fh:
+        original_text = fh.read()
+    first_match = _ISO_TS_RE.search(original_text)
+    first_ts = datetime.strptime(first_match.group(1), "%Y-%m-%dT%H:%M:%S").replace(
+        tzinfo=timezone.utc)
+    recent_text = _shift_iso_timestamps(original_text, base_ts - first_ts)
+
+    out_dir = tempfile.mkdtemp(prefix="paxel-replay-codex-recent-")
+    testcase.addClassCleanup(shutil.rmtree, out_dir, ignore_errors=True)
+    shutil.copy(src, os.path.join(out_dir, "session-codex-history.jsonl"))
+    with open(os.path.join(out_dir, "session-codex-recent.jsonl"), "w", encoding="utf-8") as fh:
+        fh.write(recent_text)
+    return out_dir
+
+
+def _run_blended_multisource_summary(testcase):
+    """A genuinely multi-source, genuinely blended payload, built through the
+    real CLI end-to-end: claude carries only the committed (fixed-historical)
+    fixture, codex carries that SAME committed fixture PLUS one copy shifted
+    into the last 5 days (see _recent_codex_fixture_dir). This exercises the
+    exact condition test_replayed_aq_matches_the_payloads_own_aggregate_diagnostic's
+    docstring argued "would not add new coverage" for `aq` -- a real recency
+    blend firing for a multi-source corpus -- which is precisely the condition
+    Fix 1 (round 2) needed and did not have a fixture for."""
+    now = datetime.now(timezone.utc)
+    codex_dir = _recent_codex_fixture_dir(testcase, now - timedelta(days=5))
+    dirs = dict(SRC_DIRS)
+    dirs["CODEX_DIR"] = codex_dir
+    out = tempfile.mkdtemp(prefix="paxel-replay-blend-")
+    testcase.addClassCleanup(shutil.rmtree, out, ignore_errors=True)
+    argv = ["paxel.py", "claude", "codex", "--summary", "--no-open"]
+    buf = io.StringIO()
+    with (
+        mock.patch.multiple(paxel, OUT_DIR=out, **dirs),
+        mock.patch.object(sys, "argv", argv),
+        contextlib.redirect_stdout(buf),
+    ):
+        paxel.main()
+    with open(os.path.join(out, "stats.json"), encoding="utf-8") as fh:
+        stats = json.load(fh)
+    with open(os.path.join(out, "summary.json"), encoding="utf-8") as fh:
+        summary = json.load(fh)
+    return stats, summary
+
+
 def _iso(dt):
     return dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
@@ -116,16 +190,20 @@ def _dense_session(sid, base_ts, calls, tool):
 
 
 class MultisourceApproximateAq(unittest.TestCase):
-    """Test #1 (reworked -- scope relaxation): multi-source replay is APPROXIMATE.
-    No scoring_inputs_corpus block ships, so replay() cannot reproduce the merged-
-    corpus profile.aq exactly; instead it composes the same tool-volume-weighted
-    mean of per-source AQs that score_by_source's aggregate.aq_diagnostic already
-    implements and the payload already publishes under
-    profiles_by_source.aggregate. This test proves that reconstruction, from the
-    payload's own per-source blocks alone, matches the payload's own aggregate
-    exactly (the composition is correct) while making no claim that it matches
-    the canonical merged-corpus profile.aq (it isn't meant to -- see aggregate.py's
-    module docstring for why the two numbers don't converge)."""
+    """Test #1 (reworked -- scope relaxation, then review remediation round 2):
+    multi-source replay is APPROXIMATE. No scoring_inputs_corpus block ships,
+    so replay() cannot reproduce the merged-corpus profile.aq exactly; instead
+    it composes the same tool-volume-weighted mean of per-source AQs that
+    score_by_source's aggregate.aq_diagnostic already implements.
+
+    This fixture's committed transcripts use FIXED historical dates well
+    outside any rolling 30-day window (see _run_summary's docstring), so no
+    recency blend ever fires here -- deliberately: this class exists to prove
+    the UNBLENDED base composition is correct from STABLE, git-committed
+    fixtures. The genuinely blended regime (`aq_exactness ==
+    "approximate_weighted_mean"`, Fix 1 round 2) is covered by
+    MultisourceBlendedApproximateAq below, which needs dynamically recent
+    timestamps a committed fixture cannot provide."""
 
     @classmethod
     def setUpClass(cls):
@@ -139,16 +217,21 @@ class MultisourceApproximateAq(unittest.TestCase):
     def test_no_corpus_block_ships(self):
         self.assertNotIn("scoring_inputs_corpus", self._summary)
 
-    def test_replay_is_marked_approximate(self):
+    def test_replay_is_marked_unblended(self):
+        """No bucket in this fixture ever carries a real session (fixed historical
+        dates), so there is nothing to blend the base value against."""
         result = replay(self._summary)
-        self.assertEqual(result["aq_exactness"], AQ_APPROXIMATE_WEIGHTED_MEAN)
+        self.assertEqual(result["aq_exactness"], AQ_APPROXIMATE_WEIGHTED_MEAN_UNBLENDED)
 
     def test_replayed_aq_matches_the_payloads_own_aggregate_diagnostic(self):
         """The reconstruction reads ONLY payload-shipped per-source blocks -- for this
-        fixture (no recency blend fires; see the fixed-historical-dates note below),
-        that is the identical computation the payload's own
+        fixture (no recency blend fires anywhere, see the class docstring), that is
+        the identical computation the payload's own
         profiles_by_source.aggregate.aq_diagnostic already ran, so the two must match
-        bit-for-bit -- proving the composition is correct, not just well-formed."""
+        bit-for-bit -- proving the unblended base composition is correct, not just
+        well-formed. This equality is NOT expected to hold once a blend fires (see
+        MultisourceBlendedApproximateAq): aq_diagnostic is computed from the FULL,
+        untrimmed per-source bucket breakdown, which a shipped payload never carries."""
         result = replay(self._summary)
         self.assertEqual(result["aq"],
                           self._summary["profiles_by_source"]["aggregate"]["aq_diagnostic"])
@@ -168,22 +251,74 @@ class MultisourceApproximateAq(unittest.TestCase):
         """NOTE on coverage: this fixture's committed transcripts use FIXED
         historical dates well outside any rolling 30-day window (see
         _run_summary's docstring), so no recency blend fires here -- this is
-        deliberate, not an oversight: this class exists to prove exact corpus
-        AQ/profiles_by_source replay from STABLE, git-committed multi-source
+        deliberate, not an oversight: this class exists to prove exact
+        profiles_by_source replay from STABLE, git-committed multi-source
         fixtures, which requires dates far enough in the past to never enter
         a "recent" bucket as time passes. It therefore exercises the
-        `profiles_by_source_status == "exact"` / trim-present-but-no-blend-fired
-        branch of _profiles_by_source_status, NOT the blend-fired-and-trimmed
-        branch -- that is BlendedAqExact's
-        test_replayed_profiles_by_source_is_explicitly_not_replayable, which
-        needs dynamically recent timestamps a committed fixture cannot
-        provide. A genuinely blended MULTI-source case would exercise the
-        identical replay.py code path (the detection is source-count-agnostic:
-        it only inspects bucket_scoring_inputs.corpus and payload_features,
-        never `sources`), so it would not add new coverage over that test."""
+        `profiles_by_source_status == "exact"` / no-blend-fired branch of
+        _profiles_by_source_status, NOT the blend-fired-and-trimmed branch --
+        that is ProfilesBySourceGuardIsStructuralNotMarkerDependent's coverage
+        (which needs a genuinely blended MULTI-source fixture; a single-source
+        one is always exact after the corpus-equivalence fix, see BlendedAqExact).
+
+        For `profiles_by_source` specifically, a genuinely blended multi-source
+        case exercises the IDENTICAL replay.py code path this test already
+        covers (detection is source-count-agnostic: it only inspects
+        bucket_scoring_inputs.corpus, never `sources`), so it adds no new
+        coverage for THIS field. That is NOT true for `aq` -- see
+        MultisourceBlendedApproximateAq, which is the case a genuinely blended
+        multi-source fixture DOES newly cover."""
         result = replay(self._summary)
         self.assertEqual(result["profiles_by_source"], self._summary["profiles_by_source"])
         self.assertEqual(result["profiles_by_source_status"], "exact")
+
+
+class MultisourceBlendedApproximateAq(unittest.TestCase):
+    """Review remediation round 2, Fix 1 + Fix 4: exercises the merged
+    bucket-corpus blend for a GENUINELY blended multi-source payload, through
+    the real CLI end-to-end (claude static history + codex with a real
+    recent_30d session) -- the exact condition MultisourceApproximateAq's
+    docstring used to argue "would not add new coverage" for `aq`. It does:
+    aq_diagnostic takes a different branch (score_by_source WITHOUT the
+    per-source bucket breakdown) whose blend behavior only diverges from the
+    unblended base value when a blend actually fires."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._stats, cls._summary = _run_blended_multisource_summary(cls)
+
+    def test_fixture_has_a_real_recency_blend(self):
+        bucket = self._summary["bucket_scoring_inputs"]["corpus"]["recent_30d"]["window"]
+        self.assertGreater(bucket["volume"]["total_sessions"], 0)
+        self.assertIn("blend", self._summary["profile"]["aq"],
+                      "fixture produced no blend at all for the canonical profile.aq either")
+
+    def test_replay_blends_the_merged_bucket_corpus(self):
+        result = replay(self._summary)
+        self.assertEqual(result["aq_exactness"], AQ_APPROXIMATE_WEIGHTED_MEAN)
+
+    def test_blended_value_diverges_from_the_unblended_base_value(self):
+        """Proves the blend genuinely fired and moved the number -- not just that
+        the code path executed without raising."""
+        sibs = self._summary["scoring_inputs_by_source"]
+        payload_features = self._summary["payload_features"]
+        bucket_by_source = self._summary.get("bucket_scoring_inputs", {}).get("by_source") or {}
+        bucket_metadata = self._summary.get("bucket_scoring_inputs", {}).get("metadata") or []
+        from gnomon.scoring.replay import _replay_multisource_approximate_aq
+        unblended_aq, unblended_exactness = _replay_multisource_approximate_aq(
+            sibs, bucket_by_source, bucket_metadata, bucket_corpus=None)
+        self.assertEqual(unblended_exactness, AQ_APPROXIMATE_WEIGHTED_MEAN_UNBLENDED)
+
+        blended = replay(self._summary)["aq"]
+        self.assertNotEqual(
+            blended["aq_0_100"], unblended_aq["aq_0_100"],
+            "the merged-corpus blend fired but did not move the score -- Fix 1 regressed")
+
+    def test_replayed_aq_is_a_well_formed_aq_dict(self):
+        result = replay(self._summary)
+        self.assertIn("aq_0_100", result["aq"])
+        self.assertIn("pillars", result["aq"])
+        self.assertIn("blend", result["aq"], "the blended result should carry a blend record")
 
 
 class SingleSourceAqExact(unittest.TestCase):
@@ -244,23 +379,59 @@ class BlendedAqExact(unittest.TestCase):
         self.assertEqual(result["aq_exactness"], AQ_EXACT)
         self.assertEqual(result["aq"], self._summary["profile"]["aq"])
 
-    def test_replayed_profiles_by_source_is_explicitly_not_replayable(self):
-        """CRITICAL regression (review remediation, Fix 1): this fixture is
-        single-source claude with a REAL blend (see test_blend_is_non_vacuous),
-        and gnomon/cli/local.py unconditionally trims bucket_scoring_inputs.by_source
-        (see payload_features.omitted). Before the fix, replay() silently
-        recomputed profiles_by_source via the UNBLENDED full-window profile
-        (score_by_source's full_profile fallback) and returned it with no error
-        and no marker -- a plausible-but-wrong dict, byte-different from the
-        real payload["profiles_by_source"]. The fix must detect this and return
-        an explicit non-replayable status instead of a wrong dict. `aq` (already
-        asserted above) is unaffected and stays exact."""
+    def test_replayed_profiles_by_source_matches_via_single_source_corpus_equivalence(self):
+        """Review remediation, round 2, Fix 3 (supersedes the original Fix 1
+        regression test for single-source payloads): a single source's own
+        bucket_scoring_inputs.corpus window block IS that one source's
+        per-source bucket block -- nothing was pooled away, the exact same
+        equivalence _replay_single_source_aq already exploits for `aq`
+        (local.py's own single_source optimization). Trimming by_source
+        therefore must NOT force profiles_by_source: None for single-source
+        payloads: replay() synthesizes the per-source breakdown from
+        bucket_corpus instead of giving up. This fixture is single-source
+        claude with a REAL blend (see test_blend_is_non_vacuous) and
+        gnomon/cli/local.py unconditionally trims bucket_scoring_inputs.by_source
+        (see payload_features.omitted), so it is exactly the shape that used
+        to fall back to profiles_by_source: None -- now it must not."""
         omitted = self._summary["payload_features"]["omitted"]
         self.assertTrue(
             any(o["feature"] == "bucket_scoring_inputs.by_source" for o in omitted),
             "fixture assumption broken: by_source must be trimmed for this test to be meaningful")
         result = replay(self._summary)
-        self.assertIsNone(result["profiles_by_source"])
+        self.assertEqual(result["profiles_by_source_status"], "exact")
+        self.assertEqual(result["profiles_by_source"], self._summary["profiles_by_source"])
+
+
+class ProfilesBySourceGuardIsStructuralNotMarkerDependent(unittest.TestCase):
+    """Review remediation, round 2, Fix 2: the not-replayable guard must rest on
+    the payload's OWN observable shape (bucket_by_source empty + a bucket that
+    genuinely carried recent sessions), never on a self-reported omission
+    marker string. Relying on the marker means any future rename of
+    "bucket_scoring_inputs.by_source", or any hand-built/foreign payload that
+    never emits one, silently restores the exact silently-wrong-dict bug the
+    previous review round already fixed -- just without the marker present to
+    trigger the guard.
+
+    Uses a genuinely BLENDED MULTI-source fixture: single-source payloads are
+    always exact now (Fix 3's bucket_corpus equivalence), so only multi-source
+    exercises the not-replayable branch this guard protects."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._stats, cls._summary = _run_blended_multisource_summary(cls)
+
+    def test_status_still_refuses_when_the_omission_marker_is_removed(self):
+        omitted = self._summary["payload_features"]["omitted"]
+        self.assertTrue(
+            any(o["feature"] == "bucket_scoring_inputs.by_source" for o in omitted),
+            "fixture assumption broken: by_source must be trimmed for this test to be meaningful")
+        payload = json.loads(json.dumps(self._summary))
+        payload["payload_features"]["omitted"] = []  # marker gone; structural risk unchanged
+        result = replay(payload)
+        self.assertIsNone(
+            result["profiles_by_source"],
+            "removing the self-reported marker must NOT make a genuinely "
+            "trimmed-and-blended payload look replayable")
         self.assertEqual(result["profiles_by_source_status"],
                           "not_replayable_by_source_bucket_trimmed")
 
@@ -395,6 +566,16 @@ class MultisourceModellessSourceApproximatesInsteadOfRaising(unittest.TestCase):
         result = replay(payload)
         self.assertEqual(result["aq_exactness"], AQ_APPROXIMATE_WEIGHTED_MEAN)
         self.assertIn("aq_0_100", result["aq"])
+
+    def test_zero_weight_bucket_metadata_raises_instead_of_silently_ignoring(self):
+        """Fix 1 (round 2): the new merged-corpus blend in
+        _replay_multisource_approximate_aq must raise on malformed bucket
+        metadata rather than silently skip it, mirroring the single-source
+        path's own BucketInputsWithoutMetadataRaises coverage."""
+        payload = self._payload(["claude", "cursor"])
+        payload["bucket_scoring_inputs"]["metadata"][0]["configured_weight"] = 0
+        with self.assertRaises(ReplayError):
+            replay(payload)
 
 
 class RecomputeGradeFieldsExcludedFromStatsAndNarrative(unittest.TestCase):
