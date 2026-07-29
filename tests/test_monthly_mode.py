@@ -474,6 +474,21 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         self.assertEqual(mock_paxel.call_count, 1)
         self.assertEqual(mock_upload.call_count, 0)
 
+    def test_console_bridge_budget_violation_on_non_latest_month_exits_nonzero(self):
+        """Console-mode mirror of the web bridge budget-violation gap: a
+        non-latest (previous) month over budget, with the latest (current)
+        month succeeding, must still exit nonzero."""
+        from gnomon.upload.mirdash import PayloadTooLarge
+        history = TestWebContractBridgeOrchestration._bridge_history()
+        mock_paxel, mock_upload, exit_code = self._run_main(
+            ["--no-open"],
+            [_make_summary(), _make_summary()],
+            [PayloadTooLarge("950000 bytes over 921600 bytes"), "/r/current"],
+            ["previous-token", "current-token"], history, True,
+        )
+        self.assertEqual(mock_upload.call_count, 2)
+        self.assertEqual(exit_code, 1)
+
     def test_console_bridge_enforces_cardinality_exceptions_and_current_success(self):
         history = TestWebContractBridgeOrchestration._bridge_history()
         paxel, upload, exit_code = self._run_main(
@@ -611,6 +626,22 @@ class TestWebContractBridgeOrchestration(unittest.TestCase):
         self.assertEqual((exit_code, upload.call_count, done["reportUrl"]), (None, 2, "/r/current"))
         self.assertTrue(any("comparable baseline was not rebuilt" in str(c) for c in printed.call_args_list))
 
+    def test_web_bridge_budget_violation_on_non_latest_month_exits_nonzero(self):
+        """The reupload-loop gap this change closes: a non-latest (previous) month
+        over budget, with the latest (current) month succeeding, must still exit
+        nonzero -- today (before the fix) this silently exits 0/None because
+        current_failed only looks at the LAST window's result."""
+        from gnomon.upload.mirdash import PayloadTooLarge
+        history = self._bridge_history()
+        server, upload, exit_code = self._run_web(
+            history,
+            [PayloadTooLarge("950000 bytes over 921600 bytes"), "/r/current"],
+        )
+        done = [c.args[1] for c in server.push_event.call_args_list if c.args[0] == "done"][-1]
+        self.assertEqual(upload.call_count, 2)
+        self.assertEqual(done["reportUrl"], "/r/current")
+        self.assertEqual(exit_code, 1)
+
 
 # ---------------------------------------------------------------------------
 # Orchestration tests: --force mode (mocked)
@@ -677,6 +708,91 @@ class TestForceMode(unittest.TestCase):
             until_args = [a for a in args if a.startswith("--until=")]
             self.assertEqual(len(since_args), 1, f"call {i} missing --since")
             self.assertEqual(len(until_args), 1, f"call {i} missing --until")
+
+
+class TestForceModeConcurrentBudgetViolation(unittest.TestCase):
+    """Fix 3 (persist-recompute-grade-inputs review remediation): --force /
+    --backfill run the CONCURRENT ThreadPoolExecutor branch (mode != "auto"),
+    which -- unlike the sequential auto-mode loops -- called `fut.result()`
+    with no `except PayloadTooLarge`. A budget violation on any one of the
+    parallel months therefore died on an unhandled traceback: no `error:
+    <label> upload failed:` line naming the offending month, no `uploaded
+    N/M months` summary for the months that DID succeed, and (web mode) the
+    raise happened before push_event("done")/server.shutdown(), hanging the
+    browser UI and leaking the local HTTP server."""
+
+    def test_console_force_mode_budget_violation_exits_nonzero_not_uncaught(self):
+        from gnomon.upload.mirdash import PayloadTooLarge
+        argv = ["--force", "--no-open", "--console"]
+        tokens = [f"t{i}" for i in range(1, 13)]
+        summaries = [_make_summary(sessions=i + 1) for i in range(12)]
+        # Exactly one of the 12 concurrent uploads hits the budget guard; the
+        # other 11 succeed. Which physical month gets the exception is
+        # irrelevant to this test -- the ThreadPoolExecutor submits all 12
+        # upfront regardless of iteration order in the `as_completed` loop.
+        upload_rets = (
+            [PayloadTooLarge("950000 bytes over 921600 bytes")]
+            + [f"/r/{i}" for i in range(11)]
+        )
+        with (
+            patch.object(_insights, "_capture_cli_token", return_value=(tokens, [])),
+            patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
+            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_mirdash, "_run_paxel", side_effect=summaries) as mock_paxel,
+            patch.object(_mirdash, "_upload_summary", side_effect=upload_rets) as mock_upload,
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(_insights.sys, "argv", ["xl-ai-insights"] + argv),
+        ):
+            mock_wb.open.return_value = True
+            exit_code = None
+            try:
+                _insights.main()
+            except SystemExit as exc:
+                exit_code = exc.code
+            except PayloadTooLarge:
+                self.fail(
+                    "PayloadTooLarge escaped main() uncaught -- the concurrent "
+                    "(--force) upload path must catch it, not crash with a raw "
+                    "traceback that skips the exit-code/summary reporting")
+        self.assertEqual(mock_paxel.call_count, 12)
+        self.assertEqual(mock_upload.call_count, 12)
+        self.assertEqual(exit_code, 1)
+
+    def test_web_force_mode_budget_violation_still_pushes_done_and_shuts_down(self):
+        from gnomon.upload.mirdash import PayloadTooLarge
+        server = MagicMock()
+        server.url = "http://localhost:8799"
+        server.history = {"state": "legacy", "months": []}
+        tokens = [f"t{i}" for i in range(1, 13)]
+        upload_results = (
+            [PayloadTooLarge("950000 bytes over 921600 bytes")]
+            + [f"/r/{i}" for i in range(11)]
+        )
+        with (
+            patch("gnomon.upload.progress_server.ProgressServer", return_value=server),
+            patch.object(_insights, "_wait_for_auth_tokens", return_value=tokens),
+            patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
+            patch.object(_insights.webbrowser, "open", return_value=True),
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(_insights, "_upload_window_web", side_effect=upload_results) as mock_upload_window,
+        ):
+            exit_code = None
+            try:
+                _insights.main(["--force", "--no-open"])
+            except SystemExit as exc:
+                exit_code = exc.code
+            except PayloadTooLarge:
+                self.fail(
+                    "PayloadTooLarge escaped _main_web uncaught -- push_event('done') "
+                    "and server.shutdown() must still run, or the browser UI hangs "
+                    "and the local HTTP server is never torn down")
+        self.assertEqual(mock_upload_window.call_count, 12)
+        self.assertTrue(
+            server.shutdown.called,
+            "server must be torn down even when a concurrent upload hits the budget guard")
+        done_events = [c.args[1] for c in server.push_event.call_args_list if c.args[0] == "done"]
+        self.assertTrue(done_events, "push_event('done') must still fire so the browser UI doesn't hang")
+        self.assertEqual(exit_code, 1)
 
 
 class TestHeadlessAuthCleanExit(unittest.TestCase):
@@ -805,6 +921,44 @@ class TestUploadWindowWebSentinels(unittest.TestCase):
         events = self._events(run_paxel_return=_make_summary(sessions=5),
                               upload_side=RuntimeError("boom"))
         self.assertIn("error_msg", events)
+
+
+class TestUploadWindowPayloadTooLargeReraises(unittest.TestCase):
+    """A PayloadTooLarge budget violation must propagate out of _upload_window /
+    _upload_window_web, not collapse into the generic _UPLOAD_ERROR sentinel the
+    existing bare `except Exception` swallows every other upload failure into."""
+
+    def test_upload_window_reraises_payload_too_large(self):
+        from gnomon.upload.mirdash import _upload_window, PayloadTooLarge
+        with (
+            patch.object(_mirdash, "_run_paxel", return_value=_make_summary(sessions=5)),
+            patch.object(_mirdash, "_upload_summary",
+                         side_effect=PayloadTooLarge("950000 bytes over 921600 bytes")),
+        ):
+            with self.assertRaises(PayloadTooLarge):
+                _upload_window(
+                    "https://m", "tok", "/paxel.py", [], "2025-12-01", "2026-01-01",
+                    "2025-12", False, True,
+                )
+
+    def test_upload_window_web_pushes_error_and_reraises_payload_too_large(self):
+        from gnomon.upload.mirdash import _upload_window_web, PayloadTooLarge
+        server = MagicMock()
+        with (
+            patch.object(_mirdash, "_run_paxel", return_value=_make_summary(sessions=5)),
+            patch.object(_mirdash, "_upload_summary",
+                         side_effect=PayloadTooLarge("950000 bytes over 921600 bytes")),
+        ):
+            with self.assertRaises(PayloadTooLarge):
+                _upload_window_web(
+                    "https://m", "tok", "/paxel.py", [], "2025-12-01", "2026-01-01",
+                    "2025-12", False, server, 0, 1,
+                )
+        events = [c.args[0] for c in server.push_event.call_args_list]
+        self.assertIn("error_msg", events)
+        error_payload = next(c.args[1] for c in server.push_event.call_args_list
+                             if c.args[0] == "error_msg")
+        self.assertIn("950000", error_payload["message"])
 
 
 class TestAbsolutizeDirFlags(unittest.TestCase):

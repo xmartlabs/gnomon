@@ -19,7 +19,7 @@ from gnomon.upload.mirdash import (
     _DEFAULT_WINDOW_MONTHS, _UPLOAD_CONCURRENCY, parse_window, decide_mode,
     month_windows, months_to_upload, plan_upload, windows_for_anchors,
     _is_report_url, _upload_window, _upload_window_web,
-    _PAXEL_ERROR, _UPLOAD_ERROR, _format_summary,
+    _PAXEL_ERROR, _UPLOAD_ERROR, _format_summary, PayloadTooLarge,
     # Re-exported so tests can patch them as attributes of this module and so the
     # web fallback to console mode keeps a stable surface.
     _run_paxel, _upload_summary,  # noqa: F401
@@ -292,10 +292,19 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
         )
 
     results = {}  # index -> report_url / sentinel
+    # Tracked distinctly from _PAXEL_ERROR/_UPLOAD_ERROR: current_failed below only
+    # inspects the LAST (current) window, so a budget violation on an earlier
+    # (non-latest) month would otherwise exit 0 whenever the current month
+    # succeeds -- exactly the silent reupload-loop data-floor this guards against.
+    budget_violation = False
     if mode == "auto":
         for i, ((since, until, label), tok) in scheduled:
             try:
                 results[i] = _run_one(i, since, until, label, tok)
+            except PayloadTooLarge as exc:
+                print(f"  error: {label} upload failed: {exc}")
+                results[i] = _UPLOAD_ERROR
+                budget_violation = True
             except Exception:
                 print(f"  warning: {label} failed unexpectedly")
                 results[i] = _PAXEL_ERROR
@@ -305,11 +314,23 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
         workers = min(_UPLOAD_CONCURRENCY, len(scheduled)) or 1
         with ThreadPoolExecutor(max_workers=workers) as ex:
             futs = {
-                ex.submit(_run_one, i, since, until, label, tok): i
+                ex.submit(_run_one, i, since, until, label, tok): (i, label)
                 for i, ((since, until, label), tok) in scheduled
             }
             for fut in as_completed(futs):
-                results[futs[fut]] = fut.result()
+                i, label = futs[fut]
+                try:
+                    results[i] = fut.result()
+                except PayloadTooLarge as exc:
+                    # Same unswallowable-failure contract as the auto-mode loop
+                    # above: a budget violation on any concurrent (--force /
+                    # --backfill) month must not crash the whole run with an
+                    # unhandled traceback -- that would skip push_event("done")
+                    # and server.shutdown() below, hanging the browser UI and
+                    # leaking the local HTTP server.
+                    print(f"  error: {label} upload failed: {exc}")
+                    results[i] = _UPLOAD_ERROR
+                    budget_violation = True
 
     # Aggregate deterministically from results keyed by window index. Automatic
     # success is anchored to the current (last planned) window.
@@ -344,9 +365,11 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
 
     server.shutdown()
     # Hard-fail only when nothing made it through; partial success still
-    # exits 0 (the UI and terminal already flag the failed months).
+    # exits 0 (the UI and terminal already flag the failed months) -- EXCEPT a
+    # payload-budget violation, which must always surface as a nonzero exit
+    # regardless of which window it hit or whether other windows succeeded.
     current_failed = results.get(len(windows) - 1) in (_UPLOAD_ERROR, _PAXEL_ERROR)
-    if (mode == "auto" and current_failed) or (failed and uploaded_count == 0):
+    if budget_violation or (mode == "auto" and current_failed) or (failed and uploaded_count == 0):
         sys.exit(1)
 
 
@@ -432,6 +455,11 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
         )
 
     results = {}  # index -> (result, summary)
+    # Tracked distinctly from _PAXEL_ERROR/_UPLOAD_ERROR: a later window's success
+    # sets last_report_url and returns early below, which would otherwise mask a
+    # budget violation on an earlier (non-latest) month -- exactly the silent
+    # reupload-loop data-floor this guards against.
+    budget_violation = False
 
     def _record_result(i, label, result, summary):
         results[i] = (result, summary)
@@ -442,6 +470,10 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
         for i, ((since, until, label), tok) in scheduled:
             try:
                 result, summary = _run_one(since, until, label, tok)
+            except PayloadTooLarge as exc:
+                print(f"  error: {label} upload failed: {exc}")
+                result, summary = _UPLOAD_ERROR, None
+                budget_violation = True
             except Exception:
                 print(f"  warning: {label} failed unexpectedly")
                 result, summary = _PAXEL_ERROR, None
@@ -457,7 +489,17 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
             }
             for fut in as_completed(futs):
                 i, label = futs[fut]
-                result, summary = fut.result()
+                try:
+                    result, summary = fut.result()
+                except PayloadTooLarge as exc:
+                    # Same unswallowable-failure contract as the auto-mode loop
+                    # above: a budget violation on any concurrent (--force /
+                    # --backfill) month must not crash the whole run with an
+                    # unhandled traceback -- the other months' results (and the
+                    # final "uploaded N/M months" summary) must still surface.
+                    print(f"  error: {label} upload failed: {exc}")
+                    result, summary = _UPLOAD_ERROR, None
+                    budget_violation = True
                 _record_result(i, label, result, summary)
 
     # Aggregate deterministically from results keyed by window index.
@@ -491,6 +533,10 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
                 webbrowser.open(full_report)
             except Exception as exc:
                 print(f"  warning: could not open report in browser: {exc}")
+        # A budget violation on any window must exit nonzero even when a later
+        # window succeeded and would otherwise return here with exit 0.
+        if budget_violation:
+            sys.exit(1)
         return
 
     # Mirror the web loop: a real failure must not be reported as "nothing to share".

@@ -275,7 +275,11 @@ def build_summary(stats):
     The profile sub-dict carries scores/level/archetype/steering; all values are computed
     or count-based — no prompts, verbatim quotes, file paths, or file contents.
     Includes raw tool, skill, and MCP server names; user-chosen identifiers can
-    therefore contain project/customer/environment names."""
+    therefore contain project/customer/environment names.
+    bucket_scoring_inputs (recompute-grade-payload) is the SAME build_scoring_inputs
+    projection over the recent_30d recency-blend window — same privacy contract, no
+    new field types. See gnomon/scoring/replay.py for the exactness contract this
+    block supports (exact for single-source, approximate for multi-source)."""
     v, b, vel, st, t, c = (stats["volume"], stats["behavior"], stats["velocity"],
                            stats["stack"], stats["tools"], stats["corpus"])
     result = {
@@ -355,6 +359,38 @@ def build_summary(stats):
             "total_cache_read": 0, "total_cache_creation": 0,
             "by_model": [],
         },
+    }
+    # ---- recompute-grade-payload: additive block so a future recompute job can
+    # re-derive profile.aq (and its 65/35 recency blend) from the payload alone,
+    # without re-reading local transcripts. See gnomon/scoring/replay.py for the
+    # exactness contract: single-source is exact (the per-source window block IS
+    # the corpus block); multi-source is approximate (weighted mean of per-source
+    # scores) -- an earlier revision also shipped a `scoring_inputs_corpus` merged-
+    # corpus block for EXACT multi-source recompute, but it cost ~487 KB on real
+    # 8-source data and pushed the payload over the mirdash ingest cap; the
+    # requirement was relaxed to approximate-is-acceptable and that block was
+    # dropped entirely (never emitted, for any source count). bucket_scoring_inputs
+    # is OMITTED (not null-valued) when this run has nothing to ship for it --
+    # payload_features.omitted names why.
+    #
+    # NOTE: `stats` carries this under an underscore-prefixed internal key
+    # (`_bucket_scoring_inputs`) -- it is stripped from stats.json and from the
+    # narrative-input LLM prompt (see gnomon/cli/local.py) and is published here
+    # under its real, non-underscored payload name.
+    bucket_scoring_inputs = stats.get("_bucket_scoring_inputs")
+    if bucket_scoring_inputs:
+        result["bucket_scoring_inputs"] = bucket_scoring_inputs
+    result["payload_features"] = stats.get("_payload_features") or {
+        "version": 1,
+        "supported": ["bucket_scoring_inputs", "upload_size_guard"],
+        "emitted": [],
+        "omitted": [],
+        # NOTE: no `recency_blend` marker here -- this fallback branch means
+        # `stats` never went through local.py's real _payload_features
+        # computation (e.g. build_summary() called directly on a hand-built
+        # stats dict), so build_summary() has no basis to assert whether a
+        # blend was enabled/computed for it. Asserting a confident "disabled"
+        # marker here would be a guess, not a fact.
     }
     timing = stats.get("timing")
     if timing:
