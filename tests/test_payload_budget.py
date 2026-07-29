@@ -80,9 +80,6 @@ _NAME_LEN = 36  # defensible OBSERVED maximum, not a guess: real skill/subagent
                 # (36 chars) -- both longer than "systematic-debugging" (21). A
                 # worst-case fixture must use the longest observed real name, not
                 # a comfortable mid-range guess (review remediation, Fix 4).
-_TRIM_RATIO = 0.70  # spec's 70%-of-budget trim threshold -- used below only to
-                # decide whether to show the trimmed variant's numbers; gnomon's
-                # actual runtime trim (local.py) is unconditional, not ratio-gated.
 _MAX_RECOMPUTE_GRADE_BYTES = 100 * 1024  # hard absolute cap (item 6a): this
                 # capability's own blocks (bucket_scoring_inputs +
                 # payload_features), shipped/trimmed shape, measured ~34 KB in
@@ -93,6 +90,17 @@ _MAX_RECOMPUTE_GRADE_DELTA_RATIO = 0.05  # hard relative cap (item 6b): the
                 # payload must stay under 5% of the mirdash ingest budget, so a
                 # future change to their contents cannot silently balloon the
                 # payload again. Measured ~3.7% in the synthetic worst case.
+_MAX_SHIPPED_WORST_CASE_BYTES = 1_060_000  # review remediation (round 2, Fix 6):
+                # a GROWTH RATCHET on the full shipped/trimmed synthetic worst-case
+                # payload, not a claim it fits under the 900 KB mirdash cap (it
+                # doesn't -- see the module docstring's KNOWN RISK section; that
+                # gap predates this capability and is a PRE-EXISTING field's
+                # problem, not this capability's). Before this ratchet the number
+                # was only PRINTED, so growth in the pre-existing fields
+                # (scoring_inputs_by_source / profiles_by_source) went undetected.
+                # Recorded value: 1,052,898-1,052,902 bytes depending on run-to-run
+                # dict-ordering noise; bounded with headroom, not tuned to the exact
+                # measurement.
 
 
 def _name(prefix, i):
@@ -427,6 +435,14 @@ class WorstCasePayloadBudget(unittest.TestCase):
               f"NOT gated -- see module docstring KNOWN RISK): untrimmed={u_size} bytes "
               f"({u_size / _INGEST_MAX_BYTES:.4f}), shipped/trimmed={size_with} bytes "
               f"({size_with / _INGEST_MAX_BYTES:.4f}) of {_INGEST_MAX_BYTES} bytes budget")
+
+        self.assertLessEqual(
+            size_with, _MAX_SHIPPED_WORST_CASE_BYTES,
+            f"the FULL shipped/trimmed synthetic worst-case payload grew to "
+            f"{size_with} bytes, over the {_MAX_SHIPPED_WORST_CASE_BYTES}-byte "
+            f"growth ratchet -- this is NOT a claim it fits under the mirdash cap "
+            f"(see the module docstring KNOWN RISK section), only a tripwire so "
+            f"growth in the pre-existing fields does not go silently undetected.")
 
         self.assertLess(
             delta_ratio, _MAX_RECOMPUTE_GRADE_DELTA_RATIO,
