@@ -67,6 +67,18 @@ ORCHESTRATABLE_SUBSTANTIVE = 20  # substantive tool calls (stricter than eligibl
 ORCHESTRATION_FREQUENCY_TARGET = 0.78  # 78% of orchestratable sessions should delegate
 ORCHESTRATION_FULL_CONFIDENCE_SESSIONS = 5
 
+# ---- Absolute count ceilings -------------------------------------------------
+# Named, not inline, because these five are the only sat() targets that read an ABSOLUTE
+# cumulative count instead of a rate, so they are the ones a scoring-window change moves:
+# `rate(x, t) = sat(x / tool_calls, t)` is window-invariant, a raw count is not. Naming them
+# puts them under the calibration fingerprint (gnomon/scoring/calibration.py), so they cannot
+# be re-fitted without a contract bump. Values are unchanged from the inline literals.
+SUBAGENT_TYPES_DISTINCT_CEILING = 8
+FANOUT_CEILING = 5  # span-of-control theory (Graicunas/Urwick) lands at 5-7
+SKILLS_DISTINCT_CEILING = 40
+MCP_SERVERS_DISTINCT_CEILING = 15
+CLIS_DISTINCT_CEILING = 40
+
 _MODEL_TIERS = {
     "anthropic": (("opus", 3), ("sonnet", 2), ("haiku", 1)),
     "openai": (("pro", 4), ("mini", 2), ("nano", 1), ("gpt-", 3), ("codex", 3)),
@@ -242,9 +254,9 @@ def compute_aq(stats):
     # delegated), normalized target score, and coordination quality (subagent
     # diversity, fan-out, harness use). Frequency earns its full 30% weight
     # progressively over the first five eligible sessions.
-    # fanout target 5: span-of-control theory (Graicunas/Urwick) lands at 5-7.
-    o_quality = (0.40 * sat(st.get("subagent_types_distinct", 0), 8)
-               + 0.40 * sat(fanout, 5)
+    o_quality = (0.40 * sat(st.get("subagent_types_distinct", 0),
+                            SUBAGENT_TYPES_DISTINCT_CEILING)
+               + 0.40 * sat(fanout, FANOUT_CEILING)
                + 0.20 * o_harn)
     _o_orchestratable = b.get("orchestratable_sessions") or 0
     _o_delegated = b.get("delegated_orchestratable_sessions") or 0
@@ -262,14 +274,15 @@ def compute_aq(stats):
     # denominator, and wsum is what drops such a term and renormalizes the rest. Multiplying
     # by a coefficient directly would raise a TypeError instead.
     skill_fluency = wsum(
-        (.40, sat(st.get("skills_distinct", 0), 40), None),
+        (.40, sat(st.get("skills_distinct", 0), SKILLS_DISTINCT_CEILING), None),
         (.30, rate(st.get("skills_total", 0), SKILLS_TOTAL_PER_CALL_TARGET), None),
         (.30, 1.0 if has_skill(["subagent-driven", "brainstorm", "writing-plans",
                                 "cerberus", "systematic-debugging"]) else 0.6, None))
     # mcp_servers/clis are distinct-counts (kept absolute); toolsearch -> per-tool-call rate.
     # toolsearch term drops out (renormalized) when no present source can record it
-    tool_command = wsum((.40, sat(t.get("mcp_servers_distinct", 0), 15), None),
-                        (.40, sat(t.get("clis_distinct", 0), 40), None),
+    tool_command = wsum((.40, sat(t.get("mcp_servers_distinct", 0),
+                                  MCP_SERVERS_DISTINCT_CEILING), None),
+                        (.40, sat(t.get("clis_distinct", 0), CLIS_DISTINCT_CEILING), None),
                         (.20, rate(t.get("toolsearch_calls", 0), TOOLSEARCH_PER_CALL_TARGET),
                          "toolsearch"))
     # task-tool -> per-tool-call rate; TaskCreate/Update + SDD sdd-tasks skill invocations
