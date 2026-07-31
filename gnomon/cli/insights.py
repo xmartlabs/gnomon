@@ -19,13 +19,15 @@ from gnomon.upload.mirdash import (
     _resolve_mirdash_base, _resolve_output_dir, _absolutize_dir_flags,
     _DEFAULT_MIRDASH_BASE,
     _DEFAULT_WINDOW_MONTHS, _UPLOAD_CONCURRENCY, parse_window, decide_mode,
-    month_windows, months_to_upload, plan_upload, windows_for_anchors,
+    month_windows, plan_upload, windows_for_anchors,
     default_producible_coverage_for,
     _is_report_url, _upload_window, _upload_window_web,
     _PAXEL_ERROR, _UPLOAD_ERROR, _format_summary, PayloadTooLarge,
     # Re-exported so tests can patch them as attributes of this module and so the
-    # web fallback to console mode keeps a stable surface.
-    _run_paxel, _upload_summary,  # noqa: F401
+    # web fallback to console mode keeps a stable surface. months_to_upload is
+    # no longer called here (both upload paths need plan_upload's per-month
+    # reasons to stamp the `force` directive) but stays re-exported.
+    _run_paxel, _upload_summary, months_to_upload,  # noqa: F401
 )
 
 
@@ -313,14 +315,20 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
     # detection helpers; backfill keeps the explicit trailing-N window list.
     if mode == "backfill":
         windows = month_windows(token_count, today, window_months=window_months)
+        forced_labels = frozenset()
     else:  # auto or force
-        anchors = months_to_upload(
+        # plan_upload (not months_to_upload) so the per-month REASON survives:
+        # the `force` upload directive stamped on each payload is bound to that
+        # month's own reason, never to the global mode string.
+        plan_reasons = plan_upload(
             today,
             history,
             force=(mode == "force"),
             active_contract=SCORE_CONTRACT_ID,
             producible_coverage_for=default_producible_coverage_for,
         )
+        anchors = [anchor for anchor, _ in plan_reasons]
+        forced_labels = frozenset(a for a, reason in plan_reasons if reason == "force")
         windows = windows_for_anchors(anchors, window_months=window_months)
         if mode == "auto":
             _warn_unavailable_comparison(history)
@@ -328,16 +336,11 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
     month_labels = [label for _, _, label in windows]
 
     if dry_run:
-        if mode == "backfill":
-            plan_pairs = [label for _, _, label in windows]
-        else:
-            plan_pairs = plan_upload(
-                today,
-                history,
-                force=(mode == "force"),
-                active_contract=SCORE_CONTRACT_ID,
-                producible_coverage_for=default_producible_coverage_for,
-            )
+        # Reuse the plan computed above instead of recomputing it: a second
+        # plan_upload call would probe the filesystem for the previous month's
+        # producible coverage all over again for a provably identical answer.
+        plan_pairs = ([label for _, _, label in windows] if mode == "backfill"
+                      else plan_reasons)
         _print_dry_run_plan(mode, windows, plan_pairs)
         server.push_event("done", {
             "reportUrl": "",
@@ -381,6 +384,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
             quiet=quiet,
             window_months=window_months,
             file_prefix=prefix,
+            force=(label in forced_labels),
         )
 
     results = {}  # index -> report_url / sentinel
@@ -501,29 +505,30 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
     # detection helpers; backfill keeps the explicit trailing-N window list.
     if mode == "backfill":
         windows = month_windows(token_count, today, window_months=window_months)
+        forced_labels = frozenset()
     else:  # auto or force
-        anchors = months_to_upload(
+        # plan_upload (not months_to_upload) so the per-month REASON survives:
+        # the `force` upload directive stamped on each payload is bound to that
+        # month's own reason, never to the global mode string.
+        plan_reasons = plan_upload(
             today,
             history,
             force=(mode == "force"),
             active_contract=SCORE_CONTRACT_ID,
             producible_coverage_for=default_producible_coverage_for,
         )
+        anchors = [anchor for anchor, _ in plan_reasons]
+        forced_labels = frozenset(a for a, reason in plan_reasons if reason == "force")
         windows = windows_for_anchors(anchors, window_months=window_months)
         if mode == "auto":
             _warn_unavailable_comparison(history)
 
     if dry_run:
-        if mode == "backfill":
-            plan_pairs = [label for _, _, label in windows]
-        else:
-            plan_pairs = plan_upload(
-                today,
-                history,
-                force=(mode == "force"),
-                active_contract=SCORE_CONTRACT_ID,
-                producible_coverage_for=default_producible_coverage_for,
-            )
+        # Reuse the plan computed above instead of recomputing it: a second
+        # plan_upload call would probe the filesystem for the previous month's
+        # producible coverage all over again for a provably identical answer.
+        plan_pairs = ([label for _, _, label in windows] if mode == "backfill"
+                      else plan_reasons)
         _print_dry_run_plan(mode, windows, plan_pairs)
         sys.exit(0)
 
@@ -544,6 +549,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
             output_dir=output_dir,
             window_months=window_months,
             file_prefix=prefix,
+            force=(label in forced_labels),
         )
 
     results = {}  # index -> (result, summary)

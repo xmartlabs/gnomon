@@ -820,9 +820,35 @@ def _summary_is_empty(summary):
     return ctx.get("total_sessions", 0) == 0 or not dr[0] or not dr[1]
 
 
+def _stamp_force_directive(summary, force):
+    """Attach the top-level `force` upload directive to a summary, in place.
+
+    Shape contract with mirdash: /api/gnomon/ingest's `summarySchema` is a
+    field-by-field zod whitelist carrying `force: z.boolean().optional()` as a
+    TOP-LEVEL key -- a sibling of `context` and `coverage` (which
+    gnomon/output/summary.py attaches the same way), NOT nested under
+    `context`. A nested copy would be silently dropped by the whitelist. The
+    route forwards it to the ingestBuildMetrics mutation, whose
+    anti-degradation guard reads `!args.force`; without it the mutation
+    rejects any payload a stored row beats on completeness and the route still
+    answers HTTP 200, so `--force` fails silently exactly when Claude Code's
+    shrinking 30-day retention makes a fresh force upload carry FEWER sessions
+    than the stored row.
+
+    Written ONLY when force is true. The field is optional server-side and the
+    guard tests falsiness, so an explicit `false` is indistinguishable from an
+    absent key -- omitting it keeps every auto/backfill payload byte-identical
+    to what shipped before this change (no new key for replay/recompute
+    consumers to reason about, no added bytes against _INGEST_MAX_BYTES).
+    """
+    if force:
+        summary["force"] = True
+    return summary
+
+
 def _upload_window(mirdash_base, token, paxel_src, paxel_args_base, since, until, label,
                    verbose, quiet, output_dir=None, window_months=_DEFAULT_WINDOW_MONTHS,
-                   file_prefix=""):
+                   file_prefix="", force=False):
     """Run paxel for one calendar window and upload the summary.
 
     Returns a ``(result, summary)`` tuple mirroring the sentinel semantics of
@@ -833,6 +859,10 @@ def _upload_window(mirdash_base, token, paxel_src, paxel_args_base, since, until
         failed | ``_UPLOAD_ERROR`` if the upload POST failed.
       - ``summary``: the paxel summary dict on a successful upload; ``None``
         otherwise (enables the caller to print ``_format_summary``).
+
+    ``force``: True only when THIS month's plan reason is 'force'; stamps the
+    top-level ``force`` upload directive on the payload (see
+    ``_stamp_force_directive``).
     """
     window_args = paxel_args_base + [
         f"--since={since}",
@@ -856,6 +886,7 @@ def _upload_window(mirdash_base, token, paxel_src, paxel_args_base, since, until
         return (None, None)
 
     summary.setdefault("context", {})["window_months"] = window_months
+    _stamp_force_directive(summary, force)
     try:
         return (_upload_summary(mirdash_base, token, summary), summary)
     except PayloadTooLarge:
@@ -871,12 +902,16 @@ def _upload_window(mirdash_base, token, paxel_src, paxel_args_base, since, until
 
 def _upload_window_web(mirdash_base, token, paxel_src, paxel_args_base, since, until, label,
                        verbose, server, index, total, output_dir=None, quiet=False,
-                       window_months=_DEFAULT_WINDOW_MONTHS, file_prefix=""):
+                       window_months=_DEFAULT_WINDOW_MONTHS, file_prefix="", force=False):
     """Run paxel for one calendar window, push SSE events, and upload.
 
     Returns the reportUrl string on success, or one of the failure sentinels:
     `_PAXEL_ERROR` (paxel run failed), `_UPLOAD_ERROR` (upload POST failed), or
     None when the window is genuinely empty (no activity — a normal skip).
+
+    ``force``: True only when THIS month's plan reason is 'force'; stamps the
+    top-level ``force`` upload directive on the payload (see
+    ``_stamp_force_directive``).
     """
     window_args = paxel_args_base + [
         f"--since={since}",
@@ -900,6 +935,7 @@ def _upload_window_web(mirdash_base, token, paxel_src, paxel_args_base, since, u
         return None
 
     summary.setdefault("context", {})["window_months"] = window_months
+    _stamp_force_directive(summary, force)
     server.push_event("uploading", {"month": label, "label": label, "index": index, "total": total})
 
     try:

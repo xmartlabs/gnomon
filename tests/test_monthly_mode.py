@@ -804,6 +804,212 @@ class TestForceModeConcurrentBudgetViolation(unittest.TestCase):
         self.assertEqual(exit_code, 1)
 
 
+class TestForceDirectiveInUploadedPayload(unittest.TestCase):
+    """`--force` must cross the wire, not just steer gnomon's local plan.
+
+    mirdash's /api/gnomon/ingest route is a field-by-field zod whitelist that
+    forwards a TOP-LEVEL `force` boolean to the ingestBuildMetrics mutation,
+    whose anti-degradation guard reads `!args.force`. Without `force` in the
+    posted body the guard rejects any payload a stored row beats on
+    completeness and still answers HTTP 200 -- so the recovery hatch fails
+    silently exactly when Claude Code's shrinking 30-day retention makes a
+    fresh force upload carry FEWER sessions than the stored row.
+
+    The key is a sibling of `context` and `coverage` (matching how
+    gnomon/output/summary.py attaches `coverage`), and is sent ONLY when true:
+    the route types it optional and reads `!args.force`, so an explicit
+    `false` is indistinguishable from an absent key -- omitting it keeps every
+    auto/backfill payload byte-identical to what shipped before.
+    """
+
+    def _run_console(self, argv, summaries, tokens, uploaded=None):
+        """Run main() in console mode; return the list of posted summary dicts."""
+        if uploaded is None:
+            uploaded = []
+        posted = []
+
+        def capture_upload(mirdash_base, token, summary):
+            posted.append(summary)
+            return "/r/x"
+
+        with (
+            patch.object(_insights, "_capture_cli_token", return_value=(tokens, uploaded)),
+            patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
+            patch.object(_insights, "offer_retention_config"),
+            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_mirdash, "_run_paxel", side_effect=list(summaries)),
+            patch.object(_mirdash, "_upload_summary", side_effect=capture_upload),
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(_insights.sys, "argv", ["xl-ai-insights"] + argv),
+            patch.object(_insights, "default_producible_coverage_for", return_value=(2, 999)),
+        ):
+            mock_wb.open.return_value = True
+            try:
+                _insights.main()
+            except SystemExit:
+                pass
+        return posted
+
+    def test_force_mode_posts_top_level_force_true_on_every_month(self):
+        posted = self._run_console(
+            argv=["--force", "--no-open", "--console"],
+            summaries=[_make_summary(sessions=i + 1) for i in range(12)],
+            tokens=[f"t{i}" for i in range(12)],
+        )
+        self.assertEqual(len(posted), 12)
+        for summary in posted:
+            self.assertIs(summary.get("force"), True)
+
+    def test_force_key_is_a_sibling_of_context_not_nested_inside_it(self):
+        """mirdash whitelists `force` at the TOP level of summarySchema; a nested
+        copy would be dropped by the whitelist and never reach the mutation."""
+        posted = self._run_console(
+            argv=["--force", "--no-open", "--console"],
+            summaries=[_make_summary(sessions=5)] + [_make_summary(sessions=0)] * 11,
+            tokens=[f"t{i}" for i in range(12)],
+        )
+        self.assertEqual(len(posted), 1)
+        self.assertIn("force", posted[0])
+        self.assertNotIn("force", posted[0]["context"])
+
+    def test_auto_mode_posts_no_force_key_at_all(self):
+        """No regression: a normal run's payload must stay exactly as before --
+        not `force: False`, but no `force` key whatsoever."""
+        posted = self._run_console(
+            argv=["--no-open", "--console"],
+            summaries=[_make_summary(sessions=5)],
+            tokens=["tok1"],
+            uploaded=_current_only_uploaded(datetime.date.today()),
+        )
+        self.assertEqual(len(posted), 1)
+        self.assertNotIn("force", posted[0])
+
+    def test_backfill_mode_posts_no_force_key_at_all(self):
+        """--backfill is an explicit re-upload of N months, NOT a force: it must
+        keep obeying the server's anti-degradation guard."""
+        posted = self._run_console(
+            argv=["--backfill=3", "--no-open", "--console"],
+            summaries=[_make_summary(sessions=i + 1) for i in range(3)],
+            tokens=["t1", "t2", "t3"],
+        )
+        self.assertEqual(len(posted), 3)
+        for summary in posted:
+            self.assertNotIn("force", summary)
+
+    def test_upload_window_stamps_force_alongside_window_months(self):
+        """Unit level (console helper): the force stamp lands next to the
+        existing context.window_months stamp, before the budget check."""
+        posted = []
+
+        def capture_upload(mirdash_base, token, summary):
+            posted.append(summary)
+            return "/r/1"
+
+        with (
+            patch.object(_mirdash, "_run_paxel", return_value=_make_summary(sessions=4)),
+            patch.object(_mirdash, "_upload_summary", side_effect=capture_upload),
+        ):
+            _mirdash._upload_window(
+                "https://mirdash.example", "tok", "/tmp/paxel.py", [],
+                "2025-03-01", "2025-04-01", "2025-03", False, True,
+                force=True,
+            )
+        self.assertEqual(len(posted), 1)
+        self.assertIs(posted[0]["force"], True)
+        self.assertEqual(posted[0]["context"]["window_months"], _mirdash._DEFAULT_WINDOW_MONTHS)
+
+    def test_upload_window_web_stamps_force(self):
+        posted = []
+
+        def capture_upload(mirdash_base, token, summary):
+            posted.append(summary)
+            return "/r/1"
+
+        with (
+            patch.object(_mirdash, "_run_paxel", return_value=_make_summary(sessions=4)),
+            patch.object(_mirdash, "_upload_summary", side_effect=capture_upload),
+        ):
+            _mirdash._upload_window_web(
+                "https://mirdash.example", "tok", "/tmp/paxel.py", [],
+                "2025-03-01", "2025-04-01", "2025-03", False, MagicMock(), 0, 1,
+                force=True,
+            )
+        self.assertEqual(len(posted), 1)
+        self.assertIs(posted[0]["force"], True)
+
+    def test_upload_window_helpers_default_to_no_force_key(self):
+        """Default (no force kwarg) leaves the payload untouched -- the replay /
+        recompute payload shape is unchanged for every non-force caller."""
+        posted = []
+
+        def capture_upload(mirdash_base, token, summary):
+            posted.append(summary)
+            return "/r/1"
+
+        with (
+            patch.object(_mirdash, "_run_paxel", return_value=_make_summary(sessions=4)),
+            patch.object(_mirdash, "_upload_summary", side_effect=capture_upload),
+        ):
+            _mirdash._upload_window(
+                "https://mirdash.example", "tok", "/tmp/paxel.py", [],
+                "2025-03-01", "2025-04-01", "2025-03", False, True,
+            )
+            _mirdash._upload_window_web(
+                "https://mirdash.example", "tok", "/tmp/paxel.py", [],
+                "2025-03-01", "2025-04-01", "2025-03", False, MagicMock(), 0, 1,
+            )
+        self.assertEqual(len(posted), 2)
+        for summary in posted:
+            self.assertNotIn("force", summary)
+
+
+class TestForcePlanReasonDrivesPayloadDirective(unittest.TestCase):
+    """The stamped value is derived from the per-month plan REASON returned by
+    plan_upload, not from the global `mode` string. Today the two agree by
+    construction (plan_upload's force branch labels every anchor 'force', and
+    no other branch ever emits 'force'), but binding the payload to the reason
+    means a future mixed plan cannot silently mark non-force months as force."""
+
+    def test_only_months_planned_as_force_get_the_directive(self):
+        posted = []
+
+        def capture_upload(mirdash_base, token, summary):
+            posted.append((summary["context"]["date_range"], summary.get("force")))
+            return "/r/x"
+
+        today = datetime.date.today()
+        anchors = [label for _, _, label in month_windows(12, today, 1)]
+        # A plan where only ONE anchor carries reason 'force'; every other month
+        # is a plain 'gap'. Only the force-labelled month may be stamped.
+        forced = anchors[3]
+        plan = [(a, "force" if a == forced else "gap") for a in anchors]
+
+        with (
+            patch.object(_insights, "_capture_cli_token",
+                         return_value=([f"t{i}" for i in range(12)], [])),
+            patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
+            patch.object(_insights, "offer_retention_config"),
+            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_insights, "plan_upload", return_value=plan),
+            patch.object(_mirdash, "_run_paxel",
+                         side_effect=[_make_summary(sessions=i + 1) for i in range(12)]),
+            patch.object(_mirdash, "_upload_summary", side_effect=capture_upload),
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(_insights.sys, "argv",
+                         ["xl-ai-insights", "--force", "--no-open", "--console"]),
+            patch.object(_insights, "default_producible_coverage_for", return_value=(2, 999)),
+        ):
+            mock_wb.open.return_value = True
+            try:
+                _insights.main()
+            except SystemExit:
+                pass
+
+        self.assertEqual(len(posted), 12)
+        stamped = [flag for _, flag in posted if flag is True]
+        self.assertEqual(len(stamped), 1)
+
+
 class TestHeadlessAuthCleanExit(unittest.TestCase):
     """No-browser environments (headless/CI/SSH) must skip cleanly, never fail the job.
 
