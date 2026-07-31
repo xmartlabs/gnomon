@@ -141,6 +141,21 @@ def offer_retention_config(settings_path=None):
             "backup_path": backup_path}
 
 
+def _maybe_offer_retention(dry_run, quiet):
+    """Offer the retention config on a real, talkative run (design decision F).
+
+    A 30-day `cleanupPeriodDays` silently truncates the transcript history every
+    score is derived from, so ask before analysis -- but only when asking is
+    appropriate. `--dry-run` promises zero side effects, and `--quiet` promises only
+    errors and the report URL, while the offer prints a prompt and an undo hint.
+    `offer_retention_config()` owns the tty and already-set guards, so this decides
+    the flag policy only, and both call sites (upload and `--local`) share it.
+    """
+    if dry_run or quiet:
+        return
+    offer_retention_config()
+
+
 _REASON_LABELS = {
     "force":   "force re-upload",
     "initial": "no prior uploads",
@@ -638,6 +653,11 @@ def main(argv=None):
     allow_stale_cli = _ALLOW_STALE_CLI_FLAG in argv
     argv = [a for a in argv if a != _ALLOW_STALE_CLI_FLAG]
 
+    # Read early: both are needed before the --local branch returns, because a
+    # --local run analyses transcripts too and so has the same stake in retention.
+    quiet = "--quiet" in argv
+    dry_run = "--dry-run" in argv
+
     # --local mode: run analysis directly, no auth/upload
     if "--local" in argv:
         from gnomon.cli.local import main as local_main
@@ -649,16 +669,15 @@ def main(argv=None):
         if "--summary" not in local_argv:
             local_argv.append("--summary")
         output_dir = _resolve_output_dir(argv)
+        _maybe_offer_retention(dry_run, quiet)
         local_main(argv=local_argv, output_dir=output_dir)
         return
 
     # Flags consumed by this wrapper (not forwarded to paxel)
     wrapper_flags = {"--no-open", "--quiet", "--verbose", "--console", "--output-dir"}
     no_open = "--no-open" in argv
-    quiet = "--quiet" in argv
     verbose = "--verbose" in argv
     console = "--console" in argv
-    dry_run = "--dry-run" in argv
     output_dir = _resolve_output_dir(argv)
 
     # Parse --window=N (trailing N-month scoring window; default 6)
@@ -705,6 +724,8 @@ def main(argv=None):
 
     if mirdash_base == _DEFAULT_MIRDASH_BASE:
         _enforce_cli_freshness(allow_stale=allow_stale_cli)
+
+    _maybe_offer_retention(dry_run, quiet)
 
     if console:
         _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,

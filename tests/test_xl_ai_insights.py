@@ -244,6 +244,9 @@ class TestOutputDirArgParsing(unittest.TestCase):
     def test_output_dir_is_consumed_by_wrapper_not_forwarded_to_paxel(self):
         with (
             patch.object(_insights, "_check_latest_cli_release", return_value={"status": "current"}),
+            # main() offers the retention config once it clears the freshness gate;
+            # stub it so no test prompts on stdin or writes ~/.claude/settings.json.
+            patch.object(_insights, "offer_retention_config"),
             patch.object(_insights, "_main_web") as mock_main_web,
             patch.object(
                 _insights.sys,
@@ -491,6 +494,7 @@ class TestCliReleaseFreshness(unittest.TestCase):
         stdout = io.StringIO()
         with (
             patch.object(_insights, "_check_latest_cli_release", return_value=self.MISMATCH_OLDER),
+            patch.object(_insights, "offer_retention_config"),  # never prompt/write in tests
             patch.object(_insights, "_main_web") as mock_main_web,
             patch.object(_insights.sys, "argv", ["xl-ai-insights", "--allow-stale-cli", "claude"]),
             contextlib.redirect_stdout(stdout),
@@ -505,6 +509,7 @@ class TestCliReleaseFreshness(unittest.TestCase):
         stdout = io.StringIO()
         with (
             patch.object(_insights, "_check_latest_cli_release", return_value=self.CURRENT),
+            patch.object(_insights, "offer_retention_config"),  # never prompt/write in tests
             patch.object(_insights, "_main_web") as mock_main_web,
             patch.object(_insights.sys, "argv", ["xl-ai-insights", "codex"]),
             contextlib.redirect_stdout(stdout),
@@ -518,6 +523,7 @@ class TestCliReleaseFreshness(unittest.TestCase):
         stdout = io.StringIO()
         with (
             patch.object(_insights, "_check_latest_cli_release", return_value=self.UNKNOWN),
+            patch.object(_insights, "offer_retention_config"),  # never prompt/write in tests
             patch.object(_insights, "_main_web") as mock_main_web,
             patch.object(_insights.sys, "argv", ["xl-ai-insights", "gemini"]),
             contextlib.redirect_stdout(stdout),
@@ -530,6 +536,7 @@ class TestCliReleaseFreshness(unittest.TestCase):
     def test_custom_mirdash_base_skips_public_release_check(self):
         with (
             patch.object(_insights, "_check_latest_cli_release") as mock_check,
+            patch.object(_insights, "offer_retention_config"),  # never prompt/write in tests
             patch.object(_insights, "_main_web") as mock_main_web,
             patch.object(
                 _insights.sys,
@@ -559,6 +566,9 @@ class TestCliReleaseFreshness(unittest.TestCase):
     def test_local_bypasses_freshness_check_and_strips_wrapper_flag(self):
         with (
             patch.object(_insights, "_check_latest_cli_release") as mock_check,
+            # never prompt/write in tests: --local offers the retention config too, and
+            # the offer's only guard is a real tty, which `unittest discover` preserves
+            patch.object(_insights, "offer_retention_config"),
             patch("gnomon.cli.local.main") as mock_local_main,
             patch.object(_insights.sys, "argv", ["xl-ai-insights", "--local", "--allow-stale-cli", "claude"]),
         ):
