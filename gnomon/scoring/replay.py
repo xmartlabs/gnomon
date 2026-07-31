@@ -13,6 +13,19 @@ payload actually shipped, and tests/test_payload_budget.py for why
 `bucket_scoring_inputs.by_source` is omitted from the shipped payload (the
 cheapest available payload-budget lever).
 
+Which payloads can be replayed -- FORMULA vs COUNTER. Re-applying the LIVE
+scorers to an old payload is the feature (that is why the inputs are
+persisted at all), so a payload scored under an older `score_contract_id`,
+`aq_version` or `gstack_version` replays normally and deliberately gets the
+new formula. `scoring_inputs_version` is the one field that cannot be
+replayed across: it versions what the stored numbers MEAN, and
+`stats_from_scoring_block` reads them verbatim. A payload from before the
+v8 skill-counting dedup carries PRE-dedup counters that no live formula can
+repair, so `replay()` raises `IncompatibleScoringInputs` (a `ReplayError`
+AND an `IncompatibleScoreContract`) for anything outside
+[`SKILL_DEDUP_INPUTS_VERSION`, `SCORING_INPUTS_VERSION`] -- see
+`_require_comparable_scoring_inputs` for the full argument.
+
 Coverage contract -- READ THIS before trusting a replay() result. Exactness
 is NOT uniform across payload shapes; the return value's `aq_exactness`
 field tells a caller which regime it got:
@@ -95,12 +108,28 @@ from gnomon.config import SOURCE_CAPS
 from gnomon.scoring.aggregate import HISTORY_WEIGHT, _blend_aq, score_by_source
 from gnomon.scoring.aq import compute_aq
 from gnomon.scoring.profiles import model_usage_from_models, stats_from_scoring_block
+from gnomon.scoring.versioning import (
+    IncompatibleScoreContract, SCORING_INPUTS_VERSION, SKILL_DEDUP_INPUTS_VERSION,
+)
 
 
 class ReplayError(ValueError):
     """Raised when a payload cannot be replayed at all: missing, empty, or
     structurally incompatible data that would force replay() to guess rather
     than compose from the scorers directly."""
+
+
+class IncompatibleScoringInputs(ReplayError, IncompatibleScoreContract):
+    """Raised when the payload's persisted COUNTERS are not comparable to the
+    live targets, whatever the formula does with them -- see
+    `_require_comparable_scoring_inputs`.
+
+    Deliberately BOTH a ReplayError and an IncompatibleScoreContract: a caller
+    walking a store of payloads already catches ReplayError and skips the ones
+    it cannot recompute, and a contract-aware caller (COMPARISON_POLICY is
+    `same_score_contract_id_only`) already catches IncompatibleScoreContract.
+    Neither has to learn a new exception type to stay correct, and neither can
+    end up holding a silently wrong number."""
 
 
 # profiles_by_source_status values -- callers should branch on this single
@@ -131,6 +160,67 @@ def _claimed_source_ids(block):
         return set(corpus_sources.keys())
     source = block.get("source")
     return set(str(source).split(",")) if source else set()
+
+
+def _require_comparable_scoring_inputs(payload):
+    """Refuse payloads whose persisted COUNTERS cannot be scored by this code.
+
+    Replay exists so a METRIC change can be re-applied to old raw inputs -- that
+    is the whole point of persisting them (commit be07bf5), and it is why this
+    function does NOT compare `score_contract_id`, `aq_version` or
+    `gstack_version`: a payload scored under an older FORMULA is exactly the
+    case replay is for, and refusing on a contract mismatch would delete the
+    feature.
+
+    `scoring_inputs_version` is different in kind. It versions what the numbers
+    in the block MEAN, and `profiles.py::stats_from_scoring_block` reads that
+    block verbatim -- it never re-derives a counter from transcripts, which it
+    could not do anyway (a payload carries no transcripts). So when a counter's
+    definition changes, no live formula can repair the stored value:
+
+      - Below SKILL_DEDUP_INPUTS_VERSION the skill counters are PRE-dedup, i.e.
+        one count per attributed turn rather than one per (session, skill) span
+        -- 4.0x larger pooled, 25.8x on Claude. Dividing that by v9's 28x
+        smaller SKILLS_TOTAL_PER_CALL_TARGET saturates Skill fluency and
+        Verification on arithmetic alone, and the result looks like a score.
+      - Above SCORING_INPUTS_VERSION the counters were produced by an inputs
+        version this code does not implement, so their semantics are simply
+        unknown. Same fail-closed answer.
+      - Absent or non-integer: gnomon stamps this field unconditionally
+        (gnomon/output/summary.py), so a payload without it is foreign or
+        hand-built and its counter semantics are equally unknown. `bool` is
+        rejected explicitly -- `True` is an int in Python and would otherwise
+        read as version 1.
+
+    Raising, rather than returning a "non-comparable" flag: every existing
+    result regime (exact / approximate) means "usable, with known error bars",
+    and this is not an error-bar problem -- the numerator is a different
+    quantity, so no band covers it. A new flag would also be silently ignorable
+    by the callers that most need it, whereas an exception cannot be, and
+    replay()'s stated contract is already to fail loudly rather than let a
+    caller hold a plausible-but-wrong number. A caller that wants to enumerate
+    old payloads catches it and skips.
+    """
+    version = payload.get("scoring_inputs_version")
+    if isinstance(version, bool) or not isinstance(version, int):
+        raise IncompatibleScoringInputs(
+            f"payload declares no usable scoring_inputs_version ({version!r}) -- "
+            f"replay() cannot tell whether its counters are comparable to this "
+            f"code's targets (expected an int in "
+            f"[{SKILL_DEDUP_INPUTS_VERSION}, {SCORING_INPUTS_VERSION}])")
+    if version < SKILL_DEDUP_INPUTS_VERSION:
+        raise IncompatibleScoringInputs(
+            f"payload scoring_inputs_version {version} predates the skill-counting "
+            f"dedup (v{SKILL_DEDUP_INPUTS_VERSION}), so its skill counters are "
+            f"PRE-dedup (4.0x larger pooled, 25.8x on Claude) while this code scores "
+            f"them against post-dedup targets -- replay() refuses rather than "
+            f"publishing an over-saturated number. The formula can be replayed on old "
+            f"inputs; a changed COUNTER cannot.")
+    if version > SCORING_INPUTS_VERSION:
+        raise IncompatibleScoringInputs(
+            f"payload scoring_inputs_version {version} is newer than this code's "
+            f"v{SCORING_INPUTS_VERSION} -- its counters were produced by an inputs "
+            f"version not implemented here, so their meaning is unknown")
 
 
 def _require_known_source_identity(src_key, window_block):
@@ -347,6 +437,11 @@ def replay(payload):
         raise ReplayError(
             "payload_features absent -- this payload predates the "
             "recompute-grade-payload capability and cannot be replayed")
+
+    # Before any scoring: are this payload's COUNTERS even comparable to the live
+    # targets? A formula change is replayable by design; a counter-definition change
+    # is not. See _require_comparable_scoring_inputs.
+    _require_comparable_scoring_inputs(payload)
 
     sibs = payload.get("scoring_inputs_by_source")
     if not sibs:

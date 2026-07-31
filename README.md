@@ -101,8 +101,17 @@ components — recent behavior dominates while the full window provides
 stability. When the recent window has no sessions the blend falls back to the
 unblended full-window AQ.
 
-This runtime emits **scoring inputs version 8**, **AQ version 8**, and **GStack version 8** (`score_contract_id = 8:8:8`). Scores from the previous
-contract must not be presented as an improvement or regression against v7.
+This runtime emits **scoring inputs version 9**, **AQ version 9**, and **GStack version 9** (`score_contract_id = 9:9:9`). Scores from a previous
+contract must not be presented as an improvement or regression against v9. v9 re-fits the
+two Skill rate targets against the post-dedup counters v8 introduced (a Skill counts once
+per session span, not once per attributed turn) and widens review-skill recognition to
+`verif`-leading names, so v8 and v9 skill/verification scores are not comparable.
+
+v9 also adds an **evidence floor** to every rate term: a rate is reported N/A (its weight
+renormalized away) whenever the corpus carries too few tool calls for its target to mean
+anything — specifically, too few for the target to imply more than a single occurrence. Real
+corpora are far above that floor (the lightest measured user pools ~2,000 tool calls), but a
+thin slice would otherwise let ONE Skill invocation or ONE compounding write max out a term.
 
 Rate terms (test runs, review skills, ToolSearch, task planning, skills,
 compounding writes) are scored **per tool call**, not per session. One session is

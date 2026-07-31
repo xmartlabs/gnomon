@@ -29,11 +29,14 @@ import paxel
 from tests.test_smoke import FIX, SRC_DIRS, _claude_turn
 
 from gnomon.scoring.replay import (
-    replay, ReplayError, AQ_EXACT, AQ_APPROXIMATE_WEIGHTED_MEAN,
-    AQ_APPROXIMATE_WEIGHTED_MEAN_UNBLENDED,
+    replay, ReplayError, IncompatibleScoringInputs, AQ_EXACT,
+    AQ_APPROXIMATE_WEIGHTED_MEAN, AQ_APPROXIMATE_WEIGHTED_MEAN_UNBLENDED,
 )
 from gnomon.scoring.aq import compute_aq
 from gnomon.scoring.profiles import stats_from_scoring_block
+from gnomon.scoring.versioning import (
+    IncompatibleScoreContract, SCORING_INPUTS_VERSION, SKILL_DEDUP_INPUTS_VERSION,
+)
 
 
 def _run_summary(testcase, sources):
@@ -535,6 +538,10 @@ class SingleActiveSourceAmongZeroSessionKeysIsExact(unittest.TestCase):
         }
         payload = {
             "payload_features": {"version": 1, "supported": [], "emitted": [], "omitted": []},
+            # Stamped like a real payload (output/summary.py always emits it): replay()
+            # refuses a payload that does not declare which inputs version produced its
+            # counters -- see PreDedupPayloadIsRefusedRatherThanRescored.
+            "scoring_inputs_version": SCORING_INPUTS_VERSION,
             "scoring_inputs_by_source": sibs,
         }
         result = replay(payload)
@@ -608,6 +615,9 @@ class MultisourceModellessSourceApproximatesInsteadOfRaising(unittest.TestCase):
         bucket_window["corpus"] = {"sources": {s: {} for s in sources}}
         return {
             "payload_features": {"version": 1, "supported": [], "emitted": [], "omitted": []},
+            # See the note in SingleActiveSourceAmongZeroSessionKeysIsExact: a real payload
+            # always declares the inputs version its counters came from.
+            "scoring_inputs_version": SCORING_INPUTS_VERSION,
             "scoring_inputs_by_source": sibs,
             "bucket_scoring_inputs": {
                 "metadata": [{"id": "recent_30d", "configured_weight": 0.65,
@@ -640,6 +650,82 @@ class MultisourceModellessSourceApproximatesInsteadOfRaising(unittest.TestCase):
         payload["bucket_scoring_inputs"]["metadata"][0]["configured_weight"] = 0
         with self.assertRaises(ReplayError):
             replay(payload)
+
+
+class PreDedupPayloadIsRefusedRatherThanRescored(unittest.TestCase):
+    """replay() recomputes a persisted payload with the LIVE aq module, which is the
+    feature (commit be07bf5: "persist scoring inputs so metric changes can be replayed").
+    A formula change SHOULD reach an old payload.
+
+    A COUNTER change must not. v8's skill dedup (28d3bda) made a Skill invocation count
+    once per (session, skill) span instead of once per attributed turn, and
+    `stats_from_scoring_block` reads the frozen block verbatim -- it never re-derives
+    `skills_total` from transcripts. So a payload captured under scoring_inputs_version < 8
+    carries counters 4.0x larger pooled (25.8x on Claude), and dividing them by v9's 28x
+    smaller targets is severe over-saturation presented as a score.
+
+    The invariant is exactly that narrow: refuse when the payload's OWN
+    `scoring_inputs_version` predates the dedup, keep replaying everything from v8 on.
+    """
+
+    def _payload(self, inputs_version, tool_calls=900):
+        block = _minimal_scoring_block("claude", sessions=12, tool_calls=tool_calls)
+        payload = {
+            "payload_features": {"version": 1, "supported": [], "emitted": [], "omitted": []},
+            "scoring_inputs_by_source": {"claude": {"window": block, "monthly": []}},
+        }
+        if inputs_version is not None:
+            payload["scoring_inputs_version"] = inputs_version
+        return payload
+
+    def test_pre_dedup_payload_does_not_silently_produce_a_score(self):
+        for version in range(1, SKILL_DEDUP_INPUTS_VERSION):
+            with self.subTest(scoring_inputs_version=version):
+                with self.assertRaises(IncompatibleScoringInputs):
+                    replay(self._payload(version))
+
+    def test_the_refusal_is_catchable_as_both_a_replay_and_a_contract_failure(self):
+        """A caller enumerating stored payloads catches ReplayError and skips; a
+        contract-aware caller catches IncompatibleScoreContract. Neither may get a number."""
+        payload = self._payload(SKILL_DEDUP_INPUTS_VERSION - 1)
+        with self.assertRaises(ReplayError):
+            replay(payload)
+        with self.assertRaises(IncompatibleScoreContract):
+            replay(payload)
+
+    def test_the_message_names_the_payloads_version_and_the_dedup_boundary(self):
+        with self.assertRaises(IncompatibleScoringInputs) as caught:
+            replay(self._payload(7))
+        message = str(caught.exception)
+        self.assertIn("scoring_inputs_version", message)
+        self.assertIn("7", message)
+        self.assertIn(str(SKILL_DEDUP_INPUTS_VERSION), message)
+
+    def test_a_payload_that_does_not_declare_its_inputs_version_is_refused(self):
+        """gnomon stamps the field unconditionally (output/summary.py), so an absent or
+        non-integer one is a foreign/hand-built payload whose counter semantics are
+        unknown -- the one thing this module's docstring refuses to guess about."""
+        for version in (None, "9", 9.5, True):
+            with self.subTest(scoring_inputs_version=version):
+                with self.assertRaises(IncompatibleScoringInputs):
+                    replay(self._payload(version))
+
+    def test_a_payload_from_a_newer_inputs_version_is_refused(self):
+        """Symmetric fail-closed: counters defined by an inputs version this code does not
+        implement are equally incomparable to the live targets."""
+        with self.assertRaises(IncompatibleScoringInputs):
+            replay(self._payload(SCORING_INPUTS_VERSION + 1))
+
+    def test_post_dedup_payloads_still_replay_and_still_round_trip(self):
+        """The feature stays intact: every version from the dedup onwards replays, and the
+        result is the live scorer's own number for that block (bit-for-bit round trip)."""
+        for version in range(SKILL_DEDUP_INPUTS_VERSION, SCORING_INPUTS_VERSION + 1):
+            with self.subTest(scoring_inputs_version=version):
+                payload = self._payload(version)
+                block = payload["scoring_inputs_by_source"]["claude"]["window"]
+                result = replay(payload)
+                self.assertEqual(result["aq_exactness"], AQ_EXACT)
+                self.assertEqual(result["aq"], compute_aq(stats_from_scoring_block(block)))
 
 
 class RecomputeGradeFieldsExcludedFromStatsAndNarrative(unittest.TestCase):

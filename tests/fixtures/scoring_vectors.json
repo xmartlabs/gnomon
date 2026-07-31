@@ -3,16 +3,16 @@
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 83,
+          "aq_0_100": 87,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 76.9,
+              "score": 77.6,
               "weight": 30
             },
             {
               "name": "Craft",
-              "score": 80.8,
+              "score": 92.5,
               "weight": 35
             },
             {
@@ -26,7 +26,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "8:8:8",
+          "score_contract_id": "9:9:9",
           "tier": "Advanced"
         },
         "archetype": {
@@ -289,7 +289,7 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 83,
+            "aq_0_100": 87,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -322,13 +322,13 @@
                   {
                     "base_weight": 22,
                     "name": "Skill fluency",
-                    "normalized_score": 0.82,
-                    "score": 18.0,
+                    "normalized_score": 0.85,
+                    "score": 18.7,
                     "signals": {
                       "skills_distinct": 25,
                       "skills_total": 900,
                       "skills_total_per_call": 0.225,
-                      "skills_total_per_call_target": 0.25,
+                      "skills_total_per_call_target": 0.009,
                       "tool_calls": 4000
                     },
                     "weight": 22
@@ -366,7 +366,7 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 76.9,
+                "score": 77.6,
                 "weight": 30
               },
               {
@@ -374,12 +374,12 @@
                   {
                     "base_weight": 35,
                     "name": "Verification",
-                    "normalized_score": 0.666666666666667,
-                    "score": 23.3,
+                    "normalized_score": 1.0,
+                    "score": 35.0,
                     "signals": {
                       "review_skills": 80,
                       "review_skills_per_call": 0.02,
-                      "review_skills_per_call_target": 0.06,
+                      "review_skills_per_call_target": 0.004,
                       "test_runs": 120,
                       "test_runs_per_call": 0.03,
                       "test_runs_per_call_target": 0.025,
@@ -428,7 +428,7 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 80.8,
+                "score": 92.5,
                 "weight": 35
               },
               {
@@ -500,7 +500,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "8:8:8",
+            "score_contract_id": "9:9:9",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -905,13 +905,13 @@
         }
       }
     },
-    "scoring_inputs_version": 8
+    "scoring_inputs_version": 9
   },
   {
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 49,
+          "aq_0_100": 47,
           "pillars": [
             {
               "name": "Breadth",
@@ -920,7 +920,7 @@
             },
             {
               "name": "Craft",
-              "score": 31.3,
+              "score": 26.5,
               "weight": 35
             },
             {
@@ -934,11 +934,11 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "8:8:8",
+          "score_contract_id": "9:9:9",
           "tier": "Adequate"
         },
         "archetype": {
-          "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is breadth \u2014 that's where the next gain is.",
+          "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is craft \u2014 that's where the next gain is.",
           "title": "Adequate"
         },
         "canonical_aq": "profile.aq",
@@ -1195,7 +1195,7 @@
       "by_source": {
         "cursor": {
           "aq": {
-            "aq_0_100": 49,
+            "aq_0_100": 47,
             "mcp_vs_cli": {
               "cli_calls": 100,
               "cli_distinct": 8,
@@ -1234,7 +1234,7 @@
                       "skills_distinct": 0,
                       "skills_total": 0,
                       "skills_total_per_call": 0.0,
-                      "skills_total_per_call_target": 0.25,
+                      "skills_total_per_call_target": 0.009,
                       "tool_calls": 500
                     },
                     "weight": 22
@@ -1285,7 +1285,7 @@
                     "signals": {
                       "review_skills": 0,
                       "review_skills_per_call": 0.0,
-                      "review_skills_per_call_target": 0.06,
+                      "review_skills_per_call_target": 0.004,
                       "test_runs": 5,
                       "test_runs_per_call": 0.01,
                       "test_runs_per_call_target": 0.025,
@@ -1322,11 +1322,11 @@
                   {
                     "base_weight": 20,
                     "name": "Compounding",
-                    "normalized_score": 0.84,
-                    "score": 16.8,
+                    "normalized_score": 0.6,
+                    "score": 12.0,
                     "signals": {
                       "compounding_writes": 1,
-                      "compounding_writes_per_call": 0.002,
+                      "compounding_writes_per_call": null,
                       "compounding_writes_per_call_target": 0.0018,
                       "tool_calls": 500
                     },
@@ -1334,7 +1334,7 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 31.3,
+                "score": 26.5,
                 "weight": 35
               },
               {
@@ -1391,7 +1391,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "8:8:8",
+            "score_contract_id": "9:9:9",
             "tier": "Adequate",
             "tool_diversity": {
               "distinct": 12,
@@ -1399,7 +1399,7 @@
             }
           },
           "archetype": {
-            "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is breadth \u2014 that's where the next gain is.",
+            "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is craft \u2014 that's where the next gain is.",
             "title": "Adequate"
           },
           "growth_edges": [
@@ -1715,22 +1715,22 @@
         }
       }
     },
-    "scoring_inputs_version": 8
+    "scoring_inputs_version": 9
   },
   {
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 79,
+          "aq_0_100": 83,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 71.3,
+              "score": 71.9,
               "weight": 30
             },
             {
               "name": "Craft",
-              "score": 75.3,
+              "score": 85.2,
               "weight": 35
             },
             {
@@ -1744,7 +1744,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "8:8:8",
+          "score_contract_id": "9:9:9",
           "tier": "Advanced"
         },
         "archetype": {
@@ -2008,7 +2008,7 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 83,
+            "aq_0_100": 87,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -2041,13 +2041,13 @@
                   {
                     "base_weight": 22,
                     "name": "Skill fluency",
-                    "normalized_score": 0.82,
-                    "score": 18.0,
+                    "normalized_score": 0.85,
+                    "score": 18.7,
                     "signals": {
                       "skills_distinct": 25,
                       "skills_total": 900,
                       "skills_total_per_call": 0.225,
-                      "skills_total_per_call_target": 0.25,
+                      "skills_total_per_call_target": 0.009,
                       "tool_calls": 4000
                     },
                     "weight": 22
@@ -2085,7 +2085,7 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 76.9,
+                "score": 77.6,
                 "weight": 30
               },
               {
@@ -2093,12 +2093,12 @@
                   {
                     "base_weight": 35,
                     "name": "Verification",
-                    "normalized_score": 0.666666666666667,
-                    "score": 23.3,
+                    "normalized_score": 1.0,
+                    "score": 35.0,
                     "signals": {
                       "review_skills": 80,
                       "review_skills_per_call": 0.02,
-                      "review_skills_per_call_target": 0.06,
+                      "review_skills_per_call_target": 0.004,
                       "test_runs": 120,
                       "test_runs_per_call": 0.03,
                       "test_runs_per_call_target": 0.025,
@@ -2147,7 +2147,7 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 80.8,
+                "score": 92.5,
                 "weight": 35
               },
               {
@@ -2219,7 +2219,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "8:8:8",
+            "score_contract_id": "9:9:9",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -2472,7 +2472,7 @@
         },
         "cursor": {
           "aq": {
-            "aq_0_100": 49,
+            "aq_0_100": 47,
             "mcp_vs_cli": {
               "cli_calls": 100,
               "cli_distinct": 8,
@@ -2511,7 +2511,7 @@
                       "skills_distinct": 0,
                       "skills_total": 0,
                       "skills_total_per_call": 0.0,
-                      "skills_total_per_call_target": 0.25,
+                      "skills_total_per_call_target": 0.009,
                       "tool_calls": 500
                     },
                     "weight": 22
@@ -2562,7 +2562,7 @@
                     "signals": {
                       "review_skills": 0,
                       "review_skills_per_call": 0.0,
-                      "review_skills_per_call_target": 0.06,
+                      "review_skills_per_call_target": 0.004,
                       "test_runs": 5,
                       "test_runs_per_call": 0.01,
                       "test_runs_per_call_target": 0.025,
@@ -2599,11 +2599,11 @@
                   {
                     "base_weight": 20,
                     "name": "Compounding",
-                    "normalized_score": 0.84,
-                    "score": 16.8,
+                    "normalized_score": 0.6,
+                    "score": 12.0,
                     "signals": {
                       "compounding_writes": 1,
-                      "compounding_writes_per_call": 0.002,
+                      "compounding_writes_per_call": null,
                       "compounding_writes_per_call_target": 0.0018,
                       "tool_calls": 500
                     },
@@ -2611,7 +2611,7 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 31.3,
+                "score": 26.5,
                 "weight": 35
               },
               {
@@ -2668,7 +2668,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "8:8:8",
+            "score_contract_id": "9:9:9",
             "tier": "Adequate",
             "tool_diversity": {
               "distinct": 12,
@@ -2676,7 +2676,7 @@
             }
           },
           "archetype": {
-            "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is breadth \u2014 that's where the next gain is.",
+            "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is craft \u2014 that's where the next gain is.",
             "title": "Adequate"
           },
           "growth_edges": [
@@ -3141,22 +3141,22 @@
         }
       }
     },
-    "scoring_inputs_version": 8
+    "scoring_inputs_version": 9
   },
   {
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 77,
+          "aq_0_100": 81,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 76.9,
+              "score": 77.6,
               "weight": 30
             },
             {
               "name": "Craft",
-              "score": 64.8,
+              "score": 76.5,
               "weight": 35
             },
             {
@@ -3170,7 +3170,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "8:8:8",
+          "score_contract_id": "9:9:9",
           "tier": "Advanced"
         },
         "archetype": {
@@ -3433,7 +3433,7 @@
       "by_source": {
         "claude-boundary": {
           "aq": {
-            "aq_0_100": 77,
+            "aq_0_100": 81,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -3466,13 +3466,13 @@
                   {
                     "base_weight": 22,
                     "name": "Skill fluency",
-                    "normalized_score": 0.82,
-                    "score": 18.0,
+                    "normalized_score": 0.85,
+                    "score": 18.7,
                     "signals": {
                       "skills_distinct": 25,
                       "skills_total": 900,
                       "skills_total_per_call": 0.225,
-                      "skills_total_per_call_target": 0.25,
+                      "skills_total_per_call_target": 0.009,
                       "tool_calls": 4000
                     },
                     "weight": 22
@@ -3510,7 +3510,7 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 76.9,
+                "score": 77.6,
                 "weight": 30
               },
               {
@@ -3518,12 +3518,12 @@
                   {
                     "base_weight": 35,
                     "name": "Verification",
-                    "normalized_score": 0.666666666666667,
-                    "score": 23.3,
+                    "normalized_score": 1.0,
+                    "score": 35.0,
                     "signals": {
                       "review_skills": 80,
                       "review_skills_per_call": 0.02,
-                      "review_skills_per_call_target": 0.06,
+                      "review_skills_per_call_target": 0.004,
                       "test_runs": 120,
                       "test_runs_per_call": 0.03,
                       "test_runs_per_call_target": 0.025,
@@ -3572,7 +3572,7 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 64.8,
+                "score": 76.5,
                 "weight": 35
               },
               {
@@ -3644,7 +3644,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "8:8:8",
+            "score_contract_id": "9:9:9",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -4034,7 +4034,7 @@
         }
       }
     },
-    "scoring_inputs_version": 8
+    "scoring_inputs_version": 9
   },
   {
     "expected": {
@@ -4063,7 +4063,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "8:8:8",
+          "score_contract_id": "9:9:9",
           "tier": "Novice"
         },
         "archetype": {
@@ -4359,7 +4359,7 @@
                       "skills_distinct": 0,
                       "skills_total": 0,
                       "skills_total_per_call": null,
-                      "skills_total_per_call_target": 0.25,
+                      "skills_total_per_call_target": 0.009,
                       "tool_calls": 0
                     },
                     "weight": 22
@@ -4410,7 +4410,7 @@
                     "signals": {
                       "review_skills": 0,
                       "review_skills_per_call": null,
-                      "review_skills_per_call_target": 0.06,
+                      "review_skills_per_call_target": 0.004,
                       "test_runs": 0,
                       "test_runs_per_call": null,
                       "test_runs_per_call_target": 0.025,
@@ -4518,7 +4518,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "8:8:8",
+            "score_contract_id": "9:9:9",
             "tier": "Novice",
             "tool_diversity": {
               "distinct": 0,
@@ -4850,7 +4850,7 @@
         }
       }
     },
-    "scoring_inputs_version": 8
+    "scoring_inputs_version": 9
   },
   {
     "bucket_metadata": [
@@ -5010,16 +5010,16 @@
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 81,
+          "aq_0_100": 86,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 76.9,
+              "score": 77.6,
               "weight": 30
             },
             {
               "name": "Craft",
-              "score": 77.3,
+              "score": 89.0,
               "weight": 35
             },
             {
@@ -5033,7 +5033,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "8:8:8",
+          "score_contract_id": "9:9:9",
           "tier": "Advanced"
         },
         "archetype": {
@@ -5296,11 +5296,11 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 81,
+            "aq_0_100": 86,
             "blend": {
               "buckets": [
                 {
-                  "component_aq": 85,
+                  "component_aq": 90,
                   "configured_weight": 0.65,
                   "day_bounds": {
                     "lower": 0,
@@ -5310,14 +5310,14 @@
                   "id": "recent_30d"
                 },
                 {
-                  "component_aq": 74,
+                  "component_aq": 79,
                   "configured_weight": 0.35,
                   "day_bounds": null,
                   "effective_weight": 0.35,
                   "id": "full_window"
                 }
               ],
-              "full_aq": 74
+              "full_aq": 79
             },
             "mcp_vs_cli": {
               "cli_calls": 1500,
@@ -5392,38 +5392,38 @@
                       {
                         "effective_weight": 0.65,
                         "id": "recent_30d",
-                        "normalized_score": 0.82,
-                        "score": 18.0,
+                        "normalized_score": 0.85,
+                        "score": 18.7,
                         "signals": {
                           "skills_distinct": 25,
                           "skills_total": 900,
                           "skills_total_per_call": 0.225,
-                          "skills_total_per_call_target": 0.25,
+                          "skills_total_per_call_target": 0.009,
                           "tool_calls": 4000
                         }
                       },
                       {
                         "effective_weight": 0.35,
                         "id": "full_window",
-                        "normalized_score": 0.82,
-                        "score": 18.0,
+                        "normalized_score": 0.85,
+                        "score": 18.7,
                         "signals": {
                           "skills_distinct": 25,
                           "skills_total": 900,
                           "skills_total_per_call": 0.225,
-                          "skills_total_per_call_target": 0.25,
+                          "skills_total_per_call_target": 0.009,
                           "tool_calls": 4000
                         }
                       }
                     ],
                     "name": "Skill fluency",
-                    "normalized_score": 0.8200000000000001,
-                    "score": 18.0,
+                    "normalized_score": 0.85,
+                    "score": 18.7,
                     "signals": {
                       "skills_distinct": 25,
                       "skills_total": 900,
                       "skills_total_per_call": 0.225,
-                      "skills_total_per_call_target": 0.25,
+                      "skills_total_per_call_target": 0.009,
                       "tool_calls": 4000
                     },
                     "weight": 22
@@ -5523,7 +5523,7 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 76.9,
+                "score": 77.6,
                 "weight": 30
               },
               {
@@ -5534,12 +5534,12 @@
                       {
                         "effective_weight": 0.65,
                         "id": "recent_30d",
-                        "normalized_score": 0.666666666666667,
-                        "score": 23.3,
+                        "normalized_score": 1.0,
+                        "score": 35.0,
                         "signals": {
                           "review_skills": 80,
                           "review_skills_per_call": 0.02,
-                          "review_skills_per_call_target": 0.06,
+                          "review_skills_per_call_target": 0.004,
                           "test_runs": 100,
                           "test_runs_per_call": 0.025,
                           "test_runs_per_call_target": 0.025,
@@ -5549,12 +5549,12 @@
                       {
                         "effective_weight": 0.35,
                         "id": "full_window",
-                        "normalized_score": 0.316666666666667,
-                        "score": 11.1,
+                        "normalized_score": 0.65,
+                        "score": 22.8,
                         "signals": {
                           "review_skills": 80,
                           "review_skills_per_call": 0.02,
-                          "review_skills_per_call_target": 0.06,
+                          "review_skills_per_call_target": 0.004,
                           "test_runs": 30,
                           "test_runs_per_call": 0.0075,
                           "test_runs_per_call_target": 0.025,
@@ -5563,12 +5563,12 @@
                       }
                     ],
                     "name": "Verification",
-                    "normalized_score": 0.5441666666666669,
-                    "score": 19.0,
+                    "normalized_score": 0.8775,
+                    "score": 30.7,
                     "signals": {
                       "review_skills": 80,
                       "review_skills_per_call": 0.02,
-                      "review_skills_per_call_target": 0.06,
+                      "review_skills_per_call_target": 0.004,
                       "test_runs": 100,
                       "test_runs_per_call": 0.025,
                       "test_runs_per_call_target": 0.025,
@@ -5695,7 +5695,7 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 77.3,
+                "score": 89.0,
                 "weight": 35
               },
               {
@@ -5875,7 +5875,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "8:8:8",
+            "score_contract_id": "9:9:9",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -5883,8 +5883,8 @@
             }
           },
           "archetype": {
-            "quote": "Proficient and consistent, but not yet at the top tier. Your thinnest axis is craft \u2014 that's where the next gain is.",
-            "title": "Proficient"
+            "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is craft \u2014 that's where the next gain is.",
+            "title": "Advanced"
           },
           "growth_edges": [
             {
@@ -6273,6 +6273,6 @@
         }
       }
     },
-    "scoring_inputs_version": 8
+    "scoring_inputs_version": 9
   }
 ]

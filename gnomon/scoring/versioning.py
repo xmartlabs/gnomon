@@ -1,3 +1,31 @@
+# v9 — The v8 dedup's calibration debt paid off. v8 made a Skill invocation count once per
+# (session, skill) span, which is correct, but left SKILLS_TOTAL_PER_CALL_TARGET (0.25) and
+# REVIEW_SKILLS_PER_CALL_TARGET (0.060) fitted against the PRE-dedup counter, so every
+# post-v8 row scored heavy skill practice near zero. Two changes ship together because they
+# are the same measurement:
+#   inputs: `stack.skills_all` / `stack.skills_total` are unchanged in SHAPE, but the review
+#           numerator derived from them moves: `_is_review_skill_name` now admits a
+#           `verif`-LEADING tail (`verify-frontend`, `verify_changes`,
+#           `verification-before-completion`) instead of only `verify` / `*-verify`. v8's
+#           narrowing had dropped the prefix forms along with the false positive it targeted
+#           (`email-verify-flow`), worth 2.2% of the pooled review numerator over 16 real
+#           corpora and up to 59.5% for one user. The noun form was missed by v7 too, so
+#           part of this is a new fix rather than a restoration.
+#   aq:     SKILLS_TOTAL_PER_CALL_TARGET 0.25 -> 0.009 and REVIEW_SKILLS_PER_CALL_TARGET
+#           0.060 -> 0.004, re-fitted/anchored on the post-dedup distribution (see the rate
+#           rationale block at the top of aq.py for the sample, the projection model and its
+#           uncertainty). The other four rate targets were re-measured and deliberately left
+#           alone — the reasoning is written down there, because "the six move together" is
+#           a denominator argument and the dedup only moved numerators.
+#   gstack: unchanged logic; it moves with the pair for the same reason it did in v7 and v8
+#           — aggregate._blend_aq raises on any mixed contract, so a partial bump would
+#           publish two universes inside one PR.
+# The matcher change and the re-fit MUST NOT be split: re-fitting the review target against
+# a numerator that is still lossy would bake the matcher's gap into the calibration, and
+# widening the matcher without the re-fit moves a published score with no contract move.
+# gnomon/scoring/calibration.py registers 9:9:9's fingerprint; the 8:8:8 entry stays as the
+# audit trail of what the pre-dedup calibration published.
+#
 # v8 — Honest AQ series: skill-counting dedup (a Skill invocation now counts once per
 # invocation, not once per assistant/sidechain turn carrying attributionSkill -- a real
 # corpus previously inflated e.g. judgment-day from 1 to 196) + the review-skill matcher's
@@ -34,9 +62,17 @@
 # per-session rates by each source's tool volume; review rejected it because the resulting
 # mean mixes units (tool_calls x things/session is not a quantity) and inverts. Do not
 # reintroduce it — see the comment above `rate()` in aq.py for the measured counter-example.
-SCORING_INPUTS_VERSION = 8
-AQ_VERSION = 8
-GSTACK_VERSION = 8
+SCORING_INPUTS_VERSION = 9
+AQ_VERSION = 9
+GSTACK_VERSION = 9
+# The first SCORING_INPUTS_VERSION whose skill counters are DEDUPED: v8 (28d3bda) made a
+# Skill invocation count once per (session, skill) span instead of once per assistant/
+# sidechain turn carrying attributionSkill. That changed what the persisted counter MEANS,
+# not just how it is scored -- measured on one full corpus, skills_total 17781 -> 4427
+# (25.8x on Claude alone) and review_skills 4981 -> 597. Anything captured before it is a
+# different quantity and cannot be re-scored against post-dedup targets; replay() refuses
+# such a payload rather than publishing an over-saturated number (gnomon/scoring/replay.py).
+SKILL_DEDUP_INPUTS_VERSION = 8
 SCORE_CONTRACT_ID = f"{SCORING_INPUTS_VERSION}:{AQ_VERSION}:{GSTACK_VERSION}"
 COMPARISON_POLICY = "same_score_contract_id_only"
 

@@ -404,7 +404,7 @@ class TestMonthsToUpload(unittest.TestCase):
 
 class TestContractAwareHistory(unittest.TestCase):
     TODAY = datetime.date(2026, 1, 15)
-    CONTRACT = "8:8:8"
+    CONTRACT = "9:9:9"
 
     @staticmethod
     def _query(payload):

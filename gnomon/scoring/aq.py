@@ -35,16 +35,89 @@ CONTEXT_INTELLIGENCE_TARGET = 0.60
 # inside its own [p40, p50] band; the band is quoted so a later recalibration can tell a
 # population shift from a rounding choice. Six constants cover seven rate call sites —
 # ToolSearch is scored on both Tool command and Token economy against the same target.
-SKILLS_TOTAL_PER_CALL_TARGET = 0.25          # p40 .2248 / p50 .2538, n=16 — 1 skill use per 4 calls
+#
+# ---- v9: the two SKILL numerators are re-fitted POST-dedup -------------------------
+# Commit 28d3bda made a Skill invocation count once per (session, skill) span instead of
+# once per attributed turn. That is correct, but it collapsed the numerator of the two
+# skill rates while their targets stayed fitted against the PRE-dedup counter. Measured
+# EXACTLY on one full 6-month corpus (114.6k tool calls, 1379 sessions, 8 sources), both
+# sides of the dedup in a single pass:
+#     skills_total   17781 -> 4427   (4.0x pooled; claude 25.8x, codex/cursor 1.00x)
+#     review_skills   4981 ->  597   (8.3x pooled; claude 49.7x)
+# The collapse is CLAUDE-ONLY: only Claude carries the per-turn `attributionSkill` span
+# the dedup folds (13391 per-turn sites vs 4390 discrete ones). Codex/Cursor record skills
+# at discrete sites, so their counts are identical on both sides.
+#
+# The 16 uploaded corpora are all PRE-dedup, so the post-dedup population had to be
+# PROJECTED, not measured: for each slice, L = distinct skills (each ran >= 1 session) and
+# U = sum_k min(n_k, sessions) bracket the truth, and theta = (P-L)/(U-L) = 0.083 is
+# calibrated on the one corpus where P is known exactly. Bands below are that projection.
+# Sensitivity is real and is the honest limit of this fit: theta 0.04 -> p50 .0074,
+# theta 0.083 -> p50 .0098, theta 0.15 -> p50 .0133.
+SKILLS_TOTAL_PER_CALL_TARGET = 0.009         # p40 .00865 / p50 .00981, n=16 — ~1 skill span per 110 calls
 TOOLSEARCH_PER_CALL_TARGET = 0.0075          # p40 .00732 / p50 .00773, n=15 — ~7 per 1000 calls
 TASK_CALLS_PER_CALL_TARGET = 0.011           # p40 .00817 / p50 .01475, n=13 — ~11 per 1000 calls
 TEST_RUNS_PER_CALL_TARGET = 0.025            # p40 .02219 / p50 .02715, n=16 — 1 test run per 40 calls
-REVIEW_SKILLS_PER_CALL_TARGET = 0.060        # p40 .04412 / p50 .08306, n=13 — widest band of the six
+REVIEW_SKILLS_PER_CALL_TARGET = 0.004        # p40 .00338 / p50 .00440, n=13 — ANCHORED, see below
 COMPOUNDING_WRITES_PER_CALL_TARGET = 0.0018  # p40 .00170 / p50 .00207, n=16 — ~2 per 1000 calls
-# Still PROVISIONAL, in the same sense the per-session targets were: n=16 is the entire
-# population that has uploaded raw inputs, not a sample drawn from a larger one. Recalibrate
-# the six TOGETHER — they share one denominator, so a shift in how tool-heavy the population
-# is moves every band at once.
+# REVIEW_SKILLS_PER_CALL_TARGET is ANCHORED, not fitted: the quoted band assumes review
+# skills survive the dedup at the histogram-average rate, and they do not — they are the
+# LONG-span ones (claude review survived at 2.01% vs 3.87% for all skills), so a
+# review-specific projection puts p40/p50 at .00207/.00276 while the one exactly measured
+# corpus reads .00832. 0.004 is the geometric middle of those two defensible readings and
+# lands inside the proportional band. Treat .002-.008 as its uncertainty.
+#
+# WHY THE OTHER FOUR DID NOT MOVE (decision, not omission). The "recalibrate the six
+# together" rule exists because they share the `tool_calls_total` denominator, so a shift
+# in population tool-heaviness moves every band at once. The dedup moved two NUMERATORS and
+# left the denominator untouched, so that coupling does not apply here. All four were
+# re-measured on the same 16 corpora anyway: test_runs p40 .02479 / p50 .02726 and
+# compounding p40 .00170 / p50 .00301 still contain their targets. toolsearch (p40 .00837 /
+# p50 .01037) and task_calls (p40 .01352 / p50 .01519) have drifted ABOVE theirs by ~12%
+# and ~23% — a genuine population shift from three extra months of uploads, unrelated to
+# the dedup. Folding it in here would make the v9 delta unattributable; it needs its own
+# contract bump and its own re-measurement.
+#
+# Still PROVISIONAL, and more so than v8's: n=16 is the entire population that has uploaded
+# raw inputs, every one of them PRE-dedup and all from one company. The first upload cohort
+# on contract 9:9:9 carries post-dedup counters directly — re-fit both skill targets from
+# that measured distribution and delete the projection.
+
+# ---- Rate evidence floor (v9) ------------------------------------------------------
+# `rate(x, t) = min(1, x / (tool_calls · t))` maxes out at x = tool_calls · t, so wherever
+# that product falls to 1 a SINGLE occurrence saturates the term. That is the same failure
+# mode `MIN_ELIGIBLE_SESSIONS` already fixes for the two session-share terms (see
+# `planning_habit`: "one planning-skill invocation maxed the term forever"), and the v9
+# re-fit above is what made it reachable rather than theoretical:
+#     SKILLS_TOTAL_PER_CALL_TARGET  0.25  -> 0.009 : boundary tool_calls <=   4 -> <= 111
+#     REVIEW_SKILLS_PER_CALL_TARGET 0.060 -> 0.004 : boundary tool_calls <=  16 -> <= 250
+# 111 calls is a couple of sessions, and both terms feed a published axis (Skill fluency
+# .30 of Breadth, Verification .5 of Craft).
+#
+# The floor is therefore expressed in the ONLY unit that cannot drift out from under a
+# re-fit: the number of occurrences the target ITSELF implies at this denominator
+# (tool_calls · target). A hardcoded tool-call count would reproduce the very bug under
+# repair — it would silently stop covering any target later re-fitted downwards, exactly as
+# the pre-dedup targets silently stopped matching the post-dedup numerator. Below the floor
+# `rate` returns None, which `wsum` drops and renormalizes; the term is never scored on one
+# event. Implied minimum denominators at the current six targets — tool_calls must EXCEED
+# RATE_MIN_EXPECTED_AT_TARGET / target:
+#     test_runs 40.0 · task_calls 90.9 · skills_total 111.1 · toolsearch 133.3 ·
+#     review_skills 250.0 · compounding_writes 555.6 tool calls
+# A measured ZERO below the floor is dropped for the same reason a saturated one is: at 200
+# calls the review target implies 0.8 expected invocations, so observing none is consistent
+# with on-target practice and scoring it 0 would be just as unfounded.
+#
+# 1.0 is the invariant boundary (below it one occurrence maxes the term) and is taken as the
+# MINIMUM intervention rather than a round number above it. The population bounds it from
+# the other side: across the 16 real 6-month corpora, the LIGHTEST user pools 2,036 tool
+# calls over 17 sessions (119.8 calls/session), and its tightest product is
+# 2036 · 0.0018 = 3.66 — so the data permits [1.0, 3.66) and every rate term of every real
+# uploaded corpus stays scored either way. Anything at or above 3.66 would start dropping
+# terms for a real user; anything above 1.0 also discards evidence from the small-but-real
+# slices scored separately (per-source profiles, monthly recency buckets), which is why the
+# low end is the deliberate choice. Re-argue both bounds if the population changes.
+RATE_MIN_EXPECTED_AT_TARGET = 1.0
 
 # ---- Ordered-planning redesign (C1-C7) calibration placeholders ------------
 # All five constants below are PROVISIONAL calibration placeholders (proposal C5):
@@ -204,6 +277,11 @@ def compute_aq(stats):
     # N/A instead of scoring a phantom 0.
     _tool_calls_measured = "tool_calls_total" in _volume and isinstance(tool_calls, (int, float))
 
+    def _rate_has_evidence(per_call_target):
+        """Is the denominator big enough for THIS target to be evidence rather than noise?
+        See RATE_MIN_EXPECTED_AT_TARGET: below the floor one occurrence maxes the term."""
+        return tool_calls * per_call_target > RATE_MIN_EXPECTED_AT_TARGET
+
     def rate(x, per_call_target):
         # None -> wsum drops the term and renormalizes. 0.0 is reserved for a MEASURED zero:
         # real tool activity, none of this particular signal.
@@ -211,16 +289,27 @@ def compute_aq(stats):
             return None
         # `> 0`, not truthiness: a corrupt negative denominator would otherwise flip the sign
         # and escape sat()'s [0,1] range (a normalized_score of -2.9 propagating into the
-        # pillar and the AQ total).
-        return sat(x / tool_calls, per_call_target) if tool_calls > 0 else 0.0
+        # pillar and the AQ total). A measured zero denominator keeps its deliberate 0.0 —
+        # the evidence floor below is about saturation, and nothing saturates a term that is
+        # never divided.
+        if tool_calls <= 0:
+            return 0.0
+        # Second reason to drop the term, alongside an absent denominator: the denominator is
+        # real but too small for this target to mean anything (RATE_MIN_EXPECTED_AT_TARGET).
+        if not _rate_has_evidence(per_call_target):
+            return None
+        return sat(x / tool_calls, per_call_target)
 
     def rate_facts(key, x, per_call_target):
         """The three numbers that explain a rate term, for the axis `signals`: the count, the
         per-tool-call rate it became, and the target it was scored against. The denominator
         is corpus-wide, so a term can fall while its own count rises — publishing only the
-        count leaves that move unattributable. The rate is None when there is no usable
-        denominator, matching what the term itself scored."""
-        usable = _tool_calls_measured and tool_calls > 0
+        count leaves that move unattributable. The rate is None whenever the term itself was
+        NOT scored — no usable denominator, or one below this target's evidence floor — so a
+        consumer can never read "300% of target" off a term the scorer refused. The count and
+        the denominator stay published either way, which is what makes a dropped term
+        explainable (`tool_calls` + target vs the floor)."""
+        usable = _tool_calls_measured and tool_calls > 0 and _rate_has_evidence(per_call_target)
         return {key: x,
                 f"{key}_per_call": round(x / tool_calls, 6) if usable else None,
                 f"{key}_per_call_target": per_call_target}

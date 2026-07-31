@@ -37,6 +37,8 @@ CALIBRATION_CONSTANT_NAMES = (
     "TEST_RUNS_PER_CALL_TARGET",
     "REVIEW_SKILLS_PER_CALL_TARGET",
     "COMPOUNDING_WRITES_PER_CALL_TARGET",
+    # the evidence floor those six are scored through (occurrences implied by the target)
+    "RATE_MIN_EXPECTED_AT_TARGET",
     # absolute count ceilings -- the window-sensitive ones
     "SUBAGENT_TYPES_DISTINCT_CEILING",
     "FANOUT_CEILING",
@@ -84,4 +86,17 @@ CALIBRATION_FINGERPRINTS = {
     # (SKILLS_TOTAL_PER_CALL_TARGET, REVIEW_SKILLS_PER_CALL_TARGET) is registered as-is so
     # the re-fit shows up as a contract move rather than as an in-place edit.
     "8:8:8": "38bf1d623bea1517",
+    # v9 (post-dedup re-fit of the two skill rate targets + `verif`-leading review matcher
+    # + the rate evidence floor the re-fit made necessary).
+    # SKILLS_TOTAL_PER_CALL_TARGET 0.25 -> 0.009 and REVIEW_SKILLS_PER_CALL_TARGET
+    # 0.060 -> 0.004, plus the NEW constant RATE_MIN_EXPECTED_AT_TARGET = 1.0: dropping a
+    # rate whose denominator is so small that one occurrence would max the term (the re-fit
+    # moved that boundary into reach — see aq.py's rate evidence floor block). The floor is
+    # part of the SAME unpublished v9: this entry has never been committed to a released
+    # payload, so its hash is being AUTHORED here, not edited after publication. The 8:8:8
+    # entry above is untouched. Nothing else in CALIBRATION_CONSTANT_NAMES moved; the other
+    # four rate targets were re-measured on the same population and deliberately left in
+    # place (the reasoning is in aq.py's rate rationale block, so a later reader does not
+    # read this as an oversight).
+    "9:9:9": "2e7638d58c2b26e4",
 }

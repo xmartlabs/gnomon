@@ -17,28 +17,20 @@ REAL pipeline (`begin_file` -> `observe` -> `end_file` -> `to_corpus_stats`), ca
 `compute_aq()`, and reads the two rates back out of the published axis `signals` --
 the same numbers the report and the upload payload carry.
 
-Why `@unittest.expectedFailure` on the two band tests
------------------------------------------------------
-The band tests assert what a CORRECTLY calibrated setup would produce, and today's
-constants are known-misaligned, so they must fail on the current tree -- a green
-band test here would mean the test is not exercising the misalignment and is
-worthless. They are marked `expectedFailure` rather than left hard-red for two
-reasons, and the marking is only safe because of the second one:
+Status: the re-fit landed in contract 9:9:9
+------------------------------------------
+The two band tests below were shipped `@unittest.expectedFailure` as a self-clearing
+tripwire while the targets were still the pre-dedup ones. The re-fit
+(SKILLS_TOTAL_PER_CALL_TARGET 0.25 -> 0.009, REVIEW_SKILLS_PER_CALL_TARGET
+0.060 -> 0.004, plus `_is_review_skill_name` admitting a `verif`-leading tail) cleared
+them, so the decorators are gone and `TestScoredRatesArePinned` now pins the CORRECT
+rates instead of the broken ones. The bands were not touched to make this pass -- both
+rates land ~1.1-1.3x their target, inside the [0.5x, 2x] window the fixture's
+heavy-but-plausible practice is supposed to land in.
 
-  1. A permanently red suite is not a signal, it is noise: it hides the NEXT real
-     regression. `expectedFailure` keeps the misalignment machine-checked without
-     turning the whole 1305-test baseline red.
-  2. It is a self-clearing tripwire in BOTH directions, so nothing is hidden:
-     - after the re-fit the band assertion starts passing, unittest reports an
-       "unexpected success", and `wasSuccessful()` returns False (Python >= 3.4) --
-       the suite goes red until the decorator is removed;
-     - `TestTodaysBrokenValuesArePinned` pins the exact broken rates the current
-       tree produces, so the re-fit ALSO has to come here and update them.
-
-Read the pinned values in `TestTodaysBrokenValuesArePinned` as the measured
-evidence of the misalignment, and the bands below as the acceptance criterion for
-the pending re-fit. The fix is the re-fit (see aq.py's per-tool-call rate targets
-and gnomon/scoring/calibration.py), NOT loosening these bands.
+Keep reading this file as the acceptance test for any FUTURE re-fit: change a target
+and the pinned ratios move, which is the signal that the fixture's practice level has
+to be re-argued rather than the band widened.
 """
 import unittest
 
@@ -71,9 +63,11 @@ SPAN_TURNS = 20
 
 REVIEW_SKILLS = ("judgment-day", "code-review:code-review", "sdd-verify",
                  "review-reliability", "caveman-review",
-                 # Recognised by a human as verification, MISSED by
-                 # _is_review_skill_name's exact-tail `verify` rule -- the second,
-                 # compounding cause of the review-rate collapse.
+                 # The noun form. Missed by v8's exact-tail `verify` rule AND by the
+                 # pre-v8 substring rule ("verification" does not contain "verify"), so
+                 # it stayed in the corpus and out of the review numerator until 9:9:9
+                 # widened the matcher to a `verif`-LEADING tail. Kept in the fixture as
+                 # the regression guard for that.
                  "superpowers:verification-before-completion")
 OTHER_SKILLS = ("superpowers:test-driven-development", "brainstorming", "writing-plans",
                 "superpowers:systematic-debugging", "sdd-tasks", "skill-creator")
@@ -207,19 +201,20 @@ class TestRatesReachTheScoringLayer(_ScoredCorpus):
         self.assertEqual(self.verification["review_skills_per_call_target"],
                          REVIEW_SKILLS_PER_CALL_TARGET)
 
-    def test_review_matcher_drops_a_real_verification_skill(self):
-        """The second, compounding cause: `superpowers:verification-before-completion`
-        is in the corpus and in `skills_all`, but _is_review_skill_name's exact-tail
-        `verify` rule excludes it, so those invocations never reach the review rate."""
+    def test_review_matcher_reaches_every_review_skill_in_the_corpus(self):
+        """`superpowers:verification-before-completion` is in the corpus and in
+        `skills_all`; since 9:9:9 the matcher's `verif`-leading tail rule counts it, so the
+        scored review numerator is the WHOLE review class rather than a lossy subset."""
         skills_all = dict(self.stats["stack"]["skills_all"])
-        missed = "superpowers:verification-before-completion"
-        self.assertGreater(skills_all.get(missed, 0), 0)
-        self.assertFalse(_is_review_skill_name(missed))
+        noun_form = "superpowers:verification-before-completion"
+        self.assertGreater(skills_all.get(noun_form, 0), 0)
+        self.assertTrue(_is_review_skill_name(noun_form))
         counted = sum(n for k, n in skills_all.items() if _is_review_skill_name(k))
         review_class = sum(n for k, n in skills_all.items() if k in REVIEW_SKILLS)
         self.assertEqual(self.verification["review_skills"], counted)
-        self.assertLess(counted, review_class,
-                        "fixture must contain at least one review skill the matcher misses")
+        self.assertEqual(counted, review_class,
+                         "the matcher must not silently drop any review-class skill "
+                         "the fixture invokes")
 
 
 class TestSyntheticCorpusVolumeIsHonest(_ScoredCorpus):
@@ -246,9 +241,8 @@ class TestSyntheticCorpusVolumeIsHonest(_ScoredCorpus):
 
 
 class TestScoreableBands(_ScoredCorpus):
-    """MUST FAIL on the current tree -- see the module docstring."""
+    """The acceptance criterion for the calibration -- see the module docstring."""
 
-    @unittest.expectedFailure
     def test_skills_total_per_call_reaches_a_scoreable_band(self):
         rate = self.skill_fluency["skills_total_per_call"]
         lo, hi = self._band(SKILLS_TOTAL_PER_CALL_TARGET)
@@ -260,14 +254,12 @@ class TestScoreableBands(_ScoredCorpus):
             f"({rate / SKILLS_TOTAL_PER_CALL_TARGET:.1%} of target from "
             f"{self.skill_fluency['skills_total']} deduped skill invocations over "
             f"{self.skill_fluency['tool_calls']} tool calls). "
-            "The target was fitted against a PRE-dedup numerator; commit 28d3bda "
-            "made a skill count once per (session, skill) span instead of once per "
-            "attributed turn, which is correct behaviour and left the target ~2 "
-            "orders of magnitude too high. FIX: re-fit the per-tool-call rate "
-            "targets in gnomon/scoring/aq.py and bump SCORE_CONTRACT_ID "
+            "This band was red on contract 8:8:8 because the target was fitted against "
+            "a PRE-dedup numerator; 9:9:9 re-fitted it. If it is red again, either the "
+            "counting rule moved or a re-fit over-corrected. Re-fit the per-tool-call "
+            "rate targets in gnomon/scoring/aq.py and bump SCORE_CONTRACT_ID "
             "(gnomon/scoring/calibration.py binds them). Do NOT widen this band.")
 
-    @unittest.expectedFailure
     def test_review_skills_per_call_reaches_a_scoreable_band(self):
         rate = self.verification["review_skills_per_call"]
         lo, hi = self._band(REVIEW_SKILLS_PER_CALL_TARGET)
@@ -279,38 +271,39 @@ class TestScoreableBands(_ScoredCorpus):
             f"({rate / REVIEW_SKILLS_PER_CALL_TARGET:.1%} of target from "
             f"{self.verification['review_skills']} counted review invocations over "
             f"{self.verification['tool_calls']} tool calls). "
-            "TWO compounding causes: (1) the same span dedup as skills_total, and "
-            "(2) _is_review_skill_name (gnomon/analysis/metrics.py) narrowed to an "
-            "exact-tail `verify` match, which drops real verification skills such "
-            "as `superpowers:verification-before-completion`. FIX: widen the "
-            "matcher AND re-fit REVIEW_SKILLS_PER_CALL_TARGET together, then bump "
-            "SCORE_CONTRACT_ID. Do NOT widen this band.")
+            "This band was red on contract 8:8:8 for TWO compounding reasons: the same "
+            "span dedup as skills_total, and `_is_review_skill_name` dropping real "
+            "verification skills. 9:9:9 fixed both together. If it is red again, re-fit "
+            "REVIEW_SKILLS_PER_CALL_TARGET and bump SCORE_CONTRACT_ID. Do NOT widen "
+            "this band.")
 
 
-class TestTodaysBrokenValuesArePinned(_ScoredCorpus):
-    """The other half of the tripwire: the misalignment is documented as a number,
-    not only as an expected failure. When the re-fit lands these go red and must be
-    updated in the same change that removes the `expectedFailure` decorators above."""
+class TestScoredRatesArePinned(_ScoredCorpus):
+    """The other half of the tripwire: the calibration is documented as a NUMBER, not only
+    as a band. A target change moves these ratios, so a future re-fit has to come here and
+    re-argue the fixture's practice level instead of quietly widening the band above."""
 
-    # Measured on HEAD ca55882 (score contract v8) from the fixture above:
-    #   28 deduped skill invocations / 2748 tool calls = 0.010189  (4.1% of 0.25)
-    #   12 counted review invocations / 2748 tool calls = 0.004367 (7.3% of 0.060)
-    TODAYS_SKILLS_TOTAL_PER_CALL = 0.010189
-    TODAYS_REVIEW_SKILLS_PER_CALL = 0.004367
+    # Measured on the 9:9:9 tree from the fixture above:
+    #   28 deduped skill invocations  / 2748 tool calls = 0.010189 (113% of 0.009)
+    #   14 counted review invocations / 2748 tool calls = 0.005095 (127% of 0.004)
+    # The review count is 14, not 12: the 9:9:9 matcher also counts the two
+    # `superpowers:verification-before-completion` spans (see REVIEW_SKILLS above).
+    SKILLS_TOTAL_PER_CALL = 0.010189
+    REVIEW_SKILLS_PER_CALL = 0.005095
 
-    def test_skills_total_per_call_is_pinned_near_zero(self):
+    def test_skills_total_per_call_is_pinned_on_target(self):
         self.assertAlmostEqual(self.skill_fluency["skills_total_per_call"],
-                               self.TODAYS_SKILLS_TOTAL_PER_CALL, places=6)
-        self.assertLess(self.skill_fluency["skills_total_per_call"],
-                        0.10 * SKILLS_TOTAL_PER_CALL_TARGET,
-                        "heavy skill practice still scores under a tenth of target")
+                               self.SKILLS_TOTAL_PER_CALL, places=6)
+        self.assertGreater(self.skill_fluency["skills_total_per_call"],
+                           SKILLS_TOTAL_PER_CALL_TARGET,
+                           "heavy skill practice must score at or above target")
 
-    def test_review_skills_per_call_is_pinned_near_zero(self):
+    def test_review_skills_per_call_is_pinned_on_target(self):
         self.assertAlmostEqual(self.verification["review_skills_per_call"],
-                               self.TODAYS_REVIEW_SKILLS_PER_CALL, places=6)
-        self.assertLess(self.verification["review_skills_per_call"],
-                        0.10 * REVIEW_SKILLS_PER_CALL_TARGET,
-                        "heavy review practice still scores under a tenth of target")
+                               self.REVIEW_SKILLS_PER_CALL, places=6)
+        self.assertGreater(self.verification["review_skills_per_call"],
+                           REVIEW_SKILLS_PER_CALL_TARGET,
+                           "heavy review practice must score at or above target")
 
 
 if __name__ == "__main__":

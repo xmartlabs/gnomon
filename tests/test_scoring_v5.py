@@ -1523,7 +1523,7 @@ class TestV5Contract(unittest.TestCase):
     def test_compute_aq_emits_exact_contract(self):
         stats = {"corpus": {"sources": {}}, "volume": {"total_sessions": 0},
                  "tools": {}, "stack": {}, "behavior": {}}
-        self.assertEqual(SCORE_CONTRACT_ID, "8:8:8")
+        self.assertEqual(SCORE_CONTRACT_ID, "9:9:9")
         self.assertEqual(compute_aq(stats)["score_contract_id"], SCORE_CONTRACT_ID)
 
     def test_blend_rejects_missing_or_mismatched_contract(self):

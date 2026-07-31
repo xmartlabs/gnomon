@@ -108,8 +108,10 @@ directly — no external dependency). Both decode to the same normalized events.
 
 ## Uploaded summary contract
 
-Current runtime contract: **scoring inputs version 8**, **AQ version 8**, and **GStack version 8** (`score_contract_id = 8:8:8`). Previous-contract scores
-must not be shown as improvement or regression against v7. AQ is blended as
+Current runtime contract: **scoring inputs version 9**, **AQ version 9**, and **GStack version 9** (`score_contract_id = 9:9:9`). Previous-contract scores
+must not be shown as improvement or regression against v9 — v9 re-fits the two Skill rate
+targets onto v8's post-dedup counters and widens review-skill recognition, so the Skill
+fluency and Verification axes moved for calibration reasons alone. AQ is blended as
 65% recent (rolling 30-day) + 35%
 full-window (cumulative). The full window includes recent activity, so
 improvements are reflected in both components. Empty recent windows fall back
@@ -153,6 +155,18 @@ local transcripts — this is the entry point a future recompute job (re-scoring
 rows under a new metric definition) should call. It is composition-only: no scoring
 formula is reimplemented, and it raises `ReplayError` rather than guessing whenever the
 payload lacks data the original run genuinely depended on.
+
+**Which payloads can be replayed: a changed FORMULA yes, a changed COUNTER no.** Re-scoring
+an old payload under a new metric definition is the point, so a payload stamped with an
+older `score_contract_id` / `aq_version` / `gstack_version` replays normally and
+deliberately gets today's formula. `scoring_inputs_version` is the exception: it versions
+what the stored counters MEAN, and nothing in the payload allows re-deriving them (there are
+no transcripts in it). A payload from before the v8 skill-counting dedup carries PRE-dedup
+skill counters — 4.0x larger pooled, 25.8x on Claude — which today's post-dedup targets
+would saturate on arithmetic alone, so `replay()` raises `IncompatibleScoringInputs` (both a
+`ReplayError` and an `IncompatibleScoreContract`) for any `scoring_inputs_version` outside
+`[SKILL_DEDUP_INPUTS_VERSION, SCORING_INPUTS_VERSION]`, including a payload that declares
+none. A recompute job walking stored rows should catch it and skip that row.
 
 **Exactness is NOT uniform across payload shapes** — `replay()`'s return value carries an
 `aq_exactness` field so a caller can tell which regime it got:
