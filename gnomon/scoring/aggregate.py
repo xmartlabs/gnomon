@@ -38,8 +38,15 @@ AGGREGATE RULE (documented contract — mirdash mirrors this in TS):
 
 ONE CANONICAL COMBINED AQ:
     The aggregate AQ is a DIAGNOSTIC (`aggregate.aq_diagnostic`), not a published score.
-    `profile.aq` — compute_aq over the merged corpus — is the canonical combined AQ, because
-    distinct counts are UNIONS. Measured on a real three-source corpus: the merged stats see
+    `profile.aq` is the canonical combined AQ that gets PUBLISHED — but it is NOT the raw
+    `compute_aq` output over the merged corpus. `gnomon/cli/local.py` (:313) applies the
+    65/35 recency blend (`_blend_aq`) to that merged-corpus `compute_aq` result before it
+    becomes `profile.aq`; the unblended merged-corpus value is an intermediate, never
+    itself published. The same blend applies at `aggregate.py:674-675` (this module,
+    `score_by_source`'s aggregate) and at `replay.py:264-269, :327-332` (recompute).
+    Distinct counts being UNIONS is still the reason the merged corpus (blended or not)
+    is preferred over blending per-source SCORES. Measured on a real three-source
+    corpus: the merged stats see
     7 MCP servers where the Claude slice alone sees 6, and 42 CLIs where it sees 41, so merged
     Tool command scores 22.5/28 against 21.5/28 for Claude alone. A user who commands 7 MCP
     servers spread across three tools genuinely commands 7; blending per-source SCORES

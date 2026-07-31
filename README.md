@@ -101,8 +101,8 @@ components — recent behavior dominates while the full window provides
 stability. When the recent window has no sessions the blend falls back to the
 unblended full-window AQ.
 
-This runtime emits **scoring inputs version 7**, **AQ version 7**, and **GStack version 7** (`score_contract_id = 7:7:7`). Scores from the previous
-contract must not be presented as an improvement or regression against v6.
+This runtime emits **scoring inputs version 8**, **AQ version 8**, and **GStack version 8** (`score_contract_id = 8:8:8`). Scores from the previous
+contract must not be presented as an improvement or regression against v7.
 
 Rate terms (test runs, review skills, ToolSearch, task planning, skills,
 compounding writes) are scored **per tool call**, not per session. One session is

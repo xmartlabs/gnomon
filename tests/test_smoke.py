@@ -186,6 +186,10 @@ class TestPipeline(unittest.TestCase):
         "profiles_by_source", "source_usage", "source_usage_monthly", "token_usage",
         "aq_version", "gstack_version", "score_contract_id", "comparison_policy",
             "timing",
+            # coverage-index capability (honest-aq-series): per-month history.jsonl
+            # coverage index, outside scoring_inputs* so replay()/scoring rate
+            # denominators are unaffected. Deliberate ceremony edit for this pin.
+            "coverage",
             # recompute-grade-payload (persist-recompute-grade-inputs): an additive
             # block so a future recompute job can re-derive profile.aq (and its
             # 65/35 recency blend) from the payload alone -- exact for single-source,

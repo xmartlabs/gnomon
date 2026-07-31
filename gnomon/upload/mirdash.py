@@ -11,6 +11,7 @@ import tempfile
 import urllib.parse
 
 from gnomon.scoring.versioning import SCORE_CONTRACT_ID
+from gnomon.coverage import COVERAGE_RANK, flag_for_counts, month_index, probe_month
 
 
 _COPIED_OUTPUTS = (
@@ -426,6 +427,37 @@ def windows_for_anchors(anchor_labels, window_months=1):
     return result
 
 
+def default_producible_coverage_for(month_key):
+    """Real `producible_coverage_for` implementation: the cheap pre-scoring
+    check (no accumulator run, no JSON parsing of transcripts) that decides
+    whether re-scoring the previous month is even worth attempting.
+
+    Wired by gnomon/cli/insights.py's real console/web call sites; deliberately
+    NOT plan_upload's default (see its docstring) so a caller that has not
+    explicitly opted in never touches the filesystem for this decision."""
+    from gnomon.sources.discovery import ALL_SOURCES, discover_sources
+    source_paths = [fp for _, fp, _ in discover_sources(ALL_SOURCES)]
+    idx = month_index()
+    indexed, transcripts = probe_month(month_key, source_paths, history_index=idx)
+    flag = flag_for_counts(indexed, transcripts)
+    return (COVERAGE_RANK.get(flag), transcripts)
+
+
+def _stored_coverage_rank_and_transcripts(previous_entry):
+    """(rank, transcripts) from a server-stored month entry's `coverage` field,
+    or (None, 0) when absent/invalid -- `None` is INCOMPARABLE (never a
+    justification to refresh), covering both a pre-coverage-capability upload
+    (old client/server) and a genuinely unknown month."""
+    coverage = previous_entry.get("coverage") if isinstance(previous_entry, dict) else None
+    if not isinstance(coverage, dict):
+        return (None, 0)
+    rank = COVERAGE_RANK.get(coverage.get("flag"))
+    transcripts = coverage.get("transcripts") or 0
+    if not isinstance(transcripts, int) or isinstance(transcripts, bool):
+        transcripts = 0
+    return (rank, transcripts)
+
+
 def plan_upload(
     today,
     server_months,
@@ -433,6 +465,7 @@ def plan_upload(
     max_months=_MAX_BACKFILL,
     *,
     active_contract=SCORE_CONTRACT_ID,
+    producible_coverage_for=None,
 ):
     """Return sorted list (oldest first) of (anchor 'YYYY-MM', reason) pairs to upload.
 
@@ -442,13 +475,28 @@ def plan_upload(
                    internal backward compatibility only.
     force:         bool — when True, behave as if server were empty (full backfill).
     max_months:    hard cap; never return more than this many anchors.
+    producible_coverage_for: optional `month_key -> (rank, transcripts)` callable
+                   (see gnomon.coverage.COVERAGE_RANK) used ONLY to decide whether
+                   the previous month is worth a coverage-gated refresh. Omitting
+                   it (the default) is the SAFE choice: no refresh is ever
+                   triggered, so a caller that has not wired a real cheap
+                   pre-check (gnomon.coverage.probe_month over discover_sources)
+                   never spends an upload on a refresh it cannot justify.
 
-    reason ∈ {'force', 'initial', 'current', 'gap', 'refresh', 'contract-bridge'}
+    reason ∈ {'force', 'initial', 'current', 'gap', 'refresh'}
       explicit valid history:
-        previous contract matches active → current only
-        previous missing/unstamped/different → previous then current
+        previous entry missing                        → gap, then current
+        previous or producible coverage rank is None   → current only (incomparable)
+        producible (rank, transcripts) > stored         → refresh, then current
+        otherwise                                       → current only
       unavailable/legacy/malformed/valid-empty → current only
       force=True → full explicit backfill
+
+    `contract-bridge` (scoreContractId-based comparison) is REMOVED: coverage
+    is the only comparison basis for whether the previous month is worth
+    re-scoring (see design.md decision B; a coverage-gated refresh is safe
+    across a contract change too, since the anti-degradation guard on the
+    server never lets a worse payload replace a better stored row).
     Legacy list compatibility:
       force=True                      → each anchor gets reason 'force'
       server empty (no valid entries) → each anchor gets reason 'initial'
@@ -478,12 +526,18 @@ def plan_upload(
             if isinstance(entry, dict) and isinstance(entry.get("monthKey"), str)
         }
         previous_entry = by_month.get(previous)
-        if (
-            previous_entry is not None
-            and previous_entry.get("scoreContractId") == active_contract
-        ):
+        if previous_entry is None:
+            return [(previous, "gap"), (current, "current")]
+
+        stored_rank, stored_transcripts = _stored_coverage_rank_and_transcripts(previous_entry)
+        producible = producible_coverage_for(previous) if producible_coverage_for else (None, 0)
+        producible_rank, producible_transcripts = producible if producible else (None, 0)
+
+        if stored_rank is None or producible_rank is None:
             return [(current, "current")]
-        return [(previous, "contract-bridge"), (current, "current")]
+        if (producible_rank, producible_transcripts) > (stored_rank, stored_transcripts):
+            return [(previous, "refresh"), (current, "current")]
+        return [(current, "current")]
 
     # Parse server_months defensively; skip malformed entries
     valid_server = {}
@@ -561,6 +615,7 @@ def months_to_upload(
     max_months=_MAX_BACKFILL,
     *,
     active_contract=SCORE_CONTRACT_ID,
+    producible_coverage_for=None,
 ):
     """Return sorted list (oldest first) of anchor 'YYYY-MM' labels to upload.
 
@@ -588,6 +643,7 @@ def months_to_upload(
             force,
             max_months,
             active_contract=active_contract,
+            producible_coverage_for=producible_coverage_for,
         )
     ]
 
@@ -636,9 +692,26 @@ def _history_from_query(parsed_qs):
         contract = entry.get("scoreContractId")
         if contract is not None and (not isinstance(contract, str) or not contract):
             return {"state": "malformed", "months": []}
+        coverage = entry.get("coverage")
+        if coverage is not None:
+            _flag = coverage.get("flag") if isinstance(coverage, dict) else None
+            _indexed = coverage.get("indexed") if isinstance(coverage, dict) else None
+            _transcripts = coverage.get("transcripts") if isinstance(coverage, dict) else None
+            if (
+                not isinstance(coverage, dict)
+                or _flag not in ("complete", "partial", "insufficient", "unknown")
+                or not isinstance(_indexed, int) or isinstance(_indexed, bool)
+                or not isinstance(_transcripts, int) or isinstance(_transcripts, bool)
+            ):
+                # All-or-nothing strictness (consistent with the rest of this
+                # parser): a structurally invalid coverage object invalidates
+                # the WHOLE history, not just this one entry.
+                return {"state": "malformed", "months": []}
         normalized = {"monthKey": month_key, "uploadedAt": uploaded_at}
         if contract is not None:
             normalized["scoreContractId"] = contract
+        if coverage is not None:
+            normalized["coverage"] = coverage
         existing = best.get(month_key)
         if existing is None or normalized["uploadedAt"] > existing["uploadedAt"]:
             best[month_key] = normalized

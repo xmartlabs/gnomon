@@ -261,6 +261,9 @@ class TestMainConsoleDryRun(unittest.TestCase):
             patch.object(_mirdash, "_run_paxel") as mock_paxel,
             patch.object(_mirdash, "_upload_summary") as mock_upload,
             patch("gnomon.cli.insights.datetime") as mock_dt,
+            # Deterministic, filesystem-free stand-in for the real cheap coverage
+            # pre-check -- see gnomon.upload.mirdash.default_producible_coverage_for.
+            patch.object(_insights, "default_producible_coverage_for", return_value=(2, 999)),
             contextlib.redirect_stdout(buf),
         ):
             mock_wb.open.return_value = True
@@ -327,7 +330,32 @@ class TestMainConsoleDryRun(unittest.TestCase):
         mock_upload.assert_not_called()
         self.assertEqual(code, 0)
 
-    def test_contract_bridge_dry_run_reports_only_previous_and_current(self):
+    def test_coverage_gated_refresh_dry_run_reports_only_previous_and_current(self):
+        """contract-bridge is REMOVED: the previous month is only re-planned
+        when its STORED coverage is worse than what is producible now (design
+        decision B), never merely because scoreContractId differs."""
+        history = {
+            "state": "valid",
+            "months": [
+                {
+                    "monthKey": "2025-06",
+                    "uploadedAt": 1,
+                    "coverage": {"flag": "insufficient", "indexed": 50, "transcripts": 0},
+                }
+            ],
+        }
+        out, mock_paxel, mock_upload, _, code = self._run_dry_run_console(uploaded=history)
+        self.assertIn("2 month(s)", out)
+        self.assertIn("2025-06  refresh (server snapshot predates month end)", out)
+        self.assertIn("2025-07  current month", out)
+        self.assertNotIn("2025-05", out)
+        mock_paxel.assert_not_called()
+        mock_upload.assert_not_called()
+        self.assertEqual(code, 0)
+
+    def test_contract_mismatch_alone_never_triggers_a_bridge(self):
+        """A pure scoreContractId mismatch with no coverage data at all must
+        plan current-only -- contract is no longer a comparison basis."""
         history = {
             "state": "valid",
             "months": [
@@ -339,10 +367,9 @@ class TestMainConsoleDryRun(unittest.TestCase):
             ],
         }
         out, mock_paxel, mock_upload, _, code = self._run_dry_run_console(uploaded=history)
-        self.assertIn("2 month(s)", out)
-        self.assertIn("2025-06  rebuild comparable baseline", out)
+        self.assertIn("1 month(s)", out)
         self.assertIn("2025-07  current month", out)
-        self.assertNotIn("2025-05", out)
+        self.assertNotIn("2025-06", out)
         mock_paxel.assert_not_called()
         mock_upload.assert_not_called()
         self.assertEqual(code, 0)
@@ -392,6 +419,9 @@ class TestMainWebDryRun(unittest.TestCase):
             patch.object(_mirdash, "_run_paxel") as mock_paxel,
             patch.object(_mirdash, "_upload_summary") as mock_upload,
             patch("gnomon.cli.insights.datetime") as mock_dt,
+            # Deterministic, filesystem-free stand-in for the real cheap coverage
+            # pre-check -- see gnomon.upload.mirdash.default_producible_coverage_for.
+            patch.object(_insights, "default_producible_coverage_for", return_value=(2, 999)),
             contextlib.redirect_stdout(buf),
         ):
             mock_wb.open.return_value = True
@@ -543,6 +573,9 @@ class TestMainWebOSErrorFallbackDryRun(unittest.TestCase):
             patch.object(_mirdash, "_run_paxel") as mock_paxel,
             patch.object(_mirdash, "_upload_summary") as mock_upload,
             patch("gnomon.cli.insights.datetime") as mock_dt,
+            # Deterministic, filesystem-free stand-in for the real cheap coverage
+            # pre-check -- see gnomon.upload.mirdash.default_producible_coverage_for.
+            patch.object(_insights, "default_producible_coverage_for", return_value=(2, 999)),
             contextlib.redirect_stdout(buf),
         ):
             mock_wb.open.return_value = True

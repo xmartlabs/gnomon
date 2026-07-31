@@ -273,6 +273,12 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
             ) as mock_upload,
             patch.object(_insights.os.path, "isfile", return_value=True),
             patch.object(_insights.sys, "argv", ["xl-ai-insights"] + argv),
+            # Deterministic, filesystem-free stand-in for the real cheap
+            # pre-check (gnomon.coverage.probe_month over discover_sources):
+            # a high producible coverage so fixtures with a low STORED
+            # coverage on the previous month reconstruct a "previous +
+            # current" 2-window plan without touching the real filesystem.
+            patch.object(_insights, "default_producible_coverage_for", return_value=(2, 999)),
         ):
             mock_wb.open.return_value = True
             exit_code = None
@@ -375,7 +381,8 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         history = {
             "state": "valid",
             "months": [
-                {"monthKey": prev, "uploadedAt": 1, "scoreContractId": "old-contract"}
+                {"monthKey": prev, "uploadedAt": 1,
+                 "coverage": {"flag": "insufficient", "indexed": 50, "transcripts": 0}}
             ],
         }
         mock_paxel, mock_upload = self._run_main(
@@ -391,7 +398,7 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
             ["previous-token", "current-token"],
         )
 
-    def test_failed_previous_bridge_still_runs_current_and_warns(self):
+    def test_failed_previous_bridge_still_runs_current(self):
         today = datetime.date.today()
         cur_total = today.year * 12 + (today.month - 1)
         prev_total = cur_total - 1
@@ -399,28 +406,22 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         history = {
             "state": "valid",
             "months": [
-                {"monthKey": prev, "uploadedAt": 1, "scoreContractId": "old-contract"}
+                {"monthKey": prev, "uploadedAt": 1,
+                 "coverage": {"flag": "insufficient", "indexed": 50, "transcripts": 0}}
             ],
         }
-        with patch("builtins.print") as mock_print:
-            mock_paxel, mock_upload = self._run_main(
-                argv=["--no-open"],
-                run_paxel_side_effect=[None, _make_summary(sessions=3)],
-                upload_return_values=["/r/current"],
-                tokens=["previous-token", "current-token"],
-                uploaded=history,
-            )
+        mock_paxel, mock_upload = self._run_main(
+            argv=["--no-open"],
+            run_paxel_side_effect=[None, _make_summary(sessions=3)],
+            upload_return_values=["/r/current"],
+            tokens=["previous-token", "current-token"],
+            uploaded=history,
+        )
         self.assertEqual(mock_paxel.call_count, 2)
         self.assertEqual(mock_upload.call_count, 1)
         self.assertEqual(mock_upload.call_args.args[1], "current-token")
-        self.assertTrue(
-            any(
-                "comparable baseline was not rebuilt" in str(call)
-                for call in mock_print.call_args_list
-            )
-        )
 
-    def test_empty_previous_bridge_still_runs_current_and_warns(self):
+    def test_empty_previous_bridge_still_runs_current(self):
         today = datetime.date.today()
         cur_total = today.year * 12 + (today.month - 1)
         prev_total = cur_total - 1
@@ -428,29 +429,23 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         history = {
             "state": "valid",
             "months": [
-                {"monthKey": prev, "uploadedAt": 1, "scoreContractId": "old-contract"}
+                {"monthKey": prev, "uploadedAt": 1,
+                 "coverage": {"flag": "insufficient", "indexed": 50, "transcripts": 0}}
             ],
         }
-        with patch("builtins.print") as mock_print:
-            mock_paxel, mock_upload = self._run_main(
-                argv=["--no-open"],
-                run_paxel_side_effect=[
-                    _make_summary(sessions=0),
-                    _make_summary(sessions=3),
-                ],
-                upload_return_values=["/r/current"],
-                tokens=["previous-token", "current-token"],
-                uploaded=history,
-            )
+        mock_paxel, mock_upload = self._run_main(
+            argv=["--no-open"],
+            run_paxel_side_effect=[
+                _make_summary(sessions=0),
+                _make_summary(sessions=3),
+            ],
+            upload_return_values=["/r/current"],
+            tokens=["previous-token", "current-token"],
+            uploaded=history,
+        )
         self.assertEqual(mock_paxel.call_count, 2)
         self.assertEqual(mock_upload.call_count, 1)
         self.assertEqual(mock_upload.call_args.args[1], "current-token")
-        self.assertTrue(
-            any(
-                "comparable baseline was not rebuilt" in str(call)
-                for call in mock_print.call_args_list
-            )
-        )
 
     def test_current_month_paxel_error_does_not_fall_back(self):
         """A paxel run FAILURE (None) for the only window must NOT trigger any
@@ -503,14 +498,12 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         )
         self.assertEqual(exit_code, 1)
 
-        with patch("builtins.print") as printed:
-            paxel, upload, exit_code = self._run_main(
-                ["--no-open"], [RuntimeError("previous crashed"), _make_summary()],
-                ["/r/current"], ["previous-token", "current-token"], history, True,
-            )
+        paxel, upload, exit_code = self._run_main(
+            ["--no-open"], [RuntimeError("previous crashed"), _make_summary()],
+            ["/r/current"], ["previous-token", "current-token"], history, True,
+        )
         self.assertIsNone(exit_code)
         self.assertEqual((paxel.call_count, upload.call_args.args[1]), (2, "current-token"))
-        self.assertTrue(any("comparable baseline was not rebuilt" in str(c) for c in printed.call_args_list))
 
 
 class TestWebContractBridgeOrchestration(unittest.TestCase):
@@ -533,6 +526,7 @@ class TestWebContractBridgeOrchestration(unittest.TestCase):
                 "_upload_window_web",
                 side_effect=upload_results,
             ) as mock_upload_window,
+            patch.object(_insights, "default_producible_coverage_for", return_value=(2, 999)),
         ):
             exit_code = None
             try:
@@ -544,6 +538,11 @@ class TestWebContractBridgeOrchestration(unittest.TestCase):
 
     @staticmethod
     def _bridge_history():
+        """History with a previous month whose STORED coverage is low
+        (insufficient) -- combined with the module-level patch of
+        default_producible_coverage_for to a high value in _run_main/_run_web,
+        this deterministically reconstructs the "previous + current" 2-window
+        plan (honest-aq-series coverage gate, replacing contract-bridge)."""
         today = datetime.date.today()
         current_total = today.year * 12 + (today.month - 1)
         previous_total = current_total - 1
@@ -554,7 +553,7 @@ class TestWebContractBridgeOrchestration(unittest.TestCase):
                 {
                     "monthKey": previous,
                     "uploadedAt": 1,
-                    "scoreContractId": "old-contract",
+                    "coverage": {"flag": "insufficient", "indexed": 50, "transcripts": 0},
                 }
             ],
         }
@@ -581,9 +580,7 @@ class TestWebContractBridgeOrchestration(unittest.TestCase):
 
     def test_web_bridge_continues_current_after_previous_empty_or_failure(self):
         for previous_result in (None, _PAXEL_ERROR):
-            with self.subTest(previous_result=previous_result), patch(
-                "builtins.print"
-            ) as mock_print:
+            with self.subTest(previous_result=previous_result):
                 server, mock_upload_window, _ = self._run_web(
                     self._bridge_history(),
                     [previous_result, "/r/current"],
@@ -591,12 +588,6 @@ class TestWebContractBridgeOrchestration(unittest.TestCase):
 
             self.assertEqual(mock_upload_window.call_count, 2)
             self.assertEqual(mock_upload_window.call_args_list[1].args[1], "current-token")
-            self.assertTrue(
-                any(
-                    "comparable baseline was not rebuilt" in str(call)
-                    for call in mock_print.call_args_list
-                )
-            )
             done_events = [
                 call.args[1]
                 for call in server.push_event.call_args_list
@@ -620,11 +611,9 @@ class TestWebContractBridgeOrchestration(unittest.TestCase):
                 self.assertEqual((exit_code, done["reportUrl"]), (1, ""))
                 self.assertTrue(server.shutdown.called)
 
-        with patch("builtins.print") as printed:
-            server, upload, exit_code = self._run_web(history, [RuntimeError("previous crashed"), "/r/current"])
+        server, upload, exit_code = self._run_web(history, [RuntimeError("previous crashed"), "/r/current"])
         done = [c.args[1] for c in server.push_event.call_args_list if c.args[0] == "done"][-1]
         self.assertEqual((exit_code, upload.call_count, done["reportUrl"]), (None, 2, "/r/current"))
-        self.assertTrue(any("comparable baseline was not rebuilt" in str(c) for c in printed.call_args_list))
 
     def test_web_bridge_budget_violation_on_non_latest_month_exits_nonzero(self):
         """The reupload-loop gap this change closes: a non-latest (previous) month

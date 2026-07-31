@@ -142,14 +142,20 @@ def _is_review_skill_name(name):
     `review-reliability`, `review-resilience`) and adversarial review protocols
     (`judgment-day`, `jd-judge-*`)."""
     s = str(name or "").lower()
-    if any(k in s for k in ("code-review", "requesting-code-review", "cerberus", "verify")):
+    if any(k in s for k in ("code-review", "requesting-code-review", "cerberus")):
         return True
     tail = s.split(":")[-1].split("/")[-1]
     if tail in _PLANNING_REVIEW_TAILS or tail.startswith("plan"):
         return False
     if tail.startswith("review-") or tail.startswith("judgment") or tail.startswith("jd-judge"):
         return True
-    return tail == "review" or tail.endswith("-review")
+    if tail == "review" or tail.endswith("-review"):
+        return True
+    # Exact-TAIL match for "verify" -- a bare substring match previously matched
+    # any name containing "verify" anywhere (e.g. "email-verify-flow",
+    # "verify-and-notify"), which is not a review/verification skill just
+    # because the word appears mid-name.
+    return tail == "verify" or tail.endswith("-verify")
 
 
 def _review_skill_uses(skills):

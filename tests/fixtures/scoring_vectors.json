@@ -26,7 +26,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "7:7:7",
+          "score_contract_id": "8:8:8",
           "tier": "Advanced"
         },
         "archetype": {
@@ -500,7 +500,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "7:7:7",
+            "score_contract_id": "8:8:8",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -905,7 +905,7 @@
         }
       }
     },
-    "scoring_inputs_version": 7
+    "scoring_inputs_version": 8
   },
   {
     "expected": {
@@ -934,7 +934,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "7:7:7",
+          "score_contract_id": "8:8:8",
           "tier": "Adequate"
         },
         "archetype": {
@@ -1391,7 +1391,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "7:7:7",
+            "score_contract_id": "8:8:8",
             "tier": "Adequate",
             "tool_diversity": {
               "distinct": 12,
@@ -1715,7 +1715,7 @@
         }
       }
     },
-    "scoring_inputs_version": 7
+    "scoring_inputs_version": 8
   },
   {
     "expected": {
@@ -1744,7 +1744,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "7:7:7",
+          "score_contract_id": "8:8:8",
           "tier": "Advanced"
         },
         "archetype": {
@@ -2219,7 +2219,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "7:7:7",
+            "score_contract_id": "8:8:8",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -2668,7 +2668,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "7:7:7",
+            "score_contract_id": "8:8:8",
             "tier": "Adequate",
             "tool_diversity": {
               "distinct": 12,
@@ -3141,7 +3141,7 @@
         }
       }
     },
-    "scoring_inputs_version": 7
+    "scoring_inputs_version": 8
   },
   {
     "expected": {
@@ -3170,7 +3170,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "7:7:7",
+          "score_contract_id": "8:8:8",
           "tier": "Advanced"
         },
         "archetype": {
@@ -3644,7 +3644,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "7:7:7",
+            "score_contract_id": "8:8:8",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -4034,7 +4034,7 @@
         }
       }
     },
-    "scoring_inputs_version": 7
+    "scoring_inputs_version": 8
   },
   {
     "expected": {
@@ -4063,7 +4063,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "7:7:7",
+          "score_contract_id": "8:8:8",
           "tier": "Novice"
         },
         "archetype": {
@@ -4518,7 +4518,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "7:7:7",
+            "score_contract_id": "8:8:8",
             "tier": "Novice",
             "tool_diversity": {
               "distinct": 0,
@@ -4850,7 +4850,7 @@
         }
       }
     },
-    "scoring_inputs_version": 7
+    "scoring_inputs_version": 8
   },
   {
     "bucket_metadata": [
@@ -5033,7 +5033,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "7:7:7",
+          "score_contract_id": "8:8:8",
           "tier": "Advanced"
         },
         "archetype": {
@@ -5875,7 +5875,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "7:7:7",
+            "score_contract_id": "8:8:8",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -6273,6 +6273,6 @@
         }
       }
     },
-    "scoring_inputs_version": 7
+    "scoring_inputs_version": 8
   }
 ]

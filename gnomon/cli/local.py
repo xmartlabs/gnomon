@@ -30,6 +30,7 @@ from gnomon.scoring.archetype import pick_archetype
 from gnomon.scoring.inputs import SCORING_INPUTS_VERSION, build_scoring_inputs
 from gnomon.scoring.aggregate import AQ_BUCKETS, RECENCY_BLEND_ENABLED, RECENT_WEIGHT, HISTORY_WEIGHT, _blend_aq
 from gnomon.cli.accumulator import Accumulator
+from gnomon.coverage import month_index as _coverage_month_index, coverage_for as _coverage_for
 from gnomon.output.summary import build_summary
 from gnomon.output.report import write_report
 from gnomon.output.narrative import write_narrative_input
@@ -213,6 +214,16 @@ def main(argv=None, output_dir=None):
     planning_ratio = stats["behavior"]["planning_ratio_explore_to_doing"]
     source_files = narrative["source_files"]
     source_sessions = narrative["source_sessions"]
+
+    # ---- coverage-index (honest-aq-series): NEW, isolated observability lane --
+    # Never a scoring input -- composed outside scoring_inputs* entirely (real
+    # per-month session sets from this run, not the mtime-estimated pre-check
+    # gnomon.coverage.probe_month uses before a full accumulator run).
+    _history_idx = _coverage_month_index()
+    stats["coverage"] = {
+        mkey: _coverage_for(_history_idx.get(mkey), sids)
+        for mkey, sids in sorted(narrative.get("month_sessions", {}).items())
+    }
 
     # ---- per-source scoring inputs (single-pass, from _accumulate) ----------
     # The per-source accumulators were tracked during the corpus _accumulate() run,
@@ -621,6 +632,10 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
         "gc": corpus.gc,
         "source_files": corpus.source_files,
         "source_sessions": corpus.source_sessions,
+        # coverage-index capability: real (not mtime-estimated) per-month
+        # session-id sets, composed against history.jsonl's month_index() by
+        # main() into stats["coverage"] -- see gnomon/coverage.py.
+        "month_sessions": dict(corpus.month_sessions),
         "_per_source_stats": _per_source_stats,
         "_aq_bucket_windows": bucket_windows,
         "_aq_bucket_per_source_stats": bucket_per_source_stats,

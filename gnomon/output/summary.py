@@ -290,6 +290,10 @@ def build_summary(stats):
             "total_sessions": v["total_sessions"],
             "total_prompts": v["total_prompts"],
             "client_version": _client_version(),
+            # The ACTUAL observed span of events (always all_min_dt/all_max_dt),
+            # independent of date_range above (which reports the *requested*
+            # window verbatim when one is given) -- see coverage-index capability.
+            "observed_range": c.get("observed_range") or [None, None],
         },
         "planning_ratio_explore_to_doing": b["planning_ratio_explore_to_doing"],
         **({"plan_sessions_degraded": True} if b.get("plan_sessions_degraded") else {}),
@@ -341,6 +345,15 @@ def build_summary(stats):
         },
         "progression_monthly": (stats.get("progression") or {}).get("monthly", []),
         "noticed_stats_monthly": stats.get("monthly_noticed_stats", []),
+        # Coverage-index capability (honest-aq-series): per-month
+        # {flag, indexed_interactive_sessions, available_transcripts,
+        #  interactive_coverage, transcript_only_sessions}, composed in
+        # gnomon/cli/local.py from gnomon/coverage.py -- outside
+        # scoring_inputs_by_source, so replay()/rate denominators are
+        # unaffected. Never a scoring input (history.jsonl carries no tool/
+        # model/token data). Advisory ratio only -- never asserted as an
+        # exact percentage.
+        "coverage": stats.get("coverage") or {},
         "profile": _build_profile(stats),
         "scoring_inputs_version": stats.get("scoring_inputs_version", SCORING_INPUTS_VERSION),
         "aq_version": AQ_VERSION,

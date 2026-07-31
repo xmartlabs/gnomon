@@ -233,7 +233,7 @@ class TestUploadedFromCallback(unittest.TestCase):
                 {
                     "monthKey": "2025-12",
                     "uploadedAt": 1700000000,
-                    "scoreContractId": "7:7:7",
+                    "scoreContractId": "8:8:8",
                 }
             ],
         }
@@ -255,7 +255,7 @@ class TestUploadedFromCallback(unittest.TestCase):
                         {
                             "monthKey": "2025-12",
                             "uploadedAt": 1700000000,
-                            "scoreContractId": "7:7:7",
+                            "scoreContractId": "8:8:8",
                         }
                     ],
                 },
@@ -331,7 +331,7 @@ class TestCaptureCliTokenHistory(unittest.TestCase):
                 {
                     "monthKey": "2025-12",
                     "uploadedAt": 2,
-                    "scoreContractId": "7:7:7",
+                    "scoreContractId": "8:8:8",
                 }
             ],
         }
@@ -352,7 +352,7 @@ class TestCaptureCliTokenHistory(unittest.TestCase):
                     {
                         "monthKey": "2025-12",
                         "uploadedAt": 2,
-                        "scoreContractId": "7:7:7",
+                        "scoreContractId": "8:8:8",
                     }
                 ],
             },

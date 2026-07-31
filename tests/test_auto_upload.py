@@ -24,6 +24,7 @@ from gnomon.upload.mirdash import (
     _history_from_query,
     _uploaded_from_query,
 )
+from gnomon.coverage import COVERAGE_RANK
 
 
 # ---------------------------------------------------------------------------
@@ -403,7 +404,7 @@ class TestMonthsToUpload(unittest.TestCase):
 
 class TestContractAwareHistory(unittest.TestCase):
     TODAY = datetime.date(2026, 1, 15)
-    CONTRACT = "7:7:7"
+    CONTRACT = "8:8:8"
 
     @staticmethod
     def _query(payload):
@@ -505,9 +506,19 @@ class TestContractAwareHistory(unittest.TestCase):
             ["2026-01"],
         )
 
-    def test_missing_unstamped_or_different_prior_contract_plans_adjacent_pair(self):
+    def test_missing_previous_entry_plans_gap_then_current(self):
+        history = {"state": "valid", "months": [
+            {"monthKey": "2025-11", "uploadedAt": 1, "scoreContractId": self.CONTRACT},
+        ]}
+        self.assertEqual(
+            plan_upload(self.TODAY, history, active_contract=self.CONTRACT),
+            [("2025-12", "gap"), ("2026-01", "current")],
+        )
+
+    def test_missing_or_mismatched_contract_alone_never_triggers_refresh(self):
+        """contract-bridge is REMOVED: neither an absent scoreContractId nor a
+        mismatched one is a comparison basis by itself -- only coverage is."""
         cases = (
-            [{"monthKey": "2025-11", "uploadedAt": 1, "scoreContractId": self.CONTRACT}],
             [{"monthKey": "2025-12", "uploadedAt": 1}],
             [{"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": "6:6:6"}],
         )
@@ -516,8 +527,21 @@ class TestContractAwareHistory(unittest.TestCase):
                 history = {"state": "valid", "months": months}
                 self.assertEqual(
                     plan_upload(self.TODAY, history, active_contract=self.CONTRACT),
-                    [("2025-12", "contract-bridge"), ("2026-01", "current")],
+                    [("2026-01", "current")],
                 )
+
+    def test_worse_stored_coverage_plans_refresh_then_current(self):
+        history = {"state": "valid", "months": [
+            {"monthKey": "2025-12", "uploadedAt": 1,
+             "coverage": {"flag": "insufficient", "indexed": 50, "transcripts": 0}},
+        ]}
+        self.assertEqual(
+            plan_upload(
+                self.TODAY, history, active_contract=self.CONTRACT,
+                producible_coverage_for=lambda mk: (COVERAGE_RANK["complete"], 50),
+            ),
+            [("2025-12", "refresh"), ("2026-01", "current")],
+        )
 
     def test_force_preserves_explicit_backfill(self):
         history = {"state": "unavailable", "months": []}
@@ -527,36 +551,40 @@ class TestContractAwareHistory(unittest.TestCase):
         self.assertEqual(result, ["2025-11", "2025-12", "2026-01"])
 
     def test_partial_pair_retries_only_remaining_non_aligned_work(self):
-        previous_succeeded = {
+        """Renamed in spirit for coverage gating: a previous month whose stored
+        coverage already matches/exceeds what's producible now needs no retry;
+        one whose stored coverage is worse gets a coverage-gated refresh."""
+        previous_at_full_coverage = {
             "state": "valid",
             "months": [
-                {
-                    "monthKey": "2025-12",
-                    "uploadedAt": 2,
-                    "scoreContractId": self.CONTRACT,
-                }
+                {"monthKey": "2025-12", "uploadedAt": 2,
+                 "coverage": {"flag": "complete", "indexed": 50, "transcripts": 50}},
             ],
         }
-        previous_failed = {
+        previous_below_producible = {
             "state": "valid",
             "months": [
-                {
-                    "monthKey": "2025-12",
-                    "uploadedAt": 1,
-                    "scoreContractId": "6:6:6",
-                }
+                {"monthKey": "2025-12", "uploadedAt": 1,
+                 "coverage": {"flag": "partial", "indexed": 50, "transcripts": 20}},
             ],
         }
+        producible = lambda mk: (COVERAGE_RANK["complete"], 50)  # noqa: E731
         self.assertEqual(
-            months_to_upload(self.TODAY, previous_succeeded, active_contract=self.CONTRACT),
+            months_to_upload(self.TODAY, previous_at_full_coverage,
+                              active_contract=self.CONTRACT,
+                              producible_coverage_for=producible),
             ["2026-01"],
         )
         self.assertEqual(
-            months_to_upload(self.TODAY, previous_failed, active_contract=self.CONTRACT),
+            months_to_upload(self.TODAY, previous_below_producible,
+                              active_contract=self.CONTRACT,
+                              producible_coverage_for=producible),
             ["2025-12", "2026-01"],
         )
 
     def test_client_version_is_ignored_for_compatibility(self):
+        """scoreContractId/clientVersion are irrelevant to the comparison now --
+        only stored vs. producible coverage decides refresh (design decision B)."""
         same_contract_old_client = {
             "state": "valid",
             "months": [
@@ -568,7 +596,7 @@ class TestContractAwareHistory(unittest.TestCase):
                 }
             ],
         }
-        different_contract_same_client = {
+        different_contract_same_client_worse_coverage = {
             "state": "valid",
             "months": [
                 {
@@ -576,6 +604,7 @@ class TestContractAwareHistory(unittest.TestCase):
                     "uploadedAt": 1,
                     "scoreContractId": "6:6:6",
                     "clientVersion": "current-client",
+                    "coverage": {"flag": "insufficient", "indexed": 50, "transcripts": 0},
                 }
             ],
         }
@@ -585,8 +614,12 @@ class TestContractAwareHistory(unittest.TestCase):
             [("2026-01", "current")],
         )
         self.assertEqual(
-            plan_upload(self.TODAY, different_contract_same_client, active_contract=self.CONTRACT),
-            [("2025-12", "contract-bridge"), ("2026-01", "current")],
+            plan_upload(
+                self.TODAY, different_contract_same_client_worse_coverage,
+                active_contract=self.CONTRACT,
+                producible_coverage_for=lambda mk: (COVERAGE_RANK["complete"], 50),
+            ),
+            [("2025-12", "refresh"), ("2026-01", "current")],
         )
 
     def test_legacy_and_malformed_history_stay_current_only_on_repeated_runs(self):

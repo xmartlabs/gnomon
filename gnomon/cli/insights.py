@@ -6,11 +6,13 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.parse
 import urllib.request
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from gnomon.config import BASE
 from gnomon.scoring.versioning import SCORE_CONTRACT_ID
 from gnomon.upload.auth import _capture_cli_token, _wait_for_auth_tokens, _SHARE_AUTH_TIMEOUT, _WEB_AUTH_TIMEOUT
 from gnomon.upload.mirdash import (
@@ -18,6 +20,7 @@ from gnomon.upload.mirdash import (
     _DEFAULT_MIRDASH_BASE,
     _DEFAULT_WINDOW_MONTHS, _UPLOAD_CONCURRENCY, parse_window, decide_mode,
     month_windows, months_to_upload, plan_upload, windows_for_anchors,
+    default_producible_coverage_for,
     _is_report_url, _upload_window, _upload_window_web,
     _PAXEL_ERROR, _UPLOAD_ERROR, _format_summary, PayloadTooLarge,
     # Re-exported so tests can patch them as attributes of this module and so the
@@ -57,6 +60,86 @@ _LATEST_CLI_RELEASE_URL = "https://api.github.com/repos/xmartlabs/gnomon/release
 _CLI_REFRESH_COMMAND = "uvx --refresh --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights"
 _ALLOW_STALE_CLI_FLAG = "--allow-stale-cli"
 
+# Retention offer (honest-aq-series step 1, design decision F): the suggested
+# value only -- never forced, never written silently.
+_SUGGESTED_RETENTION_DAYS = 180
+_DEFAULT_SETTINGS_PATH = os.path.join(os.path.dirname(BASE), "settings.json")
+
+
+def offer_retention_config(settings_path=None):
+    """Interactive-only offer to set `cleanupPeriodDays` in
+    ~/.claude/settings.json (design decision F). Returns a dict describing
+    what happened -- never raises, never writes silently.
+
+    Safety contract (threat matrix):
+      - non-tty (CI, piped stdin) -> skip silently, zero prompt, zero write.
+      - `cleanupPeriodDays` already present -> skip without prompting (never
+        overwrite a user's existing choice).
+      - malformed/unreadable existing settings.json -> decline with manual
+        instructions, never write a partial file.
+      - accept -> back up the CURRENT file (if any) to
+        `<settings_path>.gnomon-backup-<epoch>` BEFORE writing, then write
+        `cleanupPeriodDays: 180`, merged into the existing keys, and print the
+        exact undo command plus the backup path.
+    """
+    path = settings_path or _DEFAULT_SETTINGS_PATH
+
+    if not sys.stdin.isatty():
+        return {"action": "skipped", "reason": "non-tty"}
+
+    existing = {}
+    if os.path.isfile(path):
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                raw = fh.read()
+            existing = json.loads(raw) if raw.strip() else {}
+            if not isinstance(existing, dict):
+                raise ValueError("settings.json root is not an object")
+        except (OSError, ValueError, json.JSONDecodeError):
+            print(
+                f"  warning: could not parse {path} -- leaving it untouched. "
+                f"To set retention manually, add \"cleanupPeriodDays\": "
+                f"{_SUGGESTED_RETENTION_DAYS} to that file."
+            )
+            return {"action": "declined", "reason": "malformed"}
+
+    if "cleanupPeriodDays" in existing:
+        return {"action": "skipped", "reason": "already_set"}
+
+    print(
+        f"\n  Claude Code detected. Set a {_SUGGESTED_RETENTION_DAYS}-day "
+        "transcript retention so history stays available for scoring? [y/N] "
+    )
+    try:
+        answer = input().strip().lower()
+    except EOFError:
+        answer = ""
+    if answer not in ("y", "yes"):
+        return {"action": "declined", "reason": "user"}
+
+    backup_path = None
+    if os.path.isfile(path):
+        backup_path = f"{path}.gnomon-backup-{int(time.time())}"
+        with open(path, "r", encoding="utf-8") as src, \
+                open(backup_path, "w", encoding="utf-8") as dst:
+            dst.write(src.read())
+
+    written = dict(existing)
+    written["cleanupPeriodDays"] = _SUGGESTED_RETENTION_DAYS
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(written, fh, indent=2)
+        fh.write("\n")
+
+    print(f"  Set cleanupPeriodDays={_SUGGESTED_RETENTION_DAYS} in {path}.")
+    if backup_path:
+        print(f"  Backup of the previous file: {backup_path}")
+        print(f"  Undo: cp {backup_path} {path}")
+    else:
+        print(f"  Undo: remove \"cleanupPeriodDays\" from {path} (it did not exist before).")
+
+    return {"action": "accepted", "written": {"cleanupPeriodDays": _SUGGESTED_RETENTION_DAYS},
+            "backup_path": backup_path}
+
 
 _REASON_LABELS = {
     "force":   "force re-upload",
@@ -64,7 +147,6 @@ _REASON_LABELS = {
     "current": "current month",
     "gap":     "missing on server",
     "refresh": "refresh (server snapshot predates month end)",
-    "contract-bridge": "rebuild comparable baseline",
     "backfill": "backfill",
 }
 
@@ -79,13 +161,6 @@ def _warn_unavailable_comparison(history):
             "  warning: uploaded history is unavailable or incompatible; "
             "uploading current month only and comparison remains unavailable"
         )
-
-
-def _warn_bridge_not_rebuilt():
-    print(
-        "  warning: comparable baseline was not rebuilt; current month will still upload "
-        "and the previous month will be retried later"
-    )
 
 
 def _release_result(status, current=None, latest=None, reason=None):
@@ -229,6 +304,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
             history,
             force=(mode == "force"),
             active_contract=SCORE_CONTRACT_ID,
+            producible_coverage_for=default_producible_coverage_for,
         )
         windows = windows_for_anchors(anchors, window_months=window_months)
         if mode == "auto":
@@ -245,6 +321,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
                 history,
                 force=(mode == "force"),
                 active_contract=SCORE_CONTRACT_ID,
+                producible_coverage_for=default_producible_coverage_for,
             )
         _print_dry_run_plan(mode, windows, plan_pairs)
         server.push_event("done", {
@@ -308,8 +385,6 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
             except Exception:
                 print(f"  warning: {label} failed unexpectedly")
                 results[i] = _PAXEL_ERROR
-            if i == 0 and len(windows) == 2 and not _is_report_url(results[i]):
-                _warn_bridge_not_rebuilt()
     else:
         workers = min(_UPLOAD_CONCURRENCY, len(scheduled)) or 1
         with ThreadPoolExecutor(max_workers=workers) as ex:
@@ -417,6 +492,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
             history,
             force=(mode == "force"),
             active_contract=SCORE_CONTRACT_ID,
+            producible_coverage_for=default_producible_coverage_for,
         )
         windows = windows_for_anchors(anchors, window_months=window_months)
         if mode == "auto":
@@ -431,6 +507,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
                 history,
                 force=(mode == "force"),
                 active_contract=SCORE_CONTRACT_ID,
+                producible_coverage_for=default_producible_coverage_for,
             )
         _print_dry_run_plan(mode, windows, plan_pairs)
         sys.exit(0)
@@ -478,8 +555,6 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
                 print(f"  warning: {label} failed unexpectedly")
                 result, summary = _PAXEL_ERROR, None
             _record_result(i, label, result, summary)
-            if i == 0 and len(windows) == 2 and not _is_report_url(result):
-                _warn_bridge_not_rebuilt()
     else:
         workers = min(_UPLOAD_CONCURRENCY, len(scheduled)) or 1
         with ThreadPoolExecutor(max_workers=workers) as ex:

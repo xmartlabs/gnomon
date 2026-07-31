@@ -108,8 +108,8 @@ directly — no external dependency). Both decode to the same normalized events.
 
 ## Uploaded summary contract
 
-Current runtime contract: **scoring inputs version 7**, **AQ version 7**, and **GStack version 7** (`score_contract_id = 7:7:7`). Previous-contract scores
-must not be shown as improvement or regression against v6. AQ is blended as
+Current runtime contract: **scoring inputs version 8**, **AQ version 8**, and **GStack version 8** (`score_contract_id = 8:8:8`). Previous-contract scores
+must not be shown as improvement or regression against v7. AQ is blended as
 65% recent (rolling 30-day) + 35%
 full-window (cumulative). The full window includes recent activity, so
 improvements are reflected in both components. Empty recent windows fall back
