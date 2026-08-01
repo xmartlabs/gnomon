@@ -43,7 +43,9 @@ _DEFAULT_MIRDASH_BASE = "https://mirdash.xmartlabs.com"
 # approximate multi-source recompute is acceptable, so `scoring_inputs_corpus`
 # is no longer built or shipped at all, for any source count. Real measurement
 # after dropping it (keeping bucket_scoring_inputs + payload_features):
-# 839,496 bytes, ratio 0.9109 -- FITS.
+# 839,496 bytes, ratio 0.9109 -- FITS. v11 then removed the recency blend and with it
+# `bucket_scoring_inputs`, so a current payload is strictly smaller than that figure;
+# the number is left as measured rather than re-estimated.
 #
 # KNOWN RISK (documented, not a blocker): the real baseline (everything except
 # this capability's two additive blocks) already sits at ~89% of this budget

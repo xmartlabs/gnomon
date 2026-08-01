@@ -342,13 +342,17 @@ def worst_case_summary(include_bucket_by_source=True):
     merged-corpus block that bought only exactness was dropped entirely for
     every source count -- see gnomon/scoring/replay.py's module docstring).
     `bucket_scoring_inputs.corpus` (the recent_30d merged-bucket block) is
-    still built via _corpus_block, since that block ships unconditionally
-    whenever the recency blend is enabled.
+    still built via _corpus_block. v11 stopped EMITTING that block -- the recency
+    blend that produced it is gone -- so this fixture now models the heaviest
+    payload shape mirdash can still be asked to ingest (a pre-v11 upload re-sent
+    or replayed) rather than the shape a current run produces. Keeping it makes the
+    budget assertions strictly conservative; dropping it would quietly relax a cap
+    that pre-v11 payloads still have to fit under.
 
     include_bucket_by_source: the trim knob -- False omits the per-source
-    recent_30d bucket blocks (bucket_scoring_inputs.by_source), matching
-    what gnomon always ships today (see local.py: this trim is unconditional,
-    not ratio-gated, since it is the cheapest available payload-budget lever).
+    recent_30d bucket blocks (bucket_scoring_inputs.by_source), matching what
+    gnomon shipped up to v10 (that trim was unconditional, not ratio-gated, since
+    it was the cheapest available payload-budget lever).
     """
     sources = list(ALL_SOURCES)
     scoring_inputs_by_source = {

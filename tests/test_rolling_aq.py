@@ -1,11 +1,18 @@
+"""The recency-blend COMPOSITION, which survives v11 as a replay-only reader.
+
+v11 removed everything that PRODUCED a blend -- the rolling bucket windows, the bucket
+accumulators and the corpus-level blend call -- so the classes that exercised those are
+gone (their replacement, `tests/test_recency_blend_removed.py`, asserts they stay gone).
+What is left here is `_blend_aq` and the `score_by_source` bucket path, which
+`gnomon/scoring/replay.py` still needs in order to recompute a payload captured BEFORE
+v11: those payloads carry `bucket_scoring_inputs` blocks and must stay replayable.
+
+Every `recent_30d` / 0.65 / 0.35 below therefore describes a HISTORICAL payload's shape,
+not anything this runtime emits.
+"""
 import unittest
 import copy
-import os
-import tempfile
-from datetime import datetime, timedelta, timezone
-from unittest import mock
 
-from gnomon.cli import local
 from gnomon.scoring import aggregate
 from tests._scoring_vectors_cases import CLAUDE_BLOCK, CURSOR_BLOCK
 from gnomon.scoring.versioning import SCORE_CONTRACT_ID
@@ -49,71 +56,24 @@ def _aq(first, second, first_signal, second_signal):
 
 
 def _component(bucket_id, configured_weight, aq, lower_days=None, upper_days=None):
-    """Build a weighted blend component. `full_window` (added at blend time by
-    _blend_profiles / local.py) carries no day_bounds, so lower/upper_days default
-    to None and the key is omitted, matching production shape."""
+    """Build a weighted blend component. `full_window` (appended at blend time by
+    _blend_profiles) carries no day_bounds, so lower/upper_days default to None and the
+    key is omitted, matching the shape a pre-v11 payload records."""
     entry = {"id": bucket_id, "configured_weight": configured_weight, "aq": aq}
     if lower_days is not None or upper_days is not None:
         entry["day_bounds"] = {"lower": lower_days, "upper": upper_days}
     return entry
 
 
-class TestRollingBucketWindows(unittest.TestCase):
-    def setUp(self):
-        self.now = datetime(2026, 7, 9, 12, 30, tzinfo=timezone.utc)
-
-    def test_current_or_future_window_anchors_at_now(self):
-        windows = local._rolling_aq_bucket_windows(
-            until_dt=self.now + timedelta(days=5), now=self.now)
-
-        self.assertEqual(len(windows), 1)
-        self.assertEqual(windows[0]["until"], self.now)
-        self.assertEqual(windows[0]["since"], self.now - timedelta(days=30))
-
-    def test_historical_window_anchors_at_past_until(self):
-        historical_until = datetime(2025, 3, 1, tzinfo=timezone.utc)
-        windows = local._rolling_aq_bucket_windows(
-            until_dt=historical_until, now=self.now)
-
-        self.assertEqual(windows[0]["until"], historical_until)
-        self.assertEqual(windows[0]["since"], historical_until - timedelta(days=30))
-
-    def test_no_until_anchors_at_now_and_preserves_timezone(self):
-        local_now = self.now.astimezone(timezone(timedelta(hours=-3)))
-        windows = local._rolling_aq_bucket_windows(until_dt=None, now=local_now)
-
-        self.assertEqual(windows[0]["until"], local_now)
-        self.assertEqual(windows[0]["until"].utcoffset(), timedelta(hours=-3))
-
-    def test_exact_boundaries_cover_30_days(self):
-        windows = local._rolling_aq_bucket_windows(until_dt=self.now, now=self.now)
-        cases = {
-            self.now: None,
-            self.now - timedelta(microseconds=1): "recent_30d",
-            self.now - timedelta(days=30): "recent_30d",
-            self.now - timedelta(days=30, microseconds=1): None,
-        }
-
-        for timestamp, expected in cases.items():
-            with self.subTest(timestamp=timestamp):
-                matches = [w["id"] for w in windows if w["since"] <= timestamp < w["until"]]
-                self.assertEqual(matches, [] if expected is None else [expected])
-
-        self.assertEqual(
-            [(w["id"], w["day_bounds"]) for w in windows],
-            [("recent_30d", {"lower": 0, "upper": 30})],
-        )
-
-
 class TestWeightedAQBlend(unittest.TestCase):
     """Exercises the generic `_blend_aq` weighted-blend mechanism (axis blending,
-    renormalization, tier recompute, not_applicable handling). Production now blends
-    exactly two components -- recent_30d (0.65) and full_window (0.35, appended at
-    blend time by _blend_profiles / local.py's corpus blend) -- so most tests below
-    mirror that shape. `_blend_aq` itself stays generic over any number of named,
-    weighted components; test_missing_bucket_weights_are_renormalized uses two
-    synthetic components (not real bucket ids) purely to prove that generic
-    renormalization behavior still holds when configured weights don't sum to one."""
+    renormalization, tier recompute, not_applicable handling). A pre-v11 payload carries
+    exactly two components -- recent_30d (0.65) and full_window (0.35, appended at blend
+    time by _blend_profiles) -- so most tests below mirror that shape. `_blend_aq` itself
+    stays generic over any number of named, weighted components;
+    test_missing_bucket_weights_are_renormalized uses two synthetic components (not real
+    bucket ids) purely to prove that generic renormalization behavior still holds when
+    configured weights don't sum to one."""
 
     def setUp(self):
         self.full = _aq(5.0, 5.0, 1, 1)
@@ -222,115 +182,11 @@ class TestWeightedAQBlend(unittest.TestCase):
         self.assertEqual(axis["score"], 79.6)
 
 
-class TestRollingBucketAccumulation(unittest.TestCase):
-    def test_current_partial_month_report_since_does_not_clip_30_day_aq_horizon(self):
-        anchor = datetime(2026, 7, 9, 12, tzinfo=timezone.utc)
-        report_since = datetime(2026, 7, 5, tzinfo=timezone.utc)
-        report_until = datetime(2026, 8, 1, tzinfo=timezone.utc)
-        old_timestamp = anchor - timedelta(days=20)
-        event = {
-            "type": "user",
-            "sessionId": "older-only",
-            "timestamp": old_timestamp.isoformat(),
-            "cwd": "/repo",
-            "message": {"role": "user", "content": "include the recent-30d aq horizon"},
-        }
-        windows = local._rolling_aq_bucket_windows(until_dt=report_until, now=anchor)
-
-        with tempfile.NamedTemporaryFile() as transcript:
-            os.utime(transcript.name, (old_timestamp.timestamp(), old_timestamp.timestamp()))
-            with mock.patch.object(local, "_rolling_aq_bucket_windows", return_value=windows), \
-                    mock.patch.object(local, "iter_events", return_value=[event]):
-                stats, narrative = local._accumulate(
-                    [("claude", transcript.name, "claude")],
-                    since_dt=report_since,
-                    until_dt=report_until,
-                    cursor_twins=set(),
-                    antigravity=None,
-                    verbose=False,
-                )
-
-        # The event predates report_since, so the whole-corpus report excludes it...
-        self.assertEqual(stats["volume"]["total_sessions"], 0)
-        # ...but it still falls inside the recent_30d bucket's own (wider) horizon, so
-        # the file-scan lower bound must not be clipped to report_since alone.
-        counts = {
-            bucket_id: bucket_stats["volume"]["total_sessions"]
-            for bucket_id, bucket_stats in narrative["_aq_bucket_stats"].items()
-        }
-        self.assertEqual(counts, {"recent_30d": 1})
-
-    def test_events_are_routed_to_exactly_one_bucket(self):
-        anchor = datetime(2025, 7, 1, 12, tzinfo=timezone.utc)
-        timestamps = [
-            anchor - timedelta(microseconds=1),                 # in-bounds (just before now)
-            anchor - timedelta(days=30),                          # in-bounds (since, inclusive)
-            anchor - timedelta(days=30, microseconds=1),          # out-of-bounds (before since)
-            anchor,                                                # out-of-bounds (until, exclusive)
-        ]
-        events = [
-            {
-                "type": "user",
-                "sessionId": f"session-{index}",
-                "timestamp": timestamp.isoformat(),
-                "cwd": "/repo",
-                "message": {"role": "user", "content": "test the rolling bucket"},
-            }
-            for index, timestamp in enumerate(timestamps)
-        ]
-        with tempfile.NamedTemporaryFile() as transcript, \
-                mock.patch.object(local, "iter_events", return_value=events), \
-                mock.patch.object(local, "git_churn", return_value={
-                    "repos_seen": 0, "repos_with_commits": 0, "insertions": 0,
-                    "deletions": 0, "churn": 0, "commits": 0, "per_repo": [],
-                }):
-            _stats, narrative = local._accumulate(
-                [("claude", transcript.name, "claude")],
-                since_dt=None,
-                until_dt=anchor,
-                cursor_twins=set(),
-                antigravity=None,
-                verbose=False,
-            )
-
-        counts = {
-            bucket_id: stats["volume"]["total_sessions"]
-            for bucket_id, stats in narrative["_aq_bucket_stats"].items()
-        }
-        self.assertEqual(counts, {"recent_30d": 2})
-
-    def test_corpus_bucket_preserves_each_source_capability_key(self):
-        anchor = datetime(2025, 7, 1, 12, tzinfo=timezone.utc)
-
-        def event(source):
-            return {
-                "type": "user",
-                "sessionId": f"{source}-session",
-                "timestamp": (anchor - timedelta(days=1)).isoformat(),
-                "cwd": "/repo",
-                "message": {"role": "user", "content": "preserve source capabilities"},
-            }
-
-        with tempfile.NamedTemporaryFile() as claude_file, \
-                tempfile.NamedTemporaryFile() as cursor_file, \
-                mock.patch.object(local, "iter_events", side_effect=[[event("claude")], [event("cursor")]]):
-            _stats, narrative = local._accumulate(
-                [
-                    ("claude", claude_file.name, "claude"),
-                    ("cursor", cursor_file.name, "cursor"),
-                ],
-                since_dt=None,
-                until_dt=anchor,
-                cursor_twins=set(),
-                antigravity=None,
-                verbose=False,
-            )
-
-        recent_sources = narrative["_aq_bucket_stats"]["recent_30d"]["corpus"]["sources"]
-        self.assertEqual(set(recent_sources), {"claude", "cursor"})
-
-
 class TestPerSourceRollingBlend(unittest.TestCase):
+    """`score_by_source`'s bucket path. No live caller supplies bucket inputs since v11;
+    `gnomon/scoring/replay.py` does, from a pre-v11 payload's own
+    `bucket_scoring_inputs.by_source` breakdown."""
+
     def _block(self, *, sessions, tests, planning_ratio, template=CLAUDE_BLOCK,
                tool_calls=None):
         block = copy.deepcopy(template)

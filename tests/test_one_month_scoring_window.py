@@ -379,15 +379,18 @@ class TestPartialScoringIsDisclosed(unittest.TestCase):
 
 
 class TestDisclosureSurvivesTheRecencyBlend(unittest.TestCase):
-    """The PUBLISHED score is `_blend_aq`'s output, and the blend copies each axis dict
-    from the highest-weight component (recent_30d at 0.65). A `partial_terms` recorded on
-    the 0.35 full-window component would therefore vanish from the payload.
+    """`_blend_aq` copies each axis dict from the highest-weight component (recent_30d at
+    0.65), so a `partial_terms` recorded on the 0.35 full-window component would vanish.
 
-    That is not hypothetical. Measured on this machine's real corpus, a thin scoring
+    That was not hypothetical. Measured on this machine's real corpus, a thin scoring
     window makes the full-window component drop the Compounding rate term (its normalized
     score lands exactly on the 0.6 presence flag) while recent_30d -- a wider span, more
     tool calls -- keeps it. The blended axis then published a score that was 35% built
-    from a one-term axis, with nothing saying so."""
+    from a one-term axis, with nothing saying so.
+
+    v11 removed the blend from the scoring path, so this no longer describes a PUBLISHED
+    score -- it describes `replay()` recomputing a payload captured under v8-v10, which
+    still carries a blend block and must still disclose partial scoring when it does."""
 
     def _blended(self, recent_partial, full_partial):
         def axis_aq(normalized, partial):
@@ -444,9 +447,16 @@ class TestDisclosureSurvivesTheRecencyBlend(unittest.TestCase):
 
 
 class TestScoreContractMovesWithTheWindow(unittest.TestCase):
-    def test_contract_is_ten(self):
-        self.assertEqual(SCORE_CONTRACT_ID, "10:10:10")
-        self.assertEqual(SCORING_INPUTS_VERSION, 10)
+    def test_the_window_change_kept_its_own_contract_entry(self):
+        """v10 pinned `SCORE_CONTRACT_ID == "10:10:10"` because the window change WAS the
+        current contract. Later bumps are legitimate, so what this file still owns is the
+        audit trail: the entry v10 published must stay in the registry, byte for byte,
+        whatever the live contract has become. Re-pointing the pin at the registry rather
+        than deleting it keeps the guarantee that made it worth writing -- an in-place
+        edit of a published fingerprint stays impossible."""
+        self.assertIn("10:10:10", CALIBRATION_FINGERPRINTS)
+        self.assertEqual(CALIBRATION_FINGERPRINTS["10:10:10"], "7a2c444ff5c26f06")
+        self.assertGreaterEqual(SCORING_INPUTS_VERSION, 10)
 
     def test_new_contract_has_its_own_fingerprint_entry(self):
         self.assertIn(SCORE_CONTRACT_ID, CALIBRATION_FINGERPRINTS)

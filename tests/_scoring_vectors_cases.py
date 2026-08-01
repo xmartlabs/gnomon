@@ -202,8 +202,13 @@ def _rolling_block(*, sessions, tests, planning_ratio, grounded_sessions):
 
 
 def rolling_cases():
-    """Cases that exercise scoring-contract v4 bucket composition (65% recent_30d +
-    35% full_window, the latter appended at blend time by score_by_source)."""
+    """Cases that exercise bucket composition (65% recent_30d + 35% full_window, the
+    latter appended at blend time by score_by_source).
+
+    v11 removed the recency blend from the scoring path, so no run produces these inputs
+    any more. They stay in the parity contract because `replay()` -- and mirdash's TS
+    reimplementation of it -- must keep recomputing payloads captured under v8-v10, which
+    do carry a bucket breakdown."""
     full = {"claude": {"window": _rolling_block(
         sessions=30, tests=30, planning_ratio=0.5, grounded_sessions=12)}}
     buckets = {

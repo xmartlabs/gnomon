@@ -254,7 +254,12 @@ def _profiles_by_source(scoring_inputs_by_source, bucket_scoring_inputs_by_sourc
     """Precompute per-source + aggregate profiles (so mirdash just displays them — no
     recompute). Each per-source profile's model_usage is populated from that source's own
     stack.models (score_by_source leaves it empty); tokens are 0 there (token usage is only
-    tracked corpus-wide). The aggregate keeps model_usage empty (it's a score blend)."""
+    tracked corpus-wide). The aggregate keeps model_usage empty (it's a score blend).
+
+    The two bucket arguments are a REPLAY-ONLY path since v11: `build_summary` no longer
+    passes them (nothing produces a recency bucket), but `gnomon/scoring/replay.py`
+    mirrors this function and DOES pass them when a pre-v11 payload carries a bucket
+    breakdown. Dropping the parameters here would silently break that mirror."""
     sbs = score_by_source(
         scoring_inputs_by_source or {},
         bucket_scoring_inputs_by_source=bucket_scoring_inputs_by_source,
@@ -340,10 +345,11 @@ def build_summary(stats):
     or count-based — no prompts, verbatim quotes, file paths, or file contents.
     Includes raw tool, skill, and MCP server names; user-chosen identifiers can
     therefore contain project/customer/environment names.
-    bucket_scoring_inputs (recompute-grade-payload) is the SAME build_scoring_inputs
-    projection over the recent_30d recency-blend window — same privacy contract, no
-    new field types. See gnomon/scoring/replay.py for the exactness contract this
-    block supports (exact for single-source, approximate for multi-source)."""
+    No `bucket_scoring_inputs` block is emitted since v11 removed the recency blend that
+    produced it; `payload_features.omitted` says so. See gnomon/scoring/replay.py for the
+    recompute contract the shipped per-source blocks support (exact for single-source,
+    approximate for multi-source) and for how a pre-v11 payload's bucket block is still
+    read back."""
     v, b, vel, st, t, c = (stats["volume"], stats["behavior"], stats["velocity"],
                            stats["stack"], stats["tools"], stats["corpus"])
     result = {
@@ -433,10 +439,10 @@ def build_summary(stats):
         "score_contract_id": SCORE_CONTRACT_ID,
         "comparison_policy": COMPARISON_POLICY,
         "scoring_inputs_by_source": stats.get("scoring_inputs_by_source", {}),
+        # No bucket arguments since v11: nothing produces a recency bucket any more, so
+        # every per-source profile is scored from that source's own window block alone.
         "profiles_by_source": _profiles_by_source(
-            stats.get("scoring_inputs_by_source") or {},
-            stats.get("_aq_bucket_scoring_inputs_by_source"),
-            stats.get("_aq_bucket_metadata")),
+            stats.get("scoring_inputs_by_source") or {}),
         "source_usage": _build_source_usage(stats.get("scoring_inputs_by_source") or {}),
         "source_usage_monthly": _build_source_usage_monthly(stats.get("scoring_inputs_by_source") or {}),
         "token_usage": stats.get("token_usage") or {
@@ -445,26 +451,19 @@ def build_summary(stats):
             "by_model": [],
         },
     }
-    # ---- recompute-grade-payload: additive block so a future recompute job can
-    # re-derive profile.aq (and its 65/35 recency blend) from the payload alone,
-    # without re-reading local transcripts. See gnomon/scoring/replay.py for the
-    # exactness contract: single-source is exact (the per-source window block IS
-    # the corpus block); multi-source is approximate (weighted mean of per-source
-    # scores) -- an earlier revision also shipped a `scoring_inputs_corpus` merged-
-    # corpus block for EXACT multi-source recompute, but it cost ~487 KB on real
-    # 8-source data and pushed the payload over the mirdash ingest cap; the
-    # requirement was relaxed to approximate-is-acceptable and that block was
-    # dropped entirely (never emitted, for any source count). bucket_scoring_inputs
-    # is OMITTED (not null-valued) when this run has nothing to ship for it --
-    # payload_features.omitted names why.
+    # ---- recompute-grade-payload ------------------------------------------------
+    # A recompute job re-derives profile.aq from `scoring_inputs_by_source` alone, with no
+    # access to local transcripts. See gnomon/scoring/replay.py for the exactness
+    # contract: single-source is exact (the per-source window block IS the corpus block);
+    # multi-source is approximate (weighted mean of per-source scores) -- an earlier
+    # revision also shipped a `scoring_inputs_corpus` merged-corpus block for EXACT
+    # multi-source recompute, but it cost ~487 KB on real 8-source data and pushed the
+    # payload over the mirdash ingest cap; the requirement was relaxed to
+    # approximate-is-acceptable and that block was dropped entirely.
     #
-    # NOTE: `stats` carries this under an underscore-prefixed internal key
-    # (`_bucket_scoring_inputs`) -- it is stripped from stats.json and from the
-    # narrative-input LLM prompt (see gnomon/cli/local.py) and is published here
-    # under its real, non-underscored payload name.
-    bucket_scoring_inputs = stats.get("_bucket_scoring_inputs")
-    if bucket_scoring_inputs:
-        result["bucket_scoring_inputs"] = bucket_scoring_inputs
+    # No `bucket_scoring_inputs` block is emitted either, for any run: v11 removed the
+    # recency blend, so there is no bucket to persist. `payload_features.omitted` names
+    # that, and replay.py still READS the block on payloads captured before v11.
     result["payload_features"] = stats.get("_payload_features") or {
         "version": 1,
         "supported": ["bucket_scoring_inputs", "upload_size_guard"],

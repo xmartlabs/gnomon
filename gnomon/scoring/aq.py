@@ -149,7 +149,7 @@ COMPOUNDING_WRITES_PER_CALL_TARGET = 0.0018  # p40 .00170 / p50 .00207, n=16 —
 # 2036 · 0.0018 = 3.66 — so the data permits [1.0, 3.66) and every rate term of every real
 # uploaded corpus stays scored either way. Anything at or above 3.66 would start dropping
 # terms for a real user; anything above 1.0 also discards evidence from the small-but-real
-# slices scored separately (per-source profiles, monthly recency buckets), which is why the
+# slices scored separately (per-source profiles, per-month evidence blocks), which is why the
 # low end is the deliberate choice. Re-argue both bounds if the population changes.
 RATE_MIN_EXPECTED_AT_TARGET = 1.0
 

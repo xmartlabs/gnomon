@@ -1,3 +1,35 @@
+# v11 — The recency blend is gone; a published point is the month's own score, once.
+# Until v11 `profile.aq` was `0.65 * recent_30d + 0.35 * full_window` (aggregate._blend_aq).
+# v10 narrowed the scoring window to one calendar month and that made the pair degenerate:
+# both components end at the same anchor, so they cover 93.3% (a 28-day February) to 100%
+# (any 30-day month) of the same days — 96.8% for a 31-day month. The blend stopped damping
+# one unusual month against a longer baseline and started averaging a month with itself.
+# Three changes ship together because they are one semantic move:
+#   inputs: no field is added, renamed or reshaped, and the SPAN each field covers is
+#           unchanged from v10 (still one calendar month). What changes is that the payload
+#           no longer carries a `bucket_scoring_inputs` block at all and
+#           `payload_features.recency_blend.enabled` is a hard False — a v10 row was a
+#           blended number and a v11 row is not, which is a scoring-semantics difference
+#           COMPARISON_POLICY = same_score_contract_id_only has to see.
+#   aq:     the formula is untouched; what moves is that its merged-corpus output is now
+#           PUBLISHED verbatim instead of being overwritten by the blend. Measured on a real
+#           8-source corpus over a 31-day month (the worst overlap case) the two agree:
+#           aq_0_100 92 either way, largest per-axis movement 0.200, per-axis normalized
+#           scores within 0.006 on all 12 axes. NO calibration TARGET moves. The blend
+#           WEIGHTS do — `RECENT_WEIGHT` (0.65) ceases to exist — and they are registered
+#           under the calibration fingerprint here for the first time, which is why
+#           11:11:11's fingerprint differs from 10:10:10's (gnomon/scoring/calibration.py).
+#   gstack: unchanged logic; it moves with the pair for the same reason it did in v7-v10 —
+#           aggregate._blend_aq raises on any mixed contract, so a partial bump would
+#           publish two universes inside one PR.
+# This also fixed a live mixed-basis defect: `_blend_aq` copies each axis's `signals` from
+# the highest-weight component (recent_30d), so anything dividing one of those counts by the
+# full-window `volume.tool_calls_total` was mixing two spans. `--tools`
+# (gnomon/cli/local.py::tools_diagnostic) did exactly that.
+# The READING side stays: `_blend_aq`, `_blend_partial_terms`, `_blend_profiles` and
+# HISTORY_WEIGHT are still exported because replay() must keep recomputing payloads
+# captured before v11, and those carry blend blocks.
+#
 # v10 — One published point is scored on ONE calendar month. Until v10 the default window
 # was a trailing SIX months (`_DEFAULT_WINDOW_MONTHS = 6`), so a month's score was mostly
 # the five months before it: real behaviour change surfaced as slow drift and a step change
@@ -90,9 +122,9 @@
 # per-session rates by each source's tool volume; review rejected it because the resulting
 # mean mixes units (tool_calls x things/session is not a quantity) and inverts. Do not
 # reintroduce it — see the comment above `rate()` in aq.py for the measured counter-example.
-SCORING_INPUTS_VERSION = 10
-AQ_VERSION = 10
-GSTACK_VERSION = 10
+SCORING_INPUTS_VERSION = 11
+AQ_VERSION = 11
+GSTACK_VERSION = 11
 # The first SCORING_INPUTS_VERSION whose skill counters are DEDUPED: v8 (28d3bda) made a
 # Skill invocation count once per (session, skill) span instead of once per assistant/
 # sidechain turn carrying attributionSkill. That changed what the persisted counter MEANS,

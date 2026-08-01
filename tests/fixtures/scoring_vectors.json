@@ -26,7 +26,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "10:10:10",
+          "score_contract_id": "11:11:11",
           "tier": "Advanced"
         },
         "archetype": {
@@ -505,7 +505,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "10:10:10",
+            "score_contract_id": "11:11:11",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -910,7 +910,7 @@
         }
       }
     },
-    "scoring_inputs_version": 10
+    "scoring_inputs_version": 11
   },
   {
     "expected": {
@@ -939,7 +939,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "10:10:10",
+          "score_contract_id": "11:11:11",
           "tier": "Adequate"
         },
         "archetype": {
@@ -1416,7 +1416,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "10:10:10",
+            "score_contract_id": "11:11:11",
             "tier": "Adequate",
             "tool_diversity": {
               "distinct": 12,
@@ -1740,7 +1740,7 @@
         }
       }
     },
-    "scoring_inputs_version": 10
+    "scoring_inputs_version": 11
   },
   {
     "expected": {
@@ -1769,7 +1769,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "10:10:10",
+          "score_contract_id": "11:11:11",
           "tier": "Advanced"
         },
         "archetype": {
@@ -2249,7 +2249,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "10:10:10",
+            "score_contract_id": "11:11:11",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -2718,7 +2718,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "10:10:10",
+            "score_contract_id": "11:11:11",
             "tier": "Adequate",
             "tool_diversity": {
               "distinct": 12,
@@ -3191,7 +3191,7 @@
         }
       }
     },
-    "scoring_inputs_version": 10
+    "scoring_inputs_version": 11
   },
   {
     "expected": {
@@ -3220,7 +3220,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "10:10:10",
+          "score_contract_id": "11:11:11",
           "tier": "Advanced"
         },
         "archetype": {
@@ -3699,7 +3699,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "10:10:10",
+            "score_contract_id": "11:11:11",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -4089,7 +4089,7 @@
         }
       }
     },
-    "scoring_inputs_version": 10
+    "scoring_inputs_version": 11
   },
   {
     "expected": {
@@ -4118,7 +4118,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "10:10:10",
+          "score_contract_id": "11:11:11",
           "tier": "Novice"
         },
         "archetype": {
@@ -4578,7 +4578,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "10:10:10",
+            "score_contract_id": "11:11:11",
             "tier": "Novice",
             "tool_diversity": {
               "distinct": 0,
@@ -4910,7 +4910,7 @@
         }
       }
     },
-    "scoring_inputs_version": 10
+    "scoring_inputs_version": 11
   },
   {
     "bucket_metadata": [
@@ -5093,7 +5093,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "10:10:10",
+          "score_contract_id": "11:11:11",
           "tier": "Advanced"
         },
         "archetype": {
@@ -5972,7 +5972,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "10:10:10",
+            "score_contract_id": "11:11:11",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -6370,6 +6370,6 @@
         }
       }
     },
-    "scoring_inputs_version": 10
+    "scoring_inputs_version": 11
   }
 ]

@@ -108,29 +108,37 @@ directly — no external dependency). Both decode to the same normalized events.
 
 ## Uploaded summary contract
 
-Current runtime contract: **scoring inputs version 10**, **AQ version 10**, and **GStack version 10** (`score_contract_id = 10:10:10`). Previous-contract scores
-must not be shown as improvement or regression against v10 — v10 narrows the default scoring
-window from six calendar months to one, so a point is now scored on the month it labels and
-the same behaviour yields roughly a sixth of the counts a v9 point was scored against. No
-field is added, renamed or reshaped; what changed is the span each field covers, which is
-precisely why the contract ID has to move. AQ is blended as
-65% recent (rolling 30-day) + 35%
-full-window (cumulative). The full window includes recent activity, so
-improvements are reflected in both components. Empty recent windows fall back
-to the unblended full-window AQ.
+Current runtime contract: **scoring inputs version 11**, **AQ version 11**, and **GStack version 11** (`score_contract_id = 11:11:11`). Previous-contract scores
+must not be shown as improvement or regression against v11. v11 removes the recency blend,
+so the published AQ is the scoring window's own score; v10 narrowed that window from six
+calendar months to one, so a point is scored on the month it labels and the same behaviour
+yields roughly a sixth of the counts a v9 point was scored against. No field is added,
+renamed or reshaped in either move; what changed is the span each field covers and, now,
+what is done with it — which is precisely why the contract ID has to move.
 
-**That blend is degenerate at the v10 default window.** Both components end at the same
-anchor, `full_window` is now the calendar month (28-31 days) and the recent component is
-the trailing 30 days, so they cover 93.3% (a 28-day February) to 100% (any 30-day month)
-of the same days — 96.8% for a 31-day month, and a month of 30 days or fewer sits entirely
-inside the recent bucket. The blend therefore **no longer damps** one unusual month
-against a longer baseline; it reads one month twice, and every `65/35` reference below
-should be read as machinery rather than as a two-horizon guarantee. Measured on a real
-eight-source corpus over a 31-day month it moved the published AQ by 0.0 points (largest
-per-axis movement 0.2). Removing it is the **next contract bump**, kept separate so a
-score movement stays attributable to one cause; `--window=N` above 1 restores the
-two-horizon reading in the meantime. Consumers need no change: the payload shape,
-`bucket_scoring_inputs`, and the per-component breakdown inside each axis are unaffected.
+**The 65/35 recency blend is removed in v11.** Up to v10, AQ was published as 65% recent
+(rolling 30-day) + 35% full-window. That was written for a six-month window, where the two
+components really did describe two horizons. At the v10 one-month window both components
+ended at the same anchor, `full_window` was the calendar month (28-31 days) and the recent
+component the trailing 30 days, so they covered 93.3% (a 28-day February) to 100% (any
+30-day month) of the same days — 96.8% for a 31-day month, and a month of 30 days or fewer
+sat entirely inside the recent bucket. The blend **no longer damped** one unusual month
+against a longer baseline; it read one month twice. Measured on a real eight-source corpus
+over a 31-day month, removing it moves the published AQ by 0.0 points (largest per-axis
+movement 0.2).
+
+It also removed a mixed-basis defect. The blend copied each axis's `signals` from its
+highest-weight component (the 30-day bucket) while every corpus-level total stayed
+full-window, so any consumer dividing one of those counts by a full-window denominator was
+combining two spans. gnomon's own `--tools` table did that.
+
+**Consumer impact.** `profile.aq` and each `profiles_by_source.by_source[*].aq` no longer
+carry a `blend` block, and their axes no longer carry a `components` list.
+`bucket_scoring_inputs` is no longer emitted at all, and `payload_features.recency_blend`
+is `{"enabled": false}` with no `history_weight`. Every one of those was already optional
+(a payload could always arrive with the blend disabled), so a reader that branches on
+presence needs no change; one that assumes presence does. Payloads captured under v10 and
+earlier still carry all of it and remain replayable — see "recompute-grade-payload" below.
 
 The **scoring window and the evidence window are now two different spans.**
 `context.window_months` reports the scoring window (1) — it is what the evolution chart
@@ -178,15 +186,20 @@ score is unchanged by the disclosure.
 - `source_usage`
 - `source_usage_monthly`
 - `bucket_scoring_inputs` — recency-blend (`recent_30d`) scoring-input metadata + corpus
-  block, emitted whenever the recency blend is enabled (see "recompute-grade-payload" below).
+  block. **No longer emitted since v11**, which removed the blend; payloads captured under
+  v10 and earlier carry it and `replay()` still reads it (see "recompute-grade-payload"
+  below).
 - `payload_features` — always emitted; an additive marker naming which of the above block(s)
   this payload carries and why any are absent (`omitted[].reason`), so a reader can tell
   "older client, capability never existed" apart from "budget-trimmed" apart from
-  "recency blend disabled for this run" (`bucket_scoring_inputs` absent entirely, distinct
-  from `bucket_scoring_inputs.by_source` trimmed while `bucket_scoring_inputs.corpus` still
-  ships). A `build_summary()` call that never went through local.py's real computation
-  (e.g. a hand-built stats dict) omits `recency_blend` entirely rather than asserting a
-  guessed enabled/disabled state.
+  "this runtime does not blend" (`bucket_scoring_inputs` absent entirely with
+  `omitted[].reason == "recency_blend_removed"`, distinct from a pre-v11 payload's
+  `bucket_scoring_inputs.by_source` trimmed while `bucket_scoring_inputs.corpus` still
+  ships). `recency_blend` is `{"enabled": false}` since v11 — an explicit declaration, not
+  an absent key, so "does not blend" stays distinguishable from "older client". Its
+  pre-v11 `history_weight` sibling is gone with the blend. A `build_summary()` call that
+  never went through local.py's real computation (e.g. a hand-built stats dict) omits
+  `recency_blend` entirely rather than asserting a guessed state.
 
   No `scoring_inputs_corpus` block ships, for any source count (scope relaxation:
   approximate multi-source recompute is acceptable, so the merged-corpus block that bought
@@ -221,12 +234,12 @@ none. A recompute job walking stored rows should catch it and skip that row.
 
 - **Single-source payloads are EXACT** (`aq_exactness == "exact"`): the source's own window
   block IS the corpus block (there is only one source, nothing was pooled away), so
-  `replay()` reproduces `payload["profile"]["aq"]` bit-for-bit, including its 65/35 recency
-  blend when `bucket_scoring_inputs` carries one. `profiles_by_source` is exact too for
+  `replay()` reproduces `payload["profile"]["aq"]` bit-for-bit, including the 65/35 recency
+  blend of a pre-v11 payload whose `bucket_scoring_inputs` carries one. `profiles_by_source` is exact too for
   single-source payloads, for the same reason: the source's own
   `bucket_scoring_inputs.corpus` window block IS that one source's per-source bucket block,
   so `replay()` synthesizes the per-source breakdown from it even though
-  `bucket_scoring_inputs.by_source` itself is always trimmed from the shipped payload.
+  `bucket_scoring_inputs.by_source` was always trimmed from the shipped payload.
 - **Multi-source payloads are APPROXIMATE, but blended when possible.** No
   `scoring_inputs_corpus` merged-corpus block ships for any source count — an earlier
   revision shipped one so multi-source replay could be exact too, but it cost ~487 KB on
@@ -235,7 +248,7 @@ none. A recompute job walking stored rows should catch it and skip that row.
   instead composes the tool-volume-weighted mean of each source's own scored AQ — the same
   aggregation `gnomon.scoring.aggregate.score_by_source` already implements — and then
   blends that base value (65/35) against the merged `bucket_scoring_inputs.corpus` block,
-  which DOES ship unconditionally whenever the recency blend is enabled. Two distinct
+  which pre-v11 payloads ship unconditionally. Two distinct
   exactness values distinguish whether that blend actually fired, since silently mixing an
   unblended base value with the canonical 65/35 window semantics reproduces the exact
   divergence this contract exists to prevent:
@@ -245,9 +258,11 @@ none. A recompute job walking stored rows should catch it and skip that row.
       ~11-point gap an earlier, unblended revision of this module produced on the same
       corpus.
     - `aq_exactness == "approximate_weighted_mean_unblended"`: no bucket data was available
-      to blend at all (recency blend disabled for this payload, or the shipped corpus
-      bucket genuinely carried zero sessions this window) — every source stayed 100%
-      full-window, wider divergence from canonical should be expected here.
+      to blend at all — a v11 payload (no blend was ever computed, so this is the exact
+      right answer rather than an approximation of window semantics), or a pre-v11 payload
+      whose shipped corpus bucket carried zero sessions that window. For a pre-v11 payload
+      every source stayed 100% full-window and wider divergence from canonical should be
+      expected.
   Neither approximate value is expected to equal `payload["profile"]["aq"]` (the
   merged-corpus canonical value, where distinct counts stay unions rather than per-source
   means; see `aggregate.py`'s module docstring for the aggregation-rule difference) or
@@ -282,7 +297,10 @@ docstring for the full numbers. Summary:
 - Real 8-source measurement, baseline (pre-`persist-recompute-grade-inputs`, everything
   except `bucket_scoring_inputs`/`payload_features`): 824,398 bytes, ratio **0.8945** — fits.
 - Real 8-source measurement, with this capability's two blocks (`scoring_inputs_corpus`
-  never shipped): 839,496 bytes, ratio **0.9109** — fits.
+  never shipped): 839,496 bytes, ratio **0.9109** — fits. Measured before v11 removed
+  `bucket_scoring_inputs`, so a current payload is that number minus the recency-bucket
+  block; the budget assertions still model the heavier pre-v11 shape, since those payloads
+  can still be re-sent.
 - **KNOWN RISK, documented and tracked, NOT a blocker for this change**: the real baseline
   is already at ~89% of the cap for a heavy 8-source, multi-month user — a PRE-EXISTING
   condition that predates this capability and is not meaningfully worsened by it (+1.6
@@ -305,11 +323,11 @@ docstring for the full numbers. Summary:
   `volume.tool_calls_total`.
 - `noticed_stats_monthly` — **per calendar month** evidence, one entry per month with its own `git_churn`, tokens, errors, etc.
 - `scoring_inputs_by_source[*].monthly` — **per source per calendar month** raw scoring inputs.
-- `profiles_by_source` / `profile` / AQ — **65/35 blended AQ** (65% recent
-  30-day rolling + 35% full window); gstack/archetype/steering remain scoped
-  to the requested full-window inputs. At the default one-month window the two
-  blend components overlap by 93.3-100% of their days (96.8% for a 31-day
-  month), so the blend no longer damps — see "Uploaded summary contract" above.
+- `profiles_by_source` / `profile` / AQ — **window** (the requested scoring
+  window, one calendar month by default), scored once and unblended since v11;
+  gstack/archetype/steering are scoped to the same inputs. Up to v10 this was a
+  65/35 blend against a trailing 30-day bucket — see "Uploaded summary contract"
+  above for why that was removed.
 - **One canonical combined AQ**: `profile.aq`, scored from the merged corpus.
   `profiles_by_source.by_source[*].aq` are per-source readings. The aggregate's
   weighted mean of per-source scores is published as

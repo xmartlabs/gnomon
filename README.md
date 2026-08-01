@@ -113,36 +113,33 @@ window: a wider or unstated corpus produces roughly a different number of
 sessions and tool calls than the scoring targets are calibrated for, so it is
 refused instead of being pooled with genuine one-month scores.
 
-Within a multi-month view, AQ is blended as **65% recent (rolling
-30-day) + 35% full-window** (the entire scored period). Because the full
-window includes recent activity, improvements are reflected in both
-components — recent behavior dominates while the full window provides
-stability. When the recent window has no sessions the blend falls back to the
-unblended full-window AQ.
+**AQ is scored once, over the window you asked for — there is no recency
+blend.** Up to v10 the published AQ was `65% recent (rolling 30-day) + 35%
+full-window`, written when the default window was six months so that one
+unusual month was damped against five stable ones. Once the default window
+became a single calendar month the two components covered 93.3% (a 28-day
+February) to 100% (any 30-day month) of the same days — 96.8% for a 31-day
+month — so the blend **no longer damped** anything, it read one month twice.
+v11 removes it. Measured on a real eight-source corpus over a 31-day month,
+that removal moves the published AQ by 0.0 points, with a largest per-axis
+movement of 0.2 points. It also fixes a real defect: the blend replaced each
+axis's reported counts with the 30-day component's, so any count shown beside
+a full-window total described a different span (the `--tools` table did
+exactly that).
 
-**At the default one-month window that blend is degenerate, and the paragraph
-above only describes what it was built for.** Both components end at the same
-anchor: `full_window` is the calendar month (28–31 days) and the recent
-component is the trailing 30 days, so the two cover 93.3% (a 28-day February)
-to 100% (any 30-day month) of the same days — 96.8% for a 31-day month. The
-blend therefore **no longer damps** a single unusual month against a longer
-baseline; it reads one month twice. Measured on a real eight-source corpus
-over a 31-day month, blending moved the published AQ by 0.0 points, with a
-largest per-axis movement of 0.2 points. Removing it is the **next contract
-bump**, kept deliberately separate so any score movement stays attributable to
-one cause. Raising `--window=N` above 1 restores the two-horizon reading.
-
-This runtime emits **scoring inputs version 10**, **AQ version 10**, and **GStack version 10** (`score_contract_id = 10:10:10`). Scores from a previous
-contract must not be presented as an improvement or regression against v10. v10 narrows the
-default scoring window from six calendar months to one, so the same behaviour now produces
-roughly a sixth of the session counts, tool calls and absolute totals a v9 point was scored
-against — v9 and v10 points are not comparable even though the payload shape is unchanged.
+This runtime emits **scoring inputs version 11**, **AQ version 11**, and **GStack version 11** (`score_contract_id = 11:11:11`). Scores from a previous
+contract must not be presented as an improvement or regression against v11. v11 publishes the
+window's own unblended score; v10 published a 65/35 blend of that window against its own
+trailing 30 days, and v10 narrowed the default scoring window from six calendar months to
+one, so the same behaviour produces roughly a sixth of the session counts, tool calls and
+absolute totals a v9 point was scored against — v9, v10 and v11 points are not comparable
+even though the payload shape is unchanged.
 
 v9 introduced an **evidence floor** on every rate term: a rate is reported N/A (its weight
 renormalized away) whenever the corpus carries too few tool calls for its target to mean
 anything — specifically, too few for the target to imply more than a single occurrence. That
-floor is unchanged in v10, but it now fires far more often, because a one-month corpus is
-small by construction. v10 therefore **records partial scoring in the payload**: an axis that
+floor is unchanged in v10 and v11, but it now fires far more often, because a one-month corpus
+is small by construction. v10 therefore **records partial scoring in the payload**: an axis that
 could only score some of its terms — because a rate fell below the evidence floor, or because
 a session-count floor such as `eligible_change_sessions < 5` dropped a term — publishes
 `partial_terms` alongside its score, naming how many of its terms were scored and what share
@@ -230,12 +227,11 @@ xl-ai-insights --local --last=90d                    # rolling last quarter (als
 xl-ai-insights --local --since=2026-03-01 --until=2026-05-31   # explicit window (until-day inclusive)
 ```
 
-Report metrics follow the requested window — **including git churn**, whose
-`git log --since/--until` range tracks the kept events. AQ is the documented
-exception: its recent-window blend may inspect up to 30 days before the
-effective anchor. At the default one-month scoring window that reaches at most
-two days beyond the window itself (and none at all for a month of 31 days), which
-is why the blend no longer damps — see above. Events without a timestamp are dropped in windowed runs
+Every metric follows the requested window — **including git churn**, whose
+`git log --since/--until` range tracks the kept events, and **including AQ**,
+which used to be the one documented exception: up to v10 its recency blend
+could read up to 30 days before the effective anchor. That exception is gone
+with the blend. Events without a timestamp are dropped in windowed runs
 (they can't honor explicit bounds); that includes Cursor JSONL-only sessions
 beyond their single file-mtime timestamp.
 

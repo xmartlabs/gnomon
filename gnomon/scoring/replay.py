@@ -49,6 +49,14 @@ both raise rather than return a number:
 Both are `ReplayError` AND `IncompatibleScoreContract`, so neither kind of
 caller has to learn a new exception type to stay correct.
 
+THE RECENCY BLEND IS A READ-ONLY CONCERN HERE. v11 removed it from the
+scoring path, so no payload captured from v11 onwards carries a
+`bucket_scoring_inputs` block. This module still understands one, because
+payloads published under v8-v10 do carry it and refusing them would retire
+data gnomon already shipped. Every blend mention below therefore describes a
+HISTORICAL payload; `replay()` branches on payload CONTENT, never on a version
+or a flag, so both paths stay live without a gate.
+
 Coverage contract -- READ THIS before trusting a replay() result. Exactness
 is NOT uniform across payload shapes; the return value's `aq_exactness`
 field tells a caller which regime it got:
@@ -57,7 +65,7 @@ field tells a caller which regime it got:
     `scoring_inputs_by_source[<source>].window` block IS the corpus block --
     there is only one source, so nothing was pooled away. `replay()`
     reproduces `payload["profile"]["aq"]` bit-for-bit (`aq_exactness ==
-    "exact"`), including its 65/35 recency blend when
+    "exact"`), including the 65/35 recency blend of a PRE-v11 payload whose
     `bucket_scoring_inputs` carries one. The same corpus-IS-the-source
     equivalence also makes `profiles_by_source` exact for single-source
     payloads (see below) even though `bucket_scoring_inputs.by_source` is
@@ -79,18 +87,19 @@ field tells a caller which regime it got:
       value -- the tool-volume-weighted mean of each source's OWN
       full-window scored AQ (`score_by_source`'s documented aggregation
       rule; see `aggregate.py`'s module docstring). No recency blend of any
-      kind is reflected: every source is scored 100% full-window, even
-      though live/canonical scoring blends 65% recent + 35% full-window.
-      This is the value returned when no bucket data is available to blend
-      at all (no recency blend was ever shipped for this payload, or the
-      shipped merged-corpus bucket genuinely carried zero sessions).
+      kind is reflected: every source is scored 100% full-window. This is the
+      value returned when no bucket data is available to blend at all -- which
+      since v11 is EVERY freshly captured payload (the blend is gone, so
+      "unblended" is the exact window semantics rather than an approximation of
+      them), plus any pre-v11 payload that shipped no bucket or whose
+      merged-corpus bucket carried zero sessions.
 
     - `aq_exactness == "approximate_weighted_mean"`: the base value above,
       further blended (65/35) against `bucket_scoring_inputs.corpus` -- the
-      one merged-corpus recency bucket the payload DOES ship unconditionally
-      whenever the recency blend is enabled (`bucket_scoring_inputs.by_source`,
-      the per-SOURCE breakdown, is what gets trimmed; the merged corpus
-      bucket does not). This recovers PART of the recency signal missing
+      one merged-corpus recency bucket a PRE-v11 payload ships unconditionally
+      (`bucket_scoring_inputs.by_source`, the per-SOURCE breakdown, is what got
+      trimmed; the merged corpus bucket did not). No v11 payload reaches this
+      regime. This recovers PART of the recency signal missing
       from the unblended base value, at zero additional payload bytes, but
       it is still an approximation: it blends one merged-corpus recent
       reading against a MEAN of per-source full-window readings, not the

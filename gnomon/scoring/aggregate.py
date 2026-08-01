@@ -17,10 +17,10 @@ AGGREGATE RULE (documented contract — mirdash mirrors this in TS):
 
         aggregate_score = Σ_s (w_s · score_s) / Σ_s w_s
 
-    For blended profiles (recent + full-window), w_s is the sum of configured
-    component weight multiplied by that component's tool calls. Without blended
-    components, w_s remains the full-window tool_calls_total(s) for backward
-    compatibility.
+    Live runs pass no blend components, so w_s is the window's
+    tool_calls_total(s). A REPLAY of a payload captured before v11 can still supply
+    per-source recency buckets (see `_blend_profiles`), and then w_s is the sum of
+    configured component weight multiplied by that component's tool calls.
 
     Applied to the AQ total, each AQ pillar, and the Execution/Engineering
     gstack axes. Aggregate Planning is recomputed from synthesized corpus stats
@@ -38,31 +38,17 @@ AGGREGATE RULE (documented contract — mirdash mirrors this in TS):
 
 ONE CANONICAL COMBINED AQ:
     The aggregate AQ is a DIAGNOSTIC (`aggregate.aq_diagnostic`), not a published score.
-    `profile.aq` is the canonical combined AQ that gets PUBLISHED — but it is NOT the raw
-    `compute_aq` output over the merged corpus. `gnomon/cli/local.py` (:313) applies the
-    65/35 recency blend (`_blend_aq`) to that merged-corpus `compute_aq` result before it
-    becomes `profile.aq`; the unblended merged-corpus value is an intermediate, never
-    itself published. The same blend applies at `aggregate.py:674-675` (this module,
-    `score_by_source`'s aggregate) and at `replay.py:264-269, :327-332` (recompute).
-    Distinct counts being UNIONS is still the reason the merged corpus (blended or not)
-    is preferred over blending per-source SCORES. Measured on a real three-source
-    corpus: the merged stats see
+    `profile.aq` is the canonical combined AQ that gets PUBLISHED, and since v11 it IS the
+    `compute_aq` output over the merged corpus, unmodified: `gnomon/cli/local.py` scores the
+    merged corpus once and publishes that. Distinct counts being UNIONS is the reason the
+    merged corpus is preferred over combining per-source SCORES. Measured on a real
+    three-source corpus: the merged stats see
     7 MCP servers where the Claude slice alone sees 6, and 42 CLIs where it sees 41, so merged
     Tool command scores 22.5/28 against 21.5/28 for Claude alone. A user who commands 7 MCP
     servers spread across three tools genuinely commands 7; blending per-source SCORES
     systematically under-counts breadth of tooling, and no post-hoc weighting recovers a union
     from already-collapsed numbers. Publishing two combined numbers also forced every consumer
     to pick one, which is a scoring decision no dashboard should be making.
-
-    Why the blend stays computed at all: the aggregate's Planning axis, archetype, steering,
-    growth edges and signature moves are derived from it, and they remain useful per-source
-    diagnostics. Only its status as a published score is retired.
-
-    CAVEAT on every "65/35 recency blend" mention above: since v10 the default scoring
-    window is ONE calendar month, so the blend's two components cover 93.3% to 100% of the
-    same days and it no longer damps a month against a longer baseline. The machinery
-    described here is accurate; the two-horizon reading of it is not. See the
-    RECENCY_BLEND_ENABLED block below for the overlap arithmetic and the measured effect.
 
     The two numbers do NOT converge, and that is the argument for picking the merged one:
     distinct counts are unions. Measured on a real three-source corpus, the merged stats
@@ -85,48 +71,44 @@ from gnomon.scoring.profiles import build_profile, stats_from_scoring_block
 from gnomon.scoring.versioning import SCORE_CONTRACT_ID, IncompatibleScoreContract
 
 
-# ---- The recency blend, and why it is currently DEGENERATE -------------------------
-# `0.65 * recent_30d + 0.35 * full_window`, applied axis by axis (`_blend_aq`).
+# ---- The recency blend: REMOVED as a producer in v11, kept as a reader ---------------
+# Until v11 the published AQ was `0.65 * recent_30d + 0.35 * full_window`, applied axis by
+# axis (`_blend_aq`). The blend was written when the default scoring window was SIX
+# calendar months: `recent_30d` was a short, reactive reading and `full_window` a genuinely
+# longer baseline, so 65/35 damped one unusual month against five stable ones. v10 narrowed
+# the scoring window to ONE calendar month (aq.DEFAULT_SCORING_WINDOW_MONTHS) and that
+# stopped being true. Both components ended at the same anchor, `full_window` spanned the
+# calendar month (28-31 days) and `recent_30d` the trailing 30, so their intersection was
+# 28-30 days -- 93.3% of their union for a 28-day February, 96.7% for a 29-day one, 96.8%
+# for a 31-day month and exactly 100% for any 30-day month. The blend was no longer damping
+# anything: it read one month twice and averaged it with itself.
 #
-# READ THIS BEFORE TRUSTING THE WEIGHTS. The blend was written when the default scoring
-# window was SIX calendar months: `recent_30d` was a short, reactive reading and
-# `full_window` a genuinely longer baseline, so 65/35 damped one unusual month against
-# five stable ones. v10 narrowed the scoring window to ONE calendar month
-# (aq.DEFAULT_SCORING_WINDOW_MONTHS) and that stopped being true. Both components now end
-# at the same anchor, `full_window` spans the calendar month (28-31 days) and
-# `recent_30d` spans the trailing 30, so their intersection is 28-30 days -- 93.3% of
-# their union for a 28-day February, 96.7% for a 29-day one, 96.8% for a 31-day month and
-# exactly 100% for any 30-day month. For a month of 30 days or fewer the scoring window is
-# entirely INSIDE recent_30d; a 31-day month puts exactly one day (its first) outside.
+# Measured before removing it, on a real 8-source corpus over 2026-07 (31 days, the worst
+# overlap case at 96.8%): the two components' per-axis normalized scores agreed to within
+# 0.006, the blended published AQ was 92 against an unblended 92 -- a 0.0 point difference
+# -- and the largest per-axis movement was 0.2 points on Orchestration
+# (.context/blend-degeneracy-measure.py). Removing it is therefore a near-zero-movement
+# change, shipped as its own contract bump (11:11:11) anyway so that any movement stays
+# attributable to exactly one cause.
 #
-# So the blend no longer damps anything: it reads one month twice and averages it with
-# itself. The arithmetic is still well defined and the weights are still applied
-# faithfully -- what is gone is the two-horizon MEANING those weights were chosen for.
+# It also removed a real defect. `_blend_aq` copies each axis's `signals` verbatim from the
+# highest-effective-weight component, i.e. `recent_30d`, while `stats["volume"]` stayed
+# full-window. Anything reading a count out of the published AQ and dividing it by a
+# full-window denominator was mixing two spans -- `gnomon/cli/local.py::tools_diagnostic`
+# (the `--tools` table) did exactly that, and under-reported every count for any month
+# whose first day fell outside the trailing 30 days.
 #
-# Measured, so the next reader does not have to guess how much this matters: on a real
-# 8-source corpus over 2026-07 (31 days, the worst overlap case at 96.8%) the two
-# components' per-axis normalized scores agreed to within 0.006, the blended published AQ
-# was 92 against an unblended 92 -- a 0.0 point difference -- and the largest per-axis
-# movement was 0.2 points on Orchestration
-# (.context/blend-degeneracy-measure.py). The blend is currently close to a no-op.
+# WHAT STAYS, AND WHY. Everything below that READS a blend is still here: `_blend_aq`,
+# `_blend_partial_terms`, `_blend_profiles` and `HISTORY_WEIGHT`. `gnomon/scoring/replay.py`
+# recomputes payloads captured BEFORE v11, and those carry `bucket_scoring_inputs` blocks
+# that must still be replayable -- dropping the composition would silently retire data this
+# code already published. What is gone is everything that PRODUCED a blend: the bucket
+# definitions (`AQ_BUCKETS`, `RECENT_WEIGHT`, `RECENT_WINDOW_DAYS`), the enable flag, and
+# `gnomon/cli/local.py`'s bucket windows and bucket accumulators.
 #
-# It is NOT removed here on purpose. Removing it is the next contract bump on its own, so
-# that a published score movement stays attributable to exactly one cause; doing both in
-# one change makes the movement unattributable, which is the failure this whole workstream
-# exists to prevent. Until then this block, not the weights, is the honest description.
-RECENCY_BLEND_ENABLED = True
-RECENT_WINDOW_DAYS = 30
-# 65/35 as a pair of numbers is unchanged; see the block above for what they no longer
-# mean. `RECENT_WEIGHT` weights a bucket that, at a one-month window, covers essentially
-# the same days as the "history" it is weighted against.
-RECENT_WEIGHT = 0.65
+# `HISTORY_WEIGHT` is the weight replay gives the `full_window` component when it
+# reconstructs one of those historical blends. It is not applied to any live score.
 HISTORY_WEIGHT = 0.35
-# One bucket: the trailing 30 days ending at the scoring anchor. Materialized by
-# gnomon/cli/local.py::_rolling_aq_bucket_windows, which is also where the overlap with a
-# one-month scoring window becomes concrete.
-AQ_BUCKETS = (
-    {"id": "recent_30d", "configured_weight": RECENT_WEIGHT, "lower_days": 0, "upper_days": RECENT_WINDOW_DAYS},
-)
 
 
 def blend_model_mix_components(components):
@@ -541,12 +523,17 @@ def _blend_aq(full_aq, components):
     of the remaining components are renormalized to one.
 
     This function is generic over any set of named, weighted components and stays
-    correct whatever they span. Its one real caller today passes the degenerate pair --
-    ``recent_30d`` (trailing 30 days) and ``full_window`` (one calendar month ending at
-    the same anchor), which overlap by 93.3% to 100% of their union (96.8% for a 31-day
-    month). Averaging those two is not damping a month against a baseline; see the
-    RECENCY_BLEND_ENABLED block at the top of this module for the measurement and for why
-    the blend is still here.
+    correct whatever they span. Since v11 NOTHING in the live scoring path calls it: the
+    published AQ is the merged-corpus ``compute_aq`` result and carries no ``blend`` block.
+    Its remaining callers all replay a payload captured BEFORE v11, whose
+    ``bucket_scoring_inputs`` block still describes the ``recent_30d`` / ``full_window``
+    pair (see ``gnomon/scoring/replay.py``). Read the recency-blend block at the top of
+    this module before reintroducing a caller.
+
+    Note for anyone tempted to reuse it: ``signals`` on the returned axis are copied
+    verbatim from the highest-effective-weight component, so they describe THAT
+    component's span, not the union of the components'. Dividing one of those counts by a
+    corpus-wide denominator mixes two windows -- that was a live bug until v11.
     """
     contracts = {component.get("aq", {}).get("score_contract_id")
                  for component in components if component.get("aq")}
@@ -711,12 +698,10 @@ def _blend_aq(full_aq, components):
 def _blend_profiles(full_profile, components, full_block):
     """Apply bucketed AQ while keeping non-AQ profile fields full-window scoped.
 
-    "full-window scoped" means the requested scoring window, which since v10 defaults to
-    ONE calendar month -- so the gstack/archetype/steering fields kept here and the
-    ``recent_30d`` component blended into ``aq`` now describe nearly the same days (see
-    the RECENCY_BLEND_ENABLED block at the top of this module: 93.3% to 100% overlap,
-    96.8% for a 31-day month). The split this function makes is still real in code; it is
-    no longer a split between two time horizons."""
+    REPLAY-ONLY since v11: a live run supplies no bucket components, so `score_by_source`
+    never reaches this function. It stays because `gnomon/scoring/replay.py` can be handed
+    a pre-v11 payload whose `bucket_scoring_inputs.by_source` breakdown is intact, and
+    reproducing what that payload published means reproducing this split."""
     aq_components = [dict(component, aq=component["profile"]["aq"])
                      for component in components]
     aq_components.append({
@@ -754,10 +739,11 @@ def score_by_source(scoring_inputs_by_source, bucket_scoring_inputs_by_source=No
     source's own caps (single-source → no union dilution). The aggregate combines the
     per-source SCORES per the module's documented weighted-mean rule.
 
-    When bucket inputs are provided, each source's AQ is blended from the recent
-    rolling bucket plus the full window (65/35). Full-window gstack and narratives
-    stay full-window scoped except AQ-derived growth edges, which are refreshed
-    from the blended AQ.
+    Bucket inputs are a REPLAY-ONLY path since v11 (no live caller supplies them; see the
+    recency-blend block at the top of this module). When a pre-v11 payload does provide
+    them, each source's AQ is blended from the recent rolling bucket plus the full window
+    (65/35), full-window gstack and narratives stay full-window scoped, and AQ-derived
+    growth edges are refreshed from the blended AQ.
     """
     metadata_by_id = {entry["id"]: entry for entry in (bucket_metadata or [])}
     by_source = {}

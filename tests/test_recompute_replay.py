@@ -32,7 +32,10 @@ from gnomon.scoring.replay import (
     replay, ReplayError, IncompatibleScoringInputs, IncompatibleScoringWindow, AQ_EXACT,
     AQ_APPROXIMATE_WEIGHTED_MEAN, AQ_APPROXIMATE_WEIGHTED_MEAN_UNBLENDED,
 )
+from gnomon.output.summary import _profiles_by_source as _summary_profiles_by_source
+from gnomon.scoring.aggregate import HISTORY_WEIGHT, _blend_aq
 from gnomon.scoring.aq import DEFAULT_SCORING_WINDOW_MONTHS, compute_aq
+from gnomon.scoring.inputs import build_scoring_inputs
 from gnomon.scoring.profiles import stats_from_scoring_block
 from gnomon.scoring.versioning import (
     IncompatibleScoreContract, SCORE_CONTRACT_ID, SCORING_INPUTS_VERSION,
@@ -179,33 +182,101 @@ def _recent_codex_fixture_dir(testcase, base_ts):
 
 
 def _run_blended_multisource_summary(testcase):
-    """A genuinely multi-source, genuinely blended payload, built through the
-    real CLI end-to-end: claude carries only the committed (fixed-historical)
-    fixture, codex carries that SAME committed fixture PLUS one copy shifted
-    into the last 5 days (see _recent_codex_fixture_dir). This exercises the
-    exact condition test_replayed_aq_matches_the_payloads_own_aggregate_diagnostic's
-    docstring argued "would not add new coverage" for `aq` -- a real recency
-    blend firing for a multi-source corpus -- which is precisely the condition
-    Fix 1 (round 2) needed and did not have a fixture for."""
+    """A genuinely multi-source corpus with genuinely recent activity, run twice
+    through the real CLI: claude carries only the committed (fixed-historical)
+    fixture, codex carries that SAME committed fixture PLUS one copy shifted into
+    the last 5 days (see _recent_codex_fixture_dir).
+
+    Returns (full_stats, full_summary, bucket_stats): the unbounded run, and a
+    second run narrowed to the trailing 30 days -- the slice v10's recency bucket
+    covered. `_as_pre_v11_blended_payload` composes the two into the payload a v10
+    runtime would have written."""
     now = datetime.now(timezone.utc)
     codex_dir = _recent_codex_fixture_dir(testcase, now - timedelta(days=5))
     dirs = dict(SRC_DIRS)
     dirs["CODEX_DIR"] = codex_dir
-    out = tempfile.mkdtemp(prefix="paxel-replay-blend-")
-    testcase.addClassCleanup(shutil.rmtree, out, ignore_errors=True)
-    argv = ["paxel.py", "claude", "codex", "--summary", "--no-open"]
-    buf = io.StringIO()
-    with (
-        mock.patch.multiple(paxel, OUT_DIR=out, **dirs),
-        mock.patch.object(sys, "argv", argv),
-        contextlib.redirect_stdout(buf),
-    ):
-        paxel.main()
-    with open(os.path.join(out, "stats.json"), encoding="utf-8") as fh:
-        stats = json.load(fh)
-    with open(os.path.join(out, "summary.json"), encoding="utf-8") as fh:
-        summary = json.load(fh)
-    return stats, summary
+
+    def _once(extra_argv):
+        out = tempfile.mkdtemp(prefix="paxel-replay-blend-")
+        testcase.addClassCleanup(shutil.rmtree, out, ignore_errors=True)
+        argv = ["paxel.py", "claude", "codex", "--summary", "--no-open"] + extra_argv
+        buf = io.StringIO()
+        with (
+            mock.patch.multiple(paxel, OUT_DIR=out, **dirs),
+            mock.patch.object(sys, "argv", argv),
+            contextlib.redirect_stdout(buf),
+        ):
+            paxel.main()
+        with open(os.path.join(out, "stats.json"), encoding="utf-8") as fh:
+            stats = json.load(fh)
+        with open(os.path.join(out, "summary.json"), encoding="utf-8") as fh:
+            summary = json.load(fh)
+        return stats, summary
+
+    full_stats, full_summary = _once([])
+    bucket_since = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+    bucket_stats, _ = _once([f"--since={bucket_since}"])
+    return full_stats, full_summary, bucket_stats
+
+
+_RECENT_30D_METADATA = {"id": "recent_30d", "configured_weight": 0.65,
+                        "day_bounds": {"lower": 0, "upper": 30}}
+
+
+def _as_pre_v11_blended_payload(summary, full_stats, bucket_stats):
+    """Assemble the payload a v10 runtime would have written for these two runs.
+
+    v11 removed the recency blend, so the live CLI can no longer PRODUCE a payload
+    carrying `bucket_scoring_inputs` -- but replay() must keep recomputing the ones
+    already published, and that is what the classes using this helper cover. The fixture
+    therefore has to be built rather than captured.
+
+    It is built the way `gnomon/cli/local.py` built it at v10, from two REAL CLI runs
+    over the same transcripts: `full_stats` is the whole scoring window, `bucket_stats`
+    is a run narrowed to the trailing 30 days. Both carry their own live
+    `stats["agentic"]`, so the blended `profile.aq` written here is composed from
+    independently scored corpora -- not from the payload blocks replay() will read back.
+    That is what keeps the exactness assertions non-circular: they still prove that
+    `build_scoring_inputs` -> `stats_from_scoring_block` -> `compute_aq` reproduces what
+    live scoring computed.
+
+    `bucket_scoring_inputs.by_source` is omitted, matching v10's unconditional trim.
+    """
+    sources = sorted(summary["scoring_inputs_by_source"])
+    bucket_block = build_scoring_inputs(bucket_stats)
+    bucket_block["corpus"] = {"sources": {source: {} for source in sources}}
+
+    payload = json.loads(json.dumps(summary))
+    payload["bucket_scoring_inputs"] = {
+        "metadata": [dict(_RECENT_30D_METADATA)],
+        "corpus": {"recent_30d": {"window": bucket_block}},
+    }
+    payload["payload_features"] = {
+        "version": 1,
+        "supported": ["bucket_scoring_inputs", "upload_size_guard"],
+        "emitted": ["bucket_scoring_inputs"],
+        "omitted": [{"feature": "bucket_scoring_inputs.by_source",
+                     "reason": "trimmed_unconditionally"}],
+        "recency_blend": {"enabled": True, "history_weight": HISTORY_WEIGHT},
+    }
+    payload["profile"]["aq"] = _blend_aq(full_stats["agentic"], [
+        dict(_RECENT_30D_METADATA, aq=bucket_stats["agentic"]),
+        {"id": "full_window", "configured_weight": HISTORY_WEIGHT,
+         "aq": full_stats["agentic"]},
+    ])
+    # A single-source corpus IS its own per-source slice, so v10 published per-source
+    # profiles blended from the same bucket block. A multi-source corpus had a genuine
+    # per-source breakdown, and trimming it is exactly what makes those payloads
+    # non-replayable for `profiles_by_source` -- leave them unblended here so the
+    # trimmed-and-refused branch stays reachable.
+    bucket_by_source = ({"recent_30d": {sources[0]: {"window": bucket_block}}}
+                        if len(sources) == 1 else None)
+    if bucket_by_source:
+        payload["profiles_by_source"] = _summary_profiles_by_source(
+            payload["scoring_inputs_by_source"], bucket_by_source,
+            payload["bucket_scoring_inputs"]["metadata"])
+    # Round-trip so the fixture is JSON-shaped exactly like a payload read off disk.
+    return json.loads(json.dumps(payload, default=str))
 
 
 def _iso(dt):
@@ -322,18 +393,22 @@ class MultisourceApproximateAq(unittest.TestCase):
 
 class MultisourceBlendedApproximateAq(unittest.TestCase):
     """Review remediation round 2, Fix 1 + Fix 4: exercises the merged
-    bucket-corpus blend for a GENUINELY blended multi-source payload, through
-    the real CLI end-to-end (claude static history + codex with a real
-    recent_30d session) -- the exact condition MultisourceApproximateAq's
-    docstring used to argue "would not add new coverage" for `aq`. It does:
-    aq_diagnostic takes a different branch (score_by_source WITHOUT the
-    per-source bucket breakdown) whose blend behavior only diverges from the
-    unblended base value when a blend actually fires."""
+    bucket-corpus blend for a GENUINELY blended multi-source payload -- the exact
+    condition MultisourceApproximateAq's docstring used to argue "would not add
+    new coverage" for `aq`. It does: aq_diagnostic takes a different branch
+    (score_by_source WITHOUT the per-source bucket breakdown) whose blend
+    behavior only diverges from the unblended base value when a blend fires.
+
+    Since v11 no runtime produces such a payload, so the fixture is composed from
+    two real CLI runs (claude static history + codex with a real recent session)
+    -- see `_as_pre_v11_blended_payload`. What is under test is unchanged: replay
+    of a payload that WAS published with a blend."""
 
     @classmethod
     def setUpClass(cls):
-        cls._stats, summary = _run_blended_multisource_summary(cls)
-        cls._summary = _declaring_the_live_window(summary)
+        cls._stats, summary, bucket_stats = _run_blended_multisource_summary(cls)
+        cls._summary = _declaring_the_live_window(
+            _as_pre_v11_blended_payload(summary, cls._stats, bucket_stats))
 
     def test_fixture_has_a_real_recency_blend(self):
         bucket = self._summary["bucket_scoring_inputs"]["corpus"]["recent_30d"]["window"]
@@ -391,7 +466,12 @@ class SingleSourceAqExact(unittest.TestCase):
 class BlendedAqExact(unittest.TestCase):
     """Test #3: recent_30d bucket block reproduces the blended AQ exactly, AND the
     blend must be non-vacuous (blended != full_window_aq) so the test cannot pass
-    by construction alone."""
+    by construction alone.
+
+    Since v11 no runtime produces a blended payload, so the fixture is composed
+    from two real CLI runs over the same transcripts -- see
+    `_as_pre_v11_blended_payload`. What is under test is unchanged: EXACT replay of
+    a single-source payload that WAS published with a blend."""
 
     @classmethod
     def setUpClass(cls):
@@ -408,7 +488,11 @@ class BlendedAqExact(unittest.TestCase):
         for i in range(5):
             rows += _dense_session(f"recent-{i}", recent_ts + timedelta(hours=i), calls=40, tool="Edit")
         cls._stats, summary = _run_claude_summary(cls, rows)
-        cls._summary = _declaring_the_live_window(summary)
+        bucket_since = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+        bucket_stats, _ = _run_claude_summary(
+            cls, rows, extra_argv=[f"--since={bucket_since}"])
+        cls._summary = _declaring_the_live_window(
+            _as_pre_v11_blended_payload(summary, cls._stats, bucket_stats))
 
     def test_bucket_has_recent_sessions(self):
         bucket = self._summary["bucket_scoring_inputs"]["corpus"]["recent_30d"]["window"]
@@ -464,12 +548,15 @@ class ProfilesBySourceGuardIsStructuralNotMarkerDependent(unittest.TestCase):
 
     Uses a genuinely BLENDED MULTI-source fixture: single-source payloads are
     always exact now (Fix 3's bucket_corpus equivalence), so only multi-source
-    exercises the not-replayable branch this guard protects."""
+    exercises the not-replayable branch this guard protects. Since v11 that
+    fixture is composed rather than captured -- see
+    `_as_pre_v11_blended_payload`."""
 
     @classmethod
     def setUpClass(cls):
-        cls._stats, summary = _run_blended_multisource_summary(cls)
-        cls._summary = _declaring_the_live_window(summary)
+        cls._stats, summary, bucket_stats = _run_blended_multisource_summary(cls)
+        cls._summary = _declaring_the_live_window(
+            _as_pre_v11_blended_payload(summary, cls._stats, bucket_stats))
 
     def test_status_still_refuses_when_the_omission_marker_is_removed(self):
         omitted = self._summary["payload_features"]["omitted"]
@@ -1045,11 +1132,15 @@ class RecomputeGradeFieldsExcludedFromStatsAndNarrative(unittest.TestCase):
             cls._narrative = fh.read()
 
     def test_fixture_actually_emits_the_new_blocks(self):
-        """Guard: this fixture must be multi-source + recency-blend-capable so
-        both keys are genuinely present in summary.json -- otherwise the
-        "excluded from stats.json/narrative" assertions below would be vacuous."""
-        for key in ("bucket_scoring_inputs", "payload_features"):
-            self.assertIn(key, self._summary, f"fixture never emitted {key!r} in summary.json")
+        """Guard: `payload_features` must genuinely be present in summary.json --
+        otherwise the "excluded from stats.json/narrative" assertion below would be
+        vacuous. `bucket_scoring_inputs` is no longer emitted by any run (v11), so it
+        can no longer be guarded this way; its exclusion assertions below are kept as
+        a regression net rather than as a live claim."""
+        self.assertIn("payload_features", self._summary,
+                      "fixture never emitted 'payload_features' in summary.json")
+        self.assertNotIn("bucket_scoring_inputs", self._summary,
+                          "v11 removed the recency blend; no run emits this block")
         self.assertNotIn("scoring_inputs_corpus", self._summary,
                           "scoring_inputs_corpus should never ship for any source count")
 
@@ -1071,33 +1162,41 @@ class RecomputeGradeFieldsExcludedFromStatsAndNarrative(unittest.TestCase):
                               f"only, not in the narrative prompt")
 
 
-class PayloadFeaturesOmittedCoversRecencyBlendDisabled(unittest.TestCase):
+class PayloadFeaturesOmittedCoversTheAbsentRecencyBlend(unittest.TestCase):
     """Review remediation, Fix 7 minor: docs/metrics-by-source.md documents
     `payload_features.omitted[].reason` as explaining why any of the
-    recompute-grade blocks is absent from a given payload -- but when the
-    recency blend is disabled (RECENCY_BLEND_ENABLED False),
-    `bucket_scoring_inputs` is absent from the payload while `omitted` stays
-    empty; only the separate `recency_blend.enabled` marker reveals it. Fix
-    1(b)'s explicit blend signal depends on that absence being legible from
-    `omitted` alone, so a recompute job branching on it can tell "blend
-    disabled for this payload" apart from "budget-trimmed" without also
-    having to know to check a second, unrelated field."""
+    recompute-grade blocks is absent from a given payload -- so
+    `bucket_scoring_inputs` being absent must be legible from `omitted` alone,
+    without a recompute job also knowing to check the separate
+    `recency_blend.enabled` marker.
+
+    This was originally written against the RECENCY_BLEND_ENABLED=False branch. v11
+    deleted the flag and the blend with it, so the absence is now unconditional and
+    the fixture is just a normal run -- which makes the contract stricter, not
+    weaker: EVERY payload this runtime writes has to carry the explanation."""
 
     @classmethod
     def setUpClass(cls):
-        with mock.patch("gnomon.cli.local.RECENCY_BLEND_ENABLED", False):
-            cls._stats, cls._summary = _run_summary(
+        cls._stats, cls._summary = _run_summary(
             cls, ["claude"], extra_argv=list(_ONE_MONTH_OVER_THE_CLAUDE_FIXTURE))
 
-    def test_bucket_scoring_inputs_absent_when_blend_disabled(self):
+    def test_bucket_scoring_inputs_is_never_emitted(self):
         self.assertNotIn("bucket_scoring_inputs", self._summary)
 
-    def test_omitted_names_the_recency_blend_disabled_reason(self):
+    def test_omitted_names_the_removal_as_the_reason(self):
         omitted = self._summary["payload_features"]["omitted"]
         self.assertTrue(
-            any(o["feature"] == "bucket_scoring_inputs" and o["reason"] == "recency_blend_disabled"
+            any(o["feature"] == "bucket_scoring_inputs" and o["reason"] == "recency_blend_removed"
                 for o in omitted),
-            f"expected an omitted entry naming recency_blend_disabled, got {omitted!r}")
+            f"expected an omitted entry naming recency_blend_removed, got {omitted!r}")
+
+    def test_the_blend_marker_is_an_explicit_false_not_an_absent_key(self):
+        """"This runtime does not blend" has to stay distinguishable from "older
+        client whose payload_features never had the marker"."""
+        self.assertIs(self._summary["payload_features"]["recency_blend"]["enabled"], False)
+        self.assertNotIn("history_weight",
+                         self._summary["payload_features"]["recency_blend"],
+                         "no weight is applied to a live score, so reporting one is fiction")
 
 
 class SummaryFallbackPayloadFeaturesOmitsRecencyBlendMarker(unittest.TestCase):
