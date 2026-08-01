@@ -5,6 +5,40 @@ from gnomon.config import available_caps
 from gnomon.scoring.planning_evidence import _planning_skill_evidence
 from gnomon.scoring.versioning import SCORE_CONTRACT_ID
 
+# ---- The scoring window (v10) -------------------------------------------------------
+# How many calendar months one published point is scored over. 1 = a month is scored on
+# THAT month.
+#
+# Until v10 this was 6, so every published monthly point was a trailing six-month window
+# and a month's score was dominated by the five months before it: a real behavioural
+# change surfaced as a slow drift, and a step change read as an unexplained jump. The
+# window ends at (and includes) the anchor month -- see `_anchor_window` in
+# gnomon/upload/mirdash.py, which already produced exact calendar-month bounds for 1.
+#
+# It lives HERE, not in the upload module that reads it, because it is a calibration
+# input and not a transport detail: it decides the corpus that the five absolute count
+# ceilings below and the two session-count floors (MIN_ELIGIBLE_SESSIONS,
+# ORCHESTRATION_FULL_CONFIDENCE_SESSIONS) are judged against. Being here puts it under
+# gnomon/scoring/calibration.py's fingerprint, so it cannot move again without a contract
+# bump -- which is exactly what it needs, because COMPARISON_POLICY is
+# `same_score_contract_id_only` and a silent window change would pool 1-month rows with
+# 6-month rows in one cohort. Before v10 it was score-affecting and unfingerprinted.
+#
+# Measured consequences of 6 -> 1, so a later reader does not have to rediscover them:
+#   * the five absolute ceilings barely move -- a distinct-tool inventory is re-used every
+#     month, not accumulated (see .context/window-ceiling-measurement-2026-07-31.md);
+#   * the SESSION-COUNT floors are what actually bite. `eligible_change_sessions < 5`
+#     fires for 3/17 six-month users but 31/81 month slices; `orchestratable_sessions < 5`
+#     goes 0/10 users to 18/54 slices;
+#   * the RATE evidence floor starts dropping terms for light users -- 0/16 six-month
+#     corpora lose a rate term, against 18/75 month slices (compounding_writes 18,
+#     review_skills 14, toolsearch 8, skills_total 6, task_calls 5, test_runs 2).
+# None of those three is a reason to re-fit a constant: the drops are honest (see the rate
+# evidence floor block below). What was NOT honest is that a term dropping left no trace
+# in the payload, so an axis resting its whole weight on one surviving term looked exactly
+# like a fully measured one. `wsum` now publishes `partial_terms` when that happens.
+DEFAULT_SCORING_WINDOW_MONTHS = 1
+
 PLANNING_TARGET = 0.50
 # Planning-practice target: fraction of eligible top-level sessions that should carry a
 # planning signal (plan mode OR a planning Skill). Read today by the GStack Planning axis;
@@ -314,13 +348,34 @@ def compute_aq(stats):
                 f"{key}_per_call": round(x / tool_calls, 6) if usable else None,
                 f"{key}_per_call_target": per_call_target}
 
-    def wsum(*terms):
+    # axis name -> how much of that axis was actually scored. Populated by `wsum` and read
+    # by build_pillar; see `partial_terms` there for why it is an axis sibling and not a
+    # signal.
+    partial_by_axis = {}
+
+    def wsum(*terms, axis=None):
         """Weighted mean of (coef, value, required_cap) terms, dropping terms whose cap is
         unavailable and renormalizing the remaining coefficients to sum 1. Returns None when
-        NO term is measurable (the whole axis is unsupported -> build_pillar drops it)."""
+        NO term is measurable (the whole axis is unsupported -> build_pillar drops it).
+
+        `axis` names the axis so a PARTIAL result can be disclosed. A dropped term is
+        renormalized away silently, which used to be invisible in the payload: Discipline
+        scored on the task-tool rate alone at 100% weight was indistinguishable from
+        Discipline scored on all three of its terms. That was tolerable while the window
+        was six months and a drop was rare; under the one-month window it is the common
+        case (see DEFAULT_SCORING_WINDOW_MONTHS for the measured rates). Recording WHICH
+        FRACTION of the configured weight survived is the honest disclosure -- it does not
+        change the number, it explains it."""
         live = [(c, v) for c, v, cap in terms
                 if v is not None and (cap is None or cap in caps)]
         tot = sum(c for c, _ in live)
+        if axis is not None and len(live) < len(terms):
+            configured = sum(c for c, _, _ in terms)
+            partial_by_axis[axis] = {
+                "scored": len(live),
+                "total": len(terms),
+                "weight_scored": round(tot / configured, 4) if configured else 0.0,
+            }
         return sum(c * v for c, v in live) / tot if tot else None
 
     skills = st.get("skills_all") or st.get("top_skills", [])
@@ -366,14 +421,16 @@ def compute_aq(stats):
         (.40, sat(st.get("skills_distinct", 0), SKILLS_DISTINCT_CEILING), None),
         (.30, rate(st.get("skills_total", 0), SKILLS_TOTAL_PER_CALL_TARGET), None),
         (.30, 1.0 if has_skill(["subagent-driven", "brainstorm", "writing-plans",
-                                "cerberus", "systematic-debugging"]) else 0.6, None))
+                                "cerberus", "systematic-debugging"]) else 0.6, None),
+        axis="Skill fluency")
     # mcp_servers/clis are distinct-counts (kept absolute); toolsearch -> per-tool-call rate.
     # toolsearch term drops out (renormalized) when no present source can record it
     tool_command = wsum((.40, sat(t.get("mcp_servers_distinct", 0),
                                   MCP_SERVERS_DISTINCT_CEILING), None),
                         (.40, sat(t.get("clis_distinct", 0), CLIS_DISTINCT_CEILING), None),
                         (.20, rate(t.get("toolsearch_calls", 0), TOOLSEARCH_PER_CALL_TARGET),
-                         "toolsearch"))
+                         "toolsearch"),
+                        axis="Tool command (MCP + CLI)")
     # task-tool -> per-tool-call rate; TaskCreate/Update + SDD sdd-tasks skill invocations
     # both count as structured task planning. plan-skill term needs the Skill capability.
     task_calls = t.get("task_tool_calls", 0) + _task_skill_uses(skills)
@@ -407,7 +464,8 @@ def compute_aq(stats):
                       # (opencode has authoritative identity but emits neither signal).
                       (.40, planning_habit,
                        "skills" if _plan_practice["legacy"] else "planning_signal"),
-                      (.20, ordered_planning, None))
+                      (.20, ordered_planning, None),
+                      axis="Discipline")
     breadth_axes = [
         # Orchestration needs subagent delegation; a source that can't fan out by design
         # (Gemini/Pi/opencode) drops this axis (renormalized) instead of scoring ~0.
@@ -450,7 +508,8 @@ def compute_aq(stats):
     # injected skills on Cursor). Skill fluency / Discipline still require `skills` only.
     # test runs + review skills -> per-tool-call rates
     verification = wsum((.5, rate(b.get("shell_test_runs", 0), TEST_RUNS_PER_CALL_TARGET), None),
-                        (.5, rate(review_n, REVIEW_SKILLS_PER_CALL_TARGET), "skill_reads"))
+                        (.5, rate(review_n, REVIEW_SKILLS_PER_CALL_TARGET), "skill_reads"),
+                        axis="Verification")
     grounding = sat(b.get("planning_ratio_explore_to_doing", 0), 1.0)
     # Context Intelligence: PURE per-session grounding COVERAGE, not knowledge-MCP call/
     # server volume (the old `<50 calls` gate was gameable by auto-fired knowledge-MCP
@@ -476,7 +535,8 @@ def compute_aq(stats):
     # compounding writes -> per-tool-call rate (rewards the habit, not raw volume)
     compounding = wsum((.6, rate(st.get("compounding_writes", 0),
                                  COMPOUNDING_WRITES_PER_CALL_TARGET), None),
-                       (.4, (1.0 if has_skill(["retro", "writing-plans", "brainstorm"]) else 0.6), "skill_reads"))
+                       (.4, (1.0 if has_skill(["retro", "writing-plans", "brainstorm"]) else 0.6), "skill_reads"),
+                       axis="Compounding")
     _review_skills_applicable = "skill_reads" in caps
     verification_signals = {
         "tool_calls": tool_calls,
@@ -542,7 +602,8 @@ def compute_aq(stats):
     # toolsearch term drops out (renormalized) when unsupported, leaving CLI-share
     token_economy = wsum((.5, rate(t.get("toolsearch_calls", 0), TOOLSEARCH_PER_CALL_TARGET),
                           "toolsearch"),
-                         (.5, sat(cli_share, 0.70), None))
+                         (.5, sat(cli_share, 0.70), None),
+                         axis="Token economy")
     savvy_axes = [
         # Model mix needs a real per-turn model id; a source that masks it (Antigravity IDE)
         # drops this axis (renormalized) instead of scoring 0.
@@ -575,12 +636,23 @@ def compute_aq(stats):
         effective_weights = [round(a[1] * scale) for a in live]
         if effective_weights:
             effective_weights[-1] += 100 - sum(effective_weights)
+        # `partial_terms` is present ONLY when the axis was scored on fewer than all of its
+        # terms -- absence means fully measured, mirroring the pillar's `not_applicable`
+        # (also absent when nothing dropped). It is an axis SIBLING rather than an entry in
+        # `signals` on purpose: mirdash reads `signals` as Record<string, number> and shows
+        # the LOWEST value as the axis bottleneck (`pickDrivingSignal` in
+        # apps/web/lib/aq-report.ts), so a fractional weight share in there would be
+        # rendered as a phantom bottleneck on nearly every partial axis. As a sibling it
+        # falls outside `parseAxis`'s {name, weight, score, signals} whitelist and is simply
+        # ignored by consumers that have not opted in.
         out = [{"name": a[0], "base_weight": a[1], "weight": effective_weight,
                 # Binary64 guarantees 15 portable significant decimal digits. Canonicalize
                 # only the exported diagnostic; keep scoring on the unrounded value below.
                 "normalized_score": float(format(a[2], ".15g")),
                 "score": round(effective_weight * a[2], 1),
-                "signals": a[3]}
+                "signals": a[3],
+                **({"partial_terms": partial_by_axis[a[0]]}
+                   if a[0] in partial_by_axis else {})}
                for a, effective_weight in zip(live, effective_weights)]
         pillar = {"name": name, "weight": weight, "score": round(sum(x["score"] for x in out), 1), "axes": out}
         dropped = [a[0] for a in axes if a not in live]

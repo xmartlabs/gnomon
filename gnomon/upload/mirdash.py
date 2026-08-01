@@ -10,6 +10,7 @@ import sys
 import tempfile
 import urllib.parse
 
+from gnomon.scoring.aq import DEFAULT_SCORING_WINDOW_MONTHS
 from gnomon.scoring.versioning import SCORE_CONTRACT_ID
 from gnomon.coverage import COVERAGE_RANK, flag_for_counts, month_index, probe_month
 
@@ -108,8 +109,12 @@ def _resolve_mirdash_base(argv):
 # Maximum batch size supported by the mirdash auth endpoint.
 _MAX_BACKFILL = 12
 
-# Default window size when --window is absent.
-_DEFAULT_WINDOW_MONTHS = 6
+# Default window size when --window is absent. Re-exported, not defined: the window is a
+# calibration input (it decides the corpus every absolute ceiling and session-count floor
+# in aq.py is judged against), so it is owned by the scoring module and covered by
+# gnomon/scoring/calibration.py's fingerprint. This alias keeps every existing importer --
+# gnomon/cli/insights.py, xl_ai_insights.py, tests -- reading the same value.
+_DEFAULT_WINDOW_MONTHS = DEFAULT_SCORING_WINDOW_MONTHS
 
 # Parallel month uploads. Each month runs paxel.py as a subprocess (CPU-bound),
 # so threads only block on subprocess.run -- no GIL contention, real multi-core.
@@ -820,6 +825,27 @@ def _summary_is_empty(summary):
     return ctx.get("total_sessions", 0) == 0 or not dr[0] or not dr[1]
 
 
+def _stamp_window_months(summary, window_months):
+    """Fill in `context.window_months` ONLY when the payload does not already declare it.
+
+    `gnomon/output/summary.py::build_summary` owns this field. It derives the span from
+    the bounds the run actually covered, which is a fact about the corpus; `--window=N`
+    is only what this wrapper ASKED for, and a payload that echoed the request rather
+    than the corpus is exactly how a six-month corpus used to end up pooled with the
+    one-month cohort (see gnomon/scoring/replay.py's corpus-scale gate).
+
+    The two writers cannot disagree: `_anchor_window` only ever requests bounds that are
+    a whole number of calendar months, and those bounds derive back to exactly the
+    `window_months` that produced them (pinned in tests/test_window_flag.py). This stamp
+    therefore only ever fires for a summary built by something that does not derive it --
+    an older paxel, or a hand-built dict -- and when a payload DOES declare a span, that
+    declaration wins. Overwriting it with the request would let the wrapper certify a
+    corpus scale it never observed.
+    """
+    summary.setdefault("context", {}).setdefault("window_months", window_months)
+    return summary
+
+
 def _stamp_force_directive(summary, force):
     """Attach the top-level `force` upload directive to a summary, in place.
 
@@ -885,7 +911,7 @@ def _upload_window(mirdash_base, token, paxel_src, paxel_args_base, since, until
             print(f"  skip {label} -- no activity")
         return (None, None)
 
-    summary.setdefault("context", {})["window_months"] = window_months
+    _stamp_window_months(summary, window_months)
     _stamp_force_directive(summary, force)
     try:
         return (_upload_summary(mirdash_base, token, summary), summary)
@@ -934,7 +960,7 @@ def _upload_window_web(mirdash_base, token, paxel_src, paxel_args_base, since, u
         server.push_event("skipped", {"month": label, "label": label, "reason": "no activity"})
         return None
 
-    summary.setdefault("context", {})["window_months"] = window_months
+    _stamp_window_months(summary, window_months)
     _stamp_force_directive(summary, force)
     server.push_event("uploading", {"month": label, "label": label, "index": index, "total": total})
 

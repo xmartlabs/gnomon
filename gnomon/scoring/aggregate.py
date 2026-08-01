@@ -58,6 +58,12 @@ ONE CANONICAL COMBINED AQ:
     growth edges and signature moves are derived from it, and they remain useful per-source
     diagnostics. Only its status as a published score is retired.
 
+    CAVEAT on every "65/35 recency blend" mention above: since v10 the default scoring
+    window is ONE calendar month, so the blend's two components cover 93.3% to 100% of the
+    same days and it no longer damps a month against a longer baseline. The machinery
+    described here is accurate; the two-horizon reading of it is not. See the
+    RECENCY_BLEND_ENABLED block below for the overlap arithmetic and the measured effect.
+
     The two numbers do NOT converge, and that is the argument for picking the merged one:
     distinct counts are unions. Measured on a real three-source corpus, the merged stats
     carried 24 MCP servers against 19 for Claude alone and 6 for Codex, and 95 distinct
@@ -79,10 +85,45 @@ from gnomon.scoring.profiles import build_profile, stats_from_scoring_block
 from gnomon.scoring.versioning import SCORE_CONTRACT_ID, IncompatibleScoreContract
 
 
+# ---- The recency blend, and why it is currently DEGENERATE -------------------------
+# `0.65 * recent_30d + 0.35 * full_window`, applied axis by axis (`_blend_aq`).
+#
+# READ THIS BEFORE TRUSTING THE WEIGHTS. The blend was written when the default scoring
+# window was SIX calendar months: `recent_30d` was a short, reactive reading and
+# `full_window` a genuinely longer baseline, so 65/35 damped one unusual month against
+# five stable ones. v10 narrowed the scoring window to ONE calendar month
+# (aq.DEFAULT_SCORING_WINDOW_MONTHS) and that stopped being true. Both components now end
+# at the same anchor, `full_window` spans the calendar month (28-31 days) and
+# `recent_30d` spans the trailing 30, so their intersection is 28-30 days -- 93.3% of
+# their union for a 28-day February, 96.7% for a 29-day one, 96.8% for a 31-day month and
+# exactly 100% for any 30-day month. For a month of 30 days or fewer the scoring window is
+# entirely INSIDE recent_30d; a 31-day month puts exactly one day (its first) outside.
+#
+# So the blend no longer damps anything: it reads one month twice and averages it with
+# itself. The arithmetic is still well defined and the weights are still applied
+# faithfully -- what is gone is the two-horizon MEANING those weights were chosen for.
+#
+# Measured, so the next reader does not have to guess how much this matters: on a real
+# 8-source corpus over 2026-07 (31 days, the worst overlap case at 96.8%) the two
+# components' per-axis normalized scores agreed to within 0.006, the blended published AQ
+# was 92 against an unblended 92 -- a 0.0 point difference -- and the largest per-axis
+# movement was 0.2 points on Orchestration
+# (.context/blend-degeneracy-measure.py). The blend is currently close to a no-op.
+#
+# It is NOT removed here on purpose. Removing it is the next contract bump on its own, so
+# that a published score movement stays attributable to exactly one cause; doing both in
+# one change makes the movement unattributable, which is the failure this whole workstream
+# exists to prevent. Until then this block, not the weights, is the honest description.
 RECENCY_BLEND_ENABLED = True
 RECENT_WINDOW_DAYS = 30
+# 65/35 as a pair of numbers is unchanged; see the block above for what they no longer
+# mean. `RECENT_WEIGHT` weights a bucket that, at a one-month window, covers essentially
+# the same days as the "history" it is weighted against.
 RECENT_WEIGHT = 0.65
 HISTORY_WEIGHT = 0.35
+# One bucket: the trailing 30 days ending at the scoring anchor. Materialized by
+# gnomon/cli/local.py::_rolling_aq_bucket_windows, which is also where the overlap with a
+# one-month scoring window becomes concrete.
 AQ_BUCKETS = (
     {"id": "recent_30d", "configured_weight": RECENT_WEIGHT, "lower_days": 0, "upper_days": RECENT_WINDOW_DAYS},
 )
@@ -451,12 +492,61 @@ def _synth_stats_for_aggregate(items, agg_aq):
     return synth
 
 
+def _blend_partial_terms(axis_components, axis_weight_total):
+    """Blend the per-component `partial_terms` disclosures into one axis-level statement,
+    or None when every contributing component measured all of its terms.
+
+    Everything else about an axis is taken from the highest-weight component (see
+    `primary`), and for `signals` that is fine -- they are that component's raw numbers and
+    the payload also ships every component's own. `partial_terms` cannot follow that rule:
+    it is a statement about the axis the reader is looking at, and copying it from the
+    primary would publish "fully measured" for an axis a third of whose score came from a
+    component that could only measure one term. Measured on a real corpus at a thin scoring
+    window: recent_30d spans more days than the window, keeps its Compounding rate term and
+    reports nothing, while the full-window component drops that term -- so the disclosure
+    disappeared exactly where it mattered.
+
+    `weight_scored` blends with the SAME effective weights the score does, treating a
+    silent component as a fully scored 1.0, so it reads as "this fraction of the axis's
+    configured weight was actually measured, across the blend".
+
+    `scored`/`total` are counts, and averaging counts is meaningless, so they report the
+    WORST component -- the one that measured fewest terms. `total` comes from that same
+    component so the pair stays internally consistent (it is the same term list for every
+    component of one axis anyway).
+    """
+    disclosures = [(component, axis.get("partial_terms"))
+                   for component, axis in axis_components]
+    if not any(partial for _, partial in disclosures):
+        return None
+    weighted = 0.0
+    worst = None
+    for component, partial in disclosures:
+        share = component["effective_weight"] / axis_weight_total
+        scored_fraction = 1.0 if not partial else partial.get("weight_scored", 1.0)
+        weighted += share * scored_fraction
+        if partial is not None and (worst is None
+                                    or partial.get("weight_scored", 1.0)
+                                    < worst.get("weight_scored", 1.0)):
+            worst = partial
+    return {"scored": worst.get("scored"), "total": worst.get("total"),
+            "weight_scored": round(weighted, 4)}
+
+
 def _blend_aq(full_aq, components):
     """Blend named, weighted AQ components axis-by-axis.
 
     ``full_aq`` remains the compatibility/fallback score. It is intentionally not a
     weighted component. Components with no AQ are omitted and the configured weights
     of the remaining components are renormalized to one.
+
+    This function is generic over any set of named, weighted components and stays
+    correct whatever they span. Its one real caller today passes the degenerate pair --
+    ``recent_30d`` (trailing 30 days) and ``full_window`` (one calendar month ending at
+    the same anchor), which overlap by 93.3% to 100% of their union (96.8% for a 31-day
+    month). Averaging those two is not damping a month against a baseline; see the
+    RECENCY_BLEND_ENABLED block at the top of this module for the measurement and for why
+    the blend is still here.
     """
     contracts = {component.get("aq", {}).get("score_contract_id")
                  for component in components if component.get("aq")}
@@ -540,10 +630,20 @@ def _blend_aq(full_aq, components):
                         axis["score"] / (axis.get("weight") or 1),
                     ),
                     "signals": axis.get("signals", {}),
+                    # Per-component partial-term disclosure. Always present (None when
+                    # that component measured every term) so a reader never has to tell
+                    # "fully measured" apart from "an older component that predates the
+                    # field" by the absence of a key inside a component list.
+                    "partial_terms": axis.get("partial_terms"),
                     "effective_weight": component["effective_weight"] / axis_weight_total,
                 }
                 for component, axis in axis_components
             ]
+            blended_partial = _blend_partial_terms(axis_components, axis_weight_total)
+            if blended_partial is None:
+                blended_axis.pop("partial_terms", None)
+            else:
+                blended_axis["partial_terms"] = blended_partial
             blended_axes.append(blended_axis)
 
         # Axis scores arriving from compute_aq are contributions that already include
@@ -609,7 +709,14 @@ def _blend_aq(full_aq, components):
 
 
 def _blend_profiles(full_profile, components, full_block):
-    """Apply bucketed AQ while keeping non-AQ profile fields full-window scoped."""
+    """Apply bucketed AQ while keeping non-AQ profile fields full-window scoped.
+
+    "full-window scoped" means the requested scoring window, which since v10 defaults to
+    ONE calendar month -- so the gstack/archetype/steering fields kept here and the
+    ``recent_30d`` component blended into ``aq`` now describe nearly the same days (see
+    the RECENCY_BLEND_ENABLED block at the top of this module: 93.3% to 100% overlap,
+    96.8% for a 31-day month). The split this function makes is still real in code; it is
+    no longer a split between two time horizons."""
     aq_components = [dict(component, aq=component["profile"]["aq"])
                      for component in components]
     aq_components.append({

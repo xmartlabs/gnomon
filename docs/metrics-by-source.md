@@ -108,14 +108,62 @@ directly — no external dependency). Both decode to the same normalized events.
 
 ## Uploaded summary contract
 
-Current runtime contract: **scoring inputs version 9**, **AQ version 9**, and **GStack version 9** (`score_contract_id = 9:9:9`). Previous-contract scores
-must not be shown as improvement or regression against v9 — v9 re-fits the two Skill rate
-targets onto v8's post-dedup counters and widens review-skill recognition, so the Skill
-fluency and Verification axes moved for calibration reasons alone. AQ is blended as
+Current runtime contract: **scoring inputs version 10**, **AQ version 10**, and **GStack version 10** (`score_contract_id = 10:10:10`). Previous-contract scores
+must not be shown as improvement or regression against v10 — v10 narrows the default scoring
+window from six calendar months to one, so a point is now scored on the month it labels and
+the same behaviour yields roughly a sixth of the counts a v9 point was scored against. No
+field is added, renamed or reshaped; what changed is the span each field covers, which is
+precisely why the contract ID has to move. AQ is blended as
 65% recent (rolling 30-day) + 35%
 full-window (cumulative). The full window includes recent activity, so
 improvements are reflected in both components. Empty recent windows fall back
 to the unblended full-window AQ.
+
+**That blend is degenerate at the v10 default window.** Both components end at the same
+anchor, `full_window` is now the calendar month (28-31 days) and the recent component is
+the trailing 30 days, so they cover 93.3% (a 28-day February) to 100% (any 30-day month)
+of the same days — 96.8% for a 31-day month, and a month of 30 days or fewer sits entirely
+inside the recent bucket. The blend therefore **no longer damps** one unusual month
+against a longer baseline; it reads one month twice, and every `65/35` reference below
+should be read as machinery rather than as a two-horizon guarantee. Measured on a real
+eight-source corpus over a 31-day month it moved the published AQ by 0.0 points (largest
+per-axis movement 0.2). Removing it is the **next contract bump**, kept separate so a
+score movement stays attributable to one cause; `--window=N` above 1 restores the
+two-horizon reading in the meantime. Consumers need no change: the payload shape,
+`bucket_scoring_inputs`, and the per-component breakdown inside each axis are unaffected.
+
+The **scoring window and the evidence window are now two different spans.**
+`context.window_months` reports the scoring window (1) — it is what the evolution chart
+labels a point with, and it must never report the wider one. `noticed_stats_monthly` is
+shaped over a trailing six-month read of the same transcripts by a second, corpus-only
+accumulator that scores nothing, so mirdash's per-calendar-month self-heal (one
+`buildMetricMonthlyStats` row per entry, deduped per `monthKey` keeping the greatest
+`anchorMonthKey`) keeps working: a later upload can still correct an earlier month. Six is
+bounded by `cleanupPeriodDays = 180`, the retention gnomon itself offers — reading further
+back would re-state months from whatever survived retention and, carrying the newest anchor,
+would win the dedupe and degrade a more complete stored row.
+
+`context.window_months` is written by `gnomon/output/summary.py::build_summary`, which
+derives it from the `--since`/`--until` bounds the run actually covered — never from the
+uploader's `--window=N`, which a locally invoked paxel never sees. Whole calendar months
+give an integer (the shape every monthly upload requests, so the derived value always
+equals the requested one); anything else — an unbounded local run, a half-bounded run, a
+`--last=30d` rolling window — gives `null`, meaning "this corpus has no statable month
+count". The upload path only fills the field in when a payload does not carry it at all,
+so the two writers can never disagree. `gnomon/scoring/replay.py` reads this declaration
+and refuses to re-score anything that is not the live one-month window, `null` and absent
+included: the window is a calibration constant, so a corpus of another (or unknown) scale
+cannot be pooled into the same cohort.
+
+Axes disclose **partial scoring**. `wsum` drops a term it cannot measure and renormalizes the
+survivors; at a six-month window that was rare, at one month it is common (a rate below the
+evidence floor, or a session-count floor such as `eligible_change_sessions < 5`). An axis
+scored on fewer than all of its terms now carries `partial_terms: {scored, total,
+weight_scored}` as a sibling of `signals` — absent means fully measured, mirroring
+`not_applicable` on the pillar. It is a sibling and not a signal on purpose: `signals` is
+consumed as `Record<string, number>` and its lowest entry is rendered as the axis
+bottleneck, so a fractional weight share in there would read as a phantom bottleneck. The
+score is unchanged by the disclosure.
 
 `build_summary()` uploads:
 
@@ -250,7 +298,8 @@ docstring for the full numbers. Summary:
 
 ### Three time scales in the payload
 
-- `scoring_inputs_by_source[*].window` — **window** (up to 6-month) raw scoring input per source.
+- `scoring_inputs_by_source[*].window` — **window** (one calendar month by default,
+  `--window=N` months) raw scoring input per source.
   These feed the per-source profiles and model-routing eligibility; the corpus AQ's rate
   terms do NOT read them, since the per-tool-call denominator is the merged
   `volume.tool_calls_total`.
@@ -258,7 +307,9 @@ docstring for the full numbers. Summary:
 - `scoring_inputs_by_source[*].monthly` — **per source per calendar month** raw scoring inputs.
 - `profiles_by_source` / `profile` / AQ — **65/35 blended AQ** (65% recent
   30-day rolling + 35% full window); gstack/archetype/steering remain scoped
-  to the requested full-window inputs.
+  to the requested full-window inputs. At the default one-month window the two
+  blend components overlap by 93.3-100% of their days (96.8% for a 31-day
+  month), so the blend no longer damps — see "Uploaded summary contract" above.
 - **One canonical combined AQ**: `profile.aq`, scored from the merged corpus.
   `profiles_by_source.by_source[*].aq` are per-source readings. The aggregate's
   weighted mean of per-source scores is published as

@@ -26,7 +26,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "9:9:9",
+          "score_contract_id": "10:10:10",
           "tier": "Advanced"
         },
         "archetype": {
@@ -352,6 +352,11 @@
                     "base_weight": 17,
                     "name": "Discipline",
                     "normalized_score": 1.0,
+                    "partial_terms": {
+                      "scored": 2,
+                      "total": 3,
+                      "weight_scored": 0.8
+                    },
                     "score": 17.0,
                     "signals": {
                       "planning_practice_eligible_sessions": 40,
@@ -500,7 +505,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "9:9:9",
+            "score_contract_id": "10:10:10",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -905,7 +910,7 @@
         }
       }
     },
-    "scoring_inputs_version": 9
+    "scoring_inputs_version": 10
   },
   {
     "expected": {
@@ -934,7 +939,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "9:9:9",
+          "score_contract_id": "10:10:10",
           "tier": "Adequate"
         },
         "archetype": {
@@ -1243,6 +1248,11 @@
                     "base_weight": 28,
                     "name": "Tool command (MCP + CLI)",
                     "normalized_score": 0.166666666666667,
+                    "partial_terms": {
+                      "scored": 2,
+                      "total": 3,
+                      "weight_scored": 0.8
+                    },
                     "score": 4.7,
                     "signals": {
                       "clis": 8,
@@ -1258,6 +1268,11 @@
                     "base_weight": 17,
                     "name": "Discipline",
                     "normalized_score": 0.666666666666667,
+                    "partial_terms": {
+                      "scored": 1,
+                      "total": 3,
+                      "weight_scored": 0.4
+                    },
                     "score": 11.3,
                     "signals": {
                       "planning_practice_eligible_sessions": 10,
@@ -1323,6 +1338,11 @@
                     "base_weight": 20,
                     "name": "Compounding",
                     "normalized_score": 0.6,
+                    "partial_terms": {
+                      "scored": 1,
+                      "total": 2,
+                      "weight_scored": 0.4
+                    },
                     "score": 12.0,
                     "signals": {
                       "compounding_writes": 1,
@@ -1372,6 +1392,11 @@
                     "base_weight": 50,
                     "name": "Token economy",
                     "normalized_score": 0.952380952380952,
+                    "partial_terms": {
+                      "scored": 1,
+                      "total": 2,
+                      "weight_scored": 0.5
+                    },
                     "score": 95.2,
                     "signals": {
                       "cli_share": 0.67,
@@ -1391,7 +1416,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "9:9:9",
+            "score_contract_id": "10:10:10",
             "tier": "Adequate",
             "tool_diversity": {
               "distinct": 12,
@@ -1715,7 +1740,7 @@
         }
       }
     },
-    "scoring_inputs_version": 9
+    "scoring_inputs_version": 10
   },
   {
     "expected": {
@@ -1744,7 +1769,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "9:9:9",
+          "score_contract_id": "10:10:10",
           "tier": "Advanced"
         },
         "archetype": {
@@ -2071,6 +2096,11 @@
                     "base_weight": 17,
                     "name": "Discipline",
                     "normalized_score": 1.0,
+                    "partial_terms": {
+                      "scored": 2,
+                      "total": 3,
+                      "weight_scored": 0.8
+                    },
                     "score": 17.0,
                     "signals": {
                       "planning_practice_eligible_sessions": 40,
@@ -2219,7 +2249,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "9:9:9",
+            "score_contract_id": "10:10:10",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -2520,6 +2550,11 @@
                     "base_weight": 28,
                     "name": "Tool command (MCP + CLI)",
                     "normalized_score": 0.166666666666667,
+                    "partial_terms": {
+                      "scored": 2,
+                      "total": 3,
+                      "weight_scored": 0.8
+                    },
                     "score": 4.7,
                     "signals": {
                       "clis": 8,
@@ -2535,6 +2570,11 @@
                     "base_weight": 17,
                     "name": "Discipline",
                     "normalized_score": 0.666666666666667,
+                    "partial_terms": {
+                      "scored": 1,
+                      "total": 3,
+                      "weight_scored": 0.4
+                    },
                     "score": 11.3,
                     "signals": {
                       "planning_practice_eligible_sessions": 10,
@@ -2600,6 +2640,11 @@
                     "base_weight": 20,
                     "name": "Compounding",
                     "normalized_score": 0.6,
+                    "partial_terms": {
+                      "scored": 1,
+                      "total": 2,
+                      "weight_scored": 0.4
+                    },
                     "score": 12.0,
                     "signals": {
                       "compounding_writes": 1,
@@ -2649,6 +2694,11 @@
                     "base_weight": 50,
                     "name": "Token economy",
                     "normalized_score": 0.952380952380952,
+                    "partial_terms": {
+                      "scored": 1,
+                      "total": 2,
+                      "weight_scored": 0.5
+                    },
                     "score": 95.2,
                     "signals": {
                       "cli_share": 0.67,
@@ -2668,7 +2718,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "9:9:9",
+            "score_contract_id": "10:10:10",
             "tier": "Adequate",
             "tool_diversity": {
               "distinct": 12,
@@ -3141,7 +3191,7 @@
         }
       }
     },
-    "scoring_inputs_version": 9
+    "scoring_inputs_version": 10
   },
   {
     "expected": {
@@ -3170,7 +3220,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "9:9:9",
+          "score_contract_id": "10:10:10",
           "tier": "Advanced"
         },
         "archetype": {
@@ -3496,6 +3546,11 @@
                     "base_weight": 17,
                     "name": "Discipline",
                     "normalized_score": 1.0,
+                    "partial_terms": {
+                      "scored": 2,
+                      "total": 3,
+                      "weight_scored": 0.8
+                    },
                     "score": 17.0,
                     "signals": {
                       "planning_practice_eligible_sessions": 40,
@@ -3644,7 +3699,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "9:9:9",
+            "score_contract_id": "10:10:10",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -4034,7 +4089,7 @@
         }
       }
     },
-    "scoring_inputs_version": 9
+    "scoring_inputs_version": 10
   },
   {
     "expected": {
@@ -4063,7 +4118,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "9:9:9",
+          "score_contract_id": "10:10:10",
           "tier": "Novice"
         },
         "archetype": {
@@ -4383,6 +4438,11 @@
                     "base_weight": 17,
                     "name": "Discipline",
                     "normalized_score": 0.0,
+                    "partial_terms": {
+                      "scored": 1,
+                      "total": 3,
+                      "weight_scored": 0.4
+                    },
                     "score": 0.0,
                     "signals": {
                       "planning_practice_eligible_sessions": 0,
@@ -4518,7 +4578,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "9:9:9",
+            "score_contract_id": "10:10:10",
             "tier": "Novice",
             "tool_diversity": {
               "distinct": 0,
@@ -4850,7 +4910,7 @@
         }
       }
     },
-    "scoring_inputs_version": 9
+    "scoring_inputs_version": 10
   },
   {
     "bucket_metadata": [
@@ -5033,7 +5093,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "9:9:9",
+          "score_contract_id": "10:10:10",
           "tier": "Advanced"
         },
         "archetype": {
@@ -5336,6 +5396,7 @@
                         "effective_weight": 0.65,
                         "id": "recent_30d",
                         "normalized_score": 0.66,
+                        "partial_terms": null,
                         "score": 21.8,
                         "signals": {
                           "coordination_quality": 0.66,
@@ -5354,6 +5415,7 @@
                         "effective_weight": 0.35,
                         "id": "full_window",
                         "normalized_score": 0.66,
+                        "partial_terms": null,
                         "score": 21.8,
                         "signals": {
                           "coordination_quality": 0.66,
@@ -5393,6 +5455,7 @@
                         "effective_weight": 0.65,
                         "id": "recent_30d",
                         "normalized_score": 0.85,
+                        "partial_terms": null,
                         "score": 18.7,
                         "signals": {
                           "skills_distinct": 25,
@@ -5406,6 +5469,7 @@
                         "effective_weight": 0.35,
                         "id": "full_window",
                         "normalized_score": 0.85,
+                        "partial_terms": null,
                         "score": 18.7,
                         "signals": {
                           "skills_distinct": 25,
@@ -5435,6 +5499,7 @@
                         "effective_weight": 0.65,
                         "id": "recent_30d",
                         "normalized_score": 0.716666666666667,
+                        "partial_terms": null,
                         "score": 20.1,
                         "signals": {
                           "clis": 25,
@@ -5449,6 +5514,7 @@
                         "effective_weight": 0.35,
                         "id": "full_window",
                         "normalized_score": 0.716666666666667,
+                        "partial_terms": null,
                         "score": 20.1,
                         "signals": {
                           "clis": 25,
@@ -5480,6 +5546,11 @@
                         "effective_weight": 0.65,
                         "id": "recent_30d",
                         "normalized_score": 1.0,
+                        "partial_terms": {
+                          "scored": 2,
+                          "total": 3,
+                          "weight_scored": 0.8
+                        },
                         "score": 17.0,
                         "signals": {
                           "planning_practice_eligible_sessions": 10,
@@ -5495,6 +5566,11 @@
                         "effective_weight": 0.35,
                         "id": "full_window",
                         "normalized_score": 1.0,
+                        "partial_terms": {
+                          "scored": 2,
+                          "total": 3,
+                          "weight_scored": 0.8
+                        },
                         "score": 17.0,
                         "signals": {
                           "planning_practice_eligible_sessions": 30,
@@ -5509,6 +5585,11 @@
                     ],
                     "name": "Discipline",
                     "normalized_score": 1.0,
+                    "partial_terms": {
+                      "scored": 2,
+                      "total": 3,
+                      "weight_scored": 0.8
+                    },
                     "score": 17.0,
                     "signals": {
                       "planning_practice_eligible_sessions": 10,
@@ -5535,6 +5616,7 @@
                         "effective_weight": 0.65,
                         "id": "recent_30d",
                         "normalized_score": 1.0,
+                        "partial_terms": null,
                         "score": 35.0,
                         "signals": {
                           "review_skills": 80,
@@ -5550,6 +5632,7 @@
                         "effective_weight": 0.35,
                         "id": "full_window",
                         "normalized_score": 0.65,
+                        "partial_terms": null,
                         "score": 22.8,
                         "signals": {
                           "review_skills": 80,
@@ -5583,6 +5666,7 @@
                         "effective_weight": 0.65,
                         "id": "recent_30d",
                         "normalized_score": 1.0,
+                        "partial_terms": null,
                         "score": 25.0,
                         "signals": {
                           "planning_ratio": 1.0
@@ -5592,6 +5676,7 @@
                         "effective_weight": 0.35,
                         "id": "full_window",
                         "normalized_score": 0.5,
+                        "partial_terms": null,
                         "score": 12.5,
                         "signals": {
                           "planning_ratio": 0.5
@@ -5613,6 +5698,7 @@
                         "effective_weight": 0.65,
                         "id": "recent_30d",
                         "normalized_score": 1.0,
+                        "partial_terms": null,
                         "score": 20.0,
                         "signals": {
                           "coverage": 1.0,
@@ -5628,6 +5714,7 @@
                         "effective_weight": 0.35,
                         "id": "full_window",
                         "normalized_score": 0.666666666666667,
+                        "partial_terms": null,
                         "score": 13.3,
                         "signals": {
                           "coverage": 0.4,
@@ -5661,6 +5748,7 @@
                         "effective_weight": 0.65,
                         "id": "recent_30d",
                         "normalized_score": 1.0,
+                        "partial_terms": null,
                         "score": 20.0,
                         "signals": {
                           "compounding_writes": 20,
@@ -5673,6 +5761,7 @@
                         "effective_weight": 0.35,
                         "id": "full_window",
                         "normalized_score": 1.0,
+                        "partial_terms": null,
                         "score": 20.0,
                         "signals": {
                           "compounding_writes": 20,
@@ -5707,6 +5796,7 @@
                         "effective_weight": 0.65,
                         "id": "recent_30d",
                         "normalized_score": 1.0,
+                        "partial_terms": null,
                         "score": 50.0,
                         "signals": {
                           "actions_per_prompt": 13.0
@@ -5716,6 +5806,7 @@
                         "effective_weight": 0.35,
                         "id": "full_window",
                         "normalized_score": 1.0,
+                        "partial_terms": null,
                         "score": 50.0,
                         "signals": {
                           "actions_per_prompt": 13.0
@@ -5737,6 +5828,7 @@
                         "effective_weight": 0.65,
                         "id": "recent_30d",
                         "normalized_score": 0.8225,
+                        "partial_terms": null,
                         "score": 41.1,
                         "signals": {
                           "api_per_100_tools": 0.1,
@@ -5748,6 +5840,7 @@
                         "effective_weight": 0.35,
                         "id": "full_window",
                         "normalized_score": 0.8225,
+                        "partial_terms": null,
                         "score": 41.1,
                         "signals": {
                           "api_per_100_tools": 0.1,
@@ -5780,6 +5873,7 @@
                         "effective_weight": 0.65,
                         "id": "recent_30d",
                         "normalized_score": 0.75,
+                        "partial_terms": null,
                         "score": 37.5,
                         "signals": {
                           "distinct_models": 2,
@@ -5797,6 +5891,7 @@
                         "effective_weight": 0.35,
                         "id": "full_window",
                         "normalized_score": 0.75,
+                        "partial_terms": null,
                         "score": 37.5,
                         "signals": {
                           "distinct_models": 2,
@@ -5834,6 +5929,7 @@
                         "effective_weight": 0.65,
                         "id": "recent_30d",
                         "normalized_score": 1.0,
+                        "partial_terms": null,
                         "score": 50.0,
                         "signals": {
                           "cli_share": 0.79,
@@ -5847,6 +5943,7 @@
                         "effective_weight": 0.35,
                         "id": "full_window",
                         "normalized_score": 1.0,
+                        "partial_terms": null,
                         "score": 50.0,
                         "signals": {
                           "cli_share": 0.79,
@@ -5875,7 +5972,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "9:9:9",
+            "score_contract_id": "10:10:10",
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -6273,6 +6370,6 @@
         }
       }
     },
-    "scoring_inputs_version": 9
+    "scoring_inputs_version": 10
   }
 ]

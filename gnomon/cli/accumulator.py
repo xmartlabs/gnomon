@@ -1576,7 +1576,34 @@ class Accumulator:
         stats["_timing_compute_aq_s"] = time.monotonic() - _t0_aq
 
         # ---- per-calendar-month noticed_stats (GA1) -----------------------------
-        stats["monthly_noticed_stats"] = _build_monthly_noticed_stats(
+        stats["monthly_noticed_stats"] = self.to_monthly_noticed_stats()
+
+        # ---- per-month FULL stats slices (for scoring_inputs_by_source monthly) --
+        stats["_scoring_monthly_full"] = self.to_monthly(planning_ratio, no_tool_activity, all_sources_no_agent)
+        return stats
+
+    def to_monthly_noticed_stats(self):
+        """Per-calendar-month `noticed_stats` evidence, WITHOUT the rest of the corpus
+        pipeline.
+
+        `to_corpus_stats` calls this so there is one shaper and no drift, but a caller
+        that wants only the monthly block must be able to get it without paying for a
+        windowed `git_churn`, a `compute_aq` and a `to_monthly` it would discard. That
+        caller is the self-heal accumulator in gnomon/cli/local.py: under the one-month
+        scoring window the scored corpus produces a single monthly entry, which would end
+        mirdash's per-calendar-month self-heal, so a second corpus-only accumulator reads
+        a trailing multi-month window purely to reshape this block.
+
+        The two null-honesty flags are recomputed here from the same expressions
+        `to_corpus_stats` uses, so passing them in would only create a way for them to
+        disagree.
+        """
+        self._flush_pending_skills()
+        no_tool_activity = (self.tool_use_total == 0 and bool(self.source_sessions))
+        all_sources_no_agent = bool(self.source_sessions) and (
+            set(self.source_sessions.keys()) <= _AGENT_UNSUPPORTED_SOURCES
+        )
+        return _build_monthly_noticed_stats(
             months=sorted(set(self.month_dates) | set(self.month_prompts) | set(self.month_tools)
                           | set(self.month_tokens) | set(self.month_sessions)),
             month_prompts=self.month_prompts,
@@ -1613,10 +1640,6 @@ class Accumulator:
             burst_gap_s=BURST_GAP_S,
             dow=DOW,
         )
-
-        # ---- per-month FULL stats slices (for scoring_inputs_by_source monthly) --
-        stats["_scoring_monthly_full"] = self.to_monthly(planning_ratio, no_tool_activity, all_sources_no_agent)
-        return stats
 
     def to_monthly(self, planning_ratio, no_tool_activity, all_sources_no_agent):
         """Per-month full stats slices, shaped by the same builder for corpus and

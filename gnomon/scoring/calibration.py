@@ -30,6 +30,10 @@ from gnomon.scoring import aq
 # Score-affecting calibration. Order is irrelevant (the fingerprint sorts), but keep the
 # grouping so a reviewer can see which axis each constant feeds.
 CALIBRATION_CONSTANT_NAMES = (
+    # the scoring window itself -- it decides the corpus every ceiling and floor below is
+    # judged against, so a silent change to it is the same cohort merge this module exists
+    # to prevent. It was score-affecting and unfingerprinted until v10.
+    "DEFAULT_SCORING_WINDOW_MONTHS",
     # rate targets -- the six that share the tool_calls_total denominator
     "SKILLS_TOTAL_PER_CALL_TARGET",
     "TOOLSEARCH_PER_CALL_TARGET",
@@ -99,4 +103,16 @@ CALIBRATION_FINGERPRINTS = {
     # place (the reasoning is in aq.py's rate rationale block, so a later reader does not
     # read this as an oversight).
     "9:9:9": "2e7638d58c2b26e4",
+    # v10 (one-month scoring window). The ONLY constant that moves is the new
+    # DEFAULT_SCORING_WINDOW_MONTHS 6 -> 1, registered above because it was score-affecting
+    # and outside the fingerprint until now: it sets the corpus every absolute ceiling and
+    # both session-count floors are judged against, so 1-month rows and 6-month rows must
+    # not pool under one contract ID. No TARGET is re-fitted -- the five ceilings were
+    # measured under a 1-month window and deliberately left alone
+    # (.context/window-ceiling-measurement-2026-07-31.md), and RATE_MIN_EXPECTED_AT_TARGET
+    # stays 1.0 for the reason its own block in aq.py gives: the low end is the deliberate
+    # choice precisely so small-but-real slices keep their evidence, and under a 1-month
+    # window every published slice IS a small slice, which strengthens that argument rather
+    # than weakening it. The 8:8:8 and 9:9:9 entries above are untouched.
+    "10:10:10": "7a2c444ff5c26f06",
 }

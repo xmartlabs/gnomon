@@ -32,9 +32,23 @@ class TestObservedRangeProjection(unittest.TestCase):
         stats = _full_stats()
         summary = build_summary(stats)
         self.assertEqual(set(summary["context"]), {
-            "date_range", "window", "sources", "total_sessions",
+            "date_range", "window", "window_months", "sources", "total_sessions",
             "total_prompts", "client_version", "observed_range",
         })
+
+    def test_window_months_declares_the_corpus_scale_unconditionally(self):
+        """`context.window_months` is the payload's declaration of the SPAN its counters
+        were pooled over, and gnomon/scoring/replay.py refuses to re-score a payload that
+        does not state one. It is derived from the bounds the run actually had, so a
+        stats dict with no window at all declares null (unknown scale) rather than
+        silently omitting the key -- see gnomon/output/summary.py::_scoring_window_months."""
+        stats = _full_stats()
+        stats["corpus"].pop("window", None)
+        self.assertIsNone(build_summary(stats)["context"]["window_months"])
+
+        stats["corpus"]["window"] = {"since": "2026-06-01T00:00:00-03:00",
+                                     "until": "2026-07-01T00:00:00-03:00"}
+        self.assertEqual(build_summary(stats)["context"]["window_months"], 1)
 
 
 class TestTopLevelCoverageKey(unittest.TestCase):

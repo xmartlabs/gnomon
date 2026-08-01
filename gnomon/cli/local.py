@@ -56,8 +56,93 @@ _TOOLS_DIAG = [
 ]
 
 
+# How many trailing calendar months the per-calendar-month EVIDENCE block is shaped over.
+# This is NOT the scoring window (that is aq.DEFAULT_SCORING_WINDOW_MONTHS = 1, and it is
+# the only one published as `context.window_months`). Nothing here is ever scored.
+#
+# Why the two must differ. mirdash stores one `buildMetricMonthlyStats` row per entry of
+# `noticed_stats_monthly`, keyed (userEmail, monthKey, anchorMonthKey), and every read
+# dedupes per monthKey keeping the GREATEST anchorMonthKey (`dedupeMonthlyStats` in
+# apps/web/convex/buildMetrics.ts). A trailing N-month block therefore lets each upload
+# re-state the previous N-1 months and win that dedupe -- that is the self-heal: a counting
+# fix, a re-scored month, or a month whose transcripts were thin at the time gets corrected
+# by the next upload instead of being frozen forever. Shipping the one-month scoring block
+# here would leave each month writable only by its own anchor and end the self-heal
+# silently, with no test failing.
+#
+# Why 6. The reach is bounded by what is still on disk to re-read, not by taste:
+# gnomon/cli/insights.py offers `cleanupPeriodDays = 180` (_SUGGESTED_RETENTION_DAYS), so
+# ~6 months is the deepest history gnomon itself asks users to keep. Reaching further back
+# would re-state months from whatever fragment survived retention and, because that
+# re-statement carries the newest anchor, it would WIN the dedupe and degrade a stored row
+# that was written when the transcripts were complete -- the same degradation the ingest
+# guard exists to stop, arriving through the door the guard does not watch. 6 also equals
+# the window that was in force before the 1-month change, so the healed depth does not
+# shrink relative to what shipped: what changes is that the SCORE narrows to one month
+# while the evidence stays six.
+#
+# Cost, MEASURED on a real 2,596-file 8-source corpus at anchor 2026-07, not estimated:
+#   pre-2.A, 6-month SCORING window (what shipped)      accumulate 126.9 s
+#   post-2.A, 1-month score + this 6-month self-heal    accumulate  73.7 s   (-42%)
+#   1-month score with this accumulator disabled        accumulate  37.8 s   (+95%)
+# A large net win against what actually shipped -- the per-source and bucket accumulators
+# now span one month while a single corpus-only accumulator covers the six -- but it is NOT
+# free, and an earlier plan calling it "~0 extra parse" was wrong. The event fan-out really
+# is nearly free (the stream is already materialized and `observe` is reentrant, taking its
+# window as a parameter), but `file_scan_since` has to widen to this window, which re-admits
+# every file the one-month mtime pre-filter would have skipped. That re-admitted parse is
+# the whole +95%.
+MONTHLY_SELF_HEAL_MONTHS = 6
+
+
+def _self_heal_since(since_dt, months=None):
+    """Start of the trailing self-heal window, or None when no second accumulator is needed.
+
+    Rolls `since_dt` back to the first instant of the calendar month `months - 1` months
+    before it, so the window is a whole number of calendar months ending where the scoring
+    window ends -- the same trailing-window shape `_anchor_window` produces.
+
+    None means "the scoring accumulator already reads everything the self-heal would":
+    an open-ended run (no `--since`) has no lower bound to widen, and a `months <= 1`
+    configuration asks for exactly the scoring window. Returning None rather than a
+    redundant window is what keeps the second accumulator off the hot path for a plain
+    `--local` run.
+
+    `months` defaults to None and is resolved from the module constant HERE, not bound as
+    a default argument value: a default is evaluated once at import, so
+    `MONTHLY_SELF_HEAL_MONTHS` would be frozen into the signature and overriding the module
+    attribute -- the obvious way to test or tune the reach -- would silently do nothing.
+    """
+    if months is None:
+        months = MONTHLY_SELF_HEAL_MONTHS
+    if since_dt is None or months <= 1:
+        return None
+    total = since_dt.year * 12 + (since_dt.month - 1) - (months - 1)
+    return since_dt.replace(year=total // 12, month=total % 12 + 1, day=1,
+                            hour=0, minute=0, second=0, microsecond=0)
+
+
 def _rolling_aq_bucket_windows(until_dt=None, now=None):
-    """Return rolling AQ windows anchored at the effective scoring end."""
+    """Return rolling AQ windows anchored at the effective scoring end.
+
+    One bucket today: `recent_30d`, the trailing 30 days ending where the scoring window
+    ends. This is where the recency blend's degeneracy becomes concrete. Both this bucket
+    and the scoring window end at the same `anchor`, and since v10 the scoring window is
+    ONE calendar month (aq.DEFAULT_SCORING_WINDOW_MONTHS), so the bucket covers 28-30 of
+    the window's own days: 93.3% of the two spans' union for a 28-day February, 96.8% for
+    a 31-day month, exactly 100% for any 30-day month. A month of 30 days or fewer sits
+    entirely INSIDE this bucket.
+
+    So `_blend_aq` no longer damps a short reading against a longer baseline -- it reads
+    one month twice. It is deliberately still enabled (removing it is its own contract
+    bump, so a published score movement stays attributable to one cause); see the
+    RECENCY_BLEND_ENABLED block in gnomon/scoring/aggregate.py for the arithmetic and the
+    measured effect on a real corpus.
+
+    Note this bucket is NOT clipped to the scoring window: `file_scan_since` below is
+    widened to the earliest of every reader's lower bound precisely so the bucket can look
+    a little further back than the scored month (up to two days, for a 28-day February).
+    """
     now = now or datetime.now().astimezone()
     anchor = min(until_dt, now) if until_dt is not None else now
     return [
@@ -224,6 +309,17 @@ def main(argv=None, output_dir=None):
         mkey: _coverage_for(_history_idx.get(mkey), sids)
         for mkey, sids in sorted(narrative.get("month_sessions", {}).items())
     }
+
+    # ---- per-calendar-month evidence: the SELF-HEAL window, not the scoring window ---
+    # The scored corpus is one calendar month, so its monthly block has one entry --
+    # enough to score, not enough to keep mirdash's per-month self-heal alive (see
+    # MONTHLY_SELF_HEAL_MONTHS). Replace it with the trailing multi-month block before
+    # anything reads it: write_report, stats.json and build_summary all publish this key,
+    # and nothing scores off it (grep monthly_noticed_stats -- summary.py's
+    # `noticed_stats_monthly` is its only consumer, and it is evidence, not an input).
+    _self_heal_monthly = narrative.get("_self_heal_monthly_noticed_stats")
+    if _self_heal_monthly is not None:
+        stats["monthly_noticed_stats"] = _self_heal_monthly
 
     # ---- per-source scoring inputs (single-pass, from _accumulate) ----------
     # The per-source accumulators were tracked during the corpus _accumulate() run,
@@ -472,9 +568,25 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
         bucket["id"]: {source: Accumulator() for source in _srcs_present}
         for bucket in bucket_windows
     }
+
+    # ---- self-heal accumulator (corpus-only, trailing multi-month) --------------
+    # Same events, wider window, shaped ONLY into the per-calendar-month evidence block
+    # (see MONTHLY_SELF_HEAL_MONTHS, which carries the measured cost). The FAN-OUT itself
+    # is nearly free -- the event stream is already materialized below and `observe` is
+    # reentrant, taking its window as a parameter and never writing to the event -- so this
+    # is one more target alongside the 2 + 2·N_sources that already run. The real cost is
+    # the widened `file_scan_since` just below. None when the scoring window is already
+    # open-ended, in which case the corpus accumulator IS the self-heal corpus.
+    self_heal_since = _self_heal_since(since_dt)
+    self_heal_corpus = Accumulator() if self_heal_since is not None else None
+
     file_scan_since = since_dt
-    if since_dt is not None and bucket_windows:
-        file_scan_since = min(since_dt, min(bucket["since"] for bucket in bucket_windows))
+    if since_dt is not None:
+        # The mtime pre-filter must not clip a file the WIDEST reader still needs.
+        lower_bounds = [since_dt] + [bucket["since"] for bucket in bucket_windows]
+        if self_heal_since is not None:
+            lower_bounds.append(self_heal_since)
+        file_scan_since = min(lower_bounds)
 
     # ---- narrative quote candidates (corpus-only, never serialized) ----------
     phrase_counts = Counter()      # normalized short prompt -> times seen
@@ -499,6 +611,8 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
         sa = src_accums[cur_src]
         corpus.begin_file(cur_src, fp)
         sa.begin_file(cur_src, fp)
+        if self_heal_corpus is not None:
+            self_heal_corpus.begin_file(cur_src, fp)
         for bucket in bucket_windows:
             bucket_corpora[bucket["id"]].begin_file(cur_src, fp)
             bucket_src_accums[bucket["id"]][cur_src].begin_file(cur_src, fp)
@@ -521,6 +635,8 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
             ):
                 corpus.skip_file()
                 sa.skip_file()
+                if self_heal_corpus is not None:
+                    self_heal_corpus.skip_file()
                 for bucket in bucket_windows:
                     bucket_corpora[bucket["id"]].skip_file()
                     bucket_src_accums[bucket["id"]][cur_src].skip_file()
@@ -528,6 +644,8 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
             for ev in _ev_list:
                 info = corpus.observe(ev, since_dt, until_dt)
                 sa.observe(ev, since_dt, until_dt)
+                if self_heal_corpus is not None:
+                    self_heal_corpus.observe(ev, self_heal_since, until_dt)
                 for bucket in bucket_windows:
                     bucket_corpora[bucket["id"]].observe(
                         ev, bucket["since"], bucket["until"])
@@ -573,6 +691,8 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
                     del longest_prompts[120:]
         corpus.end_file()
         sa.end_file()
+        if self_heal_corpus is not None:
+            self_heal_corpus.end_file()
         for bucket in bucket_windows:
             bucket_corpora[bucket["id"]].end_file()
             bucket_src_accums[bucket["id"]][cur_src].end_file()
@@ -637,6 +757,14 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
         # main() into stats["coverage"] -- see gnomon/coverage.py.
         "month_sessions": dict(corpus.month_sessions),
         "_per_source_stats": _per_source_stats,
+        # Trailing multi-month per-calendar-month evidence, or None when the scoring
+        # window already covers everything the self-heal would read. Shaped by the
+        # monthly builder DIRECTLY, never through to_corpus_stats: that would run a
+        # second windowed git_churn, a second compute_aq and a second to_monthly, all
+        # of which this block throws away.
+        "_self_heal_monthly_noticed_stats": (
+            self_heal_corpus.to_monthly_noticed_stats()
+            if self_heal_corpus is not None else None),
         "_aq_bucket_windows": bucket_windows,
         "_aq_bucket_per_source_stats": bucket_per_source_stats,
         "_aq_bucket_stats": bucket_stats,

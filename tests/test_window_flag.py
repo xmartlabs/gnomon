@@ -12,7 +12,13 @@ import gnomon.cli.insights as _insights
 _RELEASE_CURRENT = {"status": "current", "current": "0.4.0", "latest": "0.4.0"}
 
 import gnomon.upload.mirdash as _mirdash
-from gnomon.upload.mirdash import _DEFAULT_WINDOW_MONTHS, parse_window
+from gnomon.upload.mirdash import (
+    _DEFAULT_WINDOW_MONTHS, _anchor_window, _paxel_until_arg, parse_window,
+)
+from gnomon.output.summary import _scoring_window_months
+# paxel's OWN window parser (--since/--until dates), not mirdash's --window=N parser
+# imported above under the same name.
+from gnomon.sources.discovery import parse_window as _parse_date_window
 
 
 def _ms(dt):
@@ -78,8 +84,11 @@ class TestParseWindow(unittest.TestCase):
     def test_absent_with_other_flags(self):
         self.assertEqual(parse_window(["--quiet", "--no-open"]), _DEFAULT_WINDOW_MONTHS)
 
-    def test_default_is_6(self):
-        self.assertEqual(_DEFAULT_WINDOW_MONTHS, 6)
+    def test_default_is_one_calendar_month(self):
+        # v10: a published point is scored on the month it labels, not on a trailing
+        # six-month window dominated by the five months before it. The constant is owned
+        # by gnomon/scoring/aq.py (it is a calibration input) and re-exported here.
+        self.assertEqual(_DEFAULT_WINDOW_MONTHS, 1)
 
     def test_bare_window_warns_and_returns_default(self):
         buf = io.StringIO()
@@ -92,6 +101,45 @@ class TestParseWindow(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # --window= is stripped from paxel_forward (does NOT reach paxel)
 # ---------------------------------------------------------------------------
+
+
+class TestDerivedSpanAgreesWithTheRequestedWindow(unittest.TestCase):
+    """`context.window_months` has one owner -- `build_summary`, which derives it from the
+    bounds the run actually covered -- and one fallback writer, the upload path, which only
+    fills the key in when the payload does not carry it. They cannot conflict, and this
+    pins WHY: for every `--window=N`, the bounds `_anchor_window` requests derive back to
+    exactly N, so the derived value and the requested one are the same number by
+    construction rather than by coincidence."""
+
+    def test_every_anchor_window_derives_back_to_the_window_months_it_requested(self):
+        for months in (1, 2, 3, 6, 12):
+            for anchor in ((2026, 1), (2026, 3), (2026, 12)):
+                since, until, _label = _anchor_window(*anchor, window_months=months)
+                # exactly what _upload_window hands paxel, parsed by paxel's own flag parser
+                since_dt, until_dt = _parse_date_window(
+                    [f"--since={since}", f"--until={_paxel_until_arg(until)}"])
+                corpus = {"window": {"since": since_dt.isoformat(),
+                                     "until": until_dt.isoformat()}}
+                with self.subTest(window_months=months, anchor=anchor):
+                    self.assertEqual(_scoring_window_months(corpus), months)
+
+    def test_bounds_that_are_not_calendar_aligned_declare_an_unknown_span(self):
+        """`--last=30d` and any ad-hoc `--since`/`--until` pair land mid-month. Those
+        corpora are real, but they are not a whole number of calendar months, and the
+        field names months -- so it says unknown rather than rounding to a number the
+        calibration would then treat as comparable."""
+        for since, until in (
+            ("2026-06-15T00:00:00-03:00", "2026-07-15T00:00:00-03:00"),
+            ("2026-06-01T00:00:00-03:00", "2026-06-15T00:00:00-03:00"),
+            ("2026-06-01T09:00:00-03:00", "2026-07-01T09:00:00-03:00"),
+        ):
+            with self.subTest(since=since, until=until):
+                self.assertIsNone(
+                    _scoring_window_months({"window": {"since": since, "until": until}}))
+
+    def test_an_unbounded_corpus_declares_an_unknown_span(self):
+        self.assertIsNone(_scoring_window_months({"window": None}))
+        self.assertIsNone(_scoring_window_months({}))
 
 
 class TestWindowNotForwardedToPaxel(unittest.TestCase):
@@ -291,6 +339,25 @@ class TestWindowMonthsInPayload(unittest.TestCase):
         )
         self.assertEqual(len(uploaded), 1)
         self.assertEqual(uploaded[0]["context"]["window_months"], _DEFAULT_WINDOW_MONTHS)
+
+    def test_the_upload_never_overwrites_the_payloads_own_declaration(self):
+        """`gnomon/output/summary.py::build_summary` OWNS `context.window_months`: it
+        derives the span from the bounds the run actually covered, which is a fact about
+        the corpus rather than an echo of the flag. The upload stamp is the fallback for
+        a summary that carries no declaration at all (an older paxel, a hand-built dict),
+        so the two writers can never disagree -- and when they would, the derived value
+        wins, because a payload that says six months IS six months whatever `--window`
+        asked for. Overwriting it here would re-open the laundering the corpus-scale gate
+        in gnomon/scoring/replay.py exists to stop."""
+        summary = _make_summary(sessions=5)
+        summary["context"]["window_months"] = 6
+        uploaded = self._run_console(
+            argv=["--no-open", "--console", "--window=3"],
+            summaries=[summary],
+            upload_returns=["/r/1"],
+        )
+        self.assertEqual(len(uploaded), 1)
+        self.assertEqual(uploaded[0]["context"]["window_months"], 6)
 
     def test_backfill_payload_contains_window_months(self):
         """--backfill mode: every uploaded summary has context.window_months."""

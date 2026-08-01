@@ -1,3 +1,31 @@
+# v10 — One published point is scored on ONE calendar month. Until v10 the default window
+# was a trailing SIX months (`_DEFAULT_WINDOW_MONTHS = 6`), so a month's score was mostly
+# the five months before it: real behaviour change surfaced as slow drift and a step change
+# read as an unexplained jump. Three changes ship together because they are one semantic
+# move:
+#   inputs: no field is added, renamed or reshaped. What changes is the SPAN each field
+#           covers — a scored corpus is now one calendar month, so absolute counts,
+#           session-count floors and rate denominators are all roughly a sixth of what the
+#           same behaviour produced at v9. That makes a v9 row and a v10 row incomparable
+#           even though they are byte-compatible, which is exactly what
+#           COMPARISON_POLICY = same_score_contract_id_only is for.
+#   aq:     the window moves into aq.py as DEFAULT_SCORING_WINDOW_MONTHS and under the
+#           calibration fingerprint (it was score-affecting and unfingerprinted before), and
+#           `wsum` now publishes `partial_terms` on an axis it could only score with some of
+#           its terms. NO calibration target moves: the five absolute ceilings were measured
+#           and left alone (.context/window-ceiling-measurement-2026-07-31.md), and
+#           RATE_MIN_EXPECTED_AT_TARGET stays at 1.0 — the drops it causes at one month are
+#           honest, what was missing was saying so.
+#   gstack: unchanged logic; it moves with the pair for the same reason it did in v7-v9 —
+#           aggregate._blend_aq raises on any mixed contract, so a partial bump would
+#           publish two universes inside one PR.
+# The evidence block is deliberately NOT narrowed with the score: mirdash self-heals its
+# per-calendar-month series from `noticed_stats_monthly`, so gnomon keeps shaping that block
+# over a trailing multi-month window from a second, corpus-only accumulator
+# (gnomon/cli/local.py's MONTHLY_SELF_HEAL_MONTHS). Scoring window and evidence window are
+# now two different things, and only the scoring one is published as
+# `context.window_months`.
+#
 # v9 — The v8 dedup's calibration debt paid off. v8 made a Skill invocation count once per
 # (session, skill) span, which is correct, but left SKILLS_TOTAL_PER_CALL_TARGET (0.25) and
 # REVIEW_SKILLS_PER_CALL_TARGET (0.060) fitted against the PRE-dedup counter, so every
@@ -62,9 +90,9 @@
 # per-session rates by each source's tool volume; review rejected it because the resulting
 # mean mixes units (tool_calls x things/session is not a quantity) and inverts. Do not
 # reintroduce it — see the comment above `rate()` in aq.py for the measured counter-example.
-SCORING_INPUTS_VERSION = 9
-AQ_VERSION = 9
-GSTACK_VERSION = 9
+SCORING_INPUTS_VERSION = 10
+AQ_VERSION = 10
+GSTACK_VERSION = 10
 # The first SCORING_INPUTS_VERSION whose skill counters are DEDUPED: v8 (28d3bda) made a
 # Skill invocation count once per (session, skill) span instead of once per assistant/
 # sidechain turn carrying attributionSkill. That changed what the persisted counter MEANS,

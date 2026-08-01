@@ -45,7 +45,7 @@ _HELP_TEXT = """Usage:
     --force       re-upload all months (ignores what has already been uploaded)
     --dry-run     show what would be uploaded (and why) without uploading anything
     --mirdash-base=URL  override the mirdash server URL
-    --window=N    trailing window size in months for each scored point (default 6)
+    --window=N    trailing window size in months for each scored point (default 1)
     --no-open     skip redirecting to the mirdash report at the end
     --quiet       only print errors and the final report URL
     --verbose     also show paxel's full stdout/stderr
@@ -686,7 +686,7 @@ def main(argv=None):
     console = "--console" in argv
     output_dir = _resolve_output_dir(argv)
 
-    # Parse --window=N (trailing N-month scoring window; default 6)
+    # Parse --window=N (trailing N-month scoring window; default 1)
     window_months = parse_window(argv)
 
     # Determine operating mode

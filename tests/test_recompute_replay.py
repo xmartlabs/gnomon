@@ -29,23 +29,42 @@ import paxel
 from tests.test_smoke import FIX, SRC_DIRS, _claude_turn
 
 from gnomon.scoring.replay import (
-    replay, ReplayError, IncompatibleScoringInputs, AQ_EXACT,
+    replay, ReplayError, IncompatibleScoringInputs, IncompatibleScoringWindow, AQ_EXACT,
     AQ_APPROXIMATE_WEIGHTED_MEAN, AQ_APPROXIMATE_WEIGHTED_MEAN_UNBLENDED,
 )
-from gnomon.scoring.aq import compute_aq
+from gnomon.scoring.aq import DEFAULT_SCORING_WINDOW_MONTHS, compute_aq
 from gnomon.scoring.profiles import stats_from_scoring_block
 from gnomon.scoring.versioning import (
-    IncompatibleScoreContract, SCORING_INPUTS_VERSION, SKILL_DEDUP_INPUTS_VERSION,
+    IncompatibleScoreContract, SCORE_CONTRACT_ID, SCORING_INPUTS_VERSION,
+    SKILL_DEDUP_INPUTS_VERSION,
 )
 
+# Sentinel for "this payload has no `context.window_months` key at all", which is a
+# different case from one that declares None -- see
+# WiderWindowPayloadIsNotLaunderedIntoTheLiveContract.
+_UNSET = object()
 
-def _run_summary(testcase, sources):
+# The committed claude fixture's transcripts all fall on 2026-06-01, so this is a REAL
+# one-calendar-month run over them, not a narrowed one: paxel's own `parse_window` turns
+# the inclusive `--until` day into the exclusive 2026-07-01 midnight, which is exactly the
+# shape `gnomon/upload/mirdash.py::_anchor_window` requests for a monthly upload.
+_ONE_MONTH_OVER_THE_CLAUDE_FIXTURE = ("--since=2026-06-01", "--until=2026-06-30")
+_SIX_MONTHS_OVER_THE_CLAUDE_FIXTURE = ("--since=2026-01-01", "--until=2026-06-30")
+
+
+def _run_summary(testcase, sources, extra_argv=None):
     """Run paxel over the committed multi-source fixtures (tests/fixtures/), which
     all carry fixed historical dates well outside any rolling 30-day window relative
-    to "now" -- so this gives a clean, un-blended multi-source corpus."""
+    to "now" -- so this gives a clean, un-blended multi-source corpus.
+
+    `extra_argv` forwards real CLI flags (`--since=`/`--until=`) so a caller can run the
+    same fixtures over a genuine calendar-month window instead of an unbounded read --
+    see PayloadDeclaresTheCorpusScaleItWasBuiltOver for why that difference is now
+    visible in the payload."""
     out = tempfile.mkdtemp(prefix="paxel-replay-")
     testcase.addClassCleanup(shutil.rmtree, out, ignore_errors=True)
-    argv = ["paxel.py"] + list(sources) + ["--summary", "--no-open"]
+    argv = (["paxel.py"] + list(sources) + ["--summary", "--no-open"]
+            + list(extra_argv or []))
     buf = io.StringIO()
     with (
         mock.patch.multiple(paxel, OUT_DIR=out, **SRC_DIRS),
@@ -58,6 +77,28 @@ def _run_summary(testcase, sources):
     with open(os.path.join(out, "summary.json"), encoding="utf-8") as fh:
         summary = json.load(fh)
     return stats, summary
+
+
+def _declaring_the_live_window(summary):
+    """Return a copy of `summary` that declares the LIVE scoring window.
+
+    The corpora behind it are SHAPE fixtures, not calendar months: the committed
+    multi-source set spans 2025-06 to 2026-07, and the recency-blend fixtures place
+    sessions ~200 days apart on purpose, because what they exercise is per-source pooling,
+    bucket trimming and blending -- never corpus scale. `build_summary` now stamps the span
+    each run actually covered (null for an unbounded read), so replaying one of these
+    verbatim would only re-prove the corpus-scale gate, which
+    PayloadDeclaresTheCorpusScaleItWasBuiltOver and
+    WiderWindowPayloadIsNotLaunderedIntoTheLiveContract already pin from both sides.
+    Declaring the window here keeps each of these classes about its own subject.
+
+    Classes whose fixture genuinely fits inside one calendar month do NOT use this -- they
+    pass real `--since`/`--until` flags instead, so their payload declares its scale the
+    way a real one does.
+    """
+    payload = json.loads(json.dumps(summary))
+    payload.setdefault("context", {})["window_months"] = DEFAULT_SCORING_WINDOW_MONTHS
+    return payload
 
 
 def _run_claude_summary(testcase, rows, extra_argv=None):
@@ -212,7 +253,8 @@ class MultisourceApproximateAq(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls._stats, cls._summary = _run_summary(cls, ["claude", "codex", "gemini"])
+        cls._stats, summary = _run_summary(cls, ["claude", "codex", "gemini"])
+        cls._summary = _declaring_the_live_window(summary)
 
     def test_fixture_is_genuinely_multi_source(self):
         by_source = self._summary["scoring_inputs_by_source"]
@@ -290,7 +332,8 @@ class MultisourceBlendedApproximateAq(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls._stats, cls._summary = _run_blended_multisource_summary(cls)
+        cls._stats, summary = _run_blended_multisource_summary(cls)
+        cls._summary = _declaring_the_live_window(summary)
 
     def test_fixture_has_a_real_recency_blend(self):
         bucket = self._summary["bucket_scoring_inputs"]["corpus"]["recent_30d"]["window"]
@@ -333,7 +376,8 @@ class SingleSourceAqExact(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls._stats, cls._summary = _run_summary(cls, ["claude"])
+        cls._stats, cls._summary = _run_summary(
+            cls, ["claude"], extra_argv=list(_ONE_MONTH_OVER_THE_CLAUDE_FIXTURE))
 
     def test_no_corpus_block_key(self):
         self.assertNotIn("scoring_inputs_corpus", self._summary)
@@ -363,7 +407,8 @@ class BlendedAqExact(unittest.TestCase):
         # the score (full-window dilutes the two; recent_30d sees only the edits).
         for i in range(5):
             rows += _dense_session(f"recent-{i}", recent_ts + timedelta(hours=i), calls=40, tool="Edit")
-        cls._stats, cls._summary = _run_claude_summary(cls, rows)
+        cls._stats, summary = _run_claude_summary(cls, rows)
+        cls._summary = _declaring_the_live_window(summary)
 
     def test_bucket_has_recent_sessions(self):
         bucket = self._summary["bucket_scoring_inputs"]["corpus"]["recent_30d"]["window"]
@@ -423,7 +468,8 @@ class ProfilesBySourceGuardIsStructuralNotMarkerDependent(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls._stats, cls._summary = _run_blended_multisource_summary(cls)
+        cls._stats, summary = _run_blended_multisource_summary(cls)
+        cls._summary = _declaring_the_live_window(summary)
 
     def test_status_still_refuses_when_the_omission_marker_is_removed(self):
         omitted = self._summary["payload_features"]["omitted"]
@@ -447,7 +493,8 @@ class BucketInputsWithoutMetadataRaises(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls._stats, cls._summary = _run_summary(cls, ["claude"])
+        cls._stats, cls._summary = _run_summary(
+            cls, ["claude"], extra_argv=list(_ONE_MONTH_OVER_THE_CLAUDE_FIXTURE))
 
     def _payload_with_bucket_corpus(self, metadata):
         payload = json.loads(json.dumps(self._summary))
@@ -494,7 +541,8 @@ class UnknownSourceIdentityRaises(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls._stats, cls._summary = _run_summary(cls, ["claude"])
+        cls._stats, cls._summary = _run_summary(
+            cls, ["claude"], extra_argv=list(_ONE_MONTH_OVER_THE_CLAUDE_FIXTURE))
 
     def _payload_with_window_source(self, source_key, window_overrides):
         payload = json.loads(json.dumps(self._summary))
@@ -538,10 +586,14 @@ class SingleActiveSourceAmongZeroSessionKeysIsExact(unittest.TestCase):
         }
         payload = {
             "payload_features": {"version": 1, "supported": [], "emitted": [], "omitted": []},
-            # Stamped like a real payload (output/summary.py always emits it): replay()
-            # refuses a payload that does not declare which inputs version produced its
-            # counters -- see PreDedupPayloadIsRefusedRatherThanRescored.
+            # Stamped like a real payload (output/summary.py always emits all three):
+            # replay() refuses a payload that does not declare which inputs version
+            # produced its counters -- see PreDedupPayloadIsRefusedRatherThanRescored --
+            # nor the corpus SPAN they were pooled over, which is what the corpus-scale
+            # gate reads (WiderWindowPayloadIsNotLaunderedIntoTheLiveContract).
             "scoring_inputs_version": SCORING_INPUTS_VERSION,
+            "score_contract_id": SCORE_CONTRACT_ID,
+            "context": {"window_months": DEFAULT_SCORING_WINDOW_MONTHS},
             "scoring_inputs_by_source": sibs,
         }
         result = replay(payload)
@@ -616,8 +668,14 @@ class MultisourceModellessSourceApproximatesInsteadOfRaising(unittest.TestCase):
         return {
             "payload_features": {"version": 1, "supported": [], "emitted": [], "omitted": []},
             # See the note in SingleActiveSourceAmongZeroSessionKeysIsExact: a real payload
-            # always declares the inputs version its counters came from.
+            # always declares the inputs version its counters came from and the corpus SPAN
+            # they were pooled over (output/summary.py stamps both unconditionally), and
+            # replay() refuses a payload that states neither -- see
+            # PreDedupPayloadIsRefusedRatherThanRescored and
+            # WiderWindowPayloadIsNotLaunderedIntoTheLiveContract.
             "scoring_inputs_version": SCORING_INPUTS_VERSION,
+            "score_contract_id": SCORE_CONTRACT_ID,
+            "context": {"window_months": DEFAULT_SCORING_WINDOW_MONTHS},
             "scoring_inputs_by_source": sibs,
             "bucket_scoring_inputs": {
                 "metadata": [{"id": "recent_30d", "configured_weight": 0.65,
@@ -672,6 +730,14 @@ class PreDedupPayloadIsRefusedRatherThanRescored(unittest.TestCase):
         block = _minimal_scoring_block("claude", sessions=12, tool_calls=tool_calls)
         payload = {
             "payload_features": {"version": 1, "supported": [], "emitted": [], "omitted": []},
+            # These payloads carry an OLDER inputs version on purpose, so they also carry
+            # a foreign contract as far as replay() is concerned. Declaring the window
+            # keeps this class about the counter gate alone: `--window=1` predates its
+            # becoming the default, so a v8/v9 payload really can be a one-month corpus,
+            # and the separate corpus-scale gate
+            # (WiderWindowPayloadIsNotLaunderedIntoTheLiveContract) must not swallow the
+            # round trip these tests are here to pin.
+            "context": {"window_months": DEFAULT_SCORING_WINDOW_MONTHS},
             "scoring_inputs_by_source": {"claude": {"window": block, "monthly": []}},
         }
         if inputs_version is not None:
@@ -726,6 +792,225 @@ class PreDedupPayloadIsRefusedRatherThanRescored(unittest.TestCase):
                 result = replay(payload)
                 self.assertEqual(result["aq_exactness"], AQ_EXACT)
                 self.assertEqual(result["aq"], compute_aq(stats_from_scoring_block(block)))
+
+
+class WiderWindowPayloadIsNotLaunderedIntoTheLiveContract(unittest.TestCase):
+    """A payload captured under a WIDER scoring window must not be re-stamped with the
+    live contract id.
+
+    The counter guard above (`_require_comparable_scoring_inputs`) only asks what the
+    stored numbers MEAN. v10 changed something it cannot see: the SPAN those numbers
+    cover. `DEFAULT_SCORING_WINDOW_MONTHS` went 6 -> 1, so the same behaviour now
+    produces roughly a sixth of the sessions, tool calls and absolute totals that every
+    ceiling and both eligibility floors are judged against -- which is exactly why v10
+    registered the window as a calibration constant (gnomon/scoring/calibration.py).
+
+    A v9 payload captured at six months passes the counter gate (9 is in
+    [8, 10]), gets re-scored with v10's calibration, and `compute_aq` stamps the CURRENT
+    `SCORE_CONTRACT_ID`. Under `COMPARISON_POLICY = same_score_contract_id_only` that
+    result is indistinguishable from a genuine one-month row -- a six-month corpus
+    laundered into the one-month cohort. Replaying an old FORMULA is the feature;
+    promoting an old CORPUS SCALE into the live cohort is not.
+
+    The guard reads the payload's own declaration and infers nothing:
+      * a DECLARED `context.window_months` that differs from the live default is refused,
+        whatever contract the payload carries;
+      * a declaration that is not an integer -- including the null an UNBOUNDED run stamps
+        -- is refused for the same reason;
+      * an UNDECLARED window (no key at all) is refused too: the payload predates the
+        stamp, so its scale is unknown, and unknown scale cannot be certified comparable.
+        An earlier revision exempted an undeclared window when the payload carried the
+        live `score_contract_id`, on the argument that replay re-stamps nothing there.
+        That held only while a locally built payload never declared a window --
+        `build_summary` stamps `score_contract_id` unconditionally whatever the span, so a
+        locally built SEVEN-month payload took the exemption and was pooled into the
+        one-month cohort anyway. The scale is now declared at the source
+        (PayloadDeclaresTheCorpusScaleItWasBuiltOver), and the exemption is gone with it.
+    """
+
+    def _payload(self, contract, window_months=_UNSET, inputs_version=None):
+        block = _minimal_scoring_block("claude", sessions=12, tool_calls=900)
+        payload = {
+            "payload_features": {"version": 1, "supported": [], "emitted": [], "omitted": []},
+            "scoring_inputs_version": (SCORING_INPUTS_VERSION if inputs_version is None
+                                       else inputs_version),
+            "scoring_inputs_by_source": {"claude": {"window": block, "monthly": []}},
+        }
+        if contract is not None:
+            payload["score_contract_id"] = contract
+        if window_months is not _UNSET:
+            payload["context"] = {"window_months": window_months}
+        return payload
+
+    def test_a_six_month_payload_from_an_older_contract_does_not_produce_a_score(self):
+        payload = self._payload("9:9:9", window_months=6, inputs_version=9)
+        with self.assertRaises(IncompatibleScoringWindow):
+            replay(payload)
+
+    def test_the_refusal_is_catchable_as_both_a_replay_and_a_contract_failure(self):
+        """Same argument as the pre-dedup guard: a caller walking a store of payloads
+        already catches ReplayError, a contract-aware caller already catches
+        IncompatibleScoreContract, and neither may end up holding the laundered number."""
+        payload = self._payload("9:9:9", window_months=6, inputs_version=9)
+        for expected in (ReplayError, IncompatibleScoreContract, IncompatibleScoringInputs):
+            with self.subTest(exception=expected.__name__):
+                with self.assertRaises(expected):
+                    replay(payload)
+
+    def test_the_message_names_both_windows_and_the_live_default(self):
+        with self.assertRaises(IncompatibleScoringWindow) as caught:
+            replay(self._payload("9:9:9", window_months=6, inputs_version=9))
+        message = str(caught.exception)
+        self.assertIn("window_months", message)
+        self.assertIn("6", message)
+        self.assertIn(str(DEFAULT_SCORING_WINDOW_MONTHS), message)
+
+    def test_an_older_contract_payload_that_carried_a_one_month_window_still_replays(self):
+        """`--window=1` existed long before it became the default, so a v9 payload can
+        genuinely be a one-month corpus. Refusing that one would delete the feature the
+        counter guard was careful to preserve."""
+        payload = self._payload("9:9:9", window_months=1, inputs_version=9)
+        block = payload["scoring_inputs_by_source"]["claude"]["window"]
+        result = replay(payload)
+        self.assertEqual(result["aq_exactness"], AQ_EXACT)
+        self.assertEqual(result["aq"], compute_aq(stats_from_scoring_block(block)))
+
+    def test_an_undeclared_window_is_refused_whatever_contract_it_carries(self):
+        """Absent is not "matches". A payload that never says what span it covers is
+        exactly the case that must not be guessed at -- and carrying the LIVE contract id
+        does not answer the question, because build_summary stamps that unconditionally
+        however wide the corpus was."""
+        for contract in ("9:9:9", None, SCORE_CONTRACT_ID):
+            with self.subTest(score_contract_id=contract):
+                with self.assertRaises(IncompatibleScoringWindow):
+                    replay(self._payload(contract, inputs_version=9))
+
+    def test_a_non_integer_window_declaration_is_refused(self):
+        """Fail closed on a foreign shape, the same way the inputs-version gate does --
+        `True` is an int in Python and would otherwise read as one month."""
+        for value in (None, "1", 1.0, True):
+            with self.subTest(window_months=value):
+                with self.assertRaises(IncompatibleScoringWindow):
+                    replay(self._payload("9:9:9", window_months=value, inputs_version=9))
+
+    def test_a_live_contract_payload_round_trips_bit_for_bit(self):
+        """The gate must not cost the feature: a payload that carries the live contract id
+        AND declares the live one-month corpus scale is comparable on both counts, so the
+        result must be exactly the live scorer's own number for that block."""
+        payload = self._payload(SCORE_CONTRACT_ID,
+                                window_months=DEFAULT_SCORING_WINDOW_MONTHS)
+        block = payload["scoring_inputs_by_source"]["claude"]["window"]
+        result = replay(payload)
+        self.assertEqual(result["aq_exactness"], AQ_EXACT)
+        self.assertEqual(result["aq"], compute_aq(stats_from_scoring_block(block)))
+
+    def test_a_live_contract_payload_that_declares_a_wider_window_is_still_refused(self):
+        """`--window=6` is still a supported flag, so this code can itself emit a
+        six-month corpus stamped 10:10:10. replay() will not hand that number back as if
+        it were comparable to the one-month cohort its calibration assumes."""
+        with self.assertRaises(IncompatibleScoringWindow):
+            replay(self._payload(SCORE_CONTRACT_ID, window_months=6))
+
+    def test_a_real_summary_payload_declares_the_live_window_and_replays(self):
+        """The common case, end to end: a summary built over one calendar month declares
+        that month and replays. `context.window_months` is stamped by
+        `gnomon/output/summary.py::build_summary` from the bounds the run actually
+        covered, so a locally built payload states its own scale -- see
+        PayloadDeclaresTheCorpusScaleItWasBuiltOver for the full argument."""
+        _stats, summary = _run_summary(
+            self, ["claude"], extra_argv=list(_ONE_MONTH_OVER_THE_CLAUDE_FIXTURE))
+        self.assertEqual(summary["score_contract_id"], SCORE_CONTRACT_ID)
+        self.assertEqual(summary["context"]["window_months"],
+                         DEFAULT_SCORING_WINDOW_MONTHS)
+        self.assertIn("aq_0_100", replay(summary)["aq"])
+
+
+class PayloadDeclaresTheCorpusScaleItWasBuiltOver(unittest.TestCase):
+    """A payload STATES the corpus span it was pooled over; the gate never guesses it.
+
+    The corpus-scale gate above used to exempt a payload that declared no window but
+    carried the live `score_contract_id`, on the argument that only the upload path
+    stamps `context.window_months`, so a locally built summary.json never declares one
+    and always carries the live contract. The first half was true and the conclusion was
+    still wrong: `build_summary` stamps `score_contract_id` unconditionally regardless of
+    the span the run covered, and `gnomon/sources/discovery.py::parse_window` accepts an
+    unbounded `--since`/`--until` (or `--last=Nm` for any N). A locally built payload
+    spanning seven months therefore carried the live contract, declared no window, hit the
+    exemption, and was pooled into the one-month cohort -- the same laundering the gate
+    exists to stop, arriving through a second door.
+
+    The root cause was that a payload did not state its own scale, so the gate had to
+    infer one. `build_summary` now derives `context.window_months` from the bounds the run
+    genuinely had, which makes the declaration a fact about the corpus rather than an echo
+    of a flag someone may not have passed:
+
+      * a run bounded to a whole number of calendar months declares that number -- the
+        shape every uploaded payload has, since `_anchor_window` only ever requests
+        calendar-aligned bounds;
+      * a run that cannot state a whole number of calendar months declares None. That
+        covers the UNBOUNDED local run (no `--since`, no `--until`: its span is whatever
+        survived transcript retention, decided by disk contents rather than by the run),
+        the half-bounded run, and `--last=Nd`-style rolling windows that do not land on
+        calendar boundaries. None is a DECLARATION of unknown scale, not an absence: the
+        key is present and the gate refuses it, which is the fail-closed answer this
+        module's docstring already argues for everywhere else.
+
+    Deriving the number from the observed EVENTS instead was rejected: it would make
+    replayability depend on where a corpus happens to fall relative to a month boundary
+    (two sessions on Jun 30 and Jul 1 would read as a two-month corpus, the same two
+    sessions a week later as a one-month one), and it would give the field two different
+    meanings depending on how the run was invoked.
+    """
+
+    def test_a_calendar_month_run_declares_one_month(self):
+        _stats, summary = _run_summary(
+            self, ["claude"], extra_argv=list(_ONE_MONTH_OVER_THE_CLAUDE_FIXTURE))
+        self.assertEqual(summary["context"]["window_months"], 1)
+
+    def test_a_calendar_month_payload_replays_exactly(self):
+        """The scale declaration must not cost the feature: a genuine one-month payload
+        still round-trips to the number the payload itself published."""
+        _stats, summary = _run_summary(
+            self, ["claude"], extra_argv=list(_ONE_MONTH_OVER_THE_CLAUDE_FIXTURE))
+        result = replay(summary)
+        self.assertEqual(result["aq_exactness"], AQ_EXACT)
+        self.assertEqual(result["aq"], summary["profile"]["aq"])
+
+    def test_a_multi_month_run_declares_the_span_it_actually_covered(self):
+        _stats, summary = _run_summary(
+            self, ["claude"], extra_argv=list(_SIX_MONTHS_OVER_THE_CLAUDE_FIXTURE))
+        self.assertEqual(summary["context"]["window_months"], 6)
+
+    def test_a_locally_built_multi_month_payload_is_refused(self):
+        """The hole this closes, exactly: no flag was passed, nothing on the upload path
+        ran, and the payload still carries the LIVE contract id -- which is what the old
+        undeclared-window exemption keyed on. It is a six-month corpus and it must not
+        pool with the one-month cohort."""
+        _stats, summary = _run_summary(
+            self, ["claude"], extra_argv=list(_SIX_MONTHS_OVER_THE_CLAUDE_FIXTURE))
+        self.assertEqual(summary["score_contract_id"], SCORE_CONTRACT_ID)
+        with self.assertRaises(IncompatibleScoringWindow):
+            replay(summary)
+
+    def test_an_unbounded_run_declares_an_unknown_span_rather_than_none_at_all(self):
+        """A plain `--local` run reads every transcript on disk. It cannot state a span in
+        months, so it says so explicitly -- the key is PRESENT and null, which is what
+        keeps "unknown" distinguishable from "predates this stamp"."""
+        _stats, summary = _run_summary(self, ["claude"])
+        self.assertIn("window_months", summary["context"])
+        self.assertIsNone(summary["context"]["window_months"])
+
+    def test_an_unbounded_payload_is_refused_rather_than_read_as_one_month(self):
+        _stats, summary = _run_summary(self, ["claude"])
+        self.assertEqual(summary["score_contract_id"], SCORE_CONTRACT_ID)
+        with self.assertRaises(IncompatibleScoringWindow):
+            replay(summary)
+
+    def test_a_half_bounded_run_cannot_state_a_span(self):
+        """`--since` with no `--until` is open-ended on the right: the corpus runs to
+        whatever the last transcript happens to be, so there is no span to declare."""
+        _stats, summary = _run_summary(self, ["claude"], extra_argv=["--since=2026-06-01"])
+        self.assertIsNone(summary["context"]["window_months"])
 
 
 class RecomputeGradeFieldsExcludedFromStatsAndNarrative(unittest.TestCase):
@@ -801,7 +1086,8 @@ class PayloadFeaturesOmittedCoversRecencyBlendDisabled(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         with mock.patch("gnomon.cli.local.RECENCY_BLEND_ENABLED", False):
-            cls._stats, cls._summary = _run_summary(cls, ["claude"])
+            cls._stats, cls._summary = _run_summary(
+            cls, ["claude"], extra_argv=list(_ONE_MONTH_OVER_THE_CLAUDE_FIXTURE))
 
     def test_bucket_scoring_inputs_absent_when_blend_disabled(self):
         self.assertNotIn("bucket_scoring_inputs", self._summary)

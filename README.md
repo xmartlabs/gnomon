@@ -90,28 +90,69 @@ uvx --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights --help
 ```
 
 Each scored point is computed over a **trailing window of `--window=N` calendar
-months** (default 6) ending at its anchor month, so a single weak month doesn't
-tank the score. `--window=1` scores each month on its own. The window applies to
-normal monthly runs and to `--backfill`/`--force`.
+months** (default 1) ending at its anchor month, so a month is scored on that
+month. Raise it with `--window=N` if you want a point smoothed over the N months
+ending at its anchor. The window applies to normal monthly runs and to
+`--backfill`/`--force`.
 
-Within the default six-month view, AQ is blended as **65% recent (rolling
+The **per-calendar-month evidence** block (`noticed_stats_monthly`) is
+deliberately wider than the scoring window: it is shaped over a trailing
+six-month read of the same transcripts, so re-running gnomon still corrects
+earlier months rather than freezing each one at whatever it looked like the day
+it was first uploaded. Only the scoring window is published as
+`context.window_months`.
+
+Every payload declares the corpus span it was actually built over in
+`context.window_months`, derived from the dates the run covered rather than from
+the flag that asked for them. A run bounded to whole calendar months declares
+that count; a run with no bounds at all — a plain local run, which reads every
+transcript still on disk — declares `null`, because its span is whatever survived
+retention rather than anything the run chose. Recomputing a stored payload
+against a newer formula only accepts payloads that declare the current one-month
+window: a wider or unstated corpus produces roughly a different number of
+sessions and tool calls than the scoring targets are calibrated for, so it is
+refused instead of being pooled with genuine one-month scores.
+
+Within a multi-month view, AQ is blended as **65% recent (rolling
 30-day) + 35% full-window** (the entire scored period). Because the full
 window includes recent activity, improvements are reflected in both
 components — recent behavior dominates while the full window provides
 stability. When the recent window has no sessions the blend falls back to the
 unblended full-window AQ.
 
-This runtime emits **scoring inputs version 9**, **AQ version 9**, and **GStack version 9** (`score_contract_id = 9:9:9`). Scores from a previous
-contract must not be presented as an improvement or regression against v9. v9 re-fits the
-two Skill rate targets against the post-dedup counters v8 introduced (a Skill counts once
-per session span, not once per attributed turn) and widens review-skill recognition to
-`verif`-leading names, so v8 and v9 skill/verification scores are not comparable.
+**At the default one-month window that blend is degenerate, and the paragraph
+above only describes what it was built for.** Both components end at the same
+anchor: `full_window` is the calendar month (28–31 days) and the recent
+component is the trailing 30 days, so the two cover 93.3% (a 28-day February)
+to 100% (any 30-day month) of the same days — 96.8% for a 31-day month. The
+blend therefore **no longer damps** a single unusual month against a longer
+baseline; it reads one month twice. Measured on a real eight-source corpus
+over a 31-day month, blending moved the published AQ by 0.0 points, with a
+largest per-axis movement of 0.2 points. Removing it is the **next contract
+bump**, kept deliberately separate so any score movement stays attributable to
+one cause. Raising `--window=N` above 1 restores the two-horizon reading.
 
-v9 also adds an **evidence floor** to every rate term: a rate is reported N/A (its weight
+This runtime emits **scoring inputs version 10**, **AQ version 10**, and **GStack version 10** (`score_contract_id = 10:10:10`). Scores from a previous
+contract must not be presented as an improvement or regression against v10. v10 narrows the
+default scoring window from six calendar months to one, so the same behaviour now produces
+roughly a sixth of the session counts, tool calls and absolute totals a v9 point was scored
+against — v9 and v10 points are not comparable even though the payload shape is unchanged.
+
+v9 introduced an **evidence floor** on every rate term: a rate is reported N/A (its weight
 renormalized away) whenever the corpus carries too few tool calls for its target to mean
-anything — specifically, too few for the target to imply more than a single occurrence. Real
-corpora are far above that floor (the lightest measured user pools ~2,000 tool calls), but a
-thin slice would otherwise let ONE Skill invocation or ONE compounding write max out a term.
+anything — specifically, too few for the target to imply more than a single occurrence. That
+floor is unchanged in v10, but it now fires far more often, because a one-month corpus is
+small by construction. v10 therefore **records partial scoring in the payload**: an axis that
+could only score some of its terms — because a rate fell below the evidence floor, or because
+a session-count floor such as `eligible_change_sessions < 5` dropped a term — publishes
+`partial_terms` alongside its score, naming how many of its terms were scored and what share
+of its configured weight survived. The score itself is unchanged by this.
+
+That disclosure is **published, not yet displayed**. No consumer reads `partial_terms` today —
+mirdash's axis parser keeps only `name`, `weight`, `score` and `signals` and drops the rest —
+so to a person reading a dashboard an axis resting its whole weight on one surviving term
+still looks exactly like a fully measured one. Producing the field is the half that has to
+exist first; making a reader see it is a consumer change that has not shipped.
 
 Rate terms (test runs, review skills, ToolSearch, task planning, skills,
 compounding writes) are scored **per tool call**, not per session. One session is
@@ -192,7 +233,9 @@ xl-ai-insights --local --since=2026-03-01 --until=2026-05-31   # explicit window
 Report metrics follow the requested window — **including git churn**, whose
 `git log --since/--until` range tracks the kept events. AQ is the documented
 exception: its recent-window blend may inspect up to 30 days before the
-effective anchor. Events without a timestamp are dropped in windowed runs
+effective anchor. At the default one-month scoring window that reaches at most
+two days beyond the window itself (and none at all for a month of 31 days), which
+is why the blend no longer damps — see above. Events without a timestamp are dropped in windowed runs
 (they can't honor explicit bounds); that includes Cursor JSONL-only sessions
 beyond their single file-mtime timestamp.
 

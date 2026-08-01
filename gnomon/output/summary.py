@@ -269,6 +269,70 @@ def _profiles_by_source(scoring_inputs_by_source, bucket_scoring_inputs_by_sourc
     return sbs
 
 
+def _scoring_window_months(corpus):
+    """How many whole calendar months of corpus this run pooled, or None when the run
+    cannot state a number -- published as `context.window_months`.
+
+    This is the payload's own declaration of its CORPUS SCALE, and the only thing
+    `gnomon/scoring/replay.py::_require_comparable_scoring_window` is allowed to trust
+    when deciding whether a persisted payload may be re-scored into the live cohort. It
+    matters because `DEFAULT_SCORING_WINDOW_MONTHS` is a calibration constant: every
+    absolute ceiling and both session-count floors in `gnomon/scoring/aq.py` are judged
+    against the corpus one window produces, so a six-month payload and a one-month payload
+    are not comparable even though they are byte-identical in shape.
+
+    It is derived from the bounds the run genuinely had (`corpus.window`, i.e. the
+    `--since`/`--until` pair `gnomon/sources/discovery.py::parse_window` resolved), NOT
+    from a flag: `--window=N` is a flag on the UPLOAD wrapper that a locally invoked
+    paxel never sees, so a payload that echoed it would say nothing about the corpus it
+    actually covered. Deriving it here is what lets replay() refuse a laundered payload
+    instead of guessing from `score_contract_id`, which `build_summary` stamps
+    unconditionally whatever the span.
+
+    Two returns, and the None one is deliberate:
+
+      * an INT when both bounds land on the first instant of a calendar month, which is
+        the only shape that can honestly be counted in months. It is also exactly what
+        `gnomon/upload/mirdash.py::_anchor_window` requests for every monthly upload, so
+        every uploaded payload declares an integer and it always equals the `--window=N`
+        that produced it (pinned in tests/test_window_flag.py).
+      * None -- "this corpus has no statable month count" -- for everything else: an
+        UNBOUNDED run (no `--since`, no `--until`, so the span is whatever survived
+        transcript retention rather than anything the run chose), a half-bounded run, and
+        rolling/ad-hoc windows like `--last=30d` that do not land on calendar boundaries.
+        None is a DECLARATION, not an absence: the key is still present, and replay()
+        refuses it. Reading an unbounded run as one month is precisely the failure this
+        function exists to prevent, and rounding a 30-day rolling window to "1" would
+        re-introduce it for every corpus that straddles a month boundary.
+
+    The observed EVENT range is deliberately not used as a fallback bound. It would make
+    the declaration depend on where a corpus happens to fall relative to a month boundary
+    (two sessions on Jun 30 and Jul 1 would read as a two-month corpus; the same two
+    sessions a week later as a one-month one) and would give the field two meanings
+    depending on how the run was invoked.
+    """
+    window = (corpus or {}).get("window") or {}
+    since, until = window.get("since"), window.get("until")
+    if not since or not until:
+        return None
+    try:
+        start, end = datetime.fromisoformat(since), datetime.fromisoformat(until)
+    except (TypeError, ValueError):
+        return None
+    if not (_is_month_start(start) and _is_month_start(end)):
+        return None
+    months = (end.year - start.year) * 12 + (end.month - start.month)
+    return months if months >= 1 else None
+
+
+def _is_month_start(dt):
+    """True when `dt` is the first instant of a calendar month. `until` is the EXCLUSIVE
+    next-midnight parse_window derives from the inclusive `--until` day, so a window that
+    covers whole calendar months has BOTH bounds sitting exactly here."""
+    return (dt.day == 1 and dt.hour == 0 and dt.minute == 0
+            and dt.second == 0 and dt.microsecond == 0)
+
+
 def build_summary(stats):
     """The shareable subset for the low-cost feedback loop (docs/metrics-evaluation.md):
     the 8 high-signal MEASURED metrics + monthly progression + rubric profile block.
@@ -286,6 +350,14 @@ def build_summary(stats):
         "context": {
             "date_range": c.get("date_range"),
             "window": c.get("window"),
+            # The corpus SCALE this payload was pooled over, derived from the bounds
+            # above -- see _scoring_window_months. Stamped unconditionally (null when the
+            # run cannot state a month count) so a payload never leaves here without
+            # saying what span its counters cover; replay() refuses anything that is not
+            # the live DEFAULT_SCORING_WINDOW_MONTHS. This is the SCORING window only --
+            # `noticed_stats_monthly` is deliberately wider (gnomon/cli/local.py's
+            # MONTHLY_SELF_HEAL_MONTHS) and is never published here.
+            "window_months": _scoring_window_months(c),
             "sources": sorted((c.get("sources") or {}).keys()),
             "total_sessions": v["total_sessions"],
             "total_prompts": v["total_prompts"],

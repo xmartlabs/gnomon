@@ -20,9 +20,11 @@ this module's fixtures.
 
 Fixture construction (capability-aware, per gnomon/config.py::SOURCE_CAPS):
   - every source gnomon can discover (gnomon.sources.discovery.ALL_SOURCES)
-  - a 6-month window (gnomon.upload.mirdash._DEFAULT_WINDOW_MONTHS) per block,
-    since the per-POST worst case is the widest single window, not a 12-month
-    backfill (that is 12 separate POSTs)
+  - `_DEFAULT_WINDOW_MONTHS` monthly blocks per source (one, since v10) plus a
+    `noticed_stats_monthly` block MONTHLY_SELF_HEAL_MONTHS wide, since the
+    per-POST worst case is the widest single window, not a 12-month backfill
+    (that is 12 separate POSTs). The two counts differ on purpose: scoring
+    window and evidence window are separate spans since v10
   - list-shaped fields (skills_all, top_skills, top_tools, subagent_types,
     mcp_knowledge_server_names, linked_model_pairs) filled to their real caps
     for capability-having sources; capability-lacking sources get an empty
@@ -46,14 +48,31 @@ capability created or can fix alone.
      (docs/metrics-by-source.md's "Upload payload budget" section).
   2. In the fully-maxed SYNTHETIC worst case this module builds (every
      documented per-source/per-month list cap hit simultaneously across all
-     8 sources for 6 months, `_NAME_LEN=36` throughout), the PRE-EXISTING
-     `scoring_inputs_by_source` + `profiles_by_source` fields ALONE already
-     exceed the cap -- a scenario never observed on real data, and unrelated
-     to `bucket_scoring_inputs`/`payload_features`. This module therefore
-     gates on this capability's own bounded contribution (its absolute size
-     and the delta it adds), not on the whole payload's total size, which
-     this change neither grew into nor can shrink out of that pre-existing
-     condition.
+     8 sources, `_NAME_LEN=36` throughout), the PRE-EXISTING
+     `scoring_inputs_by_source` + `profiles_by_source` fields used to exceed
+     the cap on their own -- a scenario never observed on real data, and
+     unrelated to `bucket_scoring_inputs`/`payload_features`. This module
+     therefore gates on this capability's own bounded contribution (its
+     absolute size and the delta it adds), not on the whole payload's total
+     size.
+
+     v10 UPDATE: the one-month scoring window shrank that pre-existing
+     condition rather than fixing it by design. `scoring_inputs_by_source[*]
+     .monthly` follows `_DEFAULT_WINDOW_MONTHS`, so it went from 6 blocks per
+     source to 1, and the synthetic worst case fell from 1,052,917 bytes
+     (1.14x the cap) to ~672 KB (0.73x). That is a real reduction, but it is a
+     SIDE EFFECT of the window change and must not be read as the pre-existing
+     risk being closed: `_MAX_SHIPPED_WORST_CASE_BYTES` was re-anchored to the
+     new measurement precisely so the smaller number becomes the new ceiling
+     instead of leaving 390 KB of silent slack in the ratchet.
+
+     The same change is why `noticed_stats_monthly` is no longer `[]` in the
+     fixture. It is shaped over the SELF-HEAL window
+     (gnomon/cli/local.py MONTHLY_SELF_HEAL_MONTHS), not the scoring window, so
+     it stays six months wide while everything else narrowed -- making it the
+     widest multi-month block in the payload and the one the worst case now has
+     to be built around. Leaving it empty would have turned this whole module
+     into a measurement of a payload gnomon does not send.
 """
 import json
 import unittest
@@ -69,6 +88,8 @@ from gnomon.scoring.versioning import (
     SCORING_INPUTS_VERSION, AQ_VERSION, GSTACK_VERSION, SCORE_CONTRACT_ID,
 )
 from gnomon.output.source_usage import build_source_usage, build_source_usage_monthly
+from gnomon.output.summary import _build_noticed_stats
+from gnomon.cli.local import MONTHLY_SELF_HEAL_MONTHS
 from gnomon.upload.mirdash import (
     _INGEST_MAX_BYTES, _DEFAULT_WINDOW_MONTHS, _upload_summary, PayloadTooLarge,
 )
@@ -90,17 +111,22 @@ _MAX_RECOMPUTE_GRADE_DELTA_RATIO = 0.05  # hard relative cap (item 6b): the
                 # payload must stay under 5% of the mirdash ingest budget, so a
                 # future change to their contents cannot silently balloon the
                 # payload again. Measured ~3.7% in the synthetic worst case.
-_MAX_SHIPPED_WORST_CASE_BYTES = 1_060_000  # review remediation (round 2, Fix 6):
+_MAX_SHIPPED_WORST_CASE_BYTES = 680_000  # review remediation (round 2, Fix 6):
                 # a GROWTH RATCHET on the full shipped/trimmed synthetic worst-case
-                # payload, not a claim it fits under the 900 KB mirdash cap (it
-                # doesn't -- see the module docstring's KNOWN RISK section; that
-                # gap predates this capability and is a PRE-EXISTING field's
-                # problem, not this capability's). Before this ratchet the number
-                # was only PRINTED, so growth in the pre-existing fields
-                # (scoring_inputs_by_source / profiles_by_source) went undetected.
-                # Recorded value: 1,052,898-1,052,902 bytes depending on run-to-run
-                # dict-ordering noise; bounded with headroom, not tuned to the exact
-                # measurement.
+                # payload. Before this ratchet the number was only PRINTED, so growth
+                # in the pre-existing fields (scoring_inputs_by_source /
+                # profiles_by_source) went undetected.
+                #
+                # v10 re-anchor: was 1_060_000 against a measured 1,052,898-1,052,902.
+                # The one-month scoring window cut `scoring_inputs_by_source[*].monthly`
+                # from 6 blocks per source to 1 and the same fixture now measures
+                # ~672,500 bytes, so the old bound would have permitted 57% silent
+                # growth. Re-anchored with the same discipline as before -- just above
+                # the measurement, headroom for dict-ordering noise, NOT tuned to the
+                # exact byte. It is still a ratchet, not a fit-under-the-cap claim,
+                # even though the number now happens to sit at 0.73x the 900 KB cap
+                # (see the module docstring's v10 UPDATE for why that is a side effect
+                # and not a fix).
 
 
 def _name(prefix, i):
@@ -239,6 +265,67 @@ def _monthly(source):
     return [_block(source, month=f"2025-{m:02d}") for m in range(1, _DEFAULT_WINDOW_MONTHS + 1)]
 
 
+def _noticed_stats_monthly():
+    """`noticed_stats_monthly` at its real worst case: MONTHLY_SELF_HEAL_MONTHS entries,
+    every per-month list at its cap.
+
+    This block used to be `[]` in the fixture, which was already an under-measurement and
+    became a load-bearing one when the scoring window narrowed to one month: the per-source
+    `monthly` blocks now carry ONE entry each (they follow _DEFAULT_WINDOW_MONTHS), so if
+    this stayed empty the "worst case" would simply have shrunk sixfold and the growth
+    ratchet below would have stopped ratcheting anything. This block is now the widest
+    multi-month structure gnomon ships -- it is deliberately shaped over the self-heal
+    window, not the scoring window (see gnomon/cli/local.py MONTHLY_SELF_HEAL_MONTHS) -- so
+    it is what the worst case has to be built around.
+
+    Caps come from _build_monthly_noticed_stats: top_tools / top_skills / top_mcp_servers
+    are `most_common(100)` on the MONTH's own counter, so a single month can reach each cap
+    on its own (same per-block argument _MONTHLY_DIV records for top_tools).
+    """
+    entries = []
+    for month in range(1, MONTHLY_SELF_HEAL_MONTHS + 1):
+        stats = _build_noticed_stats({
+            "volume": {"total_sessions": 8000, "total_prompts": 500000,
+                       "tool_calls_total": 2000000, "assistant_turns": 900000,
+                       "thinking_blocks": 400000, "avg_prompt_length_chars": 1234.5,
+                       "median_prompt_length_chars": 987.5},
+            "velocity": {"git_churn_total": 900000, "tool_churn_edit_write": 800000,
+                         "shell_authored_lines_est": 700000, "git_repos_seen": 40,
+                         "git_repos_with_commits": 40, "active_hours": 720.0},
+            "behavior": {"iteration_depth_mean": 12.34, "iteration_depth_median": 9.5,
+                         "iteration_depth_p90": 40, "iteration_depth_max": 900,
+                         "files_hammered_over_15x": 500, "tool_errors": 90000,
+                         "error_rate_per_100_tools": 4.5, "error_recovery_ratio": 0.987,
+                         "polite_prompts": 5000, "questions_asked": 60000,
+                         "delegate_actions": 40000, "background_tasks": 3000,
+                         "scheduled_actions": 2000, "fanout_median": 9,
+                         "longest_run_minutes": 1440.0},
+            "stack": {"models": [(_name("model", i), 10 ** 6) for i in range(8)]},
+            "rhythm": {"hour_histogram_local": {str(h): 90000 for h in range(24)},
+                       "weekday_histogram": {d: 700000 for d in
+                                             ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]},
+                       "peak_hours_local": list(range(24)),
+                       "preferred_days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]},
+            "tools": {"top_tools": [(_name("tool", i), 10 ** 6) for i in range(100)]},
+            "skills": {"top_skills": [(_name("skill", i), 10 ** 5) for i in range(100)]},
+            "mcp_servers": {"top_mcp_servers": [(_name("mcp", i), 10 ** 5) for i in range(100)]},
+        })
+        entries.append({
+            "month": f"2025-{month:02d}",
+            "range_start": f"2025-{month:02d}-01",
+            "range_end": f"2025-{month:02d}-28",
+            "stats": stats,
+            "token_usage": {"total_input": 10 ** 7, "total_output": 10 ** 7,
+                            "total_cache_read": 10 ** 6, "total_cache_creation": 10 ** 6,
+                            "by_model": [{"model_id": _name("model", i),
+                                          "label": _name("model", i),
+                                          "input": 10 ** 6, "output": 10 ** 6,
+                                          "cache_read": 10 ** 5, "cache_creation": 10 ** 5}
+                                         for i in range(8)]},
+        })
+    return entries
+
+
 def _corpus_block(sources, month=None):
     b = build_scoring_inputs(_worst_case_stats(sources[0], monthly=bool(month)))
     b["corpus"] = _corpus_sources_hook(sources)
@@ -346,7 +433,7 @@ def worst_case_summary(include_bucket_by_source=True):
              "tokens_total": 2 * 10 ** 7 + 2 * 10 ** 6}
             for m in range(1, _DEFAULT_WINDOW_MONTHS + 1)
         ],
-        "noticed_stats_monthly": [],
+        "noticed_stats_monthly": _noticed_stats_monthly(),
         "profile": profile,
         "scoring_inputs_version": SCORING_INPUTS_VERSION,
         "aq_version": AQ_VERSION,
