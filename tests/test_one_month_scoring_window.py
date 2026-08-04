@@ -358,7 +358,7 @@ class TestPartialScoringIsDisclosed(unittest.TestCase):
         dropped = {name for pillar in profile["pillars"]
                    for name in pillar.get("not_applicable", [])}
         wsum_axes = {"Skill fluency", "Tool command (MCP + CLI)", "Discipline",
-                     "Verification", "Compounding", "Token economy"}
+                     "Verification", "Compounding", "Token economy", "Orchestration"}
         for name in wsum_axes:
             with self.subTest(axis=name):
                 self.assertTrue(

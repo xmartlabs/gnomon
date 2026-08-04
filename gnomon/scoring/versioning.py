@@ -1,3 +1,13 @@
+# v13 — `o_harn` taxonomy: drop-instead-of-floor for unmeasured delegation, and
+# `o_quality` uses wsum for per-term drop-and-renormalize. Until v13 a corpus that never
+# observed delegation scored `o_harn = 0.6` (20% of Orchestration quality), identical to a
+# corpus that measured low diversity. The five-case taxonomy discriminates: no_tool_activity
+# and absent key → drop; dispatched with max >= 1 → scored as before; dispatched but roles
+# unregistered → drop; genuinely measured zero → 0.0. fanout_median `None` is also
+# distinguished from `0` (the `or 0` coercion is removed). HARNESS_TEAM_SESSION_TYPES (3)
+# and HARNESS_BELOW_TEAM_CREDIT (0.6) are REUBICATIONS — values identical to the inline
+# literals, registered under the fingerprint so a re-fit cannot hide in a refactor.
+#
 # v12 — `actions_per_prompt` counts TOP-LEVEL actions only; the delegated share is published
 # beside the total. Until v12 the ratio divided `tool_use_total` (which counts sidechain
 # tool calls) by `prompts_count` (which explicitly excludes sidechain user turns), so the two
@@ -213,9 +223,9 @@
 # per-session rates by each source's tool volume; review rejected it because the resulting
 # mean mixes units (tool_calls x things/session is not a quantity) and inverts. Do not
 # reintroduce it — see the comment above `rate()` in aq.py for the measured counter-example.
-SCORING_INPUTS_VERSION = 12
-AQ_VERSION = 12
-GSTACK_VERSION = 12
+SCORING_INPUTS_VERSION = 13
+AQ_VERSION = 13
+GSTACK_VERSION = 13
 # The first SCORING_INPUTS_VERSION whose skill counters are DEDUPED: v8 (28d3bda) made a
 # Skill invocation count once per (session, skill) span instead of once per assistant/
 # sidechain turn carrying attributionSkill. That changed what the persisted counter MEANS,

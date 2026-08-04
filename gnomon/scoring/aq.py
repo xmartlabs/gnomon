@@ -208,6 +208,12 @@ SKILLS_DISTINCT_CEILING = 40
 MCP_SERVERS_DISTINCT_CEILING = 15
 CLIS_DISTINCT_CEILING = 40
 
+# ---- Harness taxonomy constants (v13) ----------------------------------------
+# REUBICATIONS: values are identical to the inline literals they replaced,
+# registered under the calibration fingerprint so a re-fit cannot hide.
+HARNESS_TEAM_SESSION_TYPES = 3
+HARNESS_BELOW_TEAM_CREDIT = 0.6
+
 # ---- Steering leverage band (v12) --------------------------------------------
 # The Efficiency/Steering-leverage curve over `behavior.actions_per_prompt`: below
 # _BAND_MIN the score ramps linearly (too few actions per instruction is hand-holding, not
@@ -521,21 +527,37 @@ def compute_aq(stats):
         return any(any(nd in str(k).lower() for nd in needles) for k, _ in skills)
 
     # ---- Pillar 1: Breadth (unchanged axes) ----
-    fanout = b.get("fanout_median") or 0  # None (unmeasured) treated as 0 for AQ
-    # Harness use = a SINGLE session coordinating a team of >=3 distinct subagent roles
-    # (behavioral), not a subagent/skill NAMED "harness"/"trisel" (opaque), and not window-wide
-    # role variety (subagent_types_distinct would credit 3 roles fired one-per-session, which
-    # never coordinated a team). max_session_subagent_types is the per-session distinct-role
-    # peak — name-/content-agnostic, so it works in the cross-source aggregate.
-    o_harn = 1.0 if st.get("max_session_subagent_types", 0) >= 3 else 0.6
+    # ---- fanout: None (unmeasured) is DISTINCT from 0 (measured zero) --------
+    # Until v13 `or 0` coerced both to 0, eating a legitimate zero-medida.
+    _fanout_raw = b.get("fanout_median")
+    fanout = _fanout_raw if _fanout_raw is not None else None
+
+    # ---- o_harn taxonomy (v13) -----------------------------------------------
+    # Five cases, in order of discriminating evidence:
+    _max_types = st.get("max_session_subagent_types")
+    _agent_calls = t.get("agent_calls")
+    _types_distinct = st.get("subagent_types_distinct", 0)
+    _no_tool = b.get("no_tool_activity", False)
+    if _no_tool:
+        o_harn = None  # no tool activity at all -> drop
+    elif _max_types is None:
+        o_harn = None  # absent key ≠ measured zero -> drop
+    elif _max_types >= 1:
+        o_harn = 1.0 if _max_types >= HARNESS_TEAM_SESSION_TYPES else HARNESS_BELOW_TEAM_CREDIT
+    elif _agent_calls is None or _agent_calls > 0 or _types_distinct > 0:
+        o_harn = None  # dispatched but roles not registered -> drop
+    else:
+        o_harn = 0.0  # genuinely measured zero delegation
+
     # Orchestration v2: observed frequency (share of orchestratable sessions that
     # delegated), normalized target score, and coordination quality (subagent
     # diversity, fan-out, harness use). Frequency earns its full 30% weight
     # progressively over the first five eligible sessions.
-    o_quality = (0.40 * sat(st.get("subagent_types_distinct", 0),
-                            SUBAGENT_TYPES_DISTINCT_CEILING)
-               + 0.40 * sat(fanout, FANOUT_CEILING)
-               + 0.20 * o_harn)
+    o_quality = wsum(
+        (0.40, sat(_types_distinct, SUBAGENT_TYPES_DISTINCT_CEILING), None),
+        (0.40, sat(fanout, FANOUT_CEILING) if fanout is not None else None, None),
+        (0.20, o_harn, None),
+        axis="Orchestration")
     _o_orchestratable = b.get("orchestratable_sessions") or 0
     _o_delegated = b.get("delegated_orchestratable_sessions") or 0
     o_frequency = (_o_delegated / _o_orchestratable) if _o_orchestratable else None
@@ -544,9 +566,13 @@ def compute_aq(stats):
     o_frequency_confidence = min(
         _o_orchestratable / ORCHESTRATION_FULL_CONFIDENCE_SESSIONS, 1.0)
     o_frequency_weight = 0.30 * o_frequency_confidence
-    orchestration = ((1.0 - o_frequency_weight) * o_quality
-                     + o_frequency_weight * o_frequency_score
-                     if o_frequency_score is not None else o_quality)
+    orchestration = (
+        ((1.0 - o_frequency_weight) * o_quality
+         + o_frequency_weight * o_frequency_score)
+        if o_quality is not None and o_frequency_score is not None
+        else o_quality if o_quality is not None
+        else o_frequency_score if o_frequency_score is not None
+        else None)
     # skills_total -> per-tool-call rate; skills_distinct stays (diversity, correctly absolute).
     # Via wsum, not raw arithmetic: `rate` returns None when there is no usable tool-call
     # denominator, and wsum is what drops such a term and renormalizes the rest. Multiplying
@@ -604,13 +630,14 @@ def compute_aq(stats):
         # Orchestration needs subagent delegation; a source that can't fan out by design
         # (Gemini/Pi/opencode) drops this axis (renormalized) instead of scoring ~0.
         ("Orchestration", 33, orchestration, {"subagent_types": st.get("subagent_types_distinct", 0),
-         "fanout_median": fanout, "o_harn": o_harn,
+         "fanout_median": fanout,
+         "o_harn": o_harn if o_harn is not None else None,
          "frequency": round(o_frequency, 3) if o_frequency is not None else None,
          "frequency_score": (round(o_frequency_score, 3)
                              if o_frequency_score is not None else None),
          "frequency_confidence": round(o_frequency_confidence, 3),
          "frequency_weight": round(o_frequency_weight, 3),
-         "coordination_quality": round(o_quality, 3),
+         "coordination_quality": round(o_quality, 3) if o_quality is not None else None,
          "orchestratable_sessions": _o_orchestratable,
          "delegated_orchestratable_sessions": _o_delegated},
          "delegate"),

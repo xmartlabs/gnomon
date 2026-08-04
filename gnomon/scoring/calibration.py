@@ -83,6 +83,9 @@ CALIBRATION_CONSTANT_NAMES = (
     "ORCHESTRATABLE_SUBSTANTIVE",
     "ORCHESTRATION_FREQUENCY_TARGET",
     "ORCHESTRATION_FULL_CONFIDENCE_SESSIONS",
+    # harness taxonomy (v13)
+    "HARNESS_TEAM_SESSION_TYPES",
+    "HARNESS_BELOW_TEAM_CREDIT",
 )
 
 # Numeric constants in aq.py that do NOT affect a score, with the reason. The drift test
@@ -223,4 +226,11 @@ CALIBRATION_FINGERPRINTS = {
     # This entry has never been committed, so its hash is authored in place rather than
     # migrated. The 8:8:8, 9:9:9, 10:10:10 and 11:11:11 entries stay byte-identical.
     "12:12:12": "43f4a19179acc3a0",
+    # v13 (`o_harn` taxonomy: drop-instead-of-floor for unmeasured delegation + wsum for
+    # o_quality). Two constants NAMED and REGISTERED: HARNESS_TEAM_SESSION_TYPES (3) and
+    # HARNESS_BELOW_TEAM_CREDIT (0.6), values unchanged from the inline literals they replace.
+    # Adding the names is itself part of the move, as it was at v10/v11/v12 -- older entries
+    # are never recomputed against a newer registry. The 8:8:8 through 12:12:12 entries are
+    # untouched.
+    "13:13:13": "94f38d0963b1b195",
 }

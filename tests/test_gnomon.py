@@ -1685,33 +1685,96 @@ class TestPlanCeremonySubagents(unittest.TestCase):
 
 
 class TestHarnessBehavioral(unittest.TestCase):
-    """o_harn credits real orchestration BEHAVIOR: a SINGLE session coordinating >=3 distinct
-    subagent roles (max_session_subagent_types). Window-wide role variety alone
-    (subagent_types_distinct) does NOT count — that would credit serial single-agent sessions."""
+    """o_harn taxonomy (v13): five cases discriminating unmeasured from measured-zero
+    delegation, with drop-and-renormalize for o_quality via wsum."""
 
-    def _orch(self, max_session_types):
+    def _orch(self, max_session_types=5, agent_calls=416,
+              no_tool_activity=False, types_distinct=9,
+              max_types_absent=False):
         s = _sample_stats()
-        s["stack"]["max_session_subagent_types"] = max_session_types
+        if max_types_absent:
+            s["stack"].pop("max_session_subagent_types", None)
+        else:
+            s["stack"]["max_session_subagent_types"] = max_session_types
+        s["stack"]["subagent_types_distinct"] = types_distinct
+        s["tools"]["agent_calls"] = agent_calls
+        s["behavior"]["no_tool_activity"] = no_tool_activity
         aq = paxel.compute_aq(s)
         breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
         return next(a for a in breadth["axes"] if a["name"] == "Orchestration")
 
+    # Case 1: no_tool_activity -> o_harn drops (None)
+    def test_no_tool_activity_drops_o_harn(self):
+        ax = self._orch(no_tool_activity=True)
+        self.assertIsNone(ax["signals"]["o_harn"])
+
+    # Case 2: max_session_subagent_types absent -> o_harn drops (None)
+    def test_absent_max_types_drops_o_harn(self):
+        ax = self._orch(max_types_absent=True)
+        self.assertIsNone(ax["signals"]["o_harn"])
+
+    # Case 3a: max_types >= HARNESS_TEAM_SESSION_TYPES (3) -> 1.0
     def test_session_with_three_roles_credits_harness(self):
         self.assertEqual(self._orch(3)["signals"]["o_harn"], 1.0)
 
-    def test_fewer_than_three_roles_no_harness(self):
-        # A session coordinating <3 distinct roles = ad-hoc delegation, not a team.
+    # Case 3b: 1 <= max_types < 3 -> HARNESS_BELOW_TEAM_CREDIT (0.6)
+    def test_fewer_than_three_roles_below_team(self):
         self.assertEqual(self._orch(2)["signals"]["o_harn"], 0.6)
 
-    def test_window_variety_without_session_coordination_no_credit(self):
-        # Reviewer's scenario: 3 distinct types window-wide, but never >=3 in one session.
+    def test_max_types_one_below_team(self):
+        self.assertEqual(self._orch(1)["signals"]["o_harn"], 0.6)
+
+    # Case 4: max_types == 0 but agent_calls > 0 -> dispatched, roles unregistered -> drop
+    def test_dispatched_but_roles_unregistered_drops(self):
+        ax = self._orch(max_session_types=0, agent_calls=10, types_distinct=0)
+        self.assertIsNone(ax["signals"]["o_harn"])
+
+    # Case 4b: max_types == 0 but types_distinct > 0 -> dispatched, roles unregistered -> drop
+    def test_types_distinct_nonzero_but_max_zero_drops(self):
+        ax = self._orch(max_session_types=0, agent_calls=0, types_distinct=3)
+        self.assertIsNone(ax["signals"]["o_harn"])
+
+    # Case 4c: max_types == 0, agent_calls absent (None) -> dispatched, roles unregistered -> drop
+    def test_agent_calls_absent_drops(self):
         s = _sample_stats()
-        s["stack"]["subagent_types_distinct"] = 3     # window-wide variety
-        s["stack"]["max_session_subagent_types"] = 1  # each session used a single role
+        s["stack"]["max_session_subagent_types"] = 0
+        s["stack"]["subagent_types_distinct"] = 0
+        s["tools"].pop("agent_calls", None)
         aq = paxel.compute_aq(s)
         breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
         ax = next(a for a in breadth["axes"] if a["name"] == "Orchestration")
+        self.assertIsNone(ax["signals"]["o_harn"])
+
+    # Case 5: genuinely measured zero delegation
+    def test_genuinely_measured_zero_delegation(self):
+        ax = self._orch(max_session_types=0, agent_calls=0, types_distinct=0)
+        self.assertEqual(ax["signals"]["o_harn"], 0.0)
+
+    def test_window_variety_without_session_coordination_below_team(self):
+        # Reviewer's scenario: 3 distinct types window-wide, but never >=3 in one session.
+        ax = self._orch(max_session_types=1, types_distinct=3)
         self.assertEqual(ax["signals"]["o_harn"], 0.6)
+
+    # fanout None vs 0 distinction
+    def test_fanout_none_distinct_from_zero(self):
+        """fanout_median None should produce a different o_quality than fanout_median 0,
+        because None drops the fanout term (renormalized) while 0 scores it as 0."""
+        s1 = _sample_stats()
+        s1["stack"]["max_session_subagent_types"] = 5
+        s1["behavior"]["fanout_median"] = None
+        aq1 = paxel.compute_aq(s1)
+        s2 = _sample_stats()
+        s2["stack"]["max_session_subagent_types"] = 5
+        s2["behavior"]["fanout_median"] = 0
+        aq2 = paxel.compute_aq(s2)
+        breadth1 = next(p for p in aq1["pillars"] if p["name"] == "Breadth")
+        o1 = next(a for a in breadth1["axes"] if a["name"] == "Orchestration")
+        breadth2 = next(p for p in aq2["pillars"] if p["name"] == "Breadth")
+        o2 = next(a for a in breadth2["axes"] if a["name"] == "Orchestration")
+        # With None: fanout term dropped, so o_quality renormalizes over types_distinct + o_harn.
+        # With 0: fanout term stays at 0, dragging o_quality down.
+        self.assertNotEqual(o1["signals"]["coordination_quality"],
+                            o2["signals"]["coordination_quality"])
 
 
 class TestSessionSubagentTypes(unittest.TestCase):
