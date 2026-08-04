@@ -320,6 +320,7 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     document.getElementById('icon-check').classList.remove('hidden');
 
     const uploaded = data.uploaded || 0;
+    const guarded = data.guarded || 0;
     const failedCount = data.failed || 0;
     const h1 = document.getElementById('title');
     const sub = document.getElementById('subtitle');
@@ -351,11 +352,23 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
       h1.style.color = 'var(--danger)';
       sub.textContent = 'Upload failed \\u2014 check your terminal.';
       if (!isBatch) setStep('step-upload', 'failed');
+    } else if (uploaded > 0 && guarded > 0) {
+      icon.className = 'icon-wrap icon-progress';
+      h1.textContent = 'Profile partially updated';
+      h1.style.color = 'var(--warn)';
+      sub.textContent = uploaded + (uploaded === 1 ? ' month uploaded, ' : ' months uploaded, ') +
+        guarded + (guarded === 1 ? ' month archived only.' : ' months archived only.');
     } else if (uploaded > 0) {
       icon.className = 'icon-wrap icon-done';
       h1.textContent = 'Profile updated!';
       h1.style.color = 'var(--ok)';
       sub.textContent = uploaded + (uploaded === 1 ? ' month' : ' months') + ' uploaded successfully.';
+    } else if (guarded > 0) {
+      icon.className = 'icon-wrap icon-progress';
+      h1.textContent = 'Upload guarded';
+      h1.style.color = 'var(--warn)';
+      sub.textContent = guarded + (guarded === 1 ? ' month was' : ' months were') +
+        ' archived only; the existing profile was kept.';
     } else {
       icon.className = 'icon-wrap icon-progress';
       h1.textContent = 'Nothing to upload';
@@ -429,6 +442,18 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
       updateRing();
     } else {
       setStep('step-upload', 'done');
+    }
+  });
+
+  es.addEventListener('guarded', function(e) {
+    const d = JSON.parse(e.data);
+    processed++;
+    if (isBatch) {
+      setMonthState(d.month, d.label, 'skip');
+      updateRing();
+    } else {
+      setStep('step-upload', 'pending');
+      document.querySelector('#step-upload .label').textContent = 'Existing profile kept';
     }
   });
 

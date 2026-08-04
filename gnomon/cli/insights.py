@@ -21,7 +21,7 @@ from gnomon.upload.mirdash import (
     _DEFAULT_WINDOW_MONTHS, _UPLOAD_CONCURRENCY, parse_window, decide_mode,
     month_windows, plan_upload, windows_for_anchors,
     default_producible_coverage_for,
-    _is_report_url, _upload_window, _upload_window_web,
+    _is_report_url, _is_archived_only, _result_report_url, _upload_window, _upload_window_web,
     _PAXEL_ERROR, _UPLOAD_ERROR, _format_summary, PayloadTooLarge,
     # Re-exported so tests can patch them as attributes of this module and so the
     # web fallback to console mode keeps a stable surface. months_to_upload is
@@ -429,16 +429,21 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
     # Aggregate deterministically from results keyed by window index. Automatic
     # success is anchored to the current (last planned) window.
     uploaded_count = sum(1 for r in results.values() if _is_report_url(r))
+    guarded_count = sum(1 for r in results.values() if _is_archived_only(r))
     failed = sum(1 for r in results.values() if r in (_UPLOAD_ERROR, _PAXEL_ERROR))
     last_report_url = None
+    last_guarded_url = None
     for i in sorted(results):
         if _is_report_url(results[i]) and (mode != "auto" or i == len(windows) - 1):
-            last_report_url = results[i]
+            last_report_url = _result_report_url(results[i])
+        if _is_archived_only(results[i]) and (mode != "auto" or i == len(windows) - 1):
+            last_guarded_url = _result_report_url(results[i])
 
     server.push_event("done", {
-        "reportUrl": last_report_url or "",
+        "reportUrl": last_report_url or last_guarded_url or "",
         "mirdashBase": mirdash_base,
         "uploaded": uploaded_count,
+        "guarded": guarded_count,
         "failed": failed,
         "total": len(windows),
         "noOpen": no_open,
@@ -452,6 +457,12 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
                 msg += f" ({failed} failed)"
             print(msg)
         print(f"  Report ready: {full_report}")
+    elif guarded_count:
+        if not quiet:
+            print(f"  [guarded] {guarded_count}/{len(windows)} months archived only; live profile unchanged")
+        if last_guarded_url:
+            full_report = urllib.parse.urljoin(mirdash_base + "/", last_guarded_url)
+            print(f"  Existing report: {full_report}")
     elif failed:
         print(f"  error: {failed}/{len(windows)} months failed to upload -- nothing was shared")
     else:
@@ -563,6 +574,8 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
         results[i] = (result, summary)
         if _is_report_url(result) and not quiet:
             print(f"  ^ {label} uploaded")
+        elif _is_archived_only(result) and not quiet:
+            print(f"  ^ {label} guarded (archive only)")
 
     if mode == "auto":
         for i, ((since, until, label), tok) in scheduled:
@@ -600,17 +613,20 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
 
     # Aggregate deterministically from results keyed by window index.
     uploaded_count = sum(1 for r, _ in results.values() if _is_report_url(r))
+    guarded_count = sum(1 for r, _ in results.values() if _is_archived_only(r))
     failed = sum(1 for r, _ in results.values() if r in (_UPLOAD_ERROR, _PAXEL_ERROR))
     last_report_url = None
     last_summary = None
     for i in sorted(results):
         result, summary = results[i]
         if _is_report_url(result) and (mode != "auto" or i == len(windows) - 1):
-            last_report_url = result
+            last_report_url = _result_report_url(result)
             last_summary = summary
 
     if not quiet:
         msg = f"  uploaded {uploaded_count}/{len(windows)} months"
+        if guarded_count:
+            msg += f" ({guarded_count} guarded)"
         if failed:
             msg += f" ({failed} failed)"
         print(msg)
@@ -633,6 +649,10 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
         # window succeeded and would otherwise return here with exit 0.
         if budget_violation:
             sys.exit(1)
+        return
+
+    if guarded_count:
+        print(f"  guarded {guarded_count}/{len(windows)} months -- live profile unchanged")
         return
 
     # Mirror the web loop: a real failure must not be reported as "nothing to share".

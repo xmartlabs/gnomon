@@ -573,6 +573,17 @@ class OverBudgetRaisesPayloadTooLarge(unittest.TestCase):
         self.assertEqual(result, "/r/1")
         mock_urlopen.assert_called_once()
 
+    def test_tagged_archive_only_response_preserves_outcome_for_callers(self):
+        small = {"context": {"total_sessions": 1}}
+        payload = {"outcome": "archived_only", "reportUrl": "/metrics"}
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            response = mock_urlopen.return_value.__enter__.return_value
+            response.read.return_value = json.dumps(payload).encode("utf-8")
+
+            result = _upload_summary("https://mirdash.example", "tok", small)
+
+        self.assertEqual(result, payload)
+
 
 if __name__ == "__main__":
     unittest.main()

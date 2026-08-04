@@ -129,15 +129,29 @@ _UPLOAD_ERROR = "UPLOAD_ERROR"
 
 
 def _is_report_url(value):
-    """True only for a real reportUrl — not None and not a failure sentinel."""
-    return value is not None and value not in (_PAXEL_ERROR, _UPLOAD_ERROR)
+    """True only when a live upload was stored and has a report URL."""
+    return not _is_archived_only(value) and _result_report_url(value) is not None
+
+
+def _is_archived_only(value):
+    return isinstance(value, dict) and value.get("outcome") == "archived_only"
+
+
+def _result_report_url(value):
+    if isinstance(value, dict):
+        report_url = value.get("reportUrl")
+        return report_url if isinstance(report_url, str) and report_url else None
+    if isinstance(value, str) and value not in (_PAXEL_ERROR, _UPLOAD_ERROR):
+        return value
+    return None
 
 
 def _upload_summary(mirdash_base, token, summary):
     """POST summary dict to mirdash /api/gnomon/ingest.
 
-    Returns the reportUrl string from the JSON response, or raises on error.
-    Token is never logged.
+    Returns a tagged stored/archive-only response when the server supplies an
+    outcome. Legacy responses without an outcome remain reportUrl strings.
+    Raises on error. Token is never logged.
     """
     import urllib.error
     import urllib.request
@@ -159,7 +173,13 @@ def _upload_summary(mirdash_base, token, summary):
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-        return data["reportUrl"]
+        report_url = data["reportUrl"]
+        outcome = data.get("outcome")
+        if outcome is None:
+            return report_url
+        if outcome not in ("stored", "archived_only"):
+            raise RuntimeError(f"upload returned unsupported outcome: {outcome}")
+        return {"outcome": outcome, "reportUrl": report_url}
     except urllib.error.HTTPError as exc:
         try:
             server_msg = exc.read().decode("utf-8", errors="replace").strip()
@@ -882,9 +902,10 @@ def _upload_window(mirdash_base, token, paxel_src, paxel_args_base, since, until
     Returns a ``(result, summary)`` tuple mirroring the sentinel semantics of
     ``_upload_window_web`` so the console loop can distinguish a real success
     from the two failure modes:
-      - ``result``: the reportUrl string on success | ``None`` when the window
-        is genuinely empty (a normal skip) | ``_PAXEL_ERROR`` if the paxel run
-        failed | ``_UPLOAD_ERROR`` if the upload POST failed.
+      - ``result``: a tagged stored/archive-only response (or a legacy
+        reportUrl string) | ``None`` when the window is genuinely empty (a
+        normal skip) | ``_PAXEL_ERROR`` if the paxel run failed |
+        ``_UPLOAD_ERROR`` if the upload POST failed.
       - ``summary``: the paxel summary dict on a successful upload; ``None``
         otherwise (enables the caller to print ``_format_summary``).
 
@@ -933,9 +954,9 @@ def _upload_window_web(mirdash_base, token, paxel_src, paxel_args_base, since, u
                        window_months=_DEFAULT_WINDOW_MONTHS, file_prefix="", force=False):
     """Run paxel for one calendar window, push SSE events, and upload.
 
-    Returns the reportUrl string on success, or one of the failure sentinels:
-    `_PAXEL_ERROR` (paxel run failed), `_UPLOAD_ERROR` (upload POST failed), or
-    None when the window is genuinely empty (no activity — a normal skip).
+    Returns a tagged stored/archive-only response (or a legacy reportUrl
+    string), one of the failure sentinels (`_PAXEL_ERROR` or `_UPLOAD_ERROR`),
+    or None when the window is genuinely empty (no activity — a normal skip).
 
     ``force``: True only when THIS month's plan reason is 'force'; stamps the
     top-level ``force`` upload directive on the payload (see
@@ -967,9 +988,10 @@ def _upload_window_web(mirdash_base, token, paxel_src, paxel_args_base, since, u
     server.push_event("uploading", {"month": label, "label": label, "index": index, "total": total})
 
     try:
-        report_url = _upload_summary(mirdash_base, token, summary)
-        server.push_event("uploaded", {"month": label, "label": label, "index": index, "total": total})
-        return report_url
+        result = _upload_summary(mirdash_base, token, summary)
+        event = "guarded" if _is_archived_only(result) else "uploaded"
+        server.push_event(event, {"month": label, "label": label, "index": index, "total": total})
+        return result
     except PayloadTooLarge as exc:
         # The browser sees the reason (naming the byte size) via the SSE event,
         # AND the exception still propagates -- unlike every other upload

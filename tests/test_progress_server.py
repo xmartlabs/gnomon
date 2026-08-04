@@ -92,6 +92,19 @@ class TestFailedState(unittest.TestCase):
         self.assertIn("if (state === 'active') icon = '\\u21BB';", page)
 
 
+class TestGuardedState(unittest.TestCase):
+    def test_mixed_stored_and_guarded_outcomes_are_not_presented_as_all_successful(self):
+        page = progress_server._PROGRESS_PAGE
+
+        self.assertIn("uploaded > 0 && guarded > 0", page)
+        self.assertLess(
+            page.index("uploaded > 0 && guarded > 0"),
+            page.index("else if (uploaded > 0)"),
+        )
+        self.assertIn("uploaded, ", page)
+        self.assertIn("archived only", page)
+
+
 class TestDryRunDone(unittest.TestCase):
     """P3: showDone() must handle a dry-run done event without claiming
     'nothing to upload' — months were planned, just not uploaded."""

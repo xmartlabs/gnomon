@@ -61,6 +61,21 @@ class TestCoverageComparisonGate(unittest.TestCase):
         )
         self.assertEqual(result, [("2026-01", "current")])
 
+    def test_canonical_complete_tuple_from_mixed_duplicates_does_not_refresh(self):
+        """Mirdash preserves the newest timestamp/contract but aggregates the
+        guard-protected complete coverage from an older surviving duplicate."""
+        history = _history([
+            {"monthKey": "2025-12", "uploadedAt": 2, "scoreContractId": "new-contract",
+             "coverage": {"flag": "complete", "indexed": 50, "transcripts": 50}},
+        ])
+
+        result = plan_upload(
+            TODAY, history, active_contract="8:8:8",
+            producible_coverage_for=self._producible("complete", 50),
+        )
+
+        self.assertEqual(result, [("2026-01", "current")])
+
     def test_no_refresh_when_producible_worse_than_stored(self):
         history = _history([
             {"monthKey": "2025-12", "uploadedAt": 1,

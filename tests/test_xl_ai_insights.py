@@ -444,6 +444,22 @@ class TestConsoleFailureAndSummary(unittest.TestCase):
         self.assertIn("Report ready", out)
         self.assertFalse(exited)
 
+    def test_archive_only_is_counted_as_guarded_not_uploaded(self):
+        uploaded = [{"monthKey": "2025-07", "uploadedAt": 9999999999999}]
+        out, exited, code = self._run_console(
+            mode="auto",
+            token_count=12,
+            run_paxel_side_effect=[self._summary()],
+            upload_side_effect=[{"outcome": "archived_only", "reportUrl": "/metrics"}],
+            uploaded=uploaded,
+        )
+
+        self.assertIn("guarded 1", out)
+        self.assertIn("uploaded 0/1 months", out)
+        self.assertNotIn("uploaded 1/1 months", out)
+        self.assertFalse(exited)
+        self.assertIsNone(code)
+
 
 class TestCliReleaseFreshness(unittest.TestCase):
     MISMATCH_OLDER = {"status": "mismatch", "current": "1.0.0", "latest": "1.1.0", "reason": None}

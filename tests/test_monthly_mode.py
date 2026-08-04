@@ -604,6 +604,22 @@ class TestWebContractBridgeOrchestration(unittest.TestCase):
             self.assertEqual(done_events[-1]["reportUrl"], "/r/current")
             self.assertEqual(done_events[-1]["uploaded"], 1)
 
+    def test_web_done_counts_archive_only_as_guarded_not_uploaded(self):
+        archived = {"outcome": "archived_only", "reportUrl": "/metrics"}
+        server, _, exit_code = self._run_web(
+            self._bridge_history(),
+            [archived, "/r/current"],
+        )
+
+        done = [
+            call.args[1]
+            for call in server.push_event.call_args_list
+            if call.args[0] == "done"
+        ][-1]
+        self.assertEqual(done["uploaded"], 1)
+        self.assertEqual(done["guarded"], 1)
+        self.assertIsNone(exit_code)
+
     def test_web_bridge_enforces_cardinality_exceptions_and_current_success(self):
         history = self._bridge_history()
         server, upload, exit_code = self._run_web(history, [], ["previous-token"])
@@ -1074,6 +1090,11 @@ class TestIsReportUrl(unittest.TestCase):
     def test_upload_error_sentinel_is_not_report_url(self):
         self.assertFalse(_is_report_url(_UPLOAD_ERROR))
 
+    def test_archive_only_result_is_not_a_successful_report_upload(self):
+        self.assertFalse(
+            _is_report_url({"outcome": "archived_only", "reportUrl": "/metrics"})
+        )
+
 
 class TestUploadWindowWebSentinels(unittest.TestCase):
     """_upload_window_web distinguishes paxel failure / empty / upload failure / success."""
@@ -1107,6 +1128,25 @@ class TestUploadWindowWebSentinels(unittest.TestCase):
         good = _make_summary(sessions=5)
         result = self._call(run_paxel_return=good, upload_side=["/report/m"])
         self.assertEqual(result, "/report/m")
+
+    def test_archive_only_pushes_guarded_instead_of_uploaded(self):
+        server = MagicMock()
+        archived = {"outcome": "archived_only", "reportUrl": "/metrics"}
+        with (
+            patch.object(_mirdash, "_run_paxel", return_value=_make_summary(sessions=5)),
+            patch.object(_mirdash, "_upload_summary", return_value=archived),
+        ):
+            from gnomon.upload.mirdash import _upload_window_web
+
+            result = _upload_window_web(
+                "https://m", "tok", "/paxel.py", [], "2025-12-01", "2026-01-01",
+                "2025-12", False, server, 0, 1,
+            )
+
+        events = [call.args[0] for call in server.push_event.call_args_list]
+        self.assertEqual(result, archived)
+        self.assertIn("guarded", events)
+        self.assertNotIn("uploaded", events)
 
     def _events(self, **kw):
         """Run _upload_window_web and return the list of pushed event types."""
