@@ -142,7 +142,7 @@ from gnomon.scoring.aq import DEFAULT_SCORING_WINDOW_MONTHS, compute_aq
 from gnomon.scoring.profiles import model_usage_from_models, stats_from_scoring_block
 from gnomon.scoring.versioning import (
     IncompatibleScoreContract, SCORE_CONTRACT_ID, SCORING_INPUTS_VERSION,
-    SKILL_DEDUP_INPUTS_VERSION,
+    SKILL_DEDUP_INPUTS_VERSION, TOP_LEVEL_ACTIONS_INPUTS_VERSION,
 )
 
 # "the payload has no context.window_months key at all", which must stay distinguishable
@@ -167,6 +167,20 @@ class IncompatibleScoringInputs(ReplayError, IncompatibleScoreContract):
     `same_score_contract_id_only`) already catches IncompatibleScoreContract.
     Neither has to learn a new exception type to stay correct, and neither can
     end up holding a silently wrong number."""
+
+
+class IncompatibleActionsPerPromptBasis(IncompatibleScoringInputs):
+    """Raised when the payload's `behavior.actions_per_prompt` was derived on the PRE-v12
+    basis -- a sidechain-inclusive numerator over a sidechain-exclusive denominator -- see
+    `_require_comparable_actions_per_prompt`.
+
+    A subclass of `IncompatibleScoringInputs` for the same reason `IncompatibleScoringWindow`
+    is: it is the same failure (a persisted quantity this code cannot repair) at a different
+    layer, so every caller already catching `ReplayError` or `IncompatibleScoreContract` stays
+    correct without learning a new type. It is a distinct class only so a caller enumerating
+    an archive can report "captured before the ratio changed basis" separately from
+    "pre-dedup counters" and "captured at a wider window" -- all three need different
+    follow-up, and none is recoverable by replaying harder."""
 
 
 class IncompatibleScoringWindow(IncompatibleScoringInputs):
@@ -271,6 +285,57 @@ def _require_comparable_scoring_inputs(payload):
             f"payload scoring_inputs_version {version} is newer than this code's "
             f"v{SCORING_INPUTS_VERSION} -- its counters were produced by an inputs "
             f"version not implemented here, so their meaning is unknown")
+
+
+def _require_comparable_actions_per_prompt(payload):
+    """Refuse to PROMOTE a payload whose `actions_per_prompt` was derived on the pre-v12
+    basis into the live contract's cohort.
+
+    `_require_comparable_scoring_inputs` above asks whether the stored COUNTERS mean what
+    this code thinks. This asks the same question about the one stored RATIO, and the answer
+    changed at v12: the numerator went from `tool_use_total` (which counts sidechain/subagent
+    tool calls) to top-level calls only, while the denominator `prompts_count` always excluded
+    sidechain user turns. So a v8-v11 payload's `behavior.actions_per_prompt` is not the same
+    quantity the v12 Steering-leverage band judges.
+
+    Why this cannot be repaired instead of refused, unlike a formula change. Replay reads
+    `behavior` verbatim (`profiles.py::stats_from_scoring_block`) and no pre-v12 payload
+    carries the breakdown needed to re-derive the ratio: `volume.sidechain_tool_calls` is the
+    field v12 ADDS, and `volume.tool_calls_total` stays deliberately sidechain-INCLUSIVE, so
+    there is nothing in the payload to subtract. Projecting the missing share from
+    `behavior.delegate_actions` was considered and rejected: it needs a sidechain-calls-per-
+    dispatch constant that is not a constant at all -- measured on the local corpora it spans
+    ~22 (codex) to ~44 (claude) per dispatch, and each user's own counts bound it differently
+    ((tool_calls - dispatches) / dispatches ranges from 14 to 622 across the 48-user upload
+    population). A projected numerator is exactly the "plausible-but-wrong number" this
+    module refuses to hand back.
+
+    Why refusing matters rather than merely being tidy. `compute_aq` stamps the LIVE
+    `SCORE_CONTRACT_ID` on whatever it scored, so without this gate a v11 payload replays into
+    a row labelled 12:12:12, and `COMPARISON_POLICY = same_score_contract_id_only` -- the one
+    policy downstream has for deciding what may be compared -- cannot tell it from a genuine
+    v12 row. The gap between the two bases is systematic, one-directional and large (measured
+    on the development corpus, 22.7 -> ~7 for claude, 25.3 -> ~15 pooled), so it does not
+    read as noise; it reads as a behaviour change that never happened. This is verbatim the
+    hole `_require_comparable_scoring_window` closed at v10, one field over.
+
+    The gate is a version comparison, not a shape probe, for the same reason the two gates
+    above are: the version is what states the basis. A v11 payload that happens to carry no
+    `behavior` block at all is still refused -- absent is never read as "matches".
+    """
+    version = payload.get("scoring_inputs_version")
+    if version < TOP_LEVEL_ACTIONS_INPUTS_VERSION:
+        raise IncompatibleActionsPerPromptBasis(
+            f"payload scoring_inputs_version {version} predates the top-level "
+            f"actions_per_prompt basis (v{TOP_LEVEL_ACTIONS_INPUTS_VERSION}), so its "
+            f"`behavior.actions_per_prompt` divides a sidechain-INCLUSIVE tool total by a "
+            f"sidechain-EXCLUSIVE prompt count while this code's Steering-leverage band "
+            f"judges the top-level-only ratio -- replay() refuses rather than scoring one "
+            f"quantity against another band and stamping the live {SCORE_CONTRACT_ID!r} "
+            f"contract on the result. The payload carries no sidechain breakdown to "
+            f"re-derive the ratio from (volume.sidechain_tool_calls arrived with v12), so "
+            f"this is not repairable downstream. The formula can be replayed on old inputs; "
+            f"a changed RATIO BASIS cannot")
 
 
 def _require_comparable_scoring_window(payload):
@@ -589,6 +654,11 @@ def replay(payload):
     # targets? A formula change is replayable by design; a counter-definition change
     # is not. See _require_comparable_scoring_inputs.
     _require_comparable_scoring_inputs(payload)
+    # ...is the one stored RATIO on the basis this code's band judges? Checked AFTER the
+    # counter gate on purpose: a v5 payload is inadmissible for both reasons and the
+    # pre-dedup one is the more fundamental, so it is the one a caller gets told about.
+    # See _require_comparable_actions_per_prompt.
+    _require_comparable_actions_per_prompt(payload)
     # ...and were they pooled over the same SPAN this code's ceilings and floors are
     # calibrated for? Same fail-closed answer for the same reason, one layer up.
     # See _require_comparable_scoring_window.

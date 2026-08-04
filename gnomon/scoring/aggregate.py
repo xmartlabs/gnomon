@@ -234,6 +234,11 @@ def _aggregate_profile(per_source):
         "combination": {
             "rule": "weighted_mean_except_synthesized_planning",
             "weight": "tool_calls_total",
+            # Declared rather than left implicit: `weight` above is the rule mirdash mirrors in
+            # TS, and one field genuinely departs from it. `behavior.actions_per_prompt` is
+            # pooled on its own denominator so the result is the POOLED ratio instead of a
+            # tool-volume average of per-source ratios (see _synth_stats_for_aggregate).
+            "weight_exceptions": {"behavior.actions_per_prompt": "total_instructions"},
             "weights": {src: e["weight"] for src, e in items},
             "axes": {
                 "execution": "tool_volume_weighted_mean",
@@ -274,14 +279,37 @@ def _synth_stats_for_aggregate(items, agg_aq):
     """Tool-volume-weighted blend of the per-source behavior/volume/velocity/stack/tools
     fields, so the narrative pickers (archetype/steering/growth/signature) read numbers
     consistent with the combined score. AQ is the already-combined aggregate AQ."""
-    def wmean(path_get):
+    def wmean(path_get, weight_get=None):
+        """Tool-volume-weighted mean, or weighted by `weight_get(block)` when supplied.
+
+        `weight_get` exists for ONE field, `behavior.actions_per_prompt`. Every other field
+        pooled here is a per-tool-call quantity, so `e["weight"]` (the source's
+        `tool_calls_total`, see score_by_source) is genuinely its population. That field's
+        population is its own denominator, and since v12 the two are not even close: its
+        numerator counts TOP-LEVEL calls while `tool_calls_total` stays deliberately
+        sidechain-inclusive, so a delegation-heavy source arrives with a large weight and a
+        small value at once and drags the mean far below the truth.
+        """
         pairs = []
         for _, e in items:
-            w = e["weight"]
+            w = e["weight"] if weight_get is None else weight_get(e["block"])
             v = path_get(e["block"])
             if v is not None:
                 pairs.append((w, v))
         return _weighted_mean(pairs) if pairs else 0
+
+    def _instructions(blk):
+        """The denominator `behavior.actions_per_prompt` was divided by, per source.
+
+        Weighting a mean of ratios by each ratio's own denominator is what makes the result
+        the POOLED ratio rather than an average of ratios:
+            sum_i d_i * (n_i / d_i) / sum_i d_i  ==  sum_i n_i / sum_i d_i
+        so this is exact, not a closer approximation. Falls back to `total_prompts` for a
+        pre-v12 block, which is the denominator that block's own ratio was built with;
+        falling back to 0 would drop the source out of the pool entirely.
+        """
+        vol = blk.get("volume") or {}
+        return vol.get("total_instructions", vol.get("total_prompts", 0)) or 0
 
     def wsum(path_get):
         return sum(int(path_get(e["block"]) or 0) for _, e in items)
@@ -363,7 +391,14 @@ def _synth_stats_for_aggregate(items, agg_aq):
         },
         "behavior": {
             "planning_ratio_explore_to_doing": round(wmean(lambda blk: b(blk).get("planning_ratio_explore_to_doing")), 2),
-            "actions_per_prompt": round(wmean(lambda blk: b(blk).get("actions_per_prompt")), 1),
+            # Weighted by the ratio's OWN denominator, not by tool volume -- see wmean /
+            # _instructions above. Worked example that motivated it: source A (10
+            # instructions, 100 top-level, 0 sidechain -> 10.0) and source B (10 instructions,
+            # 10 top-level, 990 sidechain -> 1.0) pooled to 1.8 under a tool-volume weight
+            # against a true pooled ratio of 5.5, a 3x understatement pushing the reading onto
+            # the Steering band's low-end ramp.
+            "actions_per_prompt": round(
+                wmean(lambda blk: b(blk).get("actions_per_prompt"), _instructions), 1),
             "questions_asked": wsum(lambda blk: b(blk).get("questions_asked")),
             "delegate_actions": wsum(lambda blk: b(blk).get("delegate_actions")),
             "background_tasks": wsum(lambda blk: b(blk).get("background_tasks")),

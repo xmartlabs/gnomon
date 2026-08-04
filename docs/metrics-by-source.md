@@ -108,13 +108,144 @@ directly — no external dependency). Both decode to the same normalized events.
 
 ## Uploaded summary contract
 
-Current runtime contract: **scoring inputs version 11**, **AQ version 11**, and **GStack version 11** (`score_contract_id = 11:11:11`). Previous-contract scores
-must not be shown as improvement or regression against v11. v11 removes the recency blend,
+Current runtime contract: **scoring inputs version 12**, **AQ version 12**, and **GStack version 12** (`score_contract_id = 12:12:12`). Previous-contract scores
+must not be shown as improvement or regression against v12. v12 changes what
+`behavior.actions_per_prompt` counts; v11 removes the recency blend,
 so the published AQ is the scoring window's own score; v10 narrowed that window from six
 calendar months to one, so a point is scored on the month it labels and the same behaviour
-yields roughly a sixth of the counts a v9 point was scored against. No field is added,
-renamed or reshaped in either move; what changed is the span each field covers and, now,
+yields roughly a sixth of the counts a v9 point was scored against. No field was added,
+renamed or reshaped in the v10 or v11 move; what changed was the span each field covers and
 what is done with it — which is precisely why the contract ID has to move.
+
+**`actions_per_prompt` counts top-level actions only, since v12.** Before v12 the numerator
+was every tool call in the corpus, subagent calls included, while the denominator
+(`volume.total_prompts`) has always excluded subagent dispatch instructions — a subagent
+prompt is not a human prompt. The two sides of one ratio therefore described two different
+populations by construction, not by workload, and the consequence was scored: the
+Steering-leverage band is full between 5 and 20 actions per prompt and decays to zero at 60,
+so one delegation of 200 subagent calls off a single prompt read as `app = 200` and scored
+0.0 — the same behaviour the Orchestration axis rewards. v12 removes subagent calls from the
+numerator (not by adding dispatches to the denominator: a dispatch is one instruction, so 200
+subagent calls over 1 dispatch would still read as 200 unsteered actions). Measured on a real
+corpus the ratio reads 25.3 before and 10.0 after. The delegated work is still measured — by the
+Orchestration axis and by every per-tool-call rate numerator, none of which is subagent-gated.
+
+An earlier revision of this paragraph ended "the axis moves from 0.868 to 1.000". That was a
+true statement about one corpus generalised into a claim about the population, where it is false
+for 41 of the 48 measured users: they were already inside the band, so shrinking their ratio
+could only move them down or leave them still. The claim is deleted rather than softened. What
+v12 actually does is fix the numerator and **withhold the term** — see below.
+
+**The denominator was wrong in the mirror image, and v12 fixes that too.** A bare
+`<command-name>` turn is a human instruction, but it carries no typed text, so
+`Accumulator.observe` counted it in `command_invocations` and not in `prompts_count` — while
+the tool calls it drove stayed in the numerator. A corpus of 10 slash commands driving 300
+top-level calls read `total_prompts = 0`, so `app = 0`, and `app <= 0` scores the axis 0.0;
+a mixed 2-typed/8-command corpus read 300 / 2 = 150 and also scored 0.0. Both are strictly
+worse than the 200-subagent case above, on corpora with no delegation at all. The ratio now
+divides by **`volume.total_instructions`** — typed-text turns plus bare slash commands.
+`volume.total_prompts` deliberately keeps its narrower meaning, because that is the population
+`avg_prompt_length_chars`, `median_prompt_length_chars` and `polite_prompts` are built from,
+and admitting a zero-length turn there would misreport how long a human's prompts are. The
+scored ratio therefore reconciles from the payload alone:
+`(tool_calls_total - sidechain_tool_calls) / total_instructions`.
+
+**`behavior.sidechain_label_state` says whether the top-level numerator can be trusted for the
+source.** claude carries `isSidechain` natively and codex, cursor and opencode synthesize it;
+gemini, pi and antigravity never emit it. Of those three only `antigravity` also carries the
+`delegate` capability (and maps `invoke_subagent → Agent`), so it is the one source that can
+genuinely delegate and genuinely cannot label — its subagent calls stay in the top-level count
+and the field there is the pre-v12 mixed ratio wearing a v12 label. Where that is observed the
+state reads `"unmeasured"` and `compute_aq` DROPS the Steering-leverage term, renormalizing
+Efficiency's remaining axis weight, rather than scoring 0.0 on a signal the adapter cannot
+emit — the same treatment `linked_model_routing_state` already gets, and the same reasoning as
+`PLANNING_SESSION_SCOPE_BY_SOURCE` one level down. The verdict follows OBSERVED delegation, not
+capability alone: a source that cannot label but never dispatched has an exact ratio and stays
+scored, which is also why gemini and pi need no special case (without `delegate` they cannot
+dispatch at all). This flag is a claim about the ADAPTER and is independent of the band verdict
+below: "stays scored" here means this particular reason does not fire, not that the term is
+graded — in v12 nothing is.
+
+**The 5–20 band is unchanged, unfitted, and deliberately not re-fitted in v12.** Removing
+subagent calls from the numerator is a contraction, so it helps only above 20, is neutral
+inside the band, and harms anything it pushes below 5. Measured on the 48 uploaded corpora
+whose latest row anchors at 2026-06 or later: median 10.8, p25 8.0, p75 13.5, max 22.9 — only
+4 above 20, where the maximum gain is +0.7 AQ, and 41 inside the band where the change can
+only hurt. A re-fit was derived and rejected: the per-user contraction spans 0.00–0.97, so no
+pair of thresholds tracks it, and the best central-case band still left 9 users worse (mean
+−0.66 AQ, worst −8.9). `gnomon/scoring/aq.py`'s PROVENANCE block carries the sensitivity table,
+the measured spread of the sidechain-calls-per-dispatch constant (claude ≈38, codex ≈24), and
+the correction of an earlier claim that the band had ever been fitted at all — it had not.
+
+**So v12 does not score the term through it.** These three thresholds were **never fitted**
+against any population — not "fitted and then invalidated by v12", never fitted at all — and v12
+changed the population they judge on top of that. `STEERING_LEVERAGE_BAND_VALIDATED = False` in
+`gnomon/scoring/aq.py` states that the band is not yet validated, and while it is False
+`compute_aq` sets `lever = None`, the Steering-leverage axis drops through
+`build_pillar._live`, and Efficiency renormalizes its remaining Recovery axis from weight 50 to
+100. That is deliberately the *same* mechanism the unlabelling-source case uses, not a second
+one. The constant is registered in `CALIBRATION_CONSTANT_NAMES`, so flipping it back on moves
+the calibration digest and cannot happen without a contract bump — which is precisely the
+failure it exists to prevent: re-enabling the term without a fitted band.
+
+The reason is the same one behind `partial_terms`, the capability coverage flags, the pillar's
+`not_applicable` and `_fanout_median`'s deliberate `None` — this codebase encodes "we could not
+measure this" instead of publishing a number it cannot stand behind. A uniform, explained
+absence beats an unexplainable −8.9 AQ for the heaviest delegators.
+
+The **count keeps being published**: `agentic.steering_leverage.actions_per_prompt` carries the
+measured ratio whether or not it is graded (the value stands, the interpretation is withheld),
+and `agentic.steering_leverage.state` distinguishes the two absences a reader would otherwise
+conflate — `"unmeasured_sidechain_labels"` (your source cannot label subagent calls; survives
+the band being fitted) versus `"withheld_unvalidated_band"` (the band is not fitted yet;
+disappears when it is), with `"scored"` when the term is live. The adapter verdict is reported
+first, because it is the one that outlives the band.
+
+**What it costs, measured rather than asserted.** Efficiency has exactly two axes, so the effect
+is closed-form: `ΔAQ = 10 × (recovery − lever)`, bounded by the Recovery shortfall and zero for
+anyone Recovery already scores full. Over the same 48 corpora (`.context/refit_steering_band.py`,
+`withhold_report`): mean −0.88 AQ against v11 as published, median −0.66, 40 of 48 users move by
+at most one published point and 19 do not move at all; Pearson *r* against delegation intensity
+is −0.16, so the cost is **not** concentrated on delegators. Against v12 as it would otherwise
+ship — the contracted ratio graded by the unfitted band — it is a mean **+0.30 AQ**, and the four
+users that band hits hardest (−9.09, −8.70, −8.18, −7.77 AQ) come back to +0.10, −1.22, −1.10 and
+−0.17. The single −8.62 outlier is the user whose Recovery is 0.138: withholding stops half a
+pillar of unvalidated credit from masking a signal that *is* measured.
+
+**What replaces it.** The first cohort uploaded under `12:12:12` carries
+`volume.sidechain_tool_calls`, so the per-user delegated share stops being projected
+(`k × delegate_actions / tool_calls_total`, with `k` measurably not a constant) and becomes
+measured (`sidechain_tool_calls / tool_calls_total`). At that point the band is derived from that
+real distribution, the projection is deleted, and the flag flips — as a contract bump with a
+documented reason next to the fitted values and the population they were fitted on. Flipping it
+back on without a fitted band is the failure this flag exists to prevent.
+
+`volume.tool_calls_total` is deliberately **unchanged** and still counts subagent calls: it is
+the denominator all six rate targets were fitted against and the cross-source aggregation
+weight, so moving it is a six-constant re-fit rather than a bug fix. What v12 adds beside it
+is `volume.sidechain_tool_calls` — a diagnostic sibling nothing scores, so the delegated share
+of the tool total is visible instead of implicit (66% of `tool_calls_total` on the corpus this
+was measured against). `partial_terms` cannot express this: that fires only when an axis
+DROPS a term, and the dilution silently lowered a term that stayed fully scored.
+
+**Replay is NOT unaffected, and the reason is the field that CHANGED, not the one that was
+added.** An earlier revision of this section argued replay safety from the added key — "a
+payload captured before v12 carries no such key and projects it as 0, so replay is
+unaffected". That is true of `volume.sidechain_tool_calls` and irrelevant: nothing scores it,
+so its absence cannot move a number. The field that matters is
+`behavior.actions_per_prompt`, which every pre-v12 payload DOES carry, on the mixed basis.
+`gnomon/scoring/profiles.py::stats_from_scoring_block` copies the `behavior` block verbatim
+and `compute_aq` stamps the LIVE `score_contract_id` on the result, so replaying a v11 payload
+would score a frozen mixed-population ratio through the v12 Steering band and publish it as a
+genuine `12:12:12` row — indistinguishable, under
+`comparison_policy = same_score_contract_id_only`, from a real one, with a systematic
+one-directional gap that reads as behaviour. It is not repairable downstream either: the
+payload carries no sidechain breakdown to subtract, because that is precisely the key v12
+added. So `replay()` refuses a payload whose `scoring_inputs_version` predates
+`TOP_LEVEL_ACTIONS_INPUTS_VERSION` (12), raising `IncompatibleActionsPerPromptBasis` — a
+third named boundary alongside the pre-dedup counter gate (v8) and the corpus-scale window
+gate (v10), kept separate so a caller enumerating an archive can tell which one it hit. v12
+payloads onwards replay normally.
 
 **The 65/35 recency blend is removed in v11.** Up to v10, AQ was published as 65% recent
 (rolling 30-day) + 35% full-window. That was written for a six-month window, where the two

@@ -65,8 +65,16 @@ AQ_AXIS_NOTES = {
                             "write plus two distinct files or ten substantive tool calls. "
                             f"Score = min(1, coverage / {CONTEXT_INTELLIGENCE_TARGET:.2f}).",
     "Compounding": "Whether learnings persist: writes to memory/docs/skills, plus retro and planning habits.",
-    "Steering leverage": "Agent actions per prompt, scored as a sweet spot (5–20): enough leash "
-                         "to run, not so loose it drifts.",
+    # Kept, not deleted: 12:12:12 WITHHOLDS this axis, so the note is only rendered where the
+    # band flag is on (see STEERING_LEVERAGE_BAND_VALIDATED in aq.py). It has to describe the
+    # band it would be scored through, and say why it currently is not.
+    "Steering leverage": "Top-level agent actions per human instruction (subagent calls "
+                         "excluded from the count, slash commands included as instructions), "
+                         "read against a sweet spot (5–20): enough leash to run, not so loose "
+                         "it drifts. Not scored in v12 — that band was never fitted against a "
+                         "population, so the count is published and left ungraded rather than "
+                         "graded on an unvalidated threshold. Also unscored where the source "
+                         "can delegate but cannot label a call as delegated.",
     "Recovery": "Share of tool errors recovered from, minus API-retry noise.",
     "Model mix": "Using more than one model, with real work routed off your default — "
                  "match the model to the task.",

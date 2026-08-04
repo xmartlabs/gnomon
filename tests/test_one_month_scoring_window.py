@@ -467,9 +467,17 @@ class TestScoreContractMovesWithTheWindow(unittest.TestCase):
         self.assertEqual(CALIBRATION_FINGERPRINTS["8:8:8"], "38bf1d623bea1517")
         self.assertEqual(CALIBRATION_FINGERPRINTS["9:9:9"], "2e7638d58c2b26e4")
 
-    def test_replay_still_accepts_every_post_dedup_input_version(self):
-        """The contract bump must not narrow which COUNTER versions replay: v10 changed the
-        corpus span, not what a counter means, so v8/v9/v10 all stay admissible.
+    def test_the_v10_bump_did_not_narrow_the_counter_gate(self):
+        """v10 changed the corpus SPAN, not what a counter means, so it added no counter-
+        version refusal of its own: v8/v9/v10 all clear the pre-dedup gate.
+
+        Scoped to the pre-dedup gate deliberately. This test used to assert that v8-v10
+        reached `scoring_inputs_by_source` -- i.e. that nothing at all stopped them -- which
+        made it a test of the LIVE floor rather than of v10's contribution to it. v12 narrowed
+        that floor for a reason of its own (`actions_per_prompt` changed basis; see
+        tests/test_top_level_actions_per_prompt.py), so the old form would now fail while
+        the fact it was written to protect is untouched. What v10 must not have done is
+        introduce a COUNTER-definition refusal, and that is what is asserted here.
 
         The payload carries the two things replay() checks BEFORE the version gate --
         `payload_features` and the corpus-scale declaration -- because without them a bare
@@ -487,9 +495,9 @@ class TestScoreContractMovesWithTheWindow(unittest.TestCase):
                 }
                 with self.assertRaises(ReplayError) as caught:
                     replay(payload)
-                # It got PAST the version gate: what stops it now is the absent
-                # scoring_inputs_by_source, never the declared version.
-                self.assertIn("scoring_inputs_by_source", str(caught.exception))
+                # Never refused as PRE-DEDUP, and never for the window it declares.
+                self.assertNotIn("dedup", str(caught.exception))
+                self.assertNotIn("window_months", str(caught.exception))
 
 
 if __name__ == "__main__":

@@ -280,17 +280,28 @@ class TestTheReadingSideStays(unittest.TestCase):
 
 
 class TestScoreContractMovesWithTheRemoval(unittest.TestCase):
-    def test_contract_is_eleven(self):
-        self.assertEqual(SCORE_CONTRACT_ID, "11:11:11")
-        self.assertEqual(SCORING_INPUTS_VERSION, 11)
+    def test_the_blend_removal_kept_its_own_contract_entry(self):
+        """v11 pinned `SCORE_CONTRACT_ID == "11:11:11"` because the blend removal WAS the
+        current contract. Later bumps are legitimate, so what this file still owns is the
+        audit trail: the entry v11 published must stay in the registry, byte for byte,
+        whatever the live contract has become. Re-pointing the pin at the registry rather
+        than deleting it keeps the guarantee that made it worth writing -- an in-place edit
+        of a published fingerprint stays impossible. (Same move v11 made to v10's pin in
+        tests/test_one_month_scoring_window.py.)"""
+        self.assertIn("11:11:11", CALIBRATION_FINGERPRINTS)
+        self.assertEqual(CALIBRATION_FINGERPRINTS["11:11:11"], "888bec08099b6fbc")
+        self.assertGreaterEqual(SCORING_INPUTS_VERSION, 11)
 
-    def test_the_new_contract_has_its_own_fingerprint_entry(self):
+    def test_the_live_contract_has_its_own_fingerprint_entry(self):
         self.assertIn(SCORE_CONTRACT_ID, CALIBRATION_FINGERPRINTS)
         self.assertEqual(calibration_fingerprint(),
                          CALIBRATION_FINGERPRINTS[SCORE_CONTRACT_ID])
 
     def test_the_fingerprint_actually_moved(self):
-        self.assertNotEqual(CALIBRATION_FINGERPRINTS[SCORE_CONTRACT_ID],
+        # Pinned against v11's OWN entry, not the live one: this file owns the claim that
+        # registering the blend weights is what made 11:11:11 differ from 10:10:10, and that
+        # claim must keep holding after later bumps.
+        self.assertNotEqual(CALIBRATION_FINGERPRINTS["11:11:11"],
                             CALIBRATION_FINGERPRINTS["10:10:10"])
 
     def test_older_contract_entries_are_untouched(self):
@@ -316,7 +327,16 @@ class TestScoreContractMovesWithTheRemoval(unittest.TestCase):
                 "RECENT_WEIGHT came back without moving the fingerprint -- the registry "
                 "is hashing names, not the presence and value of the constants")
 
-    def test_replay_still_accepts_every_post_dedup_input_version(self):
+    def test_the_v11_bump_did_not_narrow_the_counter_gate(self):
+        """v11 removed the recency blend -- a FORMULA move -- so it added no counter-version
+        refusal of its own: v8..v11 all clear the pre-dedup gate.
+
+        Scoped to the pre-dedup gate deliberately, for the same reason as the v10 twin in
+        tests/test_one_month_scoring_window.py: the old form asserted these versions reached
+        `scoring_inputs_by_source`, which tested the LIVE floor rather than v11's contribution
+        to it. v12 narrowed that floor because `actions_per_prompt` changed basis (see
+        tests/test_top_level_actions_per_prompt.py), which does not make this v11 fact any
+        less true."""
         from gnomon.scoring.replay import replay, ReplayError
         self.assertEqual(SKILL_DEDUP_INPUTS_VERSION, 8)
         for version in (8, 9, 10, 11):
@@ -329,7 +349,8 @@ class TestScoreContractMovesWithTheRemoval(unittest.TestCase):
                 }
                 with self.assertRaises(ReplayError) as caught:
                     replay(payload)
-                self.assertIn("scoring_inputs_by_source", str(caught.exception))
+                self.assertNotIn("dedup", str(caught.exception))
+                self.assertNotIn("window_months", str(caught.exception))
 
 
 if __name__ == "__main__":

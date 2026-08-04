@@ -64,9 +64,16 @@ class TestFingerprintActuallyCoversTheConstants(unittest.TestCase):
     def test_no_score_affecting_module_constant_is_left_unfingerprinted(self):
         # Drift catcher: a constant added to aq.py later must be classified, either as
         # calibration (fingerprinted) or explicitly as non-calibration.
+        #
+        # BOOLS ARE INCLUDED. They were excluded while the only conceivable bool was an
+        # import-time feature toggle, but v12 added STEERING_LEVERAGE_BAND_VALIDATED, which is
+        # the most score-affecting constant in aq.py -- it decides whether a whole axis is
+        # scored at all. Excluding its type from the sweep would have let it, and the next flag
+        # like it, be added with nothing demanding it be classified. `bool` is a subclass of
+        # `int`, so this is a removed filter rather than a widened one.
         found = {name for name, value in vars(aq).items()
                  if name.isupper() and not name.startswith("_")
-                 and isinstance(value, (int, float)) and not isinstance(value, bool)}
+                 and isinstance(value, (int, float))}
         classified = set(CALIBRATION_CONSTANT_NAMES) | set(NON_CALIBRATION_CONSTANT_NAMES)
         self.assertEqual(
             found - classified, set(),

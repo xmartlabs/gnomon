@@ -29,7 +29,8 @@ import paxel
 from tests.test_smoke import FIX, SRC_DIRS, _claude_turn
 
 from gnomon.scoring.replay import (
-    replay, ReplayError, IncompatibleScoringInputs, IncompatibleScoringWindow, AQ_EXACT,
+    replay, ReplayError, IncompatibleActionsPerPromptBasis, IncompatibleScoringInputs,
+    IncompatibleScoringWindow, AQ_EXACT,
     AQ_APPROXIMATE_WEIGHTED_MEAN, AQ_APPROXIMATE_WEIGHTED_MEAN_UNBLENDED,
 )
 from gnomon.output.summary import _profiles_by_source as _summary_profiles_by_source
@@ -39,7 +40,7 @@ from gnomon.scoring.inputs import build_scoring_inputs
 from gnomon.scoring.profiles import stats_from_scoring_block
 from gnomon.scoring.versioning import (
     IncompatibleScoreContract, SCORE_CONTRACT_ID, SCORING_INPUTS_VERSION,
-    SKILL_DEDUP_INPUTS_VERSION,
+    SKILL_DEDUP_INPUTS_VERSION, TOP_LEVEL_ACTIONS_INPUTS_VERSION,
 )
 
 # Sentinel for "this payload has no `context.window_months` key at all", which is a
@@ -869,10 +870,22 @@ class PreDedupPayloadIsRefusedRatherThanRescored(unittest.TestCase):
         with self.assertRaises(IncompatibleScoringInputs):
             replay(self._payload(SCORING_INPUTS_VERSION + 1))
 
-    def test_post_dedup_payloads_still_replay_and_still_round_trip(self):
-        """The feature stays intact: every version from the dedup onwards replays, and the
-        result is the live scorer's own number for that block (bit-for-bit round trip)."""
-        for version in range(SKILL_DEDUP_INPUTS_VERSION, SCORING_INPUTS_VERSION + 1):
+    def test_payloads_from_the_live_ratio_basis_still_replay_and_round_trip(self):
+        """The feature stays intact for every version this code can actually score: from
+        `TOP_LEVEL_ACTIONS_INPUTS_VERSION` onwards a payload replays and the result is the
+        live scorer's own number for that block (bit-for-bit round trip).
+
+        The lower bound used to be `SKILL_DEDUP_INPUTS_VERSION`. It moved at v12, and not
+        because the dedup argument changed -- v8..v11 counters are still post-dedup and still
+        mean what they meant. What moved is a second, independent boundary: v12 changed the
+        BASIS of `behavior.actions_per_prompt` (sidechain-inclusive numerator -> top-level
+        only), and that field is read verbatim out of the frozen block, so a v11 payload
+        scored through the v12 Steering band publishes one quantity judged by another
+        quantity's band and stamps the live contract on it. See
+        `_require_comparable_actions_per_prompt` and
+        tests/test_top_level_actions_per_prompt.py. The two floors stay separate constants
+        because a caller enumerating an archive needs to know WHICH one it hit."""
+        for version in range(TOP_LEVEL_ACTIONS_INPUTS_VERSION, SCORING_INPUTS_VERSION + 1):
             with self.subTest(scoring_inputs_version=version):
                 payload = self._payload(version)
                 block = payload["scoring_inputs_by_source"]["claude"]["window"]
@@ -929,8 +942,18 @@ class WiderWindowPayloadIsNotLaunderedIntoTheLiveContract(unittest.TestCase):
             payload["context"] = {"window_months": window_months}
         return payload
 
+    # Every test in this class declares the LIVE inputs version. It used to use
+    # `inputs_version=9`, which was the natural choice while v9 was replayable: it made the
+    # payload foreign on the contract too, so the window gate was demonstrably doing the
+    # refusing rather than a version check. v12 added a THIRD gate (the
+    # `actions_per_prompt` ratio basis) that fires before this one, so a v9 payload can no
+    # longer isolate the window gate -- it would be refused before reaching it, and these
+    # tests would pass for the wrong reason. `test_the_basis_gate_fires_before_the_window_gate`
+    # below pins that ordering directly instead.
+    _LIVE = SCORING_INPUTS_VERSION
+
     def test_a_six_month_payload_from_an_older_contract_does_not_produce_a_score(self):
-        payload = self._payload("9:9:9", window_months=6, inputs_version=9)
+        payload = self._payload("9:9:9", window_months=6, inputs_version=self._LIVE)
         with self.assertRaises(IncompatibleScoringWindow):
             replay(payload)
 
@@ -938,7 +961,7 @@ class WiderWindowPayloadIsNotLaunderedIntoTheLiveContract(unittest.TestCase):
         """Same argument as the pre-dedup guard: a caller walking a store of payloads
         already catches ReplayError, a contract-aware caller already catches
         IncompatibleScoreContract, and neither may end up holding the laundered number."""
-        payload = self._payload("9:9:9", window_months=6, inputs_version=9)
+        payload = self._payload("9:9:9", window_months=6, inputs_version=self._LIVE)
         for expected in (ReplayError, IncompatibleScoreContract, IncompatibleScoringInputs):
             with self.subTest(exception=expected.__name__):
                 with self.assertRaises(expected):
@@ -946,21 +969,36 @@ class WiderWindowPayloadIsNotLaunderedIntoTheLiveContract(unittest.TestCase):
 
     def test_the_message_names_both_windows_and_the_live_default(self):
         with self.assertRaises(IncompatibleScoringWindow) as caught:
-            replay(self._payload("9:9:9", window_months=6, inputs_version=9))
+            replay(self._payload("9:9:9", window_months=6, inputs_version=self._LIVE))
         message = str(caught.exception)
         self.assertIn("window_months", message)
         self.assertIn("6", message)
         self.assertIn(str(DEFAULT_SCORING_WINDOW_MONTHS), message)
 
-    def test_an_older_contract_payload_that_carried_a_one_month_window_still_replays(self):
-        """`--window=1` existed long before it became the default, so a v9 payload can
-        genuinely be a one-month corpus. Refusing that one would delete the feature the
-        counter guard was careful to preserve."""
-        payload = self._payload("9:9:9", window_months=1, inputs_version=9)
+    def test_a_declared_one_month_window_is_not_itself_a_refusal(self):
+        """The window gate must not cost the feature: a payload declaring the live one-month
+        corpus scale replays, and the result is the live scorer's own number.
+
+        This test used to carry `inputs_version=9` and was titled around a v9 payload
+        genuinely being a one-month corpus (`--window=1` predates its becoming the default).
+        That premise is now moot rather than wrong: a v9 payload is refused for its
+        `actions_per_prompt` basis before the window is ever inspected, so the fact this test
+        protects -- "a matching window declaration is admissible" -- has to be asserted on a
+        payload that clears the basis gate."""
+        payload = self._payload("9:9:9", window_months=1, inputs_version=self._LIVE)
         block = payload["scoring_inputs_by_source"]["claude"]["window"]
         result = replay(payload)
         self.assertEqual(result["aq_exactness"], AQ_EXACT)
         self.assertEqual(result["aq"], compute_aq(stats_from_scoring_block(block)))
+
+    def test_the_basis_gate_fires_before_the_window_gate(self):
+        """A pre-v12 payload is refused for its ratio BASIS, not its window -- even when the
+        window is also wrong. Ordering is asserted rather than assumed because both gates
+        raise `IncompatibleScoringInputs` subclasses, so a caller distinguishing them relies
+        on which subclass arrives, and the more fundamental reason has to win."""
+        payload = self._payload("11:11:11", window_months=6, inputs_version=11)
+        with self.assertRaises(IncompatibleActionsPerPromptBasis):
+            replay(payload)
 
     def test_an_undeclared_window_is_refused_whatever_contract_it_carries(self):
         """Absent is not "matches". A payload that never says what span it covers is
@@ -970,7 +1008,7 @@ class WiderWindowPayloadIsNotLaunderedIntoTheLiveContract(unittest.TestCase):
         for contract in ("9:9:9", None, SCORE_CONTRACT_ID):
             with self.subTest(score_contract_id=contract):
                 with self.assertRaises(IncompatibleScoringWindow):
-                    replay(self._payload(contract, inputs_version=9))
+                    replay(self._payload(contract, inputs_version=self._LIVE))
 
     def test_a_non_integer_window_declaration_is_refused(self):
         """Fail closed on a foreign shape, the same way the inputs-version gate does --
@@ -978,7 +1016,8 @@ class WiderWindowPayloadIsNotLaunderedIntoTheLiveContract(unittest.TestCase):
         for value in (None, "1", 1.0, True):
             with self.subTest(window_months=value):
                 with self.assertRaises(IncompatibleScoringWindow):
-                    replay(self._payload("9:9:9", window_months=value, inputs_version=9))
+                    replay(self._payload("9:9:9", window_months=value,
+                                         inputs_version=self._LIVE))
 
     def test_a_live_contract_payload_round_trips_bit_for_bit(self):
         """The gate must not cost the feature: a payload that carries the live contract id

@@ -1,3 +1,94 @@
+# v12 — `actions_per_prompt` counts TOP-LEVEL actions only; the delegated share is published
+# beside the total. Until v12 the ratio divided `tool_use_total` (which counts sidechain
+# tool calls) by `prompts_count` (which explicitly excludes sidechain user turns), so the two
+# sides described two different populations by CONSTRUCTION, not by workload. Three changes
+# ship together because they are one semantic move:
+#   inputs: `behavior.actions_per_prompt` keeps its name, type and span but changes what it
+#           COUNTS — the numerator loses subagent tool calls, in the corpus, per-source and
+#           monthly projections alike. On the development corpus that is 22.7 -> ~7 (claude)
+#           and 25.3 -> ~15 (all sources), which is not a drift a reader could attribute to
+#           behaviour, so it is exactly what COMPARISON_POLICY = same_score_contract_id_only
+#           has to see. One field is ADDED: `volume.sidechain_tool_calls`, a diagnostic
+#           sibling of `tool_calls_total` that nothing scores and that makes the dilution
+#           visible (it was 66.0% of tool_calls_total for 2026-07 on that corpus). It is
+#           absent-safe by construction, so pre-v12 payloads still replay.
+#           `volume.tool_calls_total` is DELIBERATELY unchanged and stays
+#           sidechain-inclusive: it is the denominator all six rate targets were fitted
+#           against and the cross-source aggregation weight in aggregate.py, so moving it is
+#           a six-constant re-fit rather than a bug fix.
+#   aq:     the formula is untouched and no calibration VALUE moves. What moves is the
+#           population the Steering-leverage band judges, so the band stops being three
+#           inline literals and becomes STEERING_LEVERAGE_BAND_MIN / _BAND_MAX /
+#           _DECAY_SPAN, registered under the calibration fingerprint — the reason
+#           12:12:12's digest differs from 11:11:11's (gnomon/scoring/calibration.py). The
+#           axis was scoring the same behaviour twice in opposite directions: Orchestration
+#           rewarded a delegation while Steering leverage read its 200 subagent calls as 200
+#           unsteered actions and decayed toward zero. (An earlier revision of this note said
+#           "measured on that corpus, the axis goes 0.868 -> 1.000". That was one corpus stated
+#           as a population fact and it is false for 41 of the 48 measured users, who were
+#           already inside the band; it is deleted rather than softened.) The band VALUES are
+#           NOT re-fitted, and not because a re-fit was skipped: it was derived against the
+#           48-user upload population and REJECTED, because the contraction is per-user
+#           (projected share 0.00-0.97) while a band is two scalars, so the best available
+#           re-fit still left 9 users worse (mean -0.66 AQ, worst -8.9). aq.py's PROVENANCE
+#           block carries the sensitivity table and the measurement. It also deletes a
+#           manufactured claim that the band had been fitted against the mixed population:
+#           `git log -S` shows it entering in b65ad99 with no data at all.
+#           The CONCLUSION of that rejection is the fourth registered calibration name,
+#           STEERING_LEVERAGE_BAND_VALIDATED = False: a band that never fitted anything does
+#           not get to grade a number, so v12 publishes `actions_per_prompt` and does not score
+#           it. `lever = None`, the axis drops through build_pillar._live, and Efficiency
+#           renormalizes onto Recovery -- the SAME mechanism as the unlabelling-source case
+#           below, not a second one. `agentic.steering_leverage` carries the measured ratio and
+#           a state saying which of the two absences applies. Cost over the same 48 users:
+#           mean -0.88 AQ vs v11, uncorrelated with delegation (r = -0.16), and a mean +0.30 AQ
+#           against grading the contracted ratio through the unfitted band. The flag flips only
+#           when the first 12:12:12 cohort makes the per-user share measurable, as a contract
+#           bump with a documented reason -- the `task_tool_calls` numerator asymmetry recorded
+#           in aq.py's rate block waits on that same cohort.
+#           A THIRD term ships beside the numerator, on the other side of the fraction:
+#           `behavior.actions_per_prompt` now divides by `volume.total_instructions` (typed-
+#           text turns PLUS bare slash commands) rather than by `volume.total_prompts`. A bare
+#           `<command-name>` turn increments `command_invocations` and not `prompts_count`, so
+#           its tool calls sat in the numerator with nothing in the denominator: 10 slash
+#           commands driving 300 calls read `total_prompts = 0` -> app 0 -> lever 0.0, and a
+#           mixed 2-typed/8-command corpus read 300/2 = 150 -> 0.0, both strictly worse than
+#           the 200-subagent case above. `total_prompts` keeps its narrower meaning because
+#           the prompt-length and politeness statistics are built from typed text.
+#           And a trust flag: `behavior.sidechain_label_state`. claude, codex, cursor and
+#           opencode stamp `isSidechain`; gemini, pi and antigravity do not. Only antigravity
+#           also carries the `delegate` capability, so it can delegate and cannot label, and
+#           its subagent calls stay in the top-level numerator -- the pre-v12 mixed ratio
+#           wearing a v12 label. Where that is observed the Steering term is DROPPED and
+#           Efficiency renormalizes (aq.py), rather than scoring 0.0 on a signal the adapter
+#           cannot emit. gemini and pi need no case: without `delegate` they cannot dispatch.
+#   replay: the floor NARROWS to TOP_LEVEL_ACTIONS_INPUTS_VERSION (12). `actions_per_prompt`
+#           is a persisted RATIO that `stats_from_scoring_block` reads verbatim, so a v8-v11
+#           payload replayed under v12 would have its frozen mixed-population ratio scored by
+#           the v12 band and stamped 12:12:12 -- indistinguishable, under
+#           COMPARISON_POLICY = same_score_contract_id_only, from a genuine v12 row. Not
+#           repairable either: the payload carries no sidechain breakdown to subtract, that
+#           being the key v12 adds. Same class of change as v10's corpus-scale gate, so it
+#           follows that precedent with its own named constant and its own exception
+#           (IncompatibleActionsPerPromptBasis).
+#   pooling: gnomon/scoring/aggregate.py pooled this ratio with `wmean` weighted by
+#           `tool_calls_total`. Value and weight were the same population before v12 and are
+#           not now, so source A (10 instructions, 100 top-level, 0 sidechain) and source B
+#           (10 instructions, 10 top-level, 990 sidechain) pooled to 1.8 against a true pooled
+#           ratio of 5.5. The weight is now the ratio's own denominator, which makes the
+#           pooled value exact rather than merely closer. Contained -- compute_aq never runs
+#           on the synth block -- so the published AQ does not move; `steering_reading` and
+#           the score_breakdown sub-percentages do.
+#   gstack: unchanged logic; it moves with the pair for the same reason it did in v7-v11 —
+#           aggregate._blend_aq raises on any mixed contract, so a partial bump would
+#           publish two universes inside one PR.
+# The subagent work is not lost by the numerator change: it is still measured by the
+# Orchestration axis and by all six per-tool-call rate numerators (none of which is
+# sidechain-gated), and its volume still travels in `tool_calls_total` and now explicitly in
+# `sidechain_tool_calls`. Adding dispatches to the DENOMINATOR was rejected: a dispatch is
+# one instruction, so 200 subagent calls over 1 dispatch would still read as 200 unsteered
+# actions.
+#
 # v11 — The recency blend is gone; a published point is the month's own score, once.
 # Until v11 `profile.aq` was `0.65 * recent_30d + 0.35 * full_window` (aggregate._blend_aq).
 # v10 narrowed the scoring window to one calendar month and that made the pair degenerate:
@@ -122,9 +213,9 @@
 # per-session rates by each source's tool volume; review rejected it because the resulting
 # mean mixes units (tool_calls x things/session is not a quantity) and inverts. Do not
 # reintroduce it — see the comment above `rate()` in aq.py for the measured counter-example.
-SCORING_INPUTS_VERSION = 11
-AQ_VERSION = 11
-GSTACK_VERSION = 11
+SCORING_INPUTS_VERSION = 12
+AQ_VERSION = 12
+GSTACK_VERSION = 12
 # The first SCORING_INPUTS_VERSION whose skill counters are DEDUPED: v8 (28d3bda) made a
 # Skill invocation count once per (session, skill) span instead of once per assistant/
 # sidechain turn carrying attributionSkill. That changed what the persisted counter MEANS,
@@ -133,6 +224,28 @@ GSTACK_VERSION = 11
 # different quantity and cannot be re-scored against post-dedup targets; replay() refuses
 # such a payload rather than publishing an over-saturated number (gnomon/scoring/replay.py).
 SKILL_DEDUP_INPUTS_VERSION = 8
+# The first SCORING_INPUTS_VERSION whose `behavior.actions_per_prompt` numerator is
+# TOP-LEVEL-only: v12. Before it the numerator was `tool_use_total`, which counts sidechain
+# tool calls, over a denominator that never did -- so the field is not merely scored
+# differently across the boundary, it is a different QUANTITY.
+#
+# A second boundary constant rather than moving SKILL_DEDUP_INPUTS_VERSION: the two gate
+# different things and a caller enumerating an archive needs to tell them apart. v8 is about
+# persisted COUNTERS (`skills_total`, `review_skills`); this one is about a persisted RATIO,
+# and unlike a counter it cannot even in principle be repaired downstream -- the payload
+# carries no sidechain breakdown to subtract (`volume.sidechain_tool_calls` is the field v12
+# ADDS, so no pre-v12 payload has it).
+#
+# Why this needs a gate at all, and why it is the same class of change v10's
+# `_require_comparable_scoring_window` was written for: `profiles.py::
+# stats_from_scoring_block` copies the `behavior` block verbatim and `compute_aq` stamps the
+# LIVE `SCORE_CONTRACT_ID` on whatever it scored. So a v11 payload replayed under v12 has its
+# frozen mixed-population ratio scored by the v12 Steering band and published as a genuine
+# 12:12:12 row, which `COMPARISON_POLICY = same_score_contract_id_only` cannot distinguish
+# from a real one. The gap between the two bases is systematic and large (measured on the
+# development corpus, 22.7 -> ~7 on claude), so it reads as behaviour rather than as a
+# definition change. See gnomon/scoring/replay.py::_require_comparable_actions_per_prompt.
+TOP_LEVEL_ACTIONS_INPUTS_VERSION = 12
 SCORE_CONTRACT_ID = f"{SCORING_INPUTS_VERSION}:{AQ_VERSION}:{GSTACK_VERSION}"
 COMPARISON_POLICY = "same_score_contract_id_only"
 

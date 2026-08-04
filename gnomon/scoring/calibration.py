@@ -23,7 +23,9 @@ KNOWN GAP: apart from the explicitly registered out-of-module constants below, o
 module-level named constants in `aq.py` are covered. A handful of sat() targets are still
 inline literals in expressions (`sat(len(models), 3)`, `sat(offload_share, 0.30)`,
 `sat(cli_share, 0.70)`, and the `1.0` identity targets). They are NOT fingerprinted -- name
-them here first if a change needs to touch them.
+them here first if a change needs to touch them. The Steering-leverage band used to be in
+that list and is the worked example of the rule: v12 needed to touch what it judges, so it
+was named in aq.py and registered below before the change shipped.
 """
 import hashlib
 import importlib
@@ -52,6 +54,21 @@ CALIBRATION_CONSTANT_NAMES = (
     "SKILLS_DISTINCT_CEILING",
     "MCP_SERVERS_DISTINCT_CEILING",
     "CLIS_DISTINCT_CEILING",
+    # steering leverage -- the band Efficiency reads `actions_per_prompt` through. Registered
+    # at v12, when that field stopped counting subagent calls in its numerator: the band's
+    # VALUES do not move, the population they judge does, and a band applied to a different
+    # population is a different calibration.
+    "STEERING_LEVERAGE_BAND_MIN",
+    "STEERING_LEVERAGE_BAND_MAX",
+    "STEERING_LEVERAGE_DECAY_SPAN",
+    # ...and whether that band has been fitted against a population at all. It has not (the
+    # PROVENANCE block in aq.py), so it is False and the term is WITHHELD rather than scored
+    # through it. This is the most score-affecting constant in the group -- it decides whether
+    # the term exists -- and registering it is what makes flipping it back on impossible to do
+    # quietly: the flip moves the digest and demands a new contract ID, which is exactly the
+    # failure it guards against. A bool registers cleanly here: the sensitivity test patches
+    # `False + 1` = 1, whose repr differs, so the fingerprint moves.
+    "STEERING_LEVERAGE_BAND_VALIDATED",
     # planning / context intelligence
     "PLANNING_TARGET",
     "PLANNING_PRACTICE_TARGET",
@@ -171,4 +188,39 @@ CALIBRATION_FINGERPRINTS = {
     # never recomputed against a newer registry, they record what their contract published
     # under the registry of its day. The 8:8:8, 9:9:9 and 10:10:10 entries are untouched.
     "11:11:11": "888bec08099b6fbc",
+    # v12 (`actions_per_prompt` counts top-level actions only; `sidechain_tool_calls` is
+    # published beside `tool_calls_total`). No calibration VALUE moves -- checked FIRST, and
+    # the counterfactual was measured rather than assumed: with the Steering-leverage band
+    # left as three inline literals this digest computes to 888bec08099b6fbc, byte-identical
+    # to 11:11:11's, and `test_no_two_contracts_share_a_fingerprint` fails. That failure is
+    # informative, exactly as it was at v11: it means the score-affecting thing is outside the
+    # registry. Here it is the POPULATION the band judges -- the numerator of
+    # `actions_per_prompt` stops counting subagent tool calls and its denominator gains bare
+    # slash commands, so a band applied to "actions per instruction" now covers a different
+    # quantity on both sides. A band whose meaning moves is calibration, so v12 names
+    # STEERING_LEVERAGE_BAND_MIN / _BAND_MAX / _DECAY_SPAN in aq.py (values UNCHANGED from the
+    # literals) and registers them above, rather than working around the test. Adding the names
+    # is itself part of the move, as it was for DEFAULT_SCORING_WINDOW_MONTHS at v10 and the
+    # blend weights at v11 -- older entries are never recomputed against a newer registry, they
+    # record what their contract published under the registry of its day. The 8:8:8, 9:9:9,
+    # 10:10:10 and 11:11:11 entries are untouched.
+    #
+    # The values staying put is a DECISION with a measurement behind it, not a deferral: a
+    # re-fit was derived against the 48-user upload population and rejected because no pair of
+    # thresholds tracks a per-user contraction whose projected spread is 0.00-0.97. See the
+    # PROVENANCE block in aq.py for the sensitivity table, and for the correction of an earlier
+    # claim that these three had ever been fitted at all.
+    #
+    # The conclusion drawn from that measurement is the FOURTH registered name in the group,
+    # STEERING_LEVERAGE_BAND_VALIDATED = False: since no band can be fitted until the per-user
+    # sidechain share is measured rather than projected, v12 does not score the term at all. It
+    # is registered rather than left as a plain module flag for the same reason the band itself
+    # was named -- it is the single most score-affecting value in the block, and its eventual
+    # flip to True must cost a contract bump instead of being a one-character edit. Adding the
+    # name is part of the move, as it was for DEFAULT_SCORING_WINDOW_MONTHS at v10, the blend
+    # weights at v11 and the band at v12.
+    #
+    # This entry has never been committed, so its hash is authored in place rather than
+    # migrated. The 8:8:8, 9:9:9, 10:10:10 and 11:11:11 entries stay byte-identical.
+    "12:12:12": "43f4a19179acc3a0",
 }

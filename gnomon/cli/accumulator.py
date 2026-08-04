@@ -25,7 +25,9 @@ import time
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 
-from gnomon.config import parse_ts, line_count, strip_injections, planning_session_scope
+from gnomon.config import (
+    parse_ts, line_count, strip_injections, planning_session_scope, sidechain_label_scope,
+)
 from gnomon.scoring.inputs import _adjusted_doing
 from gnomon.taxonomy import (
     SCHEDULE_TOOLS, ASK_TOOLS, PLAN_MODE_TOOLS, PLAN_SIGNAL_TOOLS,
@@ -97,16 +99,61 @@ class Accumulator:
         self.session_ts = defaultdict(list)    # sessionId -> [epoch seconds]
         self.session_files = defaultdict(set)
 
+        # Genuine human user turns that carried typed TEXT. Not "human instructions": a BARE
+        # slash command (`<command-name>/commit</command-name>` and nothing else) is an
+        # instruction but cleans to the empty string, so it lands in command_invocations
+        # instead. The split is deliberate and everything else in that branch is why --
+        # prompt_lengths, polite_prompts and the narrative quote candidates all consume the
+        # typed text, and a zero-length entry would misreport how long a human's prompts are.
         self.prompts_count = 0
         self.polite_prompts = 0
         self.prompt_lengths = []
+        # EVERY slash command, bare or carrying typed text after the wrapper. Untouched by
+        # v12: its consumers want the count of commands invoked.
         self.command_invocations = 0
+        # Slash commands that carried NO typed text, i.e. exactly the human instructions
+        # `prompts_count` cannot see. Counted separately rather than folded into
+        # `prompts_count` so the length histograms stay honest (see above), and rather than
+        # derived from `command_invocations` because that also counts the with-text ones,
+        # which `prompts_count` already has -- adding them would double-count.
+        #
+        # `prompts_count + command_only_prompts` is the population the v12
+        # `actions_per_prompt` numerator describes, and is published as
+        # `volume.total_instructions`. Before v12 the ratio divided by `prompts_count` alone
+        # while the tool calls a slash command drove stayed in the numerator, so a corpus
+        # driven entirely by slash commands read `total_prompts = 0` -> `app = 0` -> Steering
+        # leverage 0.0, and a mixed 2-typed/8-command corpus read app = 300/2 = 150 -> 0.0.
+        # Same defect as the sidechain numerator, on the other side of the fraction.
+        self.command_only_prompts = 0
 
         self.assistant_turns = 0
         self.text_blocks = 0
         self.thinking_blocks = 0
         self.thinking_chars = 0
         self.tool_use_total = 0
+        # Sidechain (subagent) tool calls, counted SEPARATELY and never subtracted from
+        # tool_use_total. Two consumers need it:
+        #   * `actions_per_prompt` (v12) divides TOP-LEVEL calls by top-level prompts, so it
+        #     needs tool_use_total minus this;
+        #   * `volume.sidechain_tool_calls` publishes it as a diagnostic, so the share of the
+        #     corpus that is delegated work is visible instead of implicit.
+        # Only a POSITIVE `isSidechain` subtracts. Events whose identity is unknown (the
+        # field absent or non-boolean — see sources/__init__.py, which normalizes it to None)
+        # stay in the top-level numerator: guessing them into the sidechain bucket would let
+        # a parser gap silently inflate a scored term.
+        self.sidechain_tool_use_total = 0
+        # Delegate-class dispatches (`Agent` / `Task`) observed on a source whose adapter emits
+        # NO sidechain flag at all -- today only `antigravity`, which carries the `delegate`
+        # capability and maps `invoke_subagent -> Agent` yet never stamps `isSidechain`
+        # (gnomon/config.py::sidechain_label_scope). Every subagent call such a dispatch
+        # produced is silently counted as TOP-LEVEL, so `actions_per_prompt` there is the
+        # pre-v12 mixed ratio wearing a v12 label.
+        #
+        # A COUNT rather than a flag, and keyed on the dispatch rather than the capability, so
+        # the verdict follows what the corpus actually did: a source that cannot label but
+        # never delegated has nothing to misplace and its ratio is exact, so it stays scored.
+        # This is what `behavior.sidechain_label_state` is derived from.
+        self.unlabelled_delegate_dispatches = 0
         self.tool_counter = Counter()
         self.cat_counter = Counter()
         # Planning DISPATCHES — the Skill call or Agent dispatch itself. Named 'dispatch',
@@ -203,6 +250,15 @@ class Accumulator:
         # monthly progression ("YYYY-MM" buckets)
         self.month_prompts = Counter()
         self.month_tools = Counter()
+        # Month-scoped sibling of sidechain_tool_use_total. Threaded into
+        # build_monthly_scoring_stats so the monthly slice publishes the same
+        # `actions_per_prompt` DEFINITION the corpus and per-source slices do — otherwise the
+        # rolling series would mix two populations across months.
+        self.month_sidechain_tools = Counter()
+        # Month-scoped sibling of command_only_prompts, threaded into
+        # build_monthly_scoring_stats for the same reason: the monthly slice has to divide by
+        # the same population the corpus and per-source slices do.
+        self.month_command_only = Counter()
         self.month_churn = Counter()
         self.month_dates = defaultdict(set)
         self.month_sessions = defaultdict(set)
@@ -249,6 +305,12 @@ class Accumulator:
         self.source_files = Counter()
         self.source_sessions = defaultdict(set)
         self.source_prompts = Counter()
+        # NOTE: there is deliberately no per-source `command_only` Counter beside
+        # source_prompts. The per-source SCORING slice comes from a dedicated single-source
+        # Accumulator (gnomon/cli/local.py builds one per source and calls to_source_stats on
+        # it), so `command_only_prompts` is already source-scoped there; and the corpus-level
+        # `sources` rollup publishes prompts only. A second counter would be written and never
+        # read.
         self._plan_sessions_degraded = False
 
         # per-file transient state (reset in begin_file, flushed in end_file)
@@ -862,6 +924,14 @@ class Accumulator:
                     cleaned = strip_injections(text)
                     if is_command and not cleaned:
                         self.command_invocations += 1
+                        # A bare slash command IS a human instruction -- it just carries no
+                        # text for the length/politeness/quote machinery below, which is the
+                        # only reason it does not increment prompts_count. Counted here so
+                        # `actions_per_prompt` can divide by the whole instruction
+                        # population; see __init__ for why this is not folded in above.
+                        self.command_only_prompts += 1
+                        if mkey:
+                            self.month_command_only[mkey] += 1
                     elif cleaned:
                         self.prompts_count += 1
                         self.source_prompts[self._cur_src] += 1
@@ -953,8 +1023,23 @@ class Accumulator:
                         name = b.get("name", "?")
                         inp = b.get("input", {}) if isinstance(b.get("input"), dict) else {}
                         self.tool_use_total += 1
+                        # Identity is an EVENT fact, so it is read here rather than derived
+                        # from the session: a parent transcript and its subagent turns share
+                        # one sessionId (see _cursor_jsonl_meta / the claude sidechain files),
+                        # so a session-level split would credit the parent.
+                        _sidechain_call = bool(ev.get("isSidechain"))
+                        if _sidechain_call:
+                            self.sidechain_tool_use_total += 1
                         self.tool_counter[name] += 1
                         _cat = classify_tool(name)
+                        # A dispatch on a source that cannot label sidechain means subagent
+                        # calls are about to be counted as top-level. Recorded here (on the
+                        # dispatch, where it is observable) so `sidechain_label_state` reflects
+                        # what this corpus actually did rather than what its adapter could in
+                        # principle mislabel.
+                        if (_cat == "delegate"
+                                and sidechain_label_scope(self._cur_src) == "cannot_label"):
+                            self.unlabelled_delegate_dispatches += 1
                         if (self._cur_src == "claude" and ev.get("isSidechain")
                                 and ev.get("agentId")):
                             child = self.claude_child_facts[ev["agentId"]]
@@ -1008,6 +1093,8 @@ class Accumulator:
                                 self.month_session_ordered_tools[mkey][_fact_sid].append(_ordered_fact)
                         if mkey:
                             self.month_tools[mkey] += 1
+                            if _sidechain_call:
+                                self.month_sidechain_tools[mkey] += 1
                             self.month_tool_counter[mkey][name] += 1
                             if _cat == "delegate":
                                 self.month_delegate[mkey] += 1
@@ -1351,8 +1438,44 @@ class Accumulator:
         iteration_max = _ids["max"]
         heavy_files = _ids["heavy_files"]
 
-        actions_per_prompt = (self.tool_use_total / self.prompts_count) if self.prompts_count else 0
+        # v12 — BOTH sides of this ratio describe the top-level conversation. `prompts_count`
+        # has always excluded sidechain user turns (a subagent dispatch instruction is not a
+        # human prompt), so dividing the sidechain-INCLUSIVE tool total by it mixed two
+        # populations by construction, not by workload: one delegation of 200 subagent calls
+        # off a single prompt read as 200 actions per prompt and scored Steering leverage 0.0
+        # (aq.py's band tops out at STEERING_LEVERAGE_BAND_MAX and decays to zero at 60) —
+        # zeroing the same behaviour the Orchestration axis rewards.
+        #
+        # The fix removes sidechain from the NUMERATOR rather than adding dispatches to the
+        # denominator: a dispatch is one instruction, so counting it as one would still leave
+        # 200 unsteered calls attributed to it. The delegated work is not lost — it is
+        # measured by Orchestration and by all six per-tool-call rate numerators, none of
+        # which is sidechain-gated, and its volume still travels in `tool_calls_total` and
+        # (as of v12) explicitly in `sidechain_tool_calls`.
+        #
+        # The DENOMINATOR is widened for the mirror-image defect. `prompts_count` counts only
+        # turns carrying typed text, so a BARE slash command -- unambiguously a human
+        # instruction -- was missing from it while the tool calls it drove stayed in the
+        # numerator. A corpus of 10 slash commands driving 300 calls read total_prompts = 0,
+        # `app = 0`, and `app <= 0` scores the axis 0.0; a mixed 2-typed/8-command corpus read
+        # 300 / 2 = 150 and also scored 0.0. So the ratio divides by every human instruction,
+        # published as `volume.total_instructions`, while `prompts_count` /
+        # `volume.total_prompts` keep their typed-text meaning for the length and politeness
+        # statistics that are the reason the split exists at all (see __init__).
+        top_level_tool_calls = self.tool_use_total - self.sidechain_tool_use_total
+        total_instructions = self.prompts_count + self.command_only_prompts
+        actions_per_prompt = (
+            (top_level_tool_calls / total_instructions) if total_instructions else 0)
         # autonomy proxy 0-100: weighted blend, transparent + bounded
+        #
+        # v12 consequence, recorded rather than corrected: `actions_per_prompt` now excludes
+        # subagent calls, so this term reads lower for a delegation-heavy corpus and the 25.0
+        # divisor was anchored on the pre-v12 mixed population. It is left alone because this
+        # score is a LOCAL diagnostic only -- it reaches report.md and the --verbose line and
+        # is never uploaded, never scored, and not under the calibration fingerprint. It also
+        # is not obviously wrong afterwards: delegated volume already has its own term
+        # (`auto_deleg`), so counting it here too was double-counting. Re-anchor 25.0 if this
+        # number is ever promoted to something a decision rests on.
         auto_actions = min(actions_per_prompt / 25.0, 1.0) * 45
         auto_deleg = min(delegate / max(total_sessions, 1) / 1.5, 1.0) * 20
         auto_sched = min((self.scheduled_actions + self.background_tasks) / max(total_sessions, 1), 1.0) * 15
@@ -1429,10 +1552,25 @@ class Accumulator:
                 "total_sessions": total_sessions,
                 "total_prompts": self.prompts_count,
                 "command_invocations": self.command_invocations,
+                # The DENOMINATOR of `behavior.actions_per_prompt` since v12: every human
+                # instruction, i.e. typed-text turns PLUS bare slash commands. Published
+                # rather than left implicit so the scored ratio reconciles from the payload
+                # alone: (tool_calls_total - sidechain_tool_calls) / total_instructions.
+                # `total_prompts` is NOT this number and deliberately stays narrower -- it is
+                # what the prompt-length and politeness statistics are built from.
+                "total_instructions": total_instructions,
                 "avg_prompt_length_chars": round(avg_prompt_len, 1),
                 "median_prompt_length_chars": round(median_prompt_len, 1),
                 "assistant_turns": self.assistant_turns,
                 "tool_calls_total": self.tool_use_total,
+                # Diagnostic sibling, NOT a scored term (v12). Nothing divides by it and no
+                # axis reads it; it exists so the delegated share of `tool_calls_total` is
+                # visible in the payload. `partial_terms` cannot express this: that only
+                # fires when `wsum` DROPS a term, and the dilution here silently lowered a
+                # term that stayed fully scored. Measured share when this was written: 66.0%
+                # of tool_calls_total for 2026-07 on the development corpus (claude 69.7%,
+                # codex 21.9%, cursor 1.0%), 41.0% pooled over 2026-02..07.
+                "sidechain_tool_calls": self.sidechain_tool_use_total,
                 "thinking_blocks": self.thinking_blocks,
             },
             "tools": {
@@ -1532,6 +1670,22 @@ class Accumulator:
                 "delegated_orchestratable_sessions": _delegated_orchestratable,
                 "ordered_facts_state": ("measured" if self.tool_use_total
                                         and self.ordered_facts_complete else "unmeasured"),
+                # Whether the TOP-LEVEL numerator of `actions_per_prompt` above is
+                # trustworthy for this corpus (v12). "unmeasured" means some contributing
+                # source dispatched a subagent while emitting no `isSidechain` flag, so its
+                # subagent calls are in the numerator and the ratio is the pre-v12 mixed one
+                # wearing a v12 label -- aq.py drops the Steering-leverage term rather than
+                # scoring the corpus 0.0 on a signal that source cannot emit.
+                #
+                # Corpus-wide, and "measured" only when EVERY contributing source is, because
+                # the merged corpus pools all sources into one numerator and there is no
+                # per-source split left to rescue it at that point. Mirrors
+                # `ordered_facts_state` and aggregate.py's own all-or-nothing rule for it. The
+                # per-source profiles in `profiles_by_source` keep their own verdicts, so a
+                # labelling source is still scored on its own slice.
+                "sidechain_label_state": ("unmeasured"
+                                          if self.unlabelled_delegate_dispatches
+                                          else "measured"),
                 "linked_model_pairs": _routing_pairs,
                 "linked_model_routing_state": _routing_state,
                 "no_tool_activity": no_tool_activity,
@@ -1646,9 +1800,12 @@ class Accumulator:
         per-source so window AND month share one code path."""
         return build_monthly_scoring_stats(
             months=sorted(set(self.month_dates) | set(self.month_prompts) | set(self.month_tools)
-                          | set(self.month_tokens) | set(self.month_sessions)),
+                          | set(self.month_tokens) | set(self.month_sessions)
+                          | set(self.month_command_only)),
             sources_present=sorted(self.source_files),
             month_prompts=self.month_prompts, month_tools_count=self.month_tools,
+            month_sidechain_tools=self.month_sidechain_tools,
+            month_command_only=self.month_command_only,
             month_churn=self.month_churn, month_models=self.month_models,
             month_sessions=self.month_sessions, month_assistant_turns=self.month_assistant_turns,
             month_thinking_blocks=self.month_thinking_blocks,
@@ -1724,7 +1881,13 @@ class Accumulator:
 
         _s_total_churn = self.lines_added + self.lines_removed
         _s_prompts = self.prompts_count
-        _s_actions_per_prompt = round(_s_tool_total / _s_prompts, 1) if _s_prompts else 0
+        # Same top-level-only numerator AND same whole-instruction denominator as the corpus
+        # path (v12) — the two must agree or a single-source corpus would publish two
+        # different readings of one field.
+        _s_top_level = _s_tool_total - self.sidechain_tool_use_total
+        _s_instructions = _s_prompts + self.command_only_prompts
+        _s_actions_per_prompt = (
+            round(_s_top_level / _s_instructions, 1) if _s_instructions else 0)
 
         _s_tc = self.tool_counter
         _s_diversity = len(_s_tc)
@@ -1757,7 +1920,9 @@ class Accumulator:
             "volume": {
                 "total_sessions": _s_sessions,
                 "total_prompts": self.prompts_count,
+                "total_instructions": _s_instructions,
                 "tool_calls_total": _s_tool_total,
+                "sidechain_tool_calls": self.sidechain_tool_use_total,
                 "assistant_turns": self.assistant_turns,
                 "thinking_blocks": self.thinking_blocks,
             },
@@ -1798,6 +1963,12 @@ class Accumulator:
                 "delegated_orchestratable_sessions": _s_delegated_orchestratable,
                 "ordered_facts_state": ("measured" if _s_tool_total
                                         and self.ordered_facts_complete else "unmeasured"),
+                # Per-source sibling of the corpus verdict (v12). This accumulator is
+                # single-source when it produces a scoring slice, so the counter cannot mix
+                # a labelling and a non-labelling source here.
+                "sidechain_label_state": ("unmeasured"
+                                          if self.unlabelled_delegate_dispatches
+                                          else "measured"),
                 "linked_model_pairs": _s_routing_pairs,
                 "linked_model_routing_state": _s_routing_state,
                 "delegate_actions": _s_cats.get("delegate", 0),

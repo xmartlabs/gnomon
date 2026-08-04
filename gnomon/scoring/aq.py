@@ -116,6 +116,28 @@ COMPOUNDING_WRITES_PER_CALL_TARGET = 0.0018  # p40 .00170 / p50 .00207, n=16 —
 # raw inputs, every one of them PRE-dedup and all from one company. The first upload cohort
 # on contract 9:9:9 carries post-dedup counters directly — re-fit both skill targets from
 # that measured distribution and delete the projection.
+#
+# ---- PENDING CALIBRATION DECISION (v12): task_calls is numerator-asymmetric -------
+# This is a recorded decision, NOT a bug, and NOT something v12 changes. All six rates share
+# the sidechain-INCLUSIVE `tool_calls_total` denominator on purpose (that is the population
+# they were fitted on, and it is also the cross-source aggregation weight in
+# gnomon/scoring/aggregate.py). Five of the six numerators are also recorded on sidechain
+# turns, so numerator and denominator stay on the same population. `task_tool_calls` is the
+# ONE that is not, and it is nearly TOTALLY asymmetric: subagent tool allowlists exclude the
+# orchestrator-level task tools, so on the development corpus sidechain contributed
+# `TaskCreate` 0 of 79 and `TaskUpdate` 1 of 133 — about 0.5% of the numerator — against a
+# denominator that was 66.0% sidechain. The term therefore reads as roughly a third of the
+# practice it measures, purely from where the tools are available.
+#
+# Deliberately NOT fixed here, and the options are not equivalent:
+#   * re-fitting TASK_CALLS_PER_CALL_TARGET alone breaks the "the six move together" rule for
+#     no measurement gain — the rule is a DENOMINATOR argument and the denominator is what is
+#     wrong for this one term;
+#   * giving task_calls a top-level-only denominator makes one rate incomparable with the
+#     other five and with every rate row already uploaded;
+#   * publishing a top-level tool total for ALL six is the defensible move, and it is a
+#     six-constant re-fit against a cohort that does not exist yet.
+# Decide it on the first cohort uploaded under 12:12:12, with all six re-measured at once.
 
 # ---- Rate evidence floor (v9) ------------------------------------------------------
 # `rate(x, t) = min(1, x / (tool_calls · t))` maxes out at x = tool_calls · t, so wherever
@@ -185,6 +207,118 @@ FANOUT_CEILING = 5  # span-of-control theory (Graicunas/Urwick) lands at 5-7
 SKILLS_DISTINCT_CEILING = 40
 MCP_SERVERS_DISTINCT_CEILING = 15
 CLIS_DISTINCT_CEILING = 40
+
+# ---- Steering leverage band (v12) --------------------------------------------
+# The Efficiency/Steering-leverage curve over `behavior.actions_per_prompt`: below
+# _BAND_MIN the score ramps linearly (too few actions per instruction is hand-holding, not
+# leverage), inside [_BAND_MIN, _BAND_MAX] it is full, and above _BAND_MAX it decays
+# linearly to zero over _DECAY_SPAN more actions (so the term reaches 0 at 60).
+#
+# Named here, VALUES UNCHANGED from the inline literals they replace, for the same reason
+# DEFAULT_SCORING_WINDOW_MONTHS was named at v10 and the blend weights were registered at
+# v11: what v12 changes is the POPULATION this band judges. Until v12
+# `actions_per_prompt` divided the sidechain-INCLUSIVE tool total by the sidechain-EXCLUSIVE
+# prompt count, so a band fitted as "actions you took per instruction you gave" was being
+# applied to "every call anyone made, per instruction you gave" — one delegation of 200
+# subagent calls scored 0.0 on this axis while the Orchestration axis rewarded it. A band
+# whose meaning moves is calibration, so it belongs under the fingerprint
+# (gnomon/scoring/calibration.py); leaving it as three literals would have made v12's digest
+# identical to v11's, which is precisely the silent cohort merge that module exists to stop.
+#
+# ---- PROVENANCE: these three values were NEVER FITTED --------------------------------
+# An earlier revision of this comment claimed the band "was fitted against the mixed
+# population". That provenance was manufactured and is deleted rather than softened. What the
+# history actually shows: `app / 5`, `app <= 20` and `/ 40` all enter in b65ad99 ("feat:
+# rewrite compute_aq to 4-pillar AQ v2", 2026-06-09) with a one-line commit message and no
+# data, sample or rationale of any kind; 2152713 only moves the monolith into the package.
+# `git log -S` finds no fitting commit before or after either literal. docs/
+# metrics-evaluation.md:41 says the same thing about the surrounding rubric in as many words
+# ("rúbrica con pesos arbitrarios"). So the honest statement is: 5, 20 and 40 are judgement
+# calls of unknown origin that have never been measured against a population.
+#
+# ---- Why v12 does NOT re-fit them, even though v12 is what makes them wrong -----------
+# The v12 numerator change is a CONTRACTION, post = pre * (1 - sidechain_share). A contraction
+# only helps above _BAND_MAX, is neutral inside the band, and HARMS anything it pushes below
+# _BAND_MIN, where the score ramps linearly to zero. Measured on the 48 users in the mirdash
+# upload archive whose latest row anchors at 2026-06 or later (pre-v12 `actions_per_prompt`
+# from `churn.actions_per_prompt`): median 10.8, p25 8.0, p75 13.5, max 22.9. Only 4 sit above
+# 20 where the fix helps at all, and their maximum gain is +0.07 lever (+0.7 AQ); 41 sit inside
+# [5, 20] where it can only hurt. The defect being fixed needs app >= 60 to zero the term and
+# nobody is within 37 of that.
+#
+# A re-fit was derived rather than assumed (.context/refit_steering_band.py). The per-user
+# sidechain share is not in any stored payload -- `volume.sidechain_tool_calls` is the field
+# v12 ADDS -- so it has to be PROJECTED as share ~= k * delegate_actions / tool_calls_total,
+# with k = sidechain calls per dispatch measured on the local corpora
+# (.context/measure_k.py, 116,356 tool calls / 1,608 dispatches over 2026-02..08).
+# k is NOT a constant and that is the finding: claude 38.0 pooled (37.6-44.3 by month),
+# codex 23.8 (21.3-27.9), cursor 18.0, pooled 32.1. Scaling the band by the population's
+# median contraction factor gives:
+#     k = 22 (codex end)      band [4, 15]   ->  4 better, 5 worse, 39 unchanged
+#     k = 32 (pooled, CENTRAL) band [3, 13]  ->  3 better, 9 worse, 36 unchanged
+#     k = 42 (claude end)     band [3, 11]   ->  3 better, 15 worse, 30 unchanged
+# At the central k the best available band still leaves 9 users worse, mean -0.66 AQ, and four
+# of them lose 6.5-8.9 AQ. So the re-fit reduces the damage and does not remove it, and 5/20/40
+# are therefore left EXACTLY as they were: replacing unfitted values with differently unfitted
+# values would move every published score for no gain in correctness.
+#
+# The reason no band can fix this is structural, not a matter of picking better numbers. The
+# contraction is PER USER and its spread is enormous -- at central k the projected share runs
+# from 0.00 to 0.97 across the population. A band is two scalars; rescaling it can re-centre
+# the median user but cannot follow a per-user contraction. Worse, the projection is least
+# trustworthy exactly where the harm is largest: the four worst-hit users are the ones whose
+# projected share saturates, and their own counts cap k far below the corpus figure
+# ((tool_calls - dispatches) / dispatches is 14 for one of them, against a claude k of 38), so
+# their true loss swings from about -1 to about -9 AQ on a parameter nothing can pin down. They
+# are also the heaviest delegators -- the users the fix was meant to help.
+STEERING_LEVERAGE_BAND_MIN = 5
+STEERING_LEVERAGE_BAND_MAX = 20
+STEERING_LEVERAGE_DECAY_SPAN = 40
+
+# ---- ...so the term is NOT SCORED until the band can be fitted -----------------------
+# The three values above have never been fitted against a population (see PROVENANCE), and
+# v12 changed the population they judge. Publishing a contracted number through a band that
+# never fitted anything is what this codebase refuses to do everywhere else: `partial_terms`,
+# the capability coverage flags, the pillar's `not_applicable` and `_fanout_median`'s
+# deliberate `None` all encode "we could not measure this" instead of inventing a value. So
+# does this flag. A uniform, explained absence beats an unexplainable -8.9 AQ for the heaviest
+# delegators.
+#
+# When False, `compute_aq` sets `lever = None` and the axis drops through
+# `build_pillar._live`, renormalizing Efficiency's remaining Recovery axis 50 -> 100. That is
+# the SAME mechanism the non-labelling-source case uses, deliberately reused rather than
+# duplicated; `agentic.steering_leverage.state` distinguishes the two reasons, and the measured
+# `actions_per_prompt` keeps being published either way (the count is measured, only its
+# scoring is not -- the `partial_terms` principle: the value stands, the interpretation is
+# withheld).
+#
+# WHAT IT COSTS, measured on the same 48-user population and not estimated
+# (.context/refit_steering_band.py, `withhold_report`). Efficiency has exactly two axes, so
+# the effect is closed-form: d_AQ = 10 * (recovery - lever), bounded by the Recovery shortfall
+# and zero for anyone Recovery already scores full.
+#   * vs v11 as published: mean -0.88 AQ, median -0.66; 40 of 48 users move by <= 1 published
+#     point and 19 do not move at all after rounding. Pearson r against delegation intensity
+#     is -0.16, i.e. NOT concentrated on delegators -- which was the acceptance condition.
+#   * vs v12 as it would otherwise ship (contracted numerator, unfitted band): mean +0.30 AQ,
+#     and the four users that band hits hardest (-9.09, -8.70, -8.18, -7.77 AQ) come back to
+#     +0.10, -1.22, -1.10 and -0.17. Removing that concentration is the whole point.
+#   * the one -8.62 outlier is the user whose Recovery is 0.138, the lowest Efficiency in the
+#     population. Withholding stops half a pillar of unvalidated credit from masking a
+#     measured signal; the unfitted band cost them -4.66 anyway.
+#
+# WHAT REPLACES THIS, concretely. The first cohort uploaded under 12:12:12 carries
+# `volume.sidechain_tool_calls`, so the per-user share stops being PROJECTED (share ~=
+# k * delegate_actions / tool_calls_total, with k not a constant) and becomes MEASURED
+# (sidechain_tool_calls / tool_calls_total). At that point the band is derived from that real
+# distribution, the projection in `.context/refit_steering_band.py` is deleted, and this flag
+# flips -- as a contract bump with a documented reason, next to the fitted values and the
+# population they were fitted on.
+#
+# Flipping it back on WITHOUT a fitted band is the exact failure this flag exists to prevent.
+# It is registered in `CALIBRATION_CONSTANT_NAMES`, so the flip cannot happen quietly: it
+# moves the digest and turns `test_calibration_contract.py` red until a new contract ID and
+# fingerprint entry are added.
+STEERING_LEVERAGE_BAND_VALIDATED = False
 
 _MODEL_TIERS = {
     "anthropic": (("opus", 3), ("sonnet", 2), ("haiku", 1)),
@@ -565,15 +699,46 @@ def compute_aq(stats):
     ]
 
     # ---- Pillar 3: Efficiency ----
+    # `actions_per_prompt` is TOP-LEVEL calls per top-level prompt as of v12 (see the band
+    # constants above and gnomon/cli/accumulator.py) — before that the numerator included
+    # subagent calls while the denominator excluded subagent turns, so this band was applied
+    # to a mixed population.
     app = b.get("actions_per_prompt", 0)
-    if app <= 0:
-        lever = 0.0
-    elif app < 5:
-        lever = app / 5
-    elif app <= 20:
-        lever = 1.0
+    # A source that can delegate but cannot label a call as delegated leaves its subagent
+    # calls in the top-level numerator, so `app` there is the PRE-v12 mixed ratio wearing a
+    # v12 label -- and nothing else in the payload distinguishes the two meanings. Steering is
+    # UNMEASURED in that case, not zero, so the term is dropped: `lever = None` makes
+    # `build_pillar._live` renormalize Efficiency's remaining axis weights back to 100 instead
+    # of halving the pillar on a signal the adapter cannot emit. Same treatment
+    # `linked_model_routing_state` already gets, for the same reason.
+    #
+    # Only `antigravity` triggers this today (`delegate` capability, `invoke_subagent ->
+    # Agent`, no `isSidechain`); gemini and pi cannot delegate at all, so nothing of theirs is
+    # ever mislabelled. See gnomon/config.py::sidechain_label_scope, and the accumulator's
+    # `unlabelled_delegate_dispatches` for why the verdict follows OBSERVED delegation rather
+    # than capability -- a corpus that never dispatched has an exact ratio and stays scored.
+    #
+    # The band itself is not fitted either (STEERING_LEVERAGE_BAND_VALIDATED above), so the
+    # term is withheld for EVERY source, not just the unlabelling ones. Same `lever = None`
+    # mechanism, and the two reasons are reported apart in `steering_leverage.state` below:
+    # they are different facts with different lifetimes. The adapter verdict is checked FIRST
+    # because it is the one that OUTLIVES the band being fitted -- reporting it keeps the state
+    # stable for antigravity across the flag flip, and a reader who sees
+    # `withheld_unvalidated_band` knows their own source is fine.
+    if b.get("sidechain_label_state", "measured") != "measured":
+        steering_state, lever = "unmeasured_sidechain_labels", None
+    elif not STEERING_LEVERAGE_BAND_VALIDATED:
+        steering_state, lever = "withheld_unvalidated_band", None
+    elif app <= 0:
+        steering_state, lever = "scored", 0.0
+    elif app < STEERING_LEVERAGE_BAND_MIN:
+        steering_state, lever = "scored", app / STEERING_LEVERAGE_BAND_MIN
+    elif app <= STEERING_LEVERAGE_BAND_MAX:
+        steering_state, lever = "scored", 1.0
     else:
-        lever = max(0.0, 1 - (app - 20) / 40)
+        steering_state = "scored"
+        lever = max(0.0, 1 - (app - STEERING_LEVERAGE_BAND_MAX)
+                    / STEERING_LEVERAGE_DECAY_SPAN)
     # API-error hygiene is scored as a RATE (per 100 tool calls), not an absolute count:
     # an absolute threshold penalizes volume and is window-size dependent. Target 2/100 =
     # full penalty (healthy env < 0.5/100; retry-storm / broken setup > 2/100).
@@ -670,6 +835,14 @@ def compute_aq(stats):
     return {
         "aq_0_100": total, "tier": tier, "pillars": pillars,
         "score_contract_id": SCORE_CONTRACT_ID,
+        # `actions_per_prompt` is MEASURED even when the term built from it is not scored, so
+        # the number keeps being published — the `partial_terms` principle: the value stands,
+        # the interpretation is withheld. It cannot ride in the axis's `signals` when the axis
+        # is dropped, so it sits here beside the other ungraded readings (`mcp_vs_cli`,
+        # `tool_diversity`). `state` is the *_state convention (`ordered_facts_state`,
+        # `linked_model_routing_state`, `sidechain_label_state`) applied to the OUTPUT rather
+        # than the input: "scored", or which of the two absences applies.
+        "steering_leverage": {"state": steering_state, "actions_per_prompt": app},
         "mcp_vs_cli": {"cli_calls": cli_calls, "cli_distinct": t.get("clis_distinct", 0),
                        "mcp_calls": mcp_calls, "mcp_distinct": t.get("mcp_servers_distinct", 0),
                        "ratio": round(cli_calls / mcp_calls, 1) if mcp_calls else None},

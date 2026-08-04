@@ -114,17 +114,31 @@ class TestComputeAqV2(unittest.TestCase):
     def test_tier_elite(self):
         self.assertEqual(self.aq["tier"], "Elite")
 
+    # The Steering-leverage band is WITHHELD as of 12:12:12 (it was never fitted; see the
+    # PROVENANCE block in gnomon/scoring/aq.py and tests/test_steering_band_not_validated.py).
+    # These two still describe the band's SHAPE, which the flag flip has to restore intact, so
+    # they exercise it through the flag rather than being deleted.
+    def _band_axis(self, app):
+        from unittest import mock
+        from gnomon.scoring import aq as aq_module
+        s = _sample_stats(); s["behavior"]["actions_per_prompt"] = app
+        # Patched on the defining module: `compute_aq` reads the flag from its own globals.
+        with mock.patch.object(aq_module, "STEERING_LEVERAGE_BAND_VALIDATED", True):
+            aq = paxel.compute_aq(s)
+        eff = next(p for p in aq["pillars"] if p["name"] == "Efficiency")
+        return next(a for a in eff["axes"] if a["name"] == "Steering leverage")
+
     def test_steering_sweetspot_band(self):
-        eff = next(p for p in self.aq["pillars"] if p["name"] == "Efficiency")
-        lever = next(a for a in eff["axes"] if a["name"] == "Steering leverage")
-        self.assertEqual(lever["score"], 50.0)
+        self.assertEqual(self._band_axis(13.8)["score"], 50.0)
 
     def test_steering_overdrive_penalized(self):
-        s = _sample_stats(); s["behavior"]["actions_per_prompt"] = 60
-        aq = paxel.compute_aq(s)
-        eff = next(p for p in aq["pillars"] if p["name"] == "Efficiency")
-        lever = next(a for a in eff["axes"] if a["name"] == "Steering leverage")
-        self.assertEqual(lever["score"], 0.0)
+        self.assertEqual(self._band_axis(60)["score"], 0.0)
+
+    def test_steering_leverage_is_withheld_by_default(self):
+        eff = next(p for p in self.aq["pillars"] if p["name"] == "Efficiency")
+        self.assertEqual(eff.get("not_applicable"), ["Steering leverage"])
+        self.assertEqual(self.aq["steering_leverage"],
+                         {"state": "withheld_unvalidated_band", "actions_per_prompt": 13.8})
 
     def test_mcp_vs_cli_and_diversity(self):
         self.assertEqual(self.aq["mcp_vs_cli"]["ratio"], 4.6)

@@ -3,7 +3,7 @@
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 87,
+          "aq_0_100": 85,
           "pillars": [
             {
               "name": "Breadth",
@@ -17,7 +17,7 @@
             },
             {
               "name": "Efficiency",
-              "score": 91.1,
+              "score": 82.2,
               "weight": 20
             },
             {
@@ -26,7 +26,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "11:11:11",
+          "score_contract_id": "12:12:12",
           "tier": "Advanced"
         },
         "archetype": {
@@ -42,6 +42,9 @@
           },
           "rule": "weighted_mean_except_synthesized_planning",
           "weight": "tool_calls_total",
+          "weight_exceptions": {
+            "behavior.actions_per_prompt": "total_instructions"
+          },
           "weights": {
             "claude": 4000
           }
@@ -289,7 +292,7 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 87,
+            "aq_0_100": 85,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -440,29 +443,22 @@
                 "axes": [
                   {
                     "base_weight": 50,
-                    "name": "Steering leverage",
-                    "normalized_score": 1.0,
-                    "score": 50.0,
-                    "signals": {
-                      "actions_per_prompt": 13.0
-                    },
-                    "weight": 50
-                  },
-                  {
-                    "base_weight": 50,
                     "name": "Recovery",
                     "normalized_score": 0.8225,
-                    "score": 41.1,
+                    "score": 82.2,
                     "signals": {
                       "api_per_100_tools": 0.1,
                       "api_retries": 4,
                       "recovery_ratio": 0.8
                     },
-                    "weight": 50
+                    "weight": 100
                   }
                 ],
                 "name": "Efficiency",
-                "score": 91.1,
+                "not_applicable": [
+                  "Steering leverage"
+                ],
+                "score": 82.2,
                 "weight": 20
               },
               {
@@ -505,7 +501,11 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "11:11:11",
+            "score_contract_id": "12:12:12",
+            "steering_leverage": {
+              "actions_per_prompt": 13.0,
+              "state": "withheld_unvalidated_band"
+            },
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -910,13 +910,13 @@
         }
       }
     },
-    "scoring_inputs_version": 11
+    "scoring_inputs_version": 12
   },
   {
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 47,
+          "aq_0_100": 42,
           "pillars": [
             {
               "name": "Breadth",
@@ -930,7 +930,7 @@
             },
             {
               "name": "Efficiency",
-              "score": 77.2,
+              "score": 54.5,
               "weight": 20
             },
             {
@@ -939,12 +939,12 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "11:11:11",
-          "tier": "Adequate"
+          "score_contract_id": "12:12:12",
+          "tier": "Apprentice"
         },
         "archetype": {
-          "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is craft \u2014 that's where the next gain is.",
-          "title": "Adequate"
+          "quote": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is craft \u2014 that's where the next gain is.",
+          "title": "Apprentice"
         },
         "canonical_aq": "profile.aq",
         "combination": {
@@ -955,6 +955,9 @@
           },
           "rule": "weighted_mean_except_synthesized_planning",
           "weight": "tool_calls_total",
+          "weight_exceptions": {
+            "behavior.actions_per_prompt": "total_instructions"
+          },
           "weights": {
             "cursor": 500
           }
@@ -1200,7 +1203,7 @@
       "by_source": {
         "cursor": {
           "aq": {
-            "aq_0_100": 47,
+            "aq_0_100": 42,
             "mcp_vs_cli": {
               "cli_calls": 100,
               "cli_distinct": 8,
@@ -1361,29 +1364,22 @@
                 "axes": [
                   {
                     "base_weight": 50,
-                    "name": "Steering leverage",
-                    "normalized_score": 1.0,
-                    "score": 50.0,
-                    "signals": {
-                      "actions_per_prompt": 6.0
-                    },
-                    "weight": 50
-                  },
-                  {
-                    "base_weight": 50,
                     "name": "Recovery",
                     "normalized_score": 0.545,
-                    "score": 27.2,
+                    "score": 54.5,
                     "signals": {
                       "api_per_100_tools": 0.4,
                       "api_retries": 2,
                       "recovery_ratio": 0.5
                     },
-                    "weight": 50
+                    "weight": 100
                   }
                 ],
                 "name": "Efficiency",
-                "score": 77.2,
+                "not_applicable": [
+                  "Steering leverage"
+                ],
+                "score": 54.5,
                 "weight": 20
               },
               {
@@ -1416,16 +1412,20 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "11:11:11",
-            "tier": "Adequate",
+            "score_contract_id": "12:12:12",
+            "steering_leverage": {
+              "actions_per_prompt": 6.0,
+              "state": "withheld_unvalidated_band"
+            },
+            "tier": "Apprentice",
             "tool_diversity": {
               "distinct": 12,
               "entropy": 0.6
             }
           },
           "archetype": {
-            "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is craft \u2014 that's where the next gain is.",
-            "title": "Adequate"
+            "quote": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is craft \u2014 that's where the next gain is.",
+            "title": "Apprentice"
           },
           "growth_edges": [
             {
@@ -1740,13 +1740,13 @@
         }
       }
     },
-    "scoring_inputs_version": 11
+    "scoring_inputs_version": 12
   },
   {
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 83,
+          "aq_0_100": 80,
           "pillars": [
             {
               "name": "Breadth",
@@ -1760,7 +1760,7 @@
             },
             {
               "name": "Efficiency",
-              "score": 89.6,
+              "score": 79.1,
               "weight": 20
             },
             {
@@ -1769,7 +1769,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "11:11:11",
+          "score_contract_id": "12:12:12",
           "tier": "Advanced"
         },
         "archetype": {
@@ -1785,6 +1785,9 @@
           },
           "rule": "weighted_mean_except_synthesized_planning",
           "weight": "tool_calls_total",
+          "weight_exceptions": {
+            "behavior.actions_per_prompt": "total_instructions"
+          },
           "weights": {
             "claude": 4000,
             "cursor": 500
@@ -2026,14 +2029,14 @@
         ],
         "steering": {
           "detail": "~12 actions per turn before you weigh in \u00b7 the agent checked in on 2% of your prompts",
-          "gloss": "you point the agent and let it run",
-          "label": "Long leash"
+          "gloss": "autonomous stretches, hands-on steering",
+          "label": "Medium leash"
         }
       },
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 87,
+            "aq_0_100": 85,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -2184,29 +2187,22 @@
                 "axes": [
                   {
                     "base_weight": 50,
-                    "name": "Steering leverage",
-                    "normalized_score": 1.0,
-                    "score": 50.0,
-                    "signals": {
-                      "actions_per_prompt": 13.0
-                    },
-                    "weight": 50
-                  },
-                  {
-                    "base_weight": 50,
                     "name": "Recovery",
                     "normalized_score": 0.8225,
-                    "score": 41.1,
+                    "score": 82.2,
                     "signals": {
                       "api_per_100_tools": 0.1,
                       "api_retries": 4,
                       "recovery_ratio": 0.8
                     },
-                    "weight": 50
+                    "weight": 100
                   }
                 ],
                 "name": "Efficiency",
-                "score": 91.1,
+                "not_applicable": [
+                  "Steering leverage"
+                ],
+                "score": 82.2,
                 "weight": 20
               },
               {
@@ -2249,7 +2245,11 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "11:11:11",
+            "score_contract_id": "12:12:12",
+            "steering_leverage": {
+              "actions_per_prompt": 13.0,
+              "state": "withheld_unvalidated_band"
+            },
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -2502,7 +2502,7 @@
         },
         "cursor": {
           "aq": {
-            "aq_0_100": 47,
+            "aq_0_100": 42,
             "mcp_vs_cli": {
               "cli_calls": 100,
               "cli_distinct": 8,
@@ -2663,29 +2663,22 @@
                 "axes": [
                   {
                     "base_weight": 50,
-                    "name": "Steering leverage",
-                    "normalized_score": 1.0,
-                    "score": 50.0,
-                    "signals": {
-                      "actions_per_prompt": 6.0
-                    },
-                    "weight": 50
-                  },
-                  {
-                    "base_weight": 50,
                     "name": "Recovery",
                     "normalized_score": 0.545,
-                    "score": 27.2,
+                    "score": 54.5,
                     "signals": {
                       "api_per_100_tools": 0.4,
                       "api_retries": 2,
                       "recovery_ratio": 0.5
                     },
-                    "weight": 50
+                    "weight": 100
                   }
                 ],
                 "name": "Efficiency",
-                "score": 77.2,
+                "not_applicable": [
+                  "Steering leverage"
+                ],
+                "score": 54.5,
                 "weight": 20
               },
               {
@@ -2718,16 +2711,20 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "11:11:11",
-            "tier": "Adequate",
+            "score_contract_id": "12:12:12",
+            "steering_leverage": {
+              "actions_per_prompt": 6.0,
+              "state": "withheld_unvalidated_band"
+            },
+            "tier": "Apprentice",
             "tool_diversity": {
               "distinct": 12,
               "entropy": 0.6
             }
           },
           "archetype": {
-            "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is craft \u2014 that's where the next gain is.",
-            "title": "Adequate"
+            "quote": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is craft \u2014 that's where the next gain is.",
+            "title": "Apprentice"
           },
           "growth_edges": [
             {
@@ -3191,13 +3188,13 @@
         }
       }
     },
-    "scoring_inputs_version": 11
+    "scoring_inputs_version": 12
   },
   {
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 81,
+          "aq_0_100": 80,
           "pillars": [
             {
               "name": "Breadth",
@@ -3211,7 +3208,7 @@
             },
             {
               "name": "Efficiency",
-              "score": 91.1,
+              "score": 82.2,
               "weight": 20
             },
             {
@@ -3220,7 +3217,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "11:11:11",
+          "score_contract_id": "12:12:12",
           "tier": "Advanced"
         },
         "archetype": {
@@ -3236,6 +3233,9 @@
           },
           "rule": "weighted_mean_except_synthesized_planning",
           "weight": "tool_calls_total",
+          "weight_exceptions": {
+            "behavior.actions_per_prompt": "total_instructions"
+          },
           "weights": {
             "claude-boundary": 4000
           }
@@ -3483,7 +3483,7 @@
       "by_source": {
         "claude-boundary": {
           "aq": {
-            "aq_0_100": 81,
+            "aq_0_100": 80,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -3634,29 +3634,22 @@
                 "axes": [
                   {
                     "base_weight": 50,
-                    "name": "Steering leverage",
-                    "normalized_score": 1.0,
-                    "score": 50.0,
-                    "signals": {
-                      "actions_per_prompt": 13.0
-                    },
-                    "weight": 50
-                  },
-                  {
-                    "base_weight": 50,
                     "name": "Recovery",
                     "normalized_score": 0.8225,
-                    "score": 41.1,
+                    "score": 82.2,
                     "signals": {
                       "api_per_100_tools": 0.1,
                       "api_retries": 4,
                       "recovery_ratio": 0.8
                     },
-                    "weight": 50
+                    "weight": 100
                   }
                 ],
                 "name": "Efficiency",
-                "score": 91.1,
+                "not_applicable": [
+                  "Steering leverage"
+                ],
+                "score": 82.2,
                 "weight": 20
               },
               {
@@ -3699,7 +3692,11 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "11:11:11",
+            "score_contract_id": "12:12:12",
+            "steering_leverage": {
+              "actions_per_prompt": 13.0,
+              "state": "withheld_unvalidated_band"
+            },
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -4089,13 +4086,13 @@
         }
       }
     },
-    "scoring_inputs_version": 11
+    "scoring_inputs_version": 12
   },
   {
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 7,
+          "aq_0_100": 9,
           "pillars": [
             {
               "name": "Breadth",
@@ -4109,7 +4106,7 @@
             },
             {
               "name": "Efficiency",
-              "score": 7.5,
+              "score": 15.0,
               "weight": 20
             },
             {
@@ -4118,7 +4115,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "11:11:11",
+          "score_contract_id": "12:12:12",
           "tier": "Novice"
         },
         "archetype": {
@@ -4134,6 +4131,9 @@
           },
           "rule": "weighted_mean_except_synthesized_planning",
           "weight": "tool_calls_total",
+          "weight_exceptions": {
+            "behavior.actions_per_prompt": "total_instructions"
+          },
           "weights": {
             "no-tool-activity": 0
           }
@@ -4375,7 +4375,7 @@
       "by_source": {
         "no-tool-activity": {
           "aq": {
-            "aq_0_100": 7,
+            "aq_0_100": 9,
             "mcp_vs_cli": {
               "cli_calls": 0,
               "cli_distinct": 0,
@@ -4513,29 +4513,22 @@
                 "axes": [
                   {
                     "base_weight": 50,
-                    "name": "Steering leverage",
-                    "normalized_score": 0.0,
-                    "score": 0.0,
-                    "signals": {
-                      "actions_per_prompt": 0
-                    },
-                    "weight": 50
-                  },
-                  {
-                    "base_weight": 50,
                     "name": "Recovery",
                     "normalized_score": 0.15,
-                    "score": 7.5,
+                    "score": 15.0,
                     "signals": {
                       "api_per_100_tools": 0,
                       "api_retries": 0,
                       "recovery_ratio": 0
                     },
-                    "weight": 50
+                    "weight": 100
                   }
                 ],
                 "name": "Efficiency",
-                "score": 7.5,
+                "not_applicable": [
+                  "Steering leverage"
+                ],
+                "score": 15.0,
                 "weight": 20
               },
               {
@@ -4578,7 +4571,11 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "11:11:11",
+            "score_contract_id": "12:12:12",
+            "steering_leverage": {
+              "actions_per_prompt": 0,
+              "state": "withheld_unvalidated_band"
+            },
             "tier": "Novice",
             "tool_diversity": {
               "distinct": 0,
@@ -4910,7 +4907,7 @@
         }
       }
     },
-    "scoring_inputs_version": 11
+    "scoring_inputs_version": 12
   },
   {
     "bucket_metadata": [
@@ -5070,7 +5067,7 @@
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 86,
+          "aq_0_100": 84,
           "pillars": [
             {
               "name": "Breadth",
@@ -5084,7 +5081,7 @@
             },
             {
               "name": "Efficiency",
-              "score": 91.1,
+              "score": 82.2,
               "weight": 20
             },
             {
@@ -5093,7 +5090,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "11:11:11",
+          "score_contract_id": "12:12:12",
           "tier": "Advanced"
         },
         "archetype": {
@@ -5109,6 +5106,9 @@
           },
           "rule": "weighted_mean_except_synthesized_planning",
           "weight": "tool_calls_total",
+          "weight_exceptions": {
+            "behavior.actions_per_prompt": "total_instructions"
+          },
           "weights": {
             "claude": 2600.0
           }
@@ -5356,11 +5356,11 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 86,
+            "aq_0_100": 84,
             "blend": {
               "buckets": [
                 {
-                  "component_aq": 90,
+                  "component_aq": 88,
                   "configured_weight": 0.65,
                   "day_bounds": {
                     "lower": 0,
@@ -5370,14 +5370,14 @@
                   "id": "recent_30d"
                 },
                 {
-                  "component_aq": 79,
+                  "component_aq": 77,
                   "configured_weight": 0.35,
                   "day_bounds": null,
                   "effective_weight": 0.35,
                   "id": "full_window"
                 }
               ],
-              "full_aq": 79
+              "full_aq": 77
             },
             "mcp_vs_cli": {
               "cli_calls": 1500,
@@ -5795,41 +5795,9 @@
                       {
                         "effective_weight": 0.65,
                         "id": "recent_30d",
-                        "normalized_score": 1.0,
-                        "partial_terms": null,
-                        "score": 50.0,
-                        "signals": {
-                          "actions_per_prompt": 13.0
-                        }
-                      },
-                      {
-                        "effective_weight": 0.35,
-                        "id": "full_window",
-                        "normalized_score": 1.0,
-                        "partial_terms": null,
-                        "score": 50.0,
-                        "signals": {
-                          "actions_per_prompt": 13.0
-                        }
-                      }
-                    ],
-                    "name": "Steering leverage",
-                    "normalized_score": 1.0,
-                    "score": 50.0,
-                    "signals": {
-                      "actions_per_prompt": 13.0
-                    },
-                    "weight": 50
-                  },
-                  {
-                    "base_weight": 50,
-                    "components": [
-                      {
-                        "effective_weight": 0.65,
-                        "id": "recent_30d",
                         "normalized_score": 0.8225,
                         "partial_terms": null,
-                        "score": 41.1,
+                        "score": 82.2,
                         "signals": {
                           "api_per_100_tools": 0.1,
                           "api_retries": 4,
@@ -5841,7 +5809,7 @@
                         "id": "full_window",
                         "normalized_score": 0.8225,
                         "partial_terms": null,
-                        "score": 41.1,
+                        "score": 82.2,
                         "signals": {
                           "api_per_100_tools": 0.1,
                           "api_retries": 4,
@@ -5851,17 +5819,20 @@
                     ],
                     "name": "Recovery",
                     "normalized_score": 0.8225,
-                    "score": 41.1,
+                    "score": 82.2,
                     "signals": {
                       "api_per_100_tools": 0.1,
                       "api_retries": 4,
                       "recovery_ratio": 0.8
                     },
-                    "weight": 50
+                    "weight": 100
                   }
                 ],
                 "name": "Efficiency",
-                "score": 91.1,
+                "not_applicable": [
+                  "Steering leverage"
+                ],
+                "score": 82.2,
                 "weight": 20
               },
               {
@@ -5972,7 +5943,11 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "11:11:11",
+            "score_contract_id": "12:12:12",
+            "steering_leverage": {
+              "actions_per_prompt": 13.0,
+              "state": "withheld_unvalidated_band"
+            },
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -6370,6 +6345,6 @@
         }
       }
     },
-    "scoring_inputs_version": 11
+    "scoring_inputs_version": 12
   }
 ]

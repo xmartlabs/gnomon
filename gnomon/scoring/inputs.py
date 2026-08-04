@@ -49,7 +49,20 @@ def build_scoring_inputs(stats):
         "volume": {
             "total_sessions": v.get("total_sessions", 0),
             "total_prompts": v.get("total_prompts", 0),
+            # v12 — the DENOMINATOR `behavior.actions_per_prompt` is built on: typed-text
+            # turns plus bare slash commands. Falls back to `total_prompts`, NOT to 0: a
+            # pre-v12 block carries no such key and its own ratio was built by dividing by
+            # `total_prompts`, so that is the denominator which reconstructs it. A 0 default
+            # would make the shipped ratio unrecomputable from the block, and inventing a
+            # wider number would misstate a payload that never measured one.
+            "total_instructions": v.get("total_instructions",
+                                        v.get("total_prompts", 0)),
             "tool_calls_total": v.get("tool_calls_total", 0),
+            # v12 diagnostic sibling of tool_calls_total: how much of it was subagent work.
+            # Nothing scores it. `.get(..., 0)` is load-bearing for REPLAY — a payload
+            # captured before v12 carries no such key, and it must project as a plain 0
+            # rather than raising or being invented.
+            "sidechain_tool_calls": v.get("sidechain_tool_calls", 0),
             "thinking_blocks": v.get("thinking_blocks", 0),
         },
         "velocity": {
@@ -76,6 +89,14 @@ def build_scoring_inputs(stats):
             "planned_eligible_sessions": b.get("planned_eligible_sessions", 0),
             "evidence_eligible_sessions": b.get("evidence_eligible_sessions", 0),
             "ordered_facts_state": b.get("ordered_facts_state", "unmeasured"),
+            # v12 — whether `actions_per_prompt`'s top-level numerator is trustworthy here.
+            # Defaults to "measured", NOT "unmeasured", and the asymmetry with
+            # `ordered_facts_state` above is deliberate: this is a claim about the ADAPTER's
+            # ability to label sidechain events, so a pre-v12 payload (which carries no such
+            # key) predates the claim rather than failing it. Defaulting to "unmeasured" would
+            # silently drop the Steering-leverage term for every historical row on replay,
+            # which is a much larger and less honest change than admitting one real gap.
+            "sidechain_label_state": b.get("sidechain_label_state", "measured"),
             "linked_model_pairs": [{
                 key: pair.get(key) for key in (
                     "provider", "lead_model", "child_model", "completed",
@@ -169,10 +190,13 @@ def build_monthly_scoring_stats(
     month_mcp_subcategory_counter=None, month_mcp_subcategory_servers=None,
     month_grounded_sessions=None, month_write_sessions=None,
     month_session_ordered_tools=None, month_planning_dispatch_calls=None,
+    month_sidechain_tools=None, month_command_only=None,
 ):
     out = []
     for mk in months:
         m_tool_total = month_tools_count.get(mk, 0)
+        m_sidechain_tools = (month_sidechain_tools or {}).get(mk, 0)
+        m_command_only = (month_command_only or {}).get(mk, 0)
         m_no_tool = (m_tool_total == 0)
         active_hours_m, _ = _active_hours_and_longest_run(
             month_session_ts.get(mk, {}), gap_cap_s, burst_gap_s)
@@ -204,7 +228,13 @@ def build_monthly_scoring_stats(
         m_grounded_counted = len(m_grounded & set(month_sessions.get(mk, set())))
         m_write_sess = (month_write_sessions or {}).get(mk, set())
         m_write_counted = len(m_write_sess & set(month_sessions.get(mk, set())))
-        actions_per_prompt = (m_tool_total / m_prompts) if m_prompts else 0
+        # v12: top-level calls per human INSTRUCTION, the same definition the corpus and
+        # per-source paths use, on both sides. A month whose numerator still counted sidechain
+        # -- or whose denominator still dropped bare slash commands -- would make the rolling
+        # series compare two different quantities month to month.
+        m_instructions = m_prompts + m_command_only
+        actions_per_prompt = (
+            ((m_tool_total - m_sidechain_tools) / m_instructions) if m_instructions else 0)
 
         cats = Counter()
         for name, c in tcounter.items():
@@ -259,7 +289,9 @@ def build_monthly_scoring_stats(
             "volume": {
                 "total_sessions": len(month_sessions.get(mk, ())),
                 "total_prompts": m_prompts,
+                "total_instructions": m_instructions,
                 "tool_calls_total": m_tool_total,
+                "sidechain_tool_calls": m_sidechain_tools,
                 "assistant_turns": month_assistant_turns.get(mk, 0),
                 "thinking_blocks": month_thinking_blocks.get(mk, 0),
             },

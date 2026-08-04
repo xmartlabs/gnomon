@@ -111,7 +111,7 @@ _MAX_RECOMPUTE_GRADE_DELTA_RATIO = 0.05  # hard relative cap (item 6b): the
                 # payload must stay under 5% of the mirdash ingest budget, so a
                 # future change to their contents cannot silently balloon the
                 # payload again. Measured ~3.7% in the synthetic worst case.
-_MAX_SHIPPED_WORST_CASE_BYTES = 680_000  # review remediation (round 2, Fix 6):
+_MAX_SHIPPED_WORST_CASE_BYTES = 678_000  # review remediation (round 2, Fix 6):
                 # a GROWTH RATCHET on the full shipped/trimmed synthetic worst-case
                 # payload. Before this ratchet the number was only PRINTED, so growth
                 # in the pre-existing fields (scoring_inputs_by_source /
@@ -127,6 +127,35 @@ _MAX_SHIPPED_WORST_CASE_BYTES = 680_000  # review remediation (round 2, Fix 6):
                 # even though the number now happens to sit at 0.73x the 900 KB cap
                 # (see the module docstring's v10 UPDATE for why that is a side effect
                 # and not a fix).
+                #
+                # v12 re-anchor, 680,000 -> 680,600, against a measured 680,441. Three fields
+                # joined every per-source and per-month block, each one measured as it landed:
+                #   `sidechain_tool_calls`   678,843 -> 679,302  (+459)  volume
+                #   `total_instructions`     679,302 -> 679,812  (+510)  volume
+                #   `sidechain_label_state`  679,812 -> 680,441  (+629)  behavior
+                # (and 34,085 -> 34,122 on the recompute-grade blocks, which have their own
+                # bound with ample room). The third one is what turned this test red, which is
+                # the ratchet doing its job: the previous bound was left in place precisely so
+                # the next field could not absorb silently.
+                #
+                # Re-anchored just above the measurement with ~160 bytes for dict-ordering
+                # noise, NOT rounded up for comfort -- the next per-block field goes red again.
+                #
+                # The two v12 volume fields are the two sides of one ratio and the third is its
+                # trust flag, so all three are load-bearing rather than diagnostics that could
+                # be trimmed: `actions_per_prompt` cannot be reconciled from the payload
+                # without `total_instructions` and `sidechain_tool_calls`, and cannot be known
+                # to be trustworthy without `sidechain_label_state`.
+                #
+                # v12 re-anchor, DOWNWARD: 680,600 -> 678,000 against a measured 677,839.
+                # Withholding the Steering-leverage term (STEERING_LEVERAGE_BAND_VALIDATED =
+                # False in gnomon/scoring/aq.py) deletes a whole axis object from every
+                # Efficiency pillar in the payload and adds back one `not_applicable` entry
+                # plus one `agentic.steering_leverage` sibling -- a NET SAVING of 2,602 bytes.
+                # Re-anchored rather than left at the old bound on purpose: a ratchet that sits
+                # 2.6 KB above the measurement is 2.6 KB of silent growth this test would no
+                # longer catch, and the whole point of the number is that the next per-block
+                # field goes red. Same ~160 bytes of dict-ordering headroom as before.
 
 
 def _name(prefix, i):

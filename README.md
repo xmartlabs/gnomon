@@ -127,13 +127,56 @@ axis's reported counts with the 30-day component's, so any count shown beside
 a full-window total described a different span (the `--tools` table did
 exactly that).
 
-This runtime emits **scoring inputs version 11**, **AQ version 11**, and **GStack version 11** (`score_contract_id = 11:11:11`). Scores from a previous
-contract must not be presented as an improvement or regression against v11. v11 publishes the
-window's own unblended score; v10 published a 65/35 blend of that window against its own
-trailing 30 days, and v10 narrowed the default scoring window from six calendar months to
-one, so the same behaviour produces roughly a sixth of the session counts, tool calls and
-absolute totals a v9 point was scored against — v9, v10 and v11 points are not comparable
-even though the payload shape is unchanged.
+v12 fixes a ratio that mixed two populations on **both** sides of the fraction.
+`actions_per_prompt` divided every tool call in the corpus — including a subagent's — by your
+prompts, while the prompt count deliberately excludes subagent dispatch instructions. One
+delegation of 200 subagent calls off a single prompt therefore read as 200 actions per prompt
+and scored Steering leverage 0.0, zeroing the same behaviour the Orchestration axis rewards.
+The numerator is now **top-level** calls only. The denominator was wrong in the mirror image:
+a bare slash command is a human instruction but carries no typed text, so it was counted as a
+command invocation and not as a prompt — 10 slash commands driving 300 calls read zero prompts
+and also scored 0.0. The ratio now divides by `volume.total_instructions`, every human
+instruction, typed or slash. So the field means what its name says: actions you took per
+instruction you gave.
+
+`volume.tool_calls_total` is unchanged and still counts subagent calls (it is the denominator
+every rate term is scored against); what is new beside it is `volume.sidechain_tool_calls`, a
+diagnostic nothing scores, so the delegated share of your tool volume is visible rather than
+implicit — it was 66% of the total on the corpus this was measured against.
+
+The axis is also **not scored at all** for a source that can delegate but cannot label a call
+as delegated (Antigravity CLI is the only one today: it dispatches subagents but emits no
+sidechain flag, so its subagent calls would silently stay in the top-level count). Steering is
+unmeasured there rather than zero, so the term drops and Efficiency's remaining weight
+renormalizes. `behavior.sidechain_label_state` says which reading you got.
+
+**The Steering-leverage term is not scored in v12 at all, for anyone.** Fixing the ratio does
+not make the band it is read through correct, and that band — full between 5 and 20 actions per
+instruction, decaying to zero at 60 — was **never fitted against anything**: all three numbers
+enter the history in one 2026-06 commit with a one-line message and no data behind them. v12
+then changed the population underneath them. A re-fit was derived against the 48 real uploaded
+corpora and rejected: the best available band still left 9 of 48 users worse (up to 8.9 AQ
+points) against a ceiling of +0.68 for 4 users, because the shrink is per-person (0.00–0.97 of
+each person's tool volume) while a band is one pair of thresholds, and the estimate is least
+trustworthy exactly where the damage is largest. So the number keeps being **published and
+stops being graded**: `actions_per_prompt` is measured, its interpretation is not, and
+Efficiency renormalizes onto Recovery — the same thing this codebase does everywhere else it
+cannot measure something, instead of inventing a value. Across the same 48 corpora that costs a
+mean 0.9 AQ, 40 of 48 move by a point or less, and it is uncorrelated with how much you
+delegate; against shipping the shrunken ratio through the unfitted band it is a mean *gain* of
+0.3 AQ, and the four worst-hit delegators get back the 8–9 points that band would have taken.
+The band can only be fitted once a cohort has uploaded under 12:12:12, since those payloads are
+the first to carry the delegated share as a measured number rather than a projection. Until
+then, `steering_leverage.state` in the payload says which of the two absences applies to you.
+
+This runtime emits **scoring inputs version 12**, **AQ version 12**, and **GStack version 12** (`score_contract_id = 12:12:12`). Scores from a previous
+contract must not be presented as an improvement or regression against v12. v12 changed what
+`actions_per_prompt` counts; v11 publishes the window's own unblended score; v10 published a
+65/35 blend of that window against its own trailing 30 days, and v10 narrowed the default
+scoring window from six calendar months to one, so the same behaviour produces roughly a
+sixth of the session counts, tool calls and absolute totals a v9 point was scored against —
+v9, v10, v11 and v12 points are not comparable even though the payload shape is
+near-unchanged.
 
 v9 introduced an **evidence floor** on every rate term: a rate is reported N/A (its weight
 renormalized away) whenever the corpus carries too few tool calls for its target to mean
@@ -299,7 +342,7 @@ Three 0–10 axes (Execution / Planning / Engineering) grounded in [gstack](http
 |--------|--------|----------|
 | **Breadth** | 30 | Orchestration · Skill fluency · Tool command (MCP+CLI) · Discipline |
 | **Craft** | 35 | Verification · Grounding · Compounding |
-| **Efficiency** | 20 | Steering leverage (sweet-spot) · Recovery |
+| **Efficiency** | 20 | Steering leverage (withheld in v12 — unfitted band) · Recovery |
 | **Savvy** | 15 | Model mix · Token economy |
 
 **Level** (one honest ladder, driven by AQ — no flattery at the floor): Novice <25 · Apprentice 25–45 · Adequate 45–60 · Proficient 60–75 · Advanced 75–88 · **Elite 88–100**. This is also the profile headline; the quote names your thinnest pillar so the gap is visible.

@@ -85,7 +85,18 @@ class TestPerSourceChurnIsolation(unittest.TestCase):
 class TestScoringInputsBySource(unittest.TestCase):
     """scoring_inputs_by_source — raw scoring inputs per source x (window + month)."""
 
-    _VOLUME = {"total_sessions", "total_prompts", "tool_calls_total", "thinking_blocks"}
+    # Two fields joined the set at v12, one on each side of `behavior.actions_per_prompt`:
+    #   * `sidechain_tool_calls` -- a diagnostic sibling of tool_calls_total that nothing
+    #     scores, published so the delegated share of the tool total is visible
+    #     (`partial_terms` cannot express it -- that only fires when wsum DROPS a term, and
+    #     the dilution silently lowered a term that stayed fully scored);
+    #   * `total_instructions` -- the ratio's DENOMINATOR, typed-text turns plus bare slash
+    #     commands. Published rather than implicit so the scored ratio reconciles from the
+    #     block alone: (tool_calls_total - sidechain_tool_calls) / total_instructions.
+    #     Distinct from `total_prompts`, which stays narrower because the prompt-length and
+    #     politeness statistics are built from typed text only.
+    _VOLUME = {"total_sessions", "total_prompts", "total_instructions",
+               "tool_calls_total", "sidechain_tool_calls", "thinking_blocks"}
     _VELOCITY = {"active_hours", "tool_churn_edit_write", "shell_authored_lines_est"}
     _BEHAVIOR = {"planning_ratio_explore_to_doing", "actions_per_prompt", "questions_asked",
                  "error_recovery_ratio", "error_rate_per_100_tools", "api_errors_retries",
@@ -99,6 +110,12 @@ class TestScoringInputsBySource(unittest.TestCase):
                  "evidence_eligible_sessions", "orchestratable_sessions",
                  "delegated_orchestratable_sessions", "ordered_facts_state",
                  "delegate_actions", "linked_model_pairs", "linked_model_routing_state",
+                 # v12: whether `actions_per_prompt`'s top-level numerator is trustworthy for
+                 # the source(s) in this block. A `*_state` string, same convention as
+                 # `ordered_facts_state` / `linked_model_routing_state` -- "unmeasured" means
+                 # the adapter dispatched a subagent without being able to label the resulting
+                 # calls, so aq.py drops the Steering-leverage term instead of scoring 0.0.
+                 "sidechain_label_state",
                  "parallel_dispatch_turns", "delegating_sessions", "parallel_session_share",
                  "background_tasks", "iteration_depth_mean", "iteration_depth_p90",
                  "iteration_depth_max", "files_hammered_over_15x", "no_tool_activity"}
