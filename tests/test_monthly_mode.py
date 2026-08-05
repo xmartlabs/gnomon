@@ -96,41 +96,48 @@ class TestDecideMode(unittest.TestCase):
 
 
 class TestMonthWindowsCurrentMonth(unittest.TestCase):
-    def test_march_returns_march_window(self):
-        windows = month_windows(1, datetime.date(2025, 3, 15))
+    """Current-month windows use a trailing 30-day window from today."""
+
+    def test_march_returns_trailing_window(self):
+        today = datetime.date(2025, 3, 15)
+        windows = month_windows(1, today)
         self.assertEqual(len(windows), 1)
         since, until, label = windows[0]
-        self.assertEqual(since, "2025-03-01")
-        self.assertEqual(until, "2025-04-01")
+        self.assertEqual(since, (today - datetime.timedelta(days=30)).isoformat())
+        self.assertEqual(until, (today + datetime.timedelta(days=1)).isoformat())
         self.assertEqual(label, "2025-03")
 
     def test_january_year_rollover(self):
-        # January: since = YYYY-01-01, until = YYYY-02-01 (same year)
-        windows = month_windows(1, datetime.date(2026, 1, 5))
+        today = datetime.date(2026, 1, 5)
+        windows = month_windows(1, today)
         since, until, label = windows[0]
-        self.assertEqual(since, "2026-01-01")
-        self.assertEqual(until, "2026-02-01")
+        # Trailing 30 days from Jan 5 crosses the year boundary
+        self.assertEqual(since, (today - datetime.timedelta(days=30)).isoformat())
+        self.assertEqual(until, (today + datetime.timedelta(days=1)).isoformat())
         self.assertEqual(label, "2026-01")
 
-    def test_december_until_is_next_jan(self):
-        windows = month_windows(1, datetime.date(2025, 12, 1))
+    def test_december_trailing(self):
+        today = datetime.date(2025, 12, 1)
+        windows = month_windows(1, today)
         since, until, label = windows[0]
-        self.assertEqual(since, "2025-12-01")
-        self.assertEqual(until, "2026-01-01")
+        self.assertEqual(since, (today - datetime.timedelta(days=30)).isoformat())
+        self.assertEqual(until, (today + datetime.timedelta(days=1)).isoformat())
         self.assertEqual(label, "2025-12")
 
     def test_first_day_of_month(self):
-        windows = month_windows(1, datetime.date(2025, 6, 1))
+        today = datetime.date(2025, 6, 1)
+        windows = month_windows(1, today)
         since, until, label = windows[0]
-        self.assertEqual(since, "2025-06-01")
-        self.assertEqual(until, "2025-07-01")
+        self.assertEqual(since, (today - datetime.timedelta(days=30)).isoformat())
+        self.assertEqual(until, (today + datetime.timedelta(days=1)).isoformat())
         self.assertEqual(label, "2025-06")
 
     def test_last_day_of_month(self):
-        windows = month_windows(1, datetime.date(2025, 1, 31))
+        today = datetime.date(2025, 1, 31)
+        windows = month_windows(1, today)
         since, until, label = windows[0]
-        self.assertEqual(since, "2025-01-01")
-        self.assertEqual(until, "2025-02-01")
+        self.assertEqual(since, (today - datetime.timedelta(days=30)).isoformat())
+        self.assertEqual(until, (today + datetime.timedelta(days=1)).isoformat())
         self.assertEqual(label, "2025-01")
 
 
@@ -317,14 +324,17 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         until_args = [a for a in call_args if a.startswith("--until=")]
         self.assertEqual(len(since_args), 1)
         self.assertEqual(len(until_args), 1)
-        # since must be 1st of the month
+        # Current month uses a trailing 30-day window, so since is today-30 and
+        # until (inclusive for paxel) is today.
+        today = datetime.date.today()
         since_val = since_args[0].split("=", 1)[1]
-        self.assertTrue(since_val.endswith("-01"), f"since={since_val} should end in -01")
         since_d = datetime.date.fromisoformat(since_val)
+        self.assertEqual(since_d, today - datetime.timedelta(days=30))
         until_val = until_args[0].split("=", 1)[1]
         until_d = datetime.date.fromisoformat(until_val)
-        last_day = calendar.monthrange(since_d.year, since_d.month)[1]
-        self.assertEqual(until_d, datetime.date(since_d.year, since_d.month, last_day))
+        # _paxel_until_arg subtracts 1 day from the exclusive bound, so
+        # paxel sees today as the inclusive until.
+        self.assertEqual(until_d, today)
 
     def test_auto_empty_server_sweeps_twelve_months(self):
         """auto + empty server-state → full backfill of 12 windows (oldest first)."""

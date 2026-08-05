@@ -329,7 +329,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
         )
         anchors = [anchor for anchor, _ in plan_reasons]
         forced_labels = frozenset(a for a, reason in plan_reasons if reason == "force")
-        windows = windows_for_anchors(anchors, window_months=window_months)
+        windows = windows_for_anchors(anchors, window_months=window_months, today=today)
         if mode == "auto":
             _warn_unavailable_comparison(history)
 
@@ -530,7 +530,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
         )
         anchors = [anchor for anchor, _ in plan_reasons]
         forced_labels = frozenset(a for a, reason in plan_reasons if reason == "force")
-        windows = windows_for_anchors(anchors, window_months=window_months)
+        windows = windows_for_anchors(anchors, window_months=window_months, today=today)
         if mode == "auto":
             _warn_unavailable_comparison(history)
 

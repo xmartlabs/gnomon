@@ -100,10 +100,11 @@ class TestCoverageComparisonGate(unittest.TestCase):
 
     def test_missing_stored_coverage_never_refreshes_old_server_row(self):
         """Back-compat: a row uploaded before this capability has no `coverage`
-        field at all -- rank is None (incomparable), never treated as a
-        justification to refresh."""
+        field at all -- rank is None (incomparable). Falls back to
+        transcript count: no refresh when totalSessions >= producible."""
         history = _history([
-            {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": "8:8:8"},
+            {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": "8:8:8",
+             "totalSessions": 999},
         ])
         result = plan_upload(
             TODAY, history, active_contract="8:8:8",
@@ -117,6 +118,68 @@ class TestCoverageComparisonGate(unittest.TestCase):
              "coverage": {"flag": "insufficient", "indexed": 50, "transcripts": 0}},
         ])
         result = plan_upload(TODAY, history, active_contract="8:8:8")
+        self.assertEqual(result, [("2026-01", "current")])
+
+
+class TestSessionCountFallbackRefresh(unittest.TestCase):
+    """When the server entry has no coverage field, plan_upload falls back to
+    comparing producible transcript count against stored totalSessions."""
+
+    @staticmethod
+    def _producible(rank_label, transcripts):
+        rank = COVERAGE_RANK.get(rank_label)
+        return lambda mk: (rank, transcripts)
+
+    def test_more_local_transcripts_triggers_refresh(self):
+        history = _history([
+            {"monthKey": "2025-12", "uploadedAt": 1, "totalSessions": 100},
+        ])
+        result = plan_upload(
+            TODAY, history, active_contract="8:8:8",
+            producible_coverage_for=self._producible("complete", 200),
+        )
+        self.assertEqual(result, [("2025-12", "refresh"), ("2026-01", "current")])
+
+    def test_equal_transcripts_skips_refresh(self):
+        history = _history([
+            {"monthKey": "2025-12", "uploadedAt": 1, "totalSessions": 200},
+        ])
+        result = plan_upload(
+            TODAY, history, active_contract="8:8:8",
+            producible_coverage_for=self._producible("complete", 200),
+        )
+        self.assertEqual(result, [("2026-01", "current")])
+
+    def test_fewer_local_transcripts_skips_refresh(self):
+        history = _history([
+            {"monthKey": "2025-12", "uploadedAt": 1, "totalSessions": 300},
+        ])
+        result = plan_upload(
+            TODAY, history, active_contract="8:8:8",
+            producible_coverage_for=self._producible("complete", 200),
+        )
+        self.assertEqual(result, [("2026-01", "current")])
+
+    def test_no_total_sessions_and_producible_triggers_refresh(self):
+        """Legacy row without totalSessions (defaults to 0); any local data refreshes."""
+        history = _history([
+            {"monthKey": "2025-12", "uploadedAt": 1},
+        ])
+        result = plan_upload(
+            TODAY, history, active_contract="8:8:8",
+            producible_coverage_for=self._producible("complete", 50),
+        )
+        self.assertEqual(result, [("2025-12", "refresh"), ("2026-01", "current")])
+
+    def test_no_total_sessions_and_no_producible_skips_refresh(self):
+        """Legacy row without totalSessions and no local data — no refresh."""
+        history = _history([
+            {"monthKey": "2025-12", "uploadedAt": 1},
+        ])
+        result = plan_upload(
+            TODAY, history, active_contract="8:8:8",
+            producible_coverage_for=self._producible("complete", 0),
+        )
         self.assertEqual(result, [("2026-01", "current")])
 
 

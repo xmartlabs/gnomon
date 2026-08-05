@@ -391,16 +391,39 @@ def latest_month_with_data(progression_monthly):
     return max(months)
 
 
-def _anchor_window(anchor_year, anchor_month, window_months=1):
+def _anchor_window(anchor_year, anchor_month, window_months=1, today=None):
     """Return (since_iso, until_iso, label) for a single anchor month.
 
-    Trailing-window semantics (same as month_windows per entry):
+    When *today* is provided, the anchor is today's current month, and
+    ``window_months == 1``, the window becomes a **trailing 30-day window**
+    ending at *today* (inclusive) instead of the full calendar month::
+
+        since = today - 30 days
+        until = today + 1 day  (exclusive upper bound)
+
+    Closed months (anchor != today's month) and multi-month windows
+    (``window_months > 1``) always use full calendar-month bounds regardless
+    of *today*.
+
+    Calendar-month semantics (closed months / multi-month windows):
       since = first day of the month that is (window_months-1) months before the anchor (inclusive).
       until = first day of the month AFTER the anchor (exclusive).
       label = 'YYYY-MM' of the anchor.
 
     window_months=1 gives a single-calendar-month window (since == anchor's first day).
     """
+    label = f"{anchor_year:04d}-{anchor_month:02d}"
+
+    # Current month with single-month window: trailing 30-day window
+    if (today is not None
+            and window_months == 1
+            and anchor_year == today.year
+            and anchor_month == today.month):
+        since = today - datetime.timedelta(days=30)
+        until = today + datetime.timedelta(days=1)
+        return (since.isoformat(), until.isoformat(), label)
+
+    # Closed month or multi-month window: full calendar-month bounds
     anchor_total_months = anchor_year * 12 + (anchor_month - 1)
 
     # Compute start month
@@ -412,7 +435,7 @@ def _anchor_window(anchor_year, anchor_month, window_months=1):
     # until = first day of the month after the anchor
     _, last_day = calendar.monthrange(anchor_year, anchor_month)
     until = datetime.date(anchor_year, anchor_month, 1) + datetime.timedelta(days=last_day)
-    return (since.isoformat(), until.isoformat(), f"{anchor_year:04d}-{anchor_month:02d}")
+    return (since.isoformat(), until.isoformat(), label)
 
 
 def month_windows(n, today, window_months=1):
@@ -436,21 +459,25 @@ def month_windows(n, today, window_months=1):
         anchor_total_months = today.year * 12 + (today.month - 1) - i
         anchor_year = anchor_total_months // 12
         anchor_month = anchor_total_months % 12 + 1  # 1-based
-        windows.append(_anchor_window(anchor_year, anchor_month, window_months))
+        windows.append(_anchor_window(anchor_year, anchor_month, window_months, today=today))
     return windows
 
 
-def windows_for_anchors(anchor_labels, window_months=1):
+def windows_for_anchors(anchor_labels, window_months=1, today=None):
     """Map a list of anchor labels ['YYYY-MM', ...] to [(since_iso, until_iso, label), ...].
 
     Preserves the input order.  Uses _anchor_window for each label.
     anchor_labels: list of 'YYYY-MM' strings, oldest first.
+
+    When *today* is provided it is forwarded to ``_anchor_window`` so the
+    current month can use a trailing 30-day window instead of full calendar
+    bounds.
     """
     result = []
     for label in anchor_labels:
         year = int(label[:4])
         month = int(label[5:7])
-        result.append(_anchor_window(year, month, window_months))
+        result.append(_anchor_window(year, month, window_months, today=today))
     return result
 
 
@@ -560,10 +587,20 @@ def plan_upload(
         producible = producible_coverage_for(previous) if producible_coverage_for else (None, 0)
         producible_rank, producible_transcripts = producible if producible else (None, 0)
 
-        if stored_rank is None or producible_rank is None:
+        if stored_rank is not None and producible_rank is not None:
+            if (producible_rank, producible_transcripts) > (stored_rank, stored_transcripts):
+                return [(previous, "refresh"), (current, "current")]
             return [(current, "current")]
-        if (producible_rank, producible_transcripts) > (stored_rank, stored_transcripts):
+
+        # No coverage comparison possible (legacy row without coverage field).
+        # Fall back to transcript count: if we can produce MORE transcripts
+        # locally than the server reported at upload time, refresh. This
+        # catches mid-month uploads that gained data after the upload, without
+        # refreshing when nothing changed.
+        stored_sessions = previous_entry.get("totalSessions") or 0
+        if producible_transcripts > stored_sessions:
             return [(previous, "refresh"), (current, "current")]
+
         return [(current, "current")]
 
     # Parse server_months defensively; skip malformed entries
@@ -734,11 +771,14 @@ def _history_from_query(parsed_qs):
                 # parser): a structurally invalid coverage object invalidates
                 # the WHOLE history, not just this one entry.
                 return {"state": "malformed", "months": []}
+        total_sessions = entry.get("totalSessions")
         normalized = {"monthKey": month_key, "uploadedAt": uploaded_at}
         if contract is not None:
             normalized["scoreContractId"] = contract
         if coverage is not None:
             normalized["coverage"] = coverage
+        if isinstance(total_sessions, (int, float)) and not isinstance(total_sessions, bool):
+            normalized["totalSessions"] = int(total_sessions)
         existing = best.get(month_key)
         if existing is None or normalized["uploadedAt"] > existing["uploadedAt"]:
             best[month_key] = normalized
@@ -864,7 +904,9 @@ def _stamp_window_months(summary, window_months):
     declaration wins. Overwriting it with the request would let the wrapper certify a
     corpus scale it never observed.
     """
-    summary.setdefault("context", {}).setdefault("window_months", window_months)
+    ctx = summary.setdefault("context", {})
+    if ctx.get("window_months") is None:
+        ctx["window_months"] = window_months
     return summary
 
 

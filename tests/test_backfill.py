@@ -74,8 +74,8 @@ class TestParseBackfill(unittest.TestCase):
 
 
 class TestMonthWindows(unittest.TestCase):
-    def _check_entry(self, since, until, label):
-        """Assert the internal consistency of one window entry."""
+    def _check_closed_entry(self, since, until, label):
+        """Assert the internal consistency of a closed-month window entry."""
         since_d = datetime.date.fromisoformat(since)
         until_d = datetime.date.fromisoformat(until)
         # since must be first of the month
@@ -94,6 +94,14 @@ class TestMonthWindows(unittest.TestCase):
         # label must match since's year-month
         self.assertEqual(label, f"{since_d.year:04d}-{since_d.month:02d}")
 
+    def _check_trailing_entry(self, since, until, label, today):
+        """Assert the internal consistency of a trailing-window (current month) entry."""
+        since_d = datetime.date.fromisoformat(since)
+        until_d = datetime.date.fromisoformat(until)
+        self.assertEqual(since_d, today - datetime.timedelta(days=30))
+        self.assertEqual(until_d, today + datetime.timedelta(days=1))
+        self.assertEqual(label, f"{today.year:04d}-{today.month:02d}")
+
     def test_count_matches_n(self):
         windows = month_windows(6, datetime.date(2025, 3, 15))
         self.assertEqual(len(windows), 6)
@@ -104,12 +112,13 @@ class TestMonthWindows(unittest.TestCase):
         since_dates = [datetime.date.fromisoformat(w[0]) for w in windows]
         self.assertEqual(since_dates, sorted(since_dates))
 
-    def test_last_window_is_current_month(self):
+    def test_last_window_is_current_month_trailing(self):
         today = datetime.date(2025, 3, 15)
         windows = month_windows(6, today)
         since, until, label = windows[-1]
-        self.assertEqual(since, "2025-03-01")
-        self.assertEqual(until, "2025-04-01")
+        # Current month uses a trailing 30-day window
+        self.assertEqual(since, (today - datetime.timedelta(days=30)).isoformat())
+        self.assertEqual(until, (today + datetime.timedelta(days=1)).isoformat())
         self.assertEqual(label, "2025-03")
 
     def test_first_window_correct_for_6(self):
@@ -121,9 +130,12 @@ class TestMonthWindows(unittest.TestCase):
         self.assertEqual(label, "2024-10")
 
     def test_all_entries_internally_consistent(self):
-        windows = month_windows(6, datetime.date(2025, 3, 15))
-        for since, until, label in windows:
-            self._check_entry(since, until, label)
+        today = datetime.date(2025, 3, 15)
+        windows = month_windows(6, today)
+        for since, until, label in windows[:-1]:
+            self._check_closed_entry(since, until, label)
+        # Last entry is the current month: trailing window
+        self._check_trailing_entry(*windows[-1], today)
 
     def test_year_rollover_december_to_january(self):
         # 3 months ending at 2025-01: windows = 2024-11, 2024-12, 2025-01
@@ -135,34 +147,44 @@ class TestMonthWindows(unittest.TestCase):
         self.assertEqual(since_dec, "2024-12-01")
         self.assertEqual(until_dec, "2025-01-01")
 
-    def test_n_1_returns_current_month(self):
+    def test_n_1_returns_current_month_trailing(self):
         today = datetime.date(2025, 7, 4)
         windows = month_windows(1, today)
         self.assertEqual(len(windows), 1)
-        self.assertEqual(windows[0][0], "2025-07-01")
-        self.assertEqual(windows[0][1], "2025-08-01")
+        # Current month uses a trailing 30-day window
+        self.assertEqual(windows[0][0], (today - datetime.timedelta(days=30)).isoformat())
+        self.assertEqual(windows[0][1], (today + datetime.timedelta(days=1)).isoformat())
 
-    def test_february_until_is_march_1(self):
-        windows = month_windows(1, datetime.date(2024, 2, 15))
+    def test_february_trailing_window(self):
+        today = datetime.date(2024, 2, 15)
+        windows = month_windows(1, today)
         since, until, label = windows[0]
-        self.assertEqual(since, "2024-02-01")
-        self.assertEqual(until, "2024-03-01")
+        # Current month: trailing 30 days
+        self.assertEqual(since, (today - datetime.timedelta(days=30)).isoformat())
+        self.assertEqual(until, (today + datetime.timedelta(days=1)).isoformat())
+        self.assertEqual(label, "2024-02")
 
-    def test_no_gaps_between_consecutive_windows(self):
+    def test_no_gaps_between_consecutive_closed_windows(self):
         windows = month_windows(6, datetime.date(2025, 6, 1))
-        for i in range(len(windows) - 1):
+        # Closed months (all except the last) must be contiguous
+        for i in range(len(windows) - 2):
             _, until_curr, _ = windows[i]
             since_next, _, _ = windows[i + 1]
             self.assertEqual(until_curr, since_next, f"Gap between window {i} and {i+1}")
+        # The last window (current month) uses a trailing window, so there is
+        # no contiguity constraint between the penultimate and last entry.
 
     def test_n_12_span(self):
-        windows = month_windows(12, datetime.date(2025, 12, 31))
+        today = datetime.date(2025, 12, 31)
+        windows = month_windows(12, today)
         self.assertEqual(len(windows), 12)
         self.assertEqual(windows[0][2], "2025-01")
         self.assertEqual(windows[-1][2], "2025-12")
-        # All internally consistent
-        for since, until, label in windows:
-            self._check_entry(since, until, label)
+        # Closed months (all but last) are internally consistent
+        for since, until, label in windows[:-1]:
+            self._check_closed_entry(since, until, label)
+        # Last entry is trailing
+        self._check_trailing_entry(*windows[-1], today)
 
 
 # ---------------------------------------------------------------------------

@@ -102,17 +102,17 @@ class TestAnchorWindow(unittest.TestCase):
             windows = month_windows(n, today, window_months=1)
             for since, until, label in windows:
                 y, m = int(label[:4]), int(label[5:7])
-                got = _anchor_window(y, m, window_months=1)
+                got = _anchor_window(y, m, window_months=1, today=today)
                 self.assertEqual(got, (since, until, label),
                                  f"mismatch for label={label} n={n}")
 
     def test_equivalence_with_month_windows_window6(self):
-        """For window_months=6, equivalence holds for all anchors."""
+        """For window_months=6, equivalence holds for all anchors (no trailing for multi-month)."""
         today = datetime.date(2025, 11, 30)
         windows = month_windows(12, today, window_months=6)
         for since, until, label in windows:
             y, m = int(label[:4]), int(label[5:7])
-            got = _anchor_window(y, m, window_months=6)
+            got = _anchor_window(y, m, window_months=6, today=today)
             self.assertEqual(got, (since, until, label),
                              f"mismatch for label={label}")
 
@@ -172,14 +172,14 @@ class TestWindowsForAnchors(unittest.TestCase):
         n = 6
         expected = month_windows(n, today, window_months=1)
         labels = [w[2] for w in expected]
-        got = windows_for_anchors(labels, window_months=1)
+        got = windows_for_anchors(labels, window_months=1, today=today)
         self.assertEqual(got, expected)
 
     def test_equivalence_window6(self):
         today = datetime.date(2025, 11, 1)
         expected = month_windows(12, today, window_months=6)
         labels = [w[2] for w in expected]
-        got = windows_for_anchors(labels, window_months=6)
+        got = windows_for_anchors(labels, window_months=6, today=today)
         self.assertEqual(got, expected)
 
 

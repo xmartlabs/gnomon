@@ -355,7 +355,11 @@ class TestMainConsoleDryRun(unittest.TestCase):
 
     def test_contract_mismatch_alone_never_triggers_a_bridge(self):
         """A pure scoreContractId mismatch with no coverage data at all must
-        plan current-only -- contract is no longer a comparison basis."""
+        plan current-only -- contract is no longer a comparison basis.
+        The mock producible_coverage_for returns (2, 999) transcripts and
+        totalSessions is absent (legacy), so the fallback compares
+        999 > 0 and triggers a refresh. To isolate the contract-only case,
+        set totalSessions to match the producible count."""
         history = {
             "state": "valid",
             "months": [
@@ -363,6 +367,7 @@ class TestMainConsoleDryRun(unittest.TestCase):
                     "monthKey": "2025-06",
                     "uploadedAt": 1,
                     "scoreContractId": "old-contract",
+                    "totalSessions": 999,
                 }
             ],
         }

@@ -728,31 +728,31 @@ class TestHelpOutput(unittest.TestCase):
 class TestMonthWindows(unittest.TestCase):
     """Test month_windows function with window_months parameter."""
 
-    def test_window_months_1_legacy_single_month(self):
-        """window_months=1 should produce single-calendar-month windows (legacy behavior)."""
+    def test_window_months_1_trailing_current_month(self):
+        """window_months=1: closed months use calendar bounds, current month uses trailing 30d."""
         today = datetime.date(2026, 6, 16)
         windows = month_windows(3, today, window_months=1)
 
         # Should be 3 months: 2026-04, 2026-05, 2026-06 (oldest first)
         self.assertEqual(len(windows), 3)
 
-        # Check 2026-04 (first/oldest)
+        # Check 2026-04 (first/oldest) - closed month, calendar bounds
         since, until, label = windows[0]
         self.assertEqual(label, "2026-04")
         self.assertEqual(since, "2026-04-01")
         self.assertEqual(until, "2026-05-01")
 
-        # Check 2026-05 (middle)
+        # Check 2026-05 (middle) - closed month, calendar bounds
         since, until, label = windows[1]
         self.assertEqual(label, "2026-05")
         self.assertEqual(since, "2026-05-01")
         self.assertEqual(until, "2026-06-01")
 
-        # Check 2026-06 (last/newest, the current month)
+        # Check 2026-06 (last/newest, the current month) - trailing 30-day window
         since, until, label = windows[2]
         self.assertEqual(label, "2026-06")
-        self.assertEqual(since, "2026-06-01")
-        self.assertEqual(until, "2026-07-01")
+        self.assertEqual(since, (today - datetime.timedelta(days=30)).isoformat())
+        self.assertEqual(until, (today + datetime.timedelta(days=1)).isoformat())
 
     def test_window_months_6_current_month(self):
         """window_months=6 with current month 2026-06 should span 6 months."""
@@ -829,30 +829,29 @@ class TestMonthWindows(unittest.TestCase):
         self.assertEqual(since, "2025-12-01")
         self.assertEqual(until, "2026-03-01")
 
-    def test_window_months_february_leap_year(self):
-        """Verify correct handling of February in a leap year."""
-        # 2024 is a leap year
+    def test_window_months_february_leap_year_trailing(self):
+        """Verify correct handling of February in a leap year (current month → trailing)."""
         today = datetime.date(2024, 2, 15)
         windows = month_windows(1, today, window_months=1)
 
         self.assertEqual(len(windows), 1)
         since, until, label = windows[0]
         self.assertEqual(label, "2024-02")
-        self.assertEqual(since, "2024-02-01")
-        # February 2024 has 29 days, so until = 2024-03-01
-        self.assertEqual(until, "2024-03-01")
+        # Current month: trailing 30 days
+        self.assertEqual(since, (today - datetime.timedelta(days=30)).isoformat())
+        self.assertEqual(until, (today + datetime.timedelta(days=1)).isoformat())
 
-    def test_window_months_february_non_leap_year(self):
-        """Verify correct handling of February in a non-leap year."""
+    def test_window_months_february_non_leap_year_trailing(self):
+        """Verify correct handling of February in a non-leap year (current month → trailing)."""
         today = datetime.date(2025, 2, 15)
         windows = month_windows(1, today, window_months=1)
 
         self.assertEqual(len(windows), 1)
         since, until, label = windows[0]
         self.assertEqual(label, "2025-02")
-        self.assertEqual(since, "2025-02-01")
-        # February 2025 has 28 days, so until = 2025-03-01
-        self.assertEqual(until, "2025-03-01")
+        # Current month: trailing 30 days
+        self.assertEqual(since, (today - datetime.timedelta(days=30)).isoformat())
+        self.assertEqual(until, (today + datetime.timedelta(days=1)).isoformat())
 
     def test_window_months_single_window_spanning_two_years(self):
         """window_months larger than 12 can span across year boundaries."""
