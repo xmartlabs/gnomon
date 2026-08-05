@@ -113,86 +113,41 @@ window: a wider or unstated corpus produces roughly a different number of
 sessions and tool calls than the scoring targets are calibrated for, so it is
 refused instead of being pooled with genuine one-month scores.
 
-**AQ is scored once, over the window you asked for — there is no recency
-blend.** Up to v10 the published AQ was `65% recent (rolling 30-day) + 35%
-full-window`, written when the default window was six months so that one
-unusual month was damped against five stable ones. Once the default window
-became a single calendar month the two components covered 93.3% (a 28-day
-February) to 100% (any 30-day month) of the same days — 96.8% for a 31-day
-month — so the blend **no longer damped** anything, it read one month twice.
-v11 removes it. Measured on a real eight-source corpus over a 31-day month,
-that removal moves the published AQ by 0.0 points, with a largest per-axis
-movement of 0.2 points. It also fixes a real defect: the blend replaced each
-axis's reported counts with the 30-day component's, so any count shown beside
-a full-window total described a different span (the `--tools` table did
-exactly that).
+## Scoring contract
 
-v12 fixes a ratio that mixed two populations on **both** sides of the fraction.
-`actions_per_prompt` divided every tool call in the corpus — including a subagent's — by your
-prompts, while the prompt count deliberately excludes subagent dispatch instructions. One
-delegation of 200 subagent calls off a single prompt therefore read as 200 actions per prompt
-and scored Steering leverage 0.0, zeroing the same behaviour the Orchestration axis rewards.
-The numerator is now **top-level** calls only. The denominator was wrong in the mirror image:
-a bare slash command is a human instruction but carries no typed text, so it was counted as a
-command invocation and not as a prompt — 10 slash commands driving 300 calls read zero prompts
-and also scored 0.0. The ratio now divides by `volume.total_instructions`, every human
-instruction, typed or slash. So the field means what its name says: actions you took per
-instruction you gave.
+Current runtime contract: **scoring inputs version 13**, **AQ version 13**, and
+**GStack version 13** (`score_contract_id = 13:13:13`). Compare scores only when
+the contract IDs match.
 
-`volume.tool_calls_total` is unchanged and still counts subagent calls (it is the denominator
-every rate term is scored against); what is new beside it is `volume.sidechain_tool_calls`, a
-diagnostic nothing scores, so the delegated share of your tool volume is visible rather than
-implicit — it was 66% of the total on the corpus this was measured against.
+AQ is computed once over the requested scoring window; there is no recency blend.
+The scoring window is a trailing `--window=N` calendar-month window (default 1).
+`noticed_stats_monthly` is separate six-month evidence used to correct monthly
+history; only the scoring window is published as `context.window_months`.
 
-The axis is also **not scored at all** for a source that can delegate but cannot label a call
-as delegated (Antigravity CLI is the only one today: it dispatches subagents but emits no
-sidechain flag, so its subagent calls would silently stay in the top-level count). Steering is
-unmeasured there rather than zero, so the term drops and Efficiency's remaining weight
-renormalizes. `behavior.sidechain_label_state` says which reading you got.
+`behavior.actions_per_prompt` is top-level tool calls per human instruction:
+`(volume.tool_calls_total - volume.sidechain_tool_calls) /
+volume.total_instructions`. `total_instructions` includes typed prompts and bare
+slash commands. `tool_calls_total` remains sidechain-inclusive because rate terms
+and source aggregation use it; `sidechain_tool_calls` is a diagnostic value, not a
+scored term.
 
-**The Steering-leverage term is not scored in v12 at all, for anyone.** Fixing the ratio does
-not make the band it is read through correct, and that band — full between 5 and 20 actions per
-instruction, decaying to zero at 60 — was **never fitted against anything**: all three numbers
-enter the history in one 2026-06 commit with a one-line message and no data behind them. v12
-then changed the population underneath them. A re-fit was derived against the 48 real uploaded
-corpora and rejected: the best available band still left 9 of 48 users worse (up to 8.9 AQ
-points) against a ceiling of +0.68 for 4 users, because the shrink is per-person (0.00–0.97 of
-each person's tool volume) while a band is one pair of thresholds, and the estimate is least
-trustworthy exactly where the damage is largest. So the number keeps being **published and
-stops being graded**: `actions_per_prompt` is measured, its interpretation is not, and
-Efficiency renormalizes onto Recovery — the same thing this codebase does everywhere else it
-cannot measure something, instead of inventing a value. Across the same 48 corpora that costs a
-mean 0.9 AQ, 40 of 48 move by a point or less, and it is uncorrelated with how much you
-delegate; against shipping the shrunken ratio through the unfitted band it is a mean *gain* of
-0.3 AQ, and the four worst-hit delegators get back the 8–9 points that band would have taken.
-The band can only be fitted once a cohort has uploaded under 12:12:12, since those payloads are
-the first to carry the delegated share as a measured number rather than a projection. Until
-then, `steering_leverage.state` in the payload says which of the two absences applies to you.
+Steering leverage publishes the measured `actions_per_prompt` but is withheld while
+its band is unvalidated. `steering_leverage.state` is
+`"withheld_unvalidated_band"`, `"unmeasured_sidechain_labels"`, or `"scored"`.
+An unmeasured sidechain label drops the term rather than assigning zero; remaining
+Efficiency weight is renormalized.
 
-This runtime emits **scoring inputs version 12**, **AQ version 12**, and **GStack version 12** (`score_contract_id = 12:12:12`). Scores from a previous
-contract must not be presented as an improvement or regression against v12. v12 changed what
-`actions_per_prompt` counts; v11 publishes the window's own unblended score; v10 published a
-65/35 blend of that window against its own trailing 30 days, and v10 narrowed the default
-scoring window from six calendar months to one, so the same behaviour produces roughly a
-sixth of the session counts, tool calls and absolute totals a v9 point was scored against —
-v9, v10, v11 and v12 points are not comparable even though the payload shape is
-near-unchanged.
+Rate terms require sufficient tool-call evidence. Terms below the evidence floor
+are dropped and their weights renormalized. An axis that scores fewer than all of
+its terms includes `partial_terms` with the scored-term count and surviving weight
+share.
 
-v9 introduced an **evidence floor** on every rate term: a rate is reported N/A (its weight
-renormalized away) whenever the corpus carries too few tool calls for its target to mean
-anything — specifically, too few for the target to imply more than a single occurrence. That
-floor is unchanged in v10 and v11, but it now fires far more often, because a one-month corpus
-is small by construction. v10 therefore **records partial scoring in the payload**: an axis that
-could only score some of its terms — because a rate fell below the evidence floor, or because
-a session-count floor such as `eligible_change_sessions < 5` dropped a term — publishes
-`partial_terms` alongside its score, naming how many of its terms were scored and what share
-of its configured weight survived. The score itself is unchanged by this.
-
-That disclosure is **published, not yet displayed**. No consumer reads `partial_terms` today —
-mirdash's axis parser keeps only `name`, `weight`, `score` and `signals` and drops the rest —
-so to a person reading a dashboard an axis resting its whole weight on one surviving term
-still looks exactly like a fully measured one. Producing the field is the half that has to
-exist first; making a reader see it is a consumer change that has not shipped.
+Replay recomputes stored inputs only when their counter definitions, top-level
+`actions_per_prompt` basis, and declared scoring window are compatible. It refuses
+incompatible payloads instead of guessing. Single-source replay is exact;
+multi-source replay reports its exactness and source-profile replay status. Uploads
+are checked before POST against the 900 KiB ingest limit and fail rather than being
+truncated.
 
 Rate terms (test runs, review skills, ToolSearch, task planning, skills,
 compounding writes) are scored **per tool call**, not per session. One session is
@@ -271,12 +226,10 @@ xl-ai-insights --local --since=2026-03-01 --until=2026-05-31   # explicit window
 ```
 
 Every metric follows the requested window — **including git churn**, whose
-`git log --since/--until` range tracks the kept events, and **including AQ**,
-which used to be the one documented exception: up to v10 its recency blend
-could read up to 30 days before the effective anchor. That exception is gone
-with the blend. Events without a timestamp are dropped in windowed runs
-(they can't honor explicit bounds); that includes Cursor JSONL-only sessions
-beyond their single file-mtime timestamp.
+`git log --since/--until` range tracks the kept events, and **including AQ**.
+Events without a timestamp are dropped in windowed runs because they cannot
+honor explicit bounds; that includes Cursor JSONL-only sessions beyond their
+single file-mtime timestamp.
 
 ### Sandbox / self-hosted / copied histories
 
@@ -342,7 +295,7 @@ Three 0–10 axes (Execution / Planning / Engineering) grounded in [gstack](http
 |--------|--------|----------|
 | **Breadth** | 30 | Orchestration · Skill fluency · Tool command (MCP+CLI) · Discipline |
 | **Craft** | 35 | Verification · Grounding · Compounding |
-| **Efficiency** | 20 | Steering leverage (withheld in v12 — unfitted band) · Recovery |
+| **Efficiency** | 20 | Steering leverage (withheld while unvalidated) · Recovery |
 | **Savvy** | 15 | Model mix · Token economy |
 
 **Level** (one honest ladder, driven by AQ — no flattery at the floor): Novice <25 · Apprentice 25–45 · Adequate 45–60 · Proficient 60–75 · Advanced 75–88 · **Elite 88–100**. This is also the profile headline; the quote names your thinnest pillar so the gap is visible.
