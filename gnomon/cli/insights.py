@@ -393,10 +393,16 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
     # (non-latest) month would otherwise exit 0 whenever the current month
     # succeeds -- exactly the silent reupload-loop data-floor this guards against.
     budget_violation = False
-    if mode == "auto":
-        for i, ((since, until, label), tok) in scheduled:
+    workers = min(_UPLOAD_CONCURRENCY, len(scheduled)) or 1
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {
+            ex.submit(_run_one, i, since, until, label, tok): (i, label)
+            for i, ((since, until, label), tok) in scheduled
+        }
+        for fut in as_completed(futs):
+            i, label = futs[fut]
             try:
-                results[i] = _run_one(i, since, until, label, tok)
+                results[i] = fut.result()
             except PayloadTooLarge as exc:
                 print(f"  error: {label} upload failed: {exc}")
                 results[i] = _UPLOAD_ERROR
@@ -404,27 +410,6 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
             except Exception:
                 print(f"  warning: {label} failed unexpectedly")
                 results[i] = _PAXEL_ERROR
-    else:
-        workers = min(_UPLOAD_CONCURRENCY, len(scheduled)) or 1
-        with ThreadPoolExecutor(max_workers=workers) as ex:
-            futs = {
-                ex.submit(_run_one, i, since, until, label, tok): (i, label)
-                for i, ((since, until, label), tok) in scheduled
-            }
-            for fut in as_completed(futs):
-                i, label = futs[fut]
-                try:
-                    results[i] = fut.result()
-                except PayloadTooLarge as exc:
-                    # Same unswallowable-failure contract as the auto-mode loop
-                    # above: a budget violation on any concurrent (--force /
-                    # --backfill) month must not crash the whole run with an
-                    # unhandled traceback -- that would skip push_event("done")
-                    # and server.shutdown() below, hanging the browser UI and
-                    # leaking the local HTTP server.
-                    print(f"  error: {label} upload failed: {exc}")
-                    results[i] = _UPLOAD_ERROR
-                    budget_violation = True
 
     # Aggregate deterministically from results keyed by window index. Automatic
     # success is anchored to the current (last planned) window.
@@ -577,10 +562,16 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
         elif _is_archived_only(result) and not quiet:
             print(f"  ^ {label} guarded (archive only)")
 
-    if mode == "auto":
-        for i, ((since, until, label), tok) in scheduled:
+    workers = min(_UPLOAD_CONCURRENCY, len(scheduled)) or 1
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {
+            ex.submit(_run_one, since, until, label, tok): (i, label)
+            for i, ((since, until, label), tok) in scheduled
+        }
+        for fut in as_completed(futs):
+            i, label = futs[fut]
             try:
-                result, summary = _run_one(since, until, label, tok)
+                result, summary = fut.result()
             except PayloadTooLarge as exc:
                 print(f"  error: {label} upload failed: {exc}")
                 result, summary = _UPLOAD_ERROR, None
@@ -589,27 +580,6 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
                 print(f"  warning: {label} failed unexpectedly")
                 result, summary = _PAXEL_ERROR, None
             _record_result(i, label, result, summary)
-    else:
-        workers = min(_UPLOAD_CONCURRENCY, len(scheduled)) or 1
-        with ThreadPoolExecutor(max_workers=workers) as ex:
-            futs = {
-                ex.submit(_run_one, since, until, label, tok): (i, label)
-                for i, ((since, until, label), tok) in scheduled
-            }
-            for fut in as_completed(futs):
-                i, label = futs[fut]
-                try:
-                    result, summary = fut.result()
-                except PayloadTooLarge as exc:
-                    # Same unswallowable-failure contract as the auto-mode loop
-                    # above: a budget violation on any concurrent (--force /
-                    # --backfill) month must not crash the whole run with an
-                    # unhandled traceback -- the other months' results (and the
-                    # final "uploaded N/M months" summary) must still surface.
-                    print(f"  error: {label} upload failed: {exc}")
-                    result, summary = _UPLOAD_ERROR, None
-                    budget_violation = True
-                _record_result(i, label, result, summary)
 
     # Aggregate deterministically from results keyed by window index.
     uploaded_count = sum(1 for r, _ in results.values() if _is_report_url(r))

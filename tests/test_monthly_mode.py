@@ -12,6 +12,7 @@ import datetime
 import calendar
 import os
 import sys
+import threading
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -264,6 +265,60 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
             uploaded = _current_only_uploaded(datetime.date.today())
         if "--console" not in argv:
             argv = argv + ["--console"]
+
+        # -- Token-based dispatch for deterministic parallel execution --------
+        # The console loop runs months through ThreadPoolExecutor.  List-based
+        # side_effects are consumed in call order, which is non-deterministic
+        # with threads.  Instead, map each token to its expected paxel/upload
+        # result so each window gets the right outcome regardless of order.
+
+        _thread_token = threading.local()
+
+        # Map token -> paxel result (positional: tokens[i] -> paxel[i]).
+        _paxel_map = dict(zip(tokens, run_paxel_side_effect))
+
+        def _paxel_succeeds(result):
+            if result is None or isinstance(result, BaseException):
+                return False
+            return result.get("context", {}).get("total_sessions", 0) > 0
+
+        # Map token -> upload result.  Only tokens whose paxel result leads
+        # to an upload attempt get a mapping (paxel None/exception/empty skip).
+        _upload_map = {}
+        _upload_iter = iter(upload_return_values)
+        for t in tokens[:len(run_paxel_side_effect)]:
+            if _paxel_succeeds(_paxel_map.get(t)):
+                try:
+                    _upload_map[t] = next(_upload_iter)
+                except StopIteration:
+                    break
+
+        def _paxel_dispatch(paxel_src, args, verbose, **kwargs):
+            token = getattr(_thread_token, "value", None)
+            if token is not None and token in _paxel_map:
+                result = _paxel_map[token]
+                if isinstance(result, BaseException):
+                    raise result
+                return result
+            # Fallback for any unexpected call.
+            return None
+
+        def _upload_dispatch(mirdash_base, token, summary):
+            if token in _upload_map:
+                result = _upload_map[token]
+                if isinstance(result, BaseException):
+                    raise result
+                return result
+            raise RuntimeError(f"no upload result mapped for token {token!r}")
+
+        # Wrap _upload_window so the thread-local token is set before
+        # _run_paxel / _upload_summary are called inside it.
+        _real_upload_window = _mirdash._upload_window
+
+        def _window_wrapper(*args, **kwargs):
+            _thread_token.value = args[1]          # token is 2nd positional arg
+            return _real_upload_window(*args, **kwargs)
+
         with (
             patch.object(_insights, "_capture_cli_token", return_value=(tokens, uploaded)),
             patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
@@ -272,15 +327,17 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
             # prompt on stdin and write the developer's ~/.claude/settings.json).
             patch.object(_insights, "offer_retention_config"),
             patch.object(_insights, "webbrowser") as mock_wb,
+            # Set the thread-local token before each _upload_window call.
+            patch.object(_insights, "_upload_window", side_effect=_window_wrapper),
             patch.object(
                 _mirdash,
                 "_run_paxel",
-                side_effect=run_paxel_side_effect,
+                side_effect=_paxel_dispatch,
             ) as mock_paxel,
             patch.object(
                 _mirdash,
                 "_upload_summary",
-                side_effect=upload_return_values,
+                side_effect=_upload_dispatch,
             ) as mock_upload,
             patch.object(_insights.os.path, "isfile", return_value=True),
             patch.object(_insights.sys, "argv", ["xl-ai-insights"] + argv),
@@ -408,8 +465,8 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         )
         self.assertEqual(mock_paxel.call_count, 2)
         self.assertEqual(
-            [call.args[1] for call in mock_upload.call_args_list],
-            ["previous-token", "current-token"],
+            {call.args[1] for call in mock_upload.call_args_list},
+            {"previous-token", "current-token"},
         )
 
     def test_failed_previous_bridge_still_runs_current(self):
