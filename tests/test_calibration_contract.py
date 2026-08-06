@@ -105,5 +105,26 @@ class TestFingerprintActuallyCoversTheConstants(unittest.TestCase):
         self.assertEqual(calibration_fingerprint(), calibration_fingerprint())
 
 
+class TestV16McpCompoundingContract(unittest.TestCase):
+    """v16 (MCP knowledge-write compounding numerator): real score delta, zero
+    calibration delta -- same template as v15's Workflow fan-out fix."""
+
+    def test_contract_is_sixteen(self):
+        self.assertEqual(SCORE_CONTRACT_ID, "16:16:16")
+
+    def test_digest_is_byte_identical_to_thirteen_fourteen_fifteen(self):
+        self.assertEqual(CALIBRATION_FINGERPRINTS["16:16:16"], "94f38d0963b1b195")
+        self.assertEqual(
+            CALIBRATION_FINGERPRINTS["16:16:16"], CALIBRATION_FINGERPRINTS["15:15:15"])
+        self.assertEqual(
+            CALIBRATION_FINGERPRINTS["16:16:16"], CALIBRATION_FINGERPRINTS["13:13:13"])
+
+    def test_sixteen_is_registered_as_zero_calibration_delta(self):
+        self.assertIn("16:16:16", ZERO_CALIBRATION_DELTA_CONTRACT_IDS)
+
+    def test_live_fingerprint_matches_registered_entry(self):
+        self.assertEqual(calibration_fingerprint(), CALIBRATION_FINGERPRINTS["16:16:16"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -37,7 +37,7 @@ from gnomon.taxonomy import (
     is_substantive_tool, classify_change_target, is_plan_file_target,
     bash_writes_file, bash_runs_tests, bash_runs_knowledge, _extract_clis,
     _is_compounding_path, _norm_path_seps, _SKILL_MD_RX,
-    extract_skill_name_from_path, _canon_mcp_server,
+    extract_skill_name_from_path, _canon_mcp_server, is_mcp_knowledge_write,
 )
 from gnomon.sources.discovery import _AGENT_UNSUPPORTED_SOURCES
 from gnomon.analysis.churn import git_churn
@@ -287,6 +287,13 @@ class Accumulator:
         # that re-references the same dispatched-agent transcript credits once.
         # Corpus-lifetime, NOT reset per-file (dedup must survive across files).
         self._fanout_credited_agents = set()
+        # MCP knowledge-write compounding credit (contract 16:16:16): (sid,
+        # persist_id_or_tool_bucket) pairs already credited to compounding_counter/
+        # month_compounding, so target-less or same-target repeat calls within a
+        # session cannot linearly inflate the axis while genuinely DISTINCT
+        # persisted targets each still earn their own credit. Corpus-lifetime,
+        # NOT reset per-file -- mirrors _fanout_credited_agents above.
+        self._mcp_compounding_credited = set()
         # Set in begin_file when `_cur_fp` is a dispatched Workflow agent transcript
         # (`.../subagents/workflows/wf_*/agent-*.jsonl`): (parent_sid,
         # filename_agent_id), or None for every other file. Consumed in observe()
@@ -1123,6 +1130,26 @@ class Accumulator:
                                             or (subcat in CI_CONTEXT_SUBCATS
                                                 and _cat == "explore")):
                                     self._pending_knowledge_grounding[sid] = True
+                                # Compounding credit for MCP knowledge-writes (contract
+                                # 16:16:16): numerator-only, additive to the existing
+                                # filesystem _is_compounding_path sites below (disjoint
+                                # gate -- this fires on mcp__* tool_use, those fire on
+                                # Edit/Write/MultiEdit/NotebookEdit -- so no double
+                                # count). Dedup by (sid, distinct persisted target) so
+                                # target-less/repeat-target spam cannot saturate the
+                                # axis while genuinely distinct targets each credit.
+                                if sid and is_mcp_knowledge_write(server, tool_part):
+                                    _persist_id = (
+                                        inp.get("memory_id") or inp.get("topic_key")
+                                        or inp.get("id") or inp.get("entity")
+                                        or inp.get("name")
+                                        or f"{server}:{tool_part.lower()}")
+                                    _ck = (sid, _persist_id)
+                                    if _ck not in self._mcp_compounding_credited:
+                                        self._mcp_compounding_credited.add(_ck)
+                                        self.compounding_counter += 1
+                                        if mkey:
+                                            self.month_compounding[mkey] += 1
                         else:
                             self.native_calls += 1
 

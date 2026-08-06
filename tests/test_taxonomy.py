@@ -7,6 +7,8 @@ from gnomon.taxonomy import (
     SKILL_TOOLS, WRITE_TOOLS, classify_tool, is_substantive_tool,
     classify_change_target, is_plan_file_target, _is_compounding_path, _norm_path_seps,
     parse_workflow_agent_dispatch,
+    MCP_INSPECT_HINTS, MCP_WRITE_HINTS, MCP_FETCH_ONLY_KNOWLEDGE_SERVERS,
+    is_mcp_knowledge_write,
 )
 
 
@@ -244,6 +246,60 @@ class TestClassifyToolOtherCategoriesUnchanged(unittest.TestCase):
                       DELEGATE_TOOLS, SKILL_TOOLS, SCHEDULE_TOOLS, ASK_TOOLS):
             with self.subTest(other=sorted(other)):
                 self.assertEqual(PLAN_TOOLS & other, set())
+
+
+class TestIsMcpKnowledgeWrite(unittest.TestCase):
+    """Compounding credit for MCP knowledge-writes (contract 16:16:16): a MCP call
+    credits the Compounding axis only when it is BOTH knowledge-subcategory AND a
+    genuine persistence write, gated by an explicit positive write-verb predicate
+    (NOT classify_tool=="produce", which over-selects and wrongly credits reads
+    like context7 resolve-library-id / engram mem_context / mem0 delete_memory)."""
+
+    def test_must_credit_mem0_add_memory(self):
+        self.assertTrue(is_mcp_knowledge_write("mem0", "add_memory"))
+
+    def test_must_credit_mem0_update_memory(self):
+        self.assertTrue(is_mcp_knowledge_write("mem0", "update_memory"))
+
+    def test_must_credit_engram_mem_save(self):
+        self.assertTrue(is_mcp_knowledge_write("engram", "mem_save"))
+
+    def test_must_credit_engram_mem_update(self):
+        self.assertTrue(is_mcp_knowledge_write("engram", "mem_update"))
+
+    def test_must_reject_context7_resolve_library_id(self):
+        self.assertFalse(is_mcp_knowledge_write("context7", "resolve-library-id"))
+
+    def test_must_reject_engram_mem_context(self):
+        self.assertFalse(is_mcp_knowledge_write("engram", "mem_context"))
+
+    def test_must_reject_engram_mem_current_project(self):
+        self.assertFalse(is_mcp_knowledge_write("engram", "mem_current_project"))
+
+    def test_must_reject_engram_mem_review(self):
+        self.assertFalse(is_mcp_knowledge_write("engram", "mem_review"))
+
+    def test_must_reject_mem0_search_memory(self):
+        self.assertFalse(is_mcp_knowledge_write("mem0", "search_memory"))
+
+    def test_must_reject_mem0_delete_memory(self):
+        self.assertFalse(is_mcp_knowledge_write("mem0", "delete_memory"))
+
+    def test_read_hint_precedence_rejects_hypothetical_get_or_create(self):
+        # Read-hint match wins: "get_or_create" contains "get" (MCP_INSPECT_HINTS),
+        # so it must NOT be treated as a write even though it also contains "create".
+        self.assertFalse(is_mcp_knowledge_write("engram", "get_or_create"))
+
+    def test_non_knowledge_server_never_credits_even_with_a_write_verb(self):
+        # e.g. a "data"-subcategory server calling something named "add_record":
+        # only knowledge-subcategory MCPs are eligible at all.
+        self.assertFalse(is_mcp_knowledge_write("supabase", "add_record"))
+
+    def test_write_and_inspect_hint_lists_are_disjoint(self):
+        self.assertEqual(set(MCP_WRITE_HINTS) & set(MCP_INSPECT_HINTS), set())
+
+    def test_fetch_only_knowledge_servers_present(self):
+        self.assertIn("context7", MCP_FETCH_ONLY_KNOWLEDGE_SERVERS)
 
 
 if __name__ == "__main__":

@@ -121,6 +121,14 @@ CALIBRATION_FINGERPRINTS = {
     # CALIBRATION_CONSTANT_NAMES value changed -- FANOUT_CEILING stays 5 and no rate
     # target/weight/denominator moved -- so the digest is unchanged from 13:13:13/14:14:14.
     "15:15:15": "94f38d0963b1b195",
+    # v16 (MCP knowledge-write compounding numerator): credits Compounding for
+    # mem0/engram persistence writes gated by taxonomy.is_mcp_knowledge_write, with
+    # a corpus-lifetime per-(session, distinct-target) dedup set. A real score
+    # delta (compounding_writes/Compounding/AQ move for MCP-write-bearing corpora),
+    # but no registered CALIBRATION_CONSTANT_NAMES value changed -- no
+    # PER_CALL_TARGET (COMPOUNDING_WRITES_PER_CALL_TARGET stays 0.0018), weight, or
+    # denominator moved -- so the digest is unchanged from 13:13:13/14:14:14/15:15:15.
+    "16:16:16": "94f38d0963b1b195",
 }
 
 # Contract IDs whose fingerprint is a DOCUMENTED, deliberate duplicate of the contract
@@ -130,4 +138,4 @@ CALIBRATION_FINGERPRINTS = {
 # unchanged. test_calibration_contract.py's injectivity guard excludes exactly these IDs;
 # any OTHER duplicate fingerprint remains the accidental-drift failure mode it exists to
 # catch.
-ZERO_CALIBRATION_DELTA_CONTRACT_IDS = frozenset({"14:14:14", "15:15:15"})
+ZERO_CALIBRATION_DELTA_CONTRACT_IDS = frozenset({"14:14:14", "15:15:15", "16:16:16"})

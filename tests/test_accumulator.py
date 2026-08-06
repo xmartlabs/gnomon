@@ -607,5 +607,115 @@ class TestBackslashPathsOnWindowsTranscripts(unittest.TestCase):
         self.assertEqual(sorted(acc.edits_per_file_events), [1, 1])
 
 
+class TestMcpKnowledgeWriteCompoundingCredit(unittest.TestCase):
+    """Compounding credit for MCP knowledge-writes (contract 16:16:16): mem0/engram
+    persistence writes now credit compounding_counter/month_compounding, gated by
+    taxonomy.is_mcp_knowledge_write, with a corpus-lifetime per-distinct-target
+    dedup set so target-less/repeat-target spam cannot saturate the axis while
+    genuinely distinct persisted targets still each earn credit (reconciled spec
+    Scenarios A and B)."""
+
+    def test_mem0_add_memory_credits_compounding(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T12:00:00Z", "mcp__mem0__add_memory", {
+            "memory_id": "m1", "text": "note",
+        }), None, None)
+        acc.end_file()
+        self.assertEqual(acc.compounding_counter, 1)
+        self.assertEqual(acc.month_compounding.get("2026-01"), 1)
+
+    def test_engram_mem_save_credits_compounding(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "mcp__engram__mem_save", {
+            "topic_key": "sdd/foo/spec",
+        }), None, None)
+        acc.end_file()
+        self.assertEqual(acc.compounding_counter, 1)
+
+    def test_reads_and_deletes_and_context7_credit_zero(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        for i, (name, inp) in enumerate([
+            ("mcp__context7__resolve-library-id", {"query": "react"}),
+            ("mcp__engram__mem_context", {}),
+            ("mcp__engram__mem_current_project", {}),
+            ("mcp__engram__mem_review", {}),
+            ("mcp__mem0__search_memory", {"query": "x"}),
+            ("mcp__mem0__delete_memory", {"memory_id": "m1"}),
+        ]):
+            acc.observe(_fact_event(
+                "s1", f"2026-01-01T00:00:0{i}Z", name, inp), None, None)
+        acc.end_file()
+        self.assertEqual(acc.compounding_counter, 0)
+
+    def test_anti_saturation_target_less_repeat_calls_credit_once(self):
+        # Scenario A: 10 target-less mem_save calls in one session -> +1, not +10.
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        for i in range(10):
+            acc.observe(_fact_event(
+                "s1", f"2026-01-01T00:00:{i:02d}Z", "mcp__engram__mem_save", {}),
+                None, None)
+        acc.end_file()
+        self.assertEqual(acc.compounding_counter, 1)
+
+    def test_anti_saturation_same_target_repeat_calls_credit_once(self):
+        # Scenario A variant: same distinct target repeated -> +1, not +N.
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        for i in range(5):
+            acc.observe(_fact_event(
+                "s1", f"2026-01-01T00:00:{i:02d}Z", "mcp__engram__mem_save",
+                {"topic_key": "sdd/foo/spec"}), None, None)
+        acc.end_file()
+        self.assertEqual(acc.compounding_counter, 1)
+
+    def test_distinct_targets_each_credit(self):
+        # Scenario B: N distinct memory_id/topic_key values -> +N, not collapsed to 1.
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        for i in range(4):
+            acc.observe(_fact_event(
+                "s1", f"2026-01-01T00:00:0{i}Z", "mcp__engram__mem_save",
+                {"topic_key": f"sdd/foo/target-{i}"}), None, None)
+        acc.end_file()
+        self.assertEqual(acc.compounding_counter, 4)
+
+    def test_out_of_window_mcp_write_credits_nothing(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        since_dt = datetime(2026, 2, 1).astimezone()
+        acc.observe(_fact_event(
+            "s1", "2026-01-01T00:00:00Z", "mcp__mem0__add_memory",
+            {"memory_id": "m1"}), since_dt, None)
+        acc.end_file()
+        self.assertEqual(acc.compounding_counter, 0)
+
+    def test_filesystem_compounding_path_unaffected(self):
+        # Regression: filesystem compounding sites (memory/ path) still credit
+        # exactly as before, independent of any MCP knowledge-write.
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "Write", {
+            "file_path": "/repo/memory/note.md", "content": "a\nb",
+        }), None, None)
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:01Z", "mcp__mem0__add_memory", {
+            "memory_id": "m1",
+        }), None, None)
+        acc.end_file()
+        self.assertEqual(acc.compounding_counter, 2)
+
+    def test_tool_calls_total_unchanged_by_mcp_writes(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "mcp__mem0__add_memory", {
+            "memory_id": "m1",
+        }), None, None)
+        acc.end_file()
+        self.assertEqual(acc.tool_use_total, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -135,6 +135,38 @@ MCP_INSPECT_HINTS = ("read", "get", "list", "search", "find", "describe",
                      "snapshot", "screenshot", "query", "fetch", "whoami",
                      "details", "status", "info", "show", "doc_", "explore")
 
+# Compounding credit for MCP knowledge-writes (contract 16:16:16): the positive
+# mirror of MCP_INSPECT_HINTS above, scoped to knowledge-subcategory MCP servers.
+# Symmetric-to-existing-design, not a novel taxonomy -- see
+# is_mcp_knowledge_write's precedence rules.
+MCP_WRITE_HINTS = ("add", "write", "store", "create", "update", "upsert",
+                   "save", "remember", "persist")
+
+# Knowledge-subcategory MCP servers that persist NOTHING -- doc/search fetchers
+# only (context7 resolves library docs, exa is a web search MCP). A server-level
+# DENYLIST checked before any write-hint match, so a future fetch-only tool leaf
+# that happens to contain a write substring can never false-positive. Extensible.
+MCP_FETCH_ONLY_KNOWLEDGE_SERVERS = ("context7", "exa")
+
+
+def is_mcp_knowledge_write(server_name, tool_name=""):
+    """True when an MCP call is BOTH knowledge-subcategory AND a genuine
+    persistence write, for Compounding axis crediting. Strict precedence:
+    1. classify_mcp_subcategory(server, tool) == "knowledge", else False.
+    2. server not in MCP_FETCH_ONLY_KNOWLEDGE_SERVERS (substring match), else False.
+    3. leaf matches any MCP_INSPECT_HINTS -> False (read-hint match wins).
+    4. leaf matches any MCP_WRITE_HINTS -> True, else False.
+    """
+    if classify_mcp_subcategory(server_name, tool_name) != "knowledge":
+        return False
+    low_server = (server_name or "").lower()
+    if any(needle in low_server for needle in MCP_FETCH_ONLY_KNOWLEDGE_SERVERS):
+        return False
+    low_tool = (tool_name or "").lower()
+    if any(needle in low_tool for needle in MCP_INSPECT_HINTS):
+        return False
+    return any(needle in low_tool for needle in MCP_WRITE_HINTS)
+
 # Two-layer MCP subcategory classification, grounded in awesome-mcp-servers ecosystem
 # data (500+ servers, 51 categories) and validated against 62-user production corpus
 # (neat-buzzard-863, 208 distinct servers, 87.5% classification rate).

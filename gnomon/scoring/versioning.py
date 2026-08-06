@@ -1,4 +1,24 @@
-# Current scoring contract (15:15:15).
+# Current scoring contract (16:16:16).
+#
+# v16 credits the Compounding axis for MCP knowledge-write persistence calls
+# (mem0 add_memory/update_memory, engram mem_save/mem_update) that were
+# previously invisible to `compounding_counter` -- only filesystem writes
+# matching `_COMPOUNDING_RX` credited before this change, even though the SAME
+# MCP call already arms Context Intelligence grounding (accumulator.py's
+# knowledge-subcategory arm fires unconditionally). Gated by an explicit
+# positive write-verb predicate, `taxonomy.is_mcp_knowledge_write`
+# (knowledge-subcategory AND not a fetch-only server AND no read-hint match AND
+# a write-hint match), so reads/deletes/context7-class fetchers stay at zero.
+# Anti-saturation is a corpus-lifetime per-(session, distinct-target) dedup set
+# (`_mcp_compounding_credited`), mirroring `_fanout_credited_agents`: target-less
+# or same-target repeat calls within a session collapse to one credit, while
+# genuinely distinct persisted targets each still earn their own credit. This is
+# a REAL score delta (compounding_writes / Compounding axis / AQ move for
+# corpora with MCP knowledge-writes) but a ZERO calibration delta: no
+# `PER_CALL_TARGET` (including `COMPOUNDING_WRITES_PER_CALL_TARGET`), weight, or
+# denominator moved, and `tool_calls_total`/`tool_use_total` are unaffected --
+# see calibration.py's `CALIBRATION_FINGERPRINTS["16:16:16"]` and
+# `ZERO_CALIBRATION_DELTA_CONTRACT_IDS`.
 #
 # v15 fixes the Workflow fan-out under-credit that v14 introduced: `ORCHESTRATION_TOOLS`
 # membership (Agent/Task/Workflow) still drives agents_per_session/_fanouts/
@@ -44,9 +64,9 @@
 #
 # Contract IDs are comparison boundaries. Calibration fingerprints are append-only:
 # a score-affecting change requires a new ID and fingerprint entry.
-SCORING_INPUTS_VERSION = 15
-AQ_VERSION = 15
-GSTACK_VERSION = 15
+SCORING_INPUTS_VERSION = 16
+AQ_VERSION = 16
+GSTACK_VERSION = 16
 # First input version with deduplicated per-session skill counters. Earlier
 # payloads use different persisted quantities and cannot be replayed against these targets.
 SKILL_DEDUP_INPUTS_VERSION = 8
