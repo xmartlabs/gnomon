@@ -451,7 +451,7 @@ class TestPlanningScoringContract(unittest.TestCase):
         self.assertEqual(behavior["planning_skill_eligible_sessions"], 4)
         self.assertEqual(behavior["planning_skill_unmeasured_sessions"], 0)
         self.assertEqual(behavior["planning_skill_session_share"], 0.25)
-        self.assertEqual(SCORE_CONTRACT_ID, "13:13:13")
+        self.assertEqual(SCORE_CONTRACT_ID, "14:14:14")
 
     def test_scoring_inputs_do_not_disable_legacy_fallback_with_null_keys(self):
         stats = _rich_stats({"planning_skill_sessions": 2})

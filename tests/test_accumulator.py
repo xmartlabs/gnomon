@@ -109,6 +109,65 @@ class TestOrchestratableEligibility(unittest.TestCase):
         )
 
 
+class TestOrchestrationToolsGate(unittest.TestCase):
+    """WU4 (H1a/H1b/H6): the real accumulator.py:1132 gate that feeds
+    agents_per_session must be driven by taxonomy.ORCHESTRATION_TOOLS membership,
+    not the literal `name == "Agent"` check -- so a Task-only harness (no Agent calls
+    at all) still counts toward delegated_orchestratable_sessions the same way an
+    Agent-only session would (spec scenario: Task-only harness)."""
+
+    def test_task_only_session_counts_toward_delegated_orchestratable(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        # 3 distinct code-file writes make this session orchestratable on their own
+        # (ORCHESTRATABLE_CODE_FILES), independent of any delegate/substantive count.
+        for i, path in enumerate(("src/a.py", "src/b.py", "src/c.py")):
+            acc.observe(_fact_event(
+                "s1", f"2026-01-01T00:00:0{i}Z", "Write",
+                {"file_path": path, "content": "line1\nline2"},
+            ), None, None)
+        # The ONLY orchestration signal in this session is a bare Task call --
+        # no Agent tool_use anywhere.
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:03Z", "Task", {}), None, None)
+        acc.end_file()
+        stats = acc.to_corpus_stats(None, None, False)
+        self.assertEqual(acc.agents_per_session.get("s1"), 1)
+        self.assertEqual(stats["behavior"]["orchestratable_sessions"], 1)
+        self.assertEqual(stats["behavior"]["delegated_orchestratable_sessions"], 1)
+
+    def test_workflow_only_session_also_counts_toward_delegated_orchestratable(self):
+        # Triangulation: Workflow must behave identically to Task/Agent, not just Task.
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        for i, path in enumerate(("src/a.py", "src/b.py", "src/c.py")):
+            acc.observe(_fact_event(
+                "s1", f"2026-01-01T00:00:0{i}Z", "Write",
+                {"file_path": path, "content": "line1\nline2"},
+            ), None, None)
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:03Z", "Workflow", {}), None, None)
+        acc.end_file()
+        stats = acc.to_corpus_stats(None, None, False)
+        self.assertEqual(stats["behavior"]["delegated_orchestratable_sessions"], 1)
+
+    def test_taskcreate_alone_does_not_count_as_orchestration_dispatch(self):
+        # Control: TaskCreate is todo bookkeeping (PLAN_TOOLS), not a dispatch tool,
+        # and must NOT count toward agents_per_session / delegated_orchestratable.
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        for i, path in enumerate(("src/a.py", "src/b.py", "src/c.py")):
+            acc.observe(_fact_event(
+                "s1", f"2026-01-01T00:00:0{i}Z", "Write",
+                {"file_path": path, "content": "line1\nline2"},
+            ), None, None)
+        acc.observe(_fact_event(
+            "s1", "2026-01-01T00:00:03Z", "TaskCreate", {"items": ["a", "b", "c"]},
+        ), None, None)
+        acc.end_file()
+        stats = acc.to_corpus_stats(None, None, False)
+        self.assertEqual(acc.agents_per_session.get("s1", 0), 0)
+        self.assertEqual(stats["behavior"]["delegated_orchestratable_sessions"], 0)
+
+
 class TestPlannedC3C6(unittest.TestCase):
     """C3 (broadened planned) + C6 (substance floor): plan-file/skill signals
     count, but only above the substance floor; bare plan-mode toggles and

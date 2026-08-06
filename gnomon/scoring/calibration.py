@@ -110,4 +110,18 @@ CALIBRATION_FINGERPRINTS = {
     "11:11:11": "888bec08099b6fbc",
     "12:12:12": "43f4a19179acc3a0",
     "13:13:13": "94f38d0963b1b195",
+    # v14 (H10 active_hours union + WU4 ORCHESTRATION_TOOLS taxonomy): neither change
+    # touches a registered CALIBRATION_CONSTANT_NAMES value, so the digest is unchanged
+    # from 13:13:13 -- see versioning.py's v14 note and design's calibration-blind-spot
+    # risk (the fingerprint hashes constant VALUES, not derivation/taxonomy logic).
+    "14:14:14": "94f38d0963b1b195",
 }
+
+# Contract IDs whose fingerprint is a DOCUMENTED, deliberate duplicate of the contract
+# they immediately followed: the bump was score-affecting through a derivation/taxonomy
+# change (H10 active_hours union, WU4 ORCHESTRATION_TOOLS gate), not a registered
+# CALIBRATION_CONSTANT_NAMES value, so no constant moved and the digest is legitimately
+# unchanged. test_calibration_contract.py's injectivity guard excludes exactly these IDs;
+# any OTHER duplicate fingerprint remains the accidental-drift failure mode it exists to
+# catch.
+ZERO_CALIBRATION_DELTA_CONTRACT_IDS = frozenset({"14:14:14"})

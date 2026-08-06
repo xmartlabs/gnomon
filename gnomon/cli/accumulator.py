@@ -31,7 +31,7 @@ from gnomon.config import (
 from gnomon.scoring.inputs import _adjusted_doing
 from gnomon.taxonomy import (
     SCHEDULE_TOOLS, ASK_TOOLS, PLAN_MODE_TOOLS, PLAN_SIGNAL_TOOLS,
-    PLAN_SKILL_NEEDLES, KNOWLEDGE_SKILL_NEEDLES,
+    PLAN_SKILL_NEEDLES, KNOWLEDGE_SKILL_NEEDLES, ORCHESTRATION_TOOLS,
     classify_tool, classify_mcp_subcategory, CI_CONTEXT_SUBCATS,
     is_substantive_tool, classify_change_target, is_plan_file_target,
     bash_writes_file, bash_runs_tests, bash_runs_knowledge, _extract_clis,
@@ -1129,7 +1129,7 @@ class Accumulator:
                             if name in PLAN_MODE_TOOLS:
                                 self._record_planning_skill_signal(
                                     sid, mkey, event_eligible=planning_event_eligible)
-                        if name == "Agent":
+                        if name in ORCHESTRATION_TOOLS:
                             _turn_agent_count += 1
                             if self._cur_src == "codex" and sid:
                                 self.codex_spawn_events[sid].append({

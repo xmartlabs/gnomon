@@ -115,8 +115,8 @@ refused instead of being pooled with genuine one-month scores.
 
 ## Scoring contract
 
-Current runtime contract: **scoring inputs version 13**, **AQ version 13**, and
-**GStack version 13** (`score_contract_id = 13:13:13`). Compare scores only when
+Current runtime contract: **scoring inputs version 14**, **AQ version 14**, and
+**GStack version 14** (`score_contract_id = 14:14:14`). Compare scores only when
 the contract IDs match.
 
 AQ is computed once over the requested scoring window; there is no recency blend.

@@ -53,8 +53,8 @@ directly — no external dependency). Both decode to the same normalized events.
 
 ## Uploaded summary contract
 
-Current runtime contract: **scoring inputs version 13**, **AQ version 13**, and
-**GStack version 13** (`score_contract_id = 13:13:13`). Compare scores only when
+Current runtime contract: **scoring inputs version 14**, **AQ version 14**, and
+**GStack version 14** (`score_contract_id = 14:14:14`). Compare scores only when
 contract IDs match.
 
 ### Windows and evidence

@@ -53,17 +53,21 @@ def _preferred_days(weekday_hist, dow):
 
 
 def _active_hours_and_longest_run(session_ts, gap_cap_s, burst_gap_s):
-    """Active hours (sum of inter-event gaps, each capped) and longest contiguous
-    burst (minutes) over a {sessionId: [epoch_seconds]} mapping. Mirrors the
-    window derivation exactly so per-month subsets reuse identical rules."""
-    durations_min = []
+    """Active hours (UNION of per-session active wall-clock intervals, each
+    inter-event gap capped) and longest contiguous burst (minutes) over a
+    {sessionId: [epoch_seconds]} mapping. Concurrent/overlapping sessions are
+    merged so real engaged wall-clock time is never double-counted: summing
+    independently-capped per-session durations would count two fully-overlapping
+    sessions twice (H10). Per-session longest_run (burst detection) is unchanged --
+    it stays the max single-session burst, not a merged one. Mirrors the window
+    derivation exactly so per-month subsets reuse identical rules (both the window
+    path and the per-month path call this same helper)."""
+    intervals = []
     longest_burst_s = 0.0
     for ts_list in session_ts.values():
         ts_list = sorted(ts_list)
-        active_s = 0.0
         for a, bnext in zip(ts_list, ts_list[1:]):
-            active_s += min(bnext - a, gap_cap_s)
-        durations_min.append(active_s / 60.0)
+            intervals.append((a, a + min(bnext - a, gap_cap_s)))
         bstart = bprev = None
         for t in ts_list:
             if bprev is None:
@@ -75,7 +79,20 @@ def _active_hours_and_longest_run(session_ts, gap_cap_s, burst_gap_s):
                 bprev = t
         if bstart is not None:
             longest_burst_s = max(longest_burst_s, bprev - bstart)
-    return sum(durations_min) / 60.0, longest_burst_s / 60.0
+    intervals.sort()
+    merged_s = 0.0
+    cur_start = cur_end = None
+    for start, end in intervals:
+        if cur_start is None:
+            cur_start, cur_end = start, end
+        elif start <= cur_end:
+            cur_end = max(cur_end, end)
+        else:
+            merged_s += cur_end - cur_start
+            cur_start, cur_end = start, end
+    if cur_start is not None:
+        merged_s += cur_end - cur_start
+    return merged_s / 3600.0, longest_burst_s / 60.0
 
 
 def _token_usage_block(tokens_by_model, zero_tok=None):

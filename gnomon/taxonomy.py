@@ -5,9 +5,16 @@ WRITE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 READ_TOOLS = {"Read", "Grep", "Glob", "NotebookRead"}
 DISCOVER_TOOLS = {"WebSearch", "WebFetch", "ToolSearch"}
 EXEC_TOOLS = {"Bash", "BashOutput", "KillShell"}
-DELEGATE_TOOLS = {"Agent", "Task"}
+DELEGATE_TOOLS = {"Agent", "Task", "Workflow"}
 PLAN_TOOLS = {"TodoWrite", "TodoRead", "ExitPlanMode", "EnterPlanMode", "EnterWorktree",
               "ExitWorktree", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet"}
+# Real dispatch tools -- the accumulator's orchestration-counting gate
+# (agents_per_session / _delegated_orchestratable / o_frequency) is driven by
+# membership in this set, not a literal `name == "Agent"` check. TaskCreate/
+# TaskUpdate/TaskList/TaskGet are todo-bookkeeping (PLAN_TOOLS above), not dispatch,
+# and are deliberately EXCLUDED: admitting them would inflate agents_per_session with
+# non-dispatch events (most sessions carry a TaskCreate at least once).
+ORCHESTRATION_TOOLS = {"Agent", "Task", "Workflow"}
 # Explicit plan-mode ceremony: the human chose to plan and a plan was produced before any
 # code. EnterPlanMode = Cursor create_plan / switch_mode(plan); ExitPlanMode = Claude Code
 # native plan mode (shift+tab -> present plan -> approve). These carry the same construct as
