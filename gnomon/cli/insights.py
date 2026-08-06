@@ -6,23 +6,28 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.parse
 import urllib.request
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from gnomon.config import BASE
 from gnomon.scoring.versioning import SCORE_CONTRACT_ID
 from gnomon.upload.auth import _capture_cli_token, _wait_for_auth_tokens, _SHARE_AUTH_TIMEOUT, _WEB_AUTH_TIMEOUT
 from gnomon.upload.mirdash import (
     _resolve_mirdash_base, _resolve_output_dir, _absolutize_dir_flags,
     _DEFAULT_MIRDASH_BASE,
     _DEFAULT_WINDOW_MONTHS, _UPLOAD_CONCURRENCY, parse_window, decide_mode,
-    month_windows, months_to_upload, plan_upload, windows_for_anchors,
-    _is_report_url, _upload_window, _upload_window_web,
+    month_windows, plan_upload, windows_for_anchors,
+    default_producible_coverage_for,
+    _is_report_url, _is_archived_only, _result_report_url, _upload_window, _upload_window_web,
     _PAXEL_ERROR, _UPLOAD_ERROR, _format_summary, PayloadTooLarge,
     # Re-exported so tests can patch them as attributes of this module and so the
-    # web fallback to console mode keeps a stable surface.
-    _run_paxel, _upload_summary,  # noqa: F401
+    # web fallback to console mode keeps a stable surface. months_to_upload is
+    # no longer called here (both upload paths need plan_upload's per-month
+    # reasons to stamp the `force` directive) but stays re-exported.
+    _run_paxel, _upload_summary, months_to_upload,  # noqa: F401
 )
 
 
@@ -40,7 +45,7 @@ _HELP_TEXT = """Usage:
     --force       re-upload all months (ignores what has already been uploaded)
     --dry-run     show what would be uploaded (and why) without uploading anything
     --mirdash-base=URL  override the mirdash server URL
-    --window=N    trailing window size in months for each scored point (default 6)
+    --window=N    trailing window size in months for each scored point (default 1)
     --no-open     skip redirecting to the mirdash report at the end
     --quiet       only print errors and the final report URL
     --verbose     also show paxel's full stdout/stderr
@@ -57,6 +62,102 @@ _LATEST_CLI_RELEASE_URL = "https://api.github.com/repos/xmartlabs/gnomon/release
 _CLI_REFRESH_COMMAND = "uvx --refresh --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights"
 _ALLOW_STALE_CLI_FLAG = "--allow-stale-cli"
 
+# Retention offer (honest-aq-series step 1, design decision F): the suggested
+# value only -- never forced, never written silently.
+_SUGGESTED_RETENTION_DAYS = 180
+_DEFAULT_SETTINGS_PATH = os.path.join(os.path.dirname(BASE), "settings.json")
+
+
+def offer_retention_config(settings_path=None):
+    """Interactive-only offer to set `cleanupPeriodDays` in
+    ~/.claude/settings.json (design decision F). Returns a dict describing
+    what happened -- never raises, never writes silently.
+
+    Safety contract (threat matrix):
+      - non-tty (CI, piped stdin) -> skip silently, zero prompt, zero write.
+      - `cleanupPeriodDays` already present -> skip without prompting (never
+        overwrite a user's existing choice).
+      - malformed/unreadable existing settings.json -> decline with manual
+        instructions, never write a partial file.
+      - accept -> back up the CURRENT file (if any) to
+        `<settings_path>.gnomon-backup-<epoch>` BEFORE writing, then write
+        `cleanupPeriodDays: 180`, merged into the existing keys, and print the
+        exact undo command plus the backup path.
+    """
+    path = settings_path or _DEFAULT_SETTINGS_PATH
+
+    if not sys.stdin.isatty():
+        return {"action": "skipped", "reason": "non-tty"}
+
+    existing = {}
+    if os.path.isfile(path):
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                raw = fh.read()
+            existing = json.loads(raw) if raw.strip() else {}
+            if not isinstance(existing, dict):
+                raise ValueError("settings.json root is not an object")
+        except (OSError, ValueError, json.JSONDecodeError):
+            print(
+                f"  warning: could not parse {path} -- leaving it untouched. "
+                f"To set retention manually, add \"cleanupPeriodDays\": "
+                f"{_SUGGESTED_RETENTION_DAYS} to that file."
+            )
+            return {"action": "declined", "reason": "malformed"}
+
+    if "cleanupPeriodDays" in existing:
+        return {"action": "skipped", "reason": "already_set"}
+
+    print(
+        "\n  Claude Code detected. Transcript history is kept for 30 days by default.\n"
+        "  For broader scoring and longer-term analysis, we recommend keeping 180 days.\n"
+        "  This is optional. Set transcript retention to 180 days? [y/N] "
+    )
+    try:
+        answer = input().strip().lower()
+    except EOFError:
+        answer = ""
+    if answer not in ("y", "yes"):
+        return {"action": "declined", "reason": "user"}
+
+    backup_path = None
+    if os.path.isfile(path):
+        backup_path = f"{path}.gnomon-backup-{int(time.time())}"
+        with open(path, "r", encoding="utf-8") as src, \
+                open(backup_path, "w", encoding="utf-8") as dst:
+            dst.write(src.read())
+
+    written = dict(existing)
+    written["cleanupPeriodDays"] = _SUGGESTED_RETENTION_DAYS
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(written, fh, indent=2)
+        fh.write("\n")
+
+    print(f"  Set cleanupPeriodDays={_SUGGESTED_RETENTION_DAYS} in {path}.")
+    if backup_path:
+        print(f"  Backup of the previous file: {backup_path}")
+        print(f"  Undo: cp {backup_path} {path}")
+    else:
+        print(f"  Undo: remove \"cleanupPeriodDays\" from {path} (it did not exist before).")
+
+    return {"action": "accepted", "written": {"cleanupPeriodDays": _SUGGESTED_RETENTION_DAYS},
+            "backup_path": backup_path}
+
+
+def _maybe_offer_retention(dry_run, quiet):
+    """Offer the retention config on a real, talkative run (design decision F).
+
+    A 30-day `cleanupPeriodDays` silently truncates the transcript history every
+    score is derived from, so ask before analysis -- but only when asking is
+    appropriate. `--dry-run` promises zero side effects, and `--quiet` promises only
+    errors and the report URL, while the offer prints a prompt and an undo hint.
+    `offer_retention_config()` owns the tty and already-set guards, so this decides
+    the flag policy only, and both call sites (upload and `--local`) share it.
+    """
+    if dry_run or quiet:
+        return
+    offer_retention_config()
+
 
 _REASON_LABELS = {
     "force":   "force re-upload",
@@ -64,7 +165,6 @@ _REASON_LABELS = {
     "current": "current month",
     "gap":     "missing on server",
     "refresh": "refresh (server snapshot predates month end)",
-    "contract-bridge": "rebuild comparable baseline",
     "backfill": "backfill",
 }
 
@@ -79,13 +179,6 @@ def _warn_unavailable_comparison(history):
             "  warning: uploaded history is unavailable or incompatible; "
             "uploading current month only and comparison remains unavailable"
         )
-
-
-def _warn_bridge_not_rebuilt():
-    print(
-        "  warning: comparable baseline was not rebuilt; current month will still upload "
-        "and the previous month will be retried later"
-    )
 
 
 def _release_result(status, current=None, latest=None, reason=None):
@@ -223,29 +316,32 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
     # detection helpers; backfill keeps the explicit trailing-N window list.
     if mode == "backfill":
         windows = month_windows(token_count, today, window_months=window_months)
+        forced_labels = frozenset()
     else:  # auto or force
-        anchors = months_to_upload(
+        # plan_upload (not months_to_upload) so the per-month REASON survives:
+        # the `force` upload directive stamped on each payload is bound to that
+        # month's own reason, never to the global mode string.
+        plan_reasons = plan_upload(
             today,
             history,
             force=(mode == "force"),
             active_contract=SCORE_CONTRACT_ID,
+            producible_coverage_for=default_producible_coverage_for,
         )
-        windows = windows_for_anchors(anchors, window_months=window_months)
+        anchors = [anchor for anchor, _ in plan_reasons]
+        forced_labels = frozenset(a for a, reason in plan_reasons if reason == "force")
+        windows = windows_for_anchors(anchors, window_months=window_months, today=today)
         if mode == "auto":
             _warn_unavailable_comparison(history)
 
     month_labels = [label for _, _, label in windows]
 
     if dry_run:
-        if mode == "backfill":
-            plan_pairs = [label for _, _, label in windows]
-        else:
-            plan_pairs = plan_upload(
-                today,
-                history,
-                force=(mode == "force"),
-                active_contract=SCORE_CONTRACT_ID,
-            )
+        # Reuse the plan computed above instead of recomputing it: a second
+        # plan_upload call would probe the filesystem for the previous month's
+        # producible coverage all over again for a provably identical answer.
+        plan_pairs = ([label for _, _, label in windows] if mode == "backfill"
+                      else plan_reasons)
         _print_dry_run_plan(mode, windows, plan_pairs)
         server.push_event("done", {
             "reportUrl": "",
@@ -289,6 +385,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
             quiet=quiet,
             window_months=window_months,
             file_prefix=prefix,
+            force=(label in forced_labels),
         )
 
     results = {}  # index -> report_url / sentinel
@@ -297,10 +394,16 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
     # (non-latest) month would otherwise exit 0 whenever the current month
     # succeeds -- exactly the silent reupload-loop data-floor this guards against.
     budget_violation = False
-    if mode == "auto":
-        for i, ((since, until, label), tok) in scheduled:
+    workers = min(_UPLOAD_CONCURRENCY, len(scheduled)) or 1
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {
+            ex.submit(_run_one, i, since, until, label, tok): (i, label)
+            for i, ((since, until, label), tok) in scheduled
+        }
+        for fut in as_completed(futs):
+            i, label = futs[fut]
             try:
-                results[i] = _run_one(i, since, until, label, tok)
+                results[i] = fut.result()
             except PayloadTooLarge as exc:
                 print(f"  error: {label} upload failed: {exc}")
                 results[i] = _UPLOAD_ERROR
@@ -308,43 +411,25 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
             except Exception:
                 print(f"  warning: {label} failed unexpectedly")
                 results[i] = _PAXEL_ERROR
-            if i == 0 and len(windows) == 2 and not _is_report_url(results[i]):
-                _warn_bridge_not_rebuilt()
-    else:
-        workers = min(_UPLOAD_CONCURRENCY, len(scheduled)) or 1
-        with ThreadPoolExecutor(max_workers=workers) as ex:
-            futs = {
-                ex.submit(_run_one, i, since, until, label, tok): (i, label)
-                for i, ((since, until, label), tok) in scheduled
-            }
-            for fut in as_completed(futs):
-                i, label = futs[fut]
-                try:
-                    results[i] = fut.result()
-                except PayloadTooLarge as exc:
-                    # Same unswallowable-failure contract as the auto-mode loop
-                    # above: a budget violation on any concurrent (--force /
-                    # --backfill) month must not crash the whole run with an
-                    # unhandled traceback -- that would skip push_event("done")
-                    # and server.shutdown() below, hanging the browser UI and
-                    # leaking the local HTTP server.
-                    print(f"  error: {label} upload failed: {exc}")
-                    results[i] = _UPLOAD_ERROR
-                    budget_violation = True
 
     # Aggregate deterministically from results keyed by window index. Automatic
     # success is anchored to the current (last planned) window.
     uploaded_count = sum(1 for r in results.values() if _is_report_url(r))
+    guarded_count = sum(1 for r in results.values() if _is_archived_only(r))
     failed = sum(1 for r in results.values() if r in (_UPLOAD_ERROR, _PAXEL_ERROR))
     last_report_url = None
+    last_guarded_url = None
     for i in sorted(results):
         if _is_report_url(results[i]) and (mode != "auto" or i == len(windows) - 1):
-            last_report_url = results[i]
+            last_report_url = _result_report_url(results[i])
+        if _is_archived_only(results[i]) and (mode != "auto" or i == len(windows) - 1):
+            last_guarded_url = _result_report_url(results[i])
 
     server.push_event("done", {
-        "reportUrl": last_report_url or "",
+        "reportUrl": last_report_url or last_guarded_url or "",
         "mirdashBase": mirdash_base,
         "uploaded": uploaded_count,
+        "guarded": guarded_count,
         "failed": failed,
         "total": len(windows),
         "noOpen": no_open,
@@ -358,6 +443,12 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
                 msg += f" ({failed} failed)"
             print(msg)
         print(f"  Report ready: {full_report}")
+    elif guarded_count:
+        if not quiet:
+            print(f"  [guarded] {guarded_count}/{len(windows)} months archived only; live profile unchanged")
+        if last_guarded_url:
+            full_report = urllib.parse.urljoin(mirdash_base + "/", last_guarded_url)
+            print(f"  Existing report: {full_report}")
     elif failed:
         print(f"  error: {failed}/{len(windows)} months failed to upload -- nothing was shared")
     else:
@@ -411,27 +502,30 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
     # detection helpers; backfill keeps the explicit trailing-N window list.
     if mode == "backfill":
         windows = month_windows(token_count, today, window_months=window_months)
+        forced_labels = frozenset()
     else:  # auto or force
-        anchors = months_to_upload(
+        # plan_upload (not months_to_upload) so the per-month REASON survives:
+        # the `force` upload directive stamped on each payload is bound to that
+        # month's own reason, never to the global mode string.
+        plan_reasons = plan_upload(
             today,
             history,
             force=(mode == "force"),
             active_contract=SCORE_CONTRACT_ID,
+            producible_coverage_for=default_producible_coverage_for,
         )
-        windows = windows_for_anchors(anchors, window_months=window_months)
+        anchors = [anchor for anchor, _ in plan_reasons]
+        forced_labels = frozenset(a for a, reason in plan_reasons if reason == "force")
+        windows = windows_for_anchors(anchors, window_months=window_months, today=today)
         if mode == "auto":
             _warn_unavailable_comparison(history)
 
     if dry_run:
-        if mode == "backfill":
-            plan_pairs = [label for _, _, label in windows]
-        else:
-            plan_pairs = plan_upload(
-                today,
-                history,
-                force=(mode == "force"),
-                active_contract=SCORE_CONTRACT_ID,
-            )
+        # Reuse the plan computed above instead of recomputing it: a second
+        # plan_upload call would probe the filesystem for the previous month's
+        # producible coverage all over again for a provably identical answer.
+        plan_pairs = ([label for _, _, label in windows] if mode == "backfill"
+                      else plan_reasons)
         _print_dry_run_plan(mode, windows, plan_pairs)
         sys.exit(0)
 
@@ -452,6 +546,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
             output_dir=output_dir,
             window_months=window_months,
             file_prefix=prefix,
+            force=(label in forced_labels),
         )
 
     results = {}  # index -> (result, summary)
@@ -465,11 +560,19 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
         results[i] = (result, summary)
         if _is_report_url(result) and not quiet:
             print(f"  ^ {label} uploaded")
+        elif _is_archived_only(result) and not quiet:
+            print(f"  ^ {label} guarded (archive only)")
 
-    if mode == "auto":
-        for i, ((since, until, label), tok) in scheduled:
+    workers = min(_UPLOAD_CONCURRENCY, len(scheduled)) or 1
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {
+            ex.submit(_run_one, since, until, label, tok): (i, label)
+            for i, ((since, until, label), tok) in scheduled
+        }
+        for fut in as_completed(futs):
+            i, label = futs[fut]
             try:
-                result, summary = _run_one(since, until, label, tok)
+                result, summary = fut.result()
             except PayloadTooLarge as exc:
                 print(f"  error: {label} upload failed: {exc}")
                 result, summary = _UPLOAD_ERROR, None
@@ -478,43 +581,23 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
                 print(f"  warning: {label} failed unexpectedly")
                 result, summary = _PAXEL_ERROR, None
             _record_result(i, label, result, summary)
-            if i == 0 and len(windows) == 2 and not _is_report_url(result):
-                _warn_bridge_not_rebuilt()
-    else:
-        workers = min(_UPLOAD_CONCURRENCY, len(scheduled)) or 1
-        with ThreadPoolExecutor(max_workers=workers) as ex:
-            futs = {
-                ex.submit(_run_one, since, until, label, tok): (i, label)
-                for i, ((since, until, label), tok) in scheduled
-            }
-            for fut in as_completed(futs):
-                i, label = futs[fut]
-                try:
-                    result, summary = fut.result()
-                except PayloadTooLarge as exc:
-                    # Same unswallowable-failure contract as the auto-mode loop
-                    # above: a budget violation on any concurrent (--force /
-                    # --backfill) month must not crash the whole run with an
-                    # unhandled traceback -- the other months' results (and the
-                    # final "uploaded N/M months" summary) must still surface.
-                    print(f"  error: {label} upload failed: {exc}")
-                    result, summary = _UPLOAD_ERROR, None
-                    budget_violation = True
-                _record_result(i, label, result, summary)
 
     # Aggregate deterministically from results keyed by window index.
     uploaded_count = sum(1 for r, _ in results.values() if _is_report_url(r))
+    guarded_count = sum(1 for r, _ in results.values() if _is_archived_only(r))
     failed = sum(1 for r, _ in results.values() if r in (_UPLOAD_ERROR, _PAXEL_ERROR))
     last_report_url = None
     last_summary = None
     for i in sorted(results):
         result, summary = results[i]
         if _is_report_url(result) and (mode != "auto" or i == len(windows) - 1):
-            last_report_url = result
+            last_report_url = _result_report_url(result)
             last_summary = summary
 
     if not quiet:
         msg = f"  uploaded {uploaded_count}/{len(windows)} months"
+        if guarded_count:
+            msg += f" ({guarded_count} guarded)"
         if failed:
             msg += f" ({failed} failed)"
         print(msg)
@@ -537,6 +620,10 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
         # window succeeded and would otherwise return here with exit 0.
         if budget_violation:
             sys.exit(1)
+        return
+
+    if guarded_count:
+        print(f"  guarded {guarded_count}/{len(windows)} months -- live profile unchanged")
         return
 
     # Mirror the web loop: a real failure must not be reported as "nothing to share".
@@ -563,6 +650,11 @@ def main(argv=None):
     allow_stale_cli = _ALLOW_STALE_CLI_FLAG in argv
     argv = [a for a in argv if a != _ALLOW_STALE_CLI_FLAG]
 
+    # Read early: both are needed before the --local branch returns, because a
+    # --local run analyses transcripts too and so has the same stake in retention.
+    quiet = "--quiet" in argv
+    dry_run = "--dry-run" in argv
+
     # --local mode: run analysis directly, no auth/upload
     if "--local" in argv:
         from gnomon.cli.local import main as local_main
@@ -574,19 +666,18 @@ def main(argv=None):
         if "--summary" not in local_argv:
             local_argv.append("--summary")
         output_dir = _resolve_output_dir(argv)
+        _maybe_offer_retention(dry_run, quiet)
         local_main(argv=local_argv, output_dir=output_dir)
         return
 
     # Flags consumed by this wrapper (not forwarded to paxel)
     wrapper_flags = {"--no-open", "--quiet", "--verbose", "--console", "--output-dir"}
     no_open = "--no-open" in argv
-    quiet = "--quiet" in argv
     verbose = "--verbose" in argv
     console = "--console" in argv
-    dry_run = "--dry-run" in argv
     output_dir = _resolve_output_dir(argv)
 
-    # Parse --window=N (trailing N-month scoring window; default 6)
+    # Parse --window=N (trailing N-month scoring window; default 1)
     window_months = parse_window(argv)
 
     # Determine operating mode
@@ -630,6 +721,8 @@ def main(argv=None):
 
     if mirdash_base == _DEFAULT_MIRDASH_BASE:
         _enforce_cli_freshness(allow_stale=allow_stale_cli)
+
+    _maybe_offer_retention(dry_run, quiet)
 
     if console:
         _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,

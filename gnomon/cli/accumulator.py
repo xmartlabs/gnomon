@@ -25,7 +25,9 @@ import time
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 
-from gnomon.config import parse_ts, line_count, strip_injections, planning_session_scope
+from gnomon.config import (
+    parse_ts, line_count, strip_injections, planning_session_scope, sidechain_label_scope,
+)
 from gnomon.scoring.inputs import _adjusted_doing
 from gnomon.taxonomy import (
     SCHEDULE_TOOLS, ASK_TOOLS, PLAN_MODE_TOOLS, PLAN_SIGNAL_TOOLS,
@@ -97,16 +99,27 @@ class Accumulator:
         self.session_ts = defaultdict(list)    # sessionId -> [epoch seconds]
         self.session_files = defaultdict(set)
 
+        # Typed user text only; bare slash commands stay out so prompt-length and
+        # politeness statistics do not include zero-length instructions.
         self.prompts_count = 0
         self.polite_prompts = 0
         self.prompt_lengths = []
         self.command_invocations = 0
+        # Bare slash commands complete the human-instruction denominator for
+        # `actions_per_prompt` without changing the typed-prompt metrics above.
+        self.command_only_prompts = 0
 
         self.assistant_turns = 0
         self.text_blocks = 0
         self.thinking_blocks = 0
         self.thinking_chars = 0
         self.tool_use_total = 0
+        # Sidechain calls remain in the total and are separately published so the
+        # top-level actions-per-instruction ratio can be reconstructed.
+        self.sidechain_tool_use_total = 0
+        # Count observed delegation from a source without sidechain labels. The
+        # scoring layer drops Steering for this case rather than guessing.
+        self.unlabelled_delegate_dispatches = 0
         self.tool_counter = Counter()
         self.cat_counter = Counter()
         # Planning DISPATCHES — the Skill call or Agent dispatch itself. Named 'dispatch',
@@ -131,6 +144,15 @@ class Accumulator:
         self.claude_child_facts = defaultdict(
             lambda: {"models": set(), "substantive_calls": 0, "writes": 0})
         self.skill_counter = Counter()
+        # Skill-counting dedup is corpus-lifetime and session-keyed; do not reset it per file.
+        # _skill_span_claimed: {(sid_or_fp, name)} claimed by a DISCRETE site
+        #   (injectedSkills, the Skill tool, a Read/Bash SKILL.md hit).
+        # _skill_span_pending: {(sid_or_fp, name): first_seen_mkey} recorded by the
+        #   per-turn `attributionSkill` site ONLY -- never incremented at record
+        #   time; resolved once by _flush_pending_skills().
+        self._skill_span_claimed = set()
+        self._skill_span_pending = {}
+        self._skill_flush_done = False
         self.subagent_counter = Counter()
         self.agents_per_session = defaultdict(int)
         self.session_subagent_types = defaultdict(set)  # sessionId -> distinct subagent roles
@@ -189,6 +211,15 @@ class Accumulator:
         # monthly progression ("YYYY-MM" buckets)
         self.month_prompts = Counter()
         self.month_tools = Counter()
+        # Month-scoped sibling of sidechain_tool_use_total. Threaded into
+        # build_monthly_scoring_stats so the monthly slice publishes the same
+        # `actions_per_prompt` DEFINITION the corpus and per-source slices do — otherwise the
+        # rolling series would mix two populations across months.
+        self.month_sidechain_tools = Counter()
+        # Month-scoped sibling of command_only_prompts, threaded into
+        # build_monthly_scoring_stats for the same reason: the monthly slice has to divide by
+        # the same population the corpus and per-source slices do.
+        self.month_command_only = Counter()
         self.month_churn = Counter()
         self.month_dates = defaultdict(set)
         self.month_sessions = defaultdict(set)
@@ -235,6 +266,12 @@ class Accumulator:
         self.source_files = Counter()
         self.source_sessions = defaultdict(set)
         self.source_prompts = Counter()
+        # NOTE: there is deliberately no per-source `command_only` Counter beside
+        # source_prompts. The per-source SCORING slice comes from a dedicated single-source
+        # Accumulator (gnomon/cli/local.py builds one per source and calls to_source_stats on
+        # it), so `command_only_prompts` is already source-scoped there; and the corpus-level
+        # `sources` rollup publishes prompts only. A second counter would be written and never
+        # read.
         self._plan_sessions_degraded = False
 
         # per-file transient state (reset in begin_file, flushed in end_file)
@@ -273,18 +310,80 @@ class Accumulator:
     def _git_cwds(self):
         return list(self.project_activity.keys())
 
-    def _record_skill(self, name, sid, mkey, planning_event_eligible=False):
+    def _scoped_git_churn(self, since_dt, until_dt):
+        """Real git churn scoped to the INTERSECTION of the requested window and
+        the corpus's own observed span (all_min_dt/all_max_dt), so numerator
+        (churn) and denominator (active_hours, itself already corpus-scoped) are
+        commensurate (design decision D: scope, not winsorize -- winsorizing
+        would need cross-user percentiles the local CLI does not have).
+
+        An empty corpus (no observed events) emits a zeroed dict and invokes NO
+        git subprocess at all -- not merely relying on an empty cwd list.
+        Returns (gc, gc_since, gc_until); gc_since/gc_until are None for an
+        empty corpus."""
+        if self.all_min_dt is None or self.all_max_dt is None:
+            return (
+                {"repos_seen": 0, "repos_with_commits": 0, "insertions": 0,
+                 "deletions": 0, "churn": 0, "commits": 0, "per_repo": []},
+                None, None,
+            )
+        _req_since = since_dt if since_dt is not None else self.all_min_dt
+        _req_until = until_dt if until_dt is not None else (self.all_max_dt + timedelta(days=1))
+        _gc_since_dt = max(_req_since, self.all_min_dt)
+        _gc_until_dt = min(_req_until, self.all_max_dt + timedelta(days=1))
+        gc_since = _gc_since_dt.strftime("%Y-%m-%d")
+        gc_until = _gc_until_dt.strftime("%Y-%m-%d")
+        return (git_churn(self._git_cwds(), gc_since, gc_until), gc_since, gc_until)
+
+    def _record_skill(self, name, sid, mkey, planning_event_eligible=False, per_turn=False):
+        """Record one skill signal.
+
+        `per_turn=True` (the `attributionSkill` per-turn site ONLY) defers the
+        counter increment: it records a pending span keyed by (session, skill)
+        and returns without touching skill_counter/month_skill_counter. Every
+        OTHER (discrete) site increments immediately AND claims the span, so a
+        later flush (_flush_pending_skills, run once at the start of
+        to_corpus_stats/to_source_stats) can skip anything already claimed and
+        credit anything that was only ever seen via per-turn attribution.
+
+        Dedup gates ONLY the two counter increments below. _mark_plan_session,
+        _record_planning_skill_signal and _pending_knowledge_grounding stay
+        unconditional and immediate so Planning/Context-Intelligence are not
+        perturbed by this change (design decision C)."""
         if not name:
             return
-        self.skill_counter[name] += 1
-        if mkey:
-            self.month_skill_counter[mkey][name] += 1
+        key = (sid or self._cur_fp, name)
+        if per_turn:
+            self._skill_span_pending.setdefault(key, mkey)
+        else:
+            self.skill_counter[name] += 1
+            if mkey:
+                self.month_skill_counter[mkey][name] += 1
+            self._skill_span_claimed.add(key)
         if self._is_plan_skill(name):
             self._mark_plan_session(sid, mkey)
             self._record_planning_skill_signal(
                 sid, mkey, event_eligible=planning_event_eligible)
         if self._is_knowledge_skill(name):
             self._pending_knowledge_grounding[sid] = True
+
+    def _flush_pending_skills(self):
+        """Idempotent. Resolves every per-turn `attributionSkill` span that was
+        never claimed by a discrete event (Skill tool / injectedSkills / Read
+        SKILL.md / Bash SKILL.md) in the same (session, skill) span, crediting
+        it exactly once. MUST run before any read of skill_counter /
+        month_skill_counter -- the only two entry points that read them are
+        to_corpus_stats and to_source_stats, both of which call this first."""
+        if self._skill_flush_done:
+            return
+        self._skill_flush_done = True
+        for key, mkey in self._skill_span_pending.items():
+            if key in self._skill_span_claimed:
+                continue
+            name = key[1]
+            self.skill_counter[name] += 1
+            if mkey:
+                self.month_skill_counter[mkey][name] += 1
 
     # ---- plan-ceremony (per-session) helpers -------------------------------
     @staticmethod
@@ -786,6 +885,14 @@ class Accumulator:
                     cleaned = strip_injections(text)
                     if is_command and not cleaned:
                         self.command_invocations += 1
+                        # A bare slash command IS a human instruction -- it just carries no
+                        # text for the length/politeness/quote machinery below, which is the
+                        # only reason it does not increment prompts_count. Counted here so
+                        # `actions_per_prompt` can divide by the whole instruction
+                        # population; see __init__ for why this is not folded in above.
+                        self.command_only_prompts += 1
+                        if mkey:
+                            self.month_command_only[mkey] += 1
                     elif cleaned:
                         self.prompts_count += 1
                         self.source_prompts[self._cur_src] += 1
@@ -857,7 +964,8 @@ class Accumulator:
                     self.month_model_tokens[mkey][mdl]["cache_creation"] += _tcc
             if ev.get("attributionSkill"):
                 self._record_skill(
-                    ev["attributionSkill"], sid, mkey, planning_event_eligible)
+                    ev["attributionSkill"], sid, mkey, planning_event_eligible,
+                    per_turn=True)
             content = msg.get("content")
             if isinstance(content, list):
                 _turn_agent_count = 0
@@ -876,8 +984,23 @@ class Accumulator:
                         name = b.get("name", "?")
                         inp = b.get("input", {}) if isinstance(b.get("input"), dict) else {}
                         self.tool_use_total += 1
+                        # Identity is an EVENT fact, so it is read here rather than derived
+                        # from the session: a parent transcript and its subagent turns share
+                        # one sessionId (see _cursor_jsonl_meta / the claude sidechain files),
+                        # so a session-level split would credit the parent.
+                        _sidechain_call = bool(ev.get("isSidechain"))
+                        if _sidechain_call:
+                            self.sidechain_tool_use_total += 1
                         self.tool_counter[name] += 1
                         _cat = classify_tool(name)
+                        # A dispatch on a source that cannot label sidechain means subagent
+                        # calls are about to be counted as top-level. Recorded here (on the
+                        # dispatch, where it is observable) so `sidechain_label_state` reflects
+                        # what this corpus actually did rather than what its adapter could in
+                        # principle mislabel.
+                        if (_cat == "delegate"
+                                and sidechain_label_scope(self._cur_src) == "cannot_label"):
+                            self.unlabelled_delegate_dispatches += 1
                         if (self._cur_src == "claude" and ev.get("isSidechain")
                                 and ev.get("agentId")):
                             child = self.claude_child_facts[ev["agentId"]]
@@ -931,6 +1054,8 @@ class Accumulator:
                                 self.month_session_ordered_tools[mkey][_fact_sid].append(_ordered_fact)
                         if mkey:
                             self.month_tools[mkey] += 1
+                            if _sidechain_call:
+                                self.month_sidechain_tools[mkey] += 1
                             self.month_tool_counter[mkey][name] += 1
                             if _cat == "delegate":
                                 self.month_delegate[mkey] += 1
@@ -1180,6 +1305,7 @@ class Accumulator:
     def to_corpus_stats(self, since_dt, until_dt, antigravity):
         """Build the full corpus stats dict. Also stashes self.gc (the raw git_churn
         dict) for the narrative payload main() consumes."""
+        self._flush_pending_skills()
         # ---- derive ----------------------------------------------------------
         # C4: aggregate_ordered applies cross-session consume-once plan credit
         # across the WHOLE corpus (not per-session derive_ordered_behavior).
@@ -1219,15 +1345,10 @@ class Accumulator:
         total_churn = self.lines_added + self.lines_removed   # tool-authored only (Edit/Write)
         code_velocity = (total_churn / active_hours) if active_hours > 0 else 0
 
-        # Gold-standard churn: real git insertions/deletions over the REQUESTED window.
-        if since_dt is not None or until_dt is not None:
-            gc_since = since_dt.strftime("%Y-%m-%d") if since_dt is not None else (self.all_min_dt.isoformat() if self.all_min_dt else "1970-01-01")
-            gc_until = (until_dt.strftime("%Y-%m-%d")
-                        if until_dt is not None else (self.all_max_dt.isoformat() if self.all_max_dt else "2100-01-01"))
-        else:
-            gc_since = self.all_min_dt.isoformat() if self.all_min_dt else "1970-01-01"
-            gc_until = self.all_max_dt.isoformat() if self.all_max_dt else "2100-01-01"
-        gc = git_churn(self._git_cwds(), gc_since, gc_until)
+        # Gold-standard churn: real git insertions/deletions, scoped to the
+        # INTERSECTION of the requested window and the corpus's own observed span
+        # (design decision D: scope, not winsorize -- see _scoped_git_churn).
+        gc, gc_since, gc_until = self._scoped_git_churn(since_dt, until_dt)
         self.gc = gc
         git_velocity = (gc["churn"] / active_hours) if active_hours > 0 else 0
 
@@ -1278,8 +1399,13 @@ class Accumulator:
         iteration_max = _ids["max"]
         heavy_files = _ids["heavy_files"]
 
-        actions_per_prompt = (self.tool_use_total / self.prompts_count) if self.prompts_count else 0
-        # autonomy proxy 0-100: weighted blend, transparent + bounded
+        # Top-level tool calls per human instruction. Bare commands count as
+        # instructions; `total_prompts` remains typed text for length statistics.
+        top_level_tool_calls = self.tool_use_total - self.sidechain_tool_use_total
+        total_instructions = self.prompts_count + self.command_only_prompts
+        actions_per_prompt = (
+            (top_level_tool_calls / total_instructions) if total_instructions else 0)
+        # Autonomy is a local diagnostic; its divisor is not a published scoring calibration.
         auto_actions = min(actions_per_prompt / 25.0, 1.0) * 45
         auto_deleg = min(delegate / max(total_sessions, 1) / 1.5, 1.0) * 20
         auto_sched = min((self.scheduled_actions + self.background_tasks) / max(total_sessions, 1), 1.0) * 15
@@ -1338,6 +1464,15 @@ class Accumulator:
                 "window": ({"since": since_dt.isoformat() if since_dt else None,
                             "until": until_dt.isoformat() if until_dt else None}
                            if (since_dt or until_dt) else None),
+                # The ACTUAL observed span of events that survived the window filter
+                # (always all_min_dt/all_max_dt), independent of `date_range` above --
+                # which reports the *requested* window verbatim when one is given.
+                # Never uploaded before this field (span_days, computed from the same
+                # two datetimes, already was) -- see design decision A's data flow.
+                "observed_range": [
+                    self.all_min_dt.isoformat() if self.all_min_dt else None,
+                    self.all_max_dt.isoformat() if self.all_max_dt else None,
+                ],
                 "span_days": span_days,
                 "active_days": active_days,
                 "timezone": f"{tzname} (UTC{tzoffset[:3]}:{tzoffset[3:]})",
@@ -1347,10 +1482,14 @@ class Accumulator:
                 "total_sessions": total_sessions,
                 "total_prompts": self.prompts_count,
                 "command_invocations": self.command_invocations,
+                # Persist the ratio denominator so it can be reconstructed from the payload.
+                "total_instructions": total_instructions,
                 "avg_prompt_length_chars": round(avg_prompt_len, 1),
                 "median_prompt_length_chars": round(median_prompt_len, 1),
                 "assistant_turns": self.assistant_turns,
                 "tool_calls_total": self.tool_use_total,
+                # Diagnostic sidechain count; rate terms continue to use the total.
+                "sidechain_tool_calls": self.sidechain_tool_use_total,
                 "thinking_blocks": self.thinking_blocks,
             },
             "tools": {
@@ -1399,6 +1538,10 @@ class Accumulator:
                 "shell_authored_lines_est": self.bash_authored_lines,
                 "active_hours": round(active_hours, 1),
                 "git_commits_grep": self.git_commits,
+                # Disclosure of the actual [since, until) bound git_churn ran over,
+                # after intersecting the requested window with the observed corpus
+                # span (design decision D) -- None for an empty corpus.
+                "git_churn_basis": [gc_since, gc_until],
             },
             "behavior": {
                 "planning_ratio_explore_to_doing": round(planning_ratio, 2),
@@ -1446,6 +1589,10 @@ class Accumulator:
                 "delegated_orchestratable_sessions": _delegated_orchestratable,
                 "ordered_facts_state": ("measured" if self.tool_use_total
                                         and self.ordered_facts_complete else "unmeasured"),
+                # A combined ratio is unmeasured when observed delegation lacks labels.
+                "sidechain_label_state": ("unmeasured"
+                                          if self.unlabelled_delegate_dispatches
+                                          else "measured"),
                 "linked_model_pairs": _routing_pairs,
                 "linked_model_routing_state": _routing_state,
                 "no_tool_activity": no_tool_activity,
@@ -1490,7 +1637,34 @@ class Accumulator:
         stats["_timing_compute_aq_s"] = time.monotonic() - _t0_aq
 
         # ---- per-calendar-month noticed_stats (GA1) -----------------------------
-        stats["monthly_noticed_stats"] = _build_monthly_noticed_stats(
+        stats["monthly_noticed_stats"] = self.to_monthly_noticed_stats()
+
+        # ---- per-month FULL stats slices (for scoring_inputs_by_source monthly) --
+        stats["_scoring_monthly_full"] = self.to_monthly(planning_ratio, no_tool_activity, all_sources_no_agent)
+        return stats
+
+    def to_monthly_noticed_stats(self):
+        """Per-calendar-month `noticed_stats` evidence, WITHOUT the rest of the corpus
+        pipeline.
+
+        `to_corpus_stats` calls this so there is one shaper and no drift, but a caller
+        that wants only the monthly block must be able to get it without paying for a
+        windowed `git_churn`, a `compute_aq` and a `to_monthly` it would discard. That
+        caller is the self-heal accumulator in gnomon/cli/local.py: under the one-month
+        scoring window the scored corpus produces a single monthly entry, which would end
+        mirdash's per-calendar-month self-heal, so a second corpus-only accumulator reads
+        a trailing multi-month window purely to reshape this block.
+
+        The two null-honesty flags are recomputed here from the same expressions
+        `to_corpus_stats` uses, so passing them in would only create a way for them to
+        disagree.
+        """
+        self._flush_pending_skills()
+        no_tool_activity = (self.tool_use_total == 0 and bool(self.source_sessions))
+        all_sources_no_agent = bool(self.source_sessions) and (
+            set(self.source_sessions.keys()) <= _AGENT_UNSUPPORTED_SOURCES
+        )
+        return _build_monthly_noticed_stats(
             months=sorted(set(self.month_dates) | set(self.month_prompts) | set(self.month_tools)
                           | set(self.month_tokens) | set(self.month_sessions)),
             month_prompts=self.month_prompts,
@@ -1528,18 +1702,17 @@ class Accumulator:
             dow=DOW,
         )
 
-        # ---- per-month FULL stats slices (for scoring_inputs_by_source monthly) --
-        stats["_scoring_monthly_full"] = self.to_monthly(planning_ratio, no_tool_activity, all_sources_no_agent)
-        return stats
-
     def to_monthly(self, planning_ratio, no_tool_activity, all_sources_no_agent):
         """Per-month full stats slices, shaped by the same builder for corpus and
         per-source so window AND month share one code path."""
         return build_monthly_scoring_stats(
             months=sorted(set(self.month_dates) | set(self.month_prompts) | set(self.month_tools)
-                          | set(self.month_tokens) | set(self.month_sessions)),
+                          | set(self.month_tokens) | set(self.month_sessions)
+                          | set(self.month_command_only)),
             sources_present=sorted(self.source_files),
             month_prompts=self.month_prompts, month_tools_count=self.month_tools,
+            month_sidechain_tools=self.month_sidechain_tools,
+            month_command_only=self.month_command_only,
             month_churn=self.month_churn, month_models=self.month_models,
             month_sessions=self.month_sessions, month_assistant_turns=self.month_assistant_turns,
             month_thinking_blocks=self.month_thinking_blocks,
@@ -1579,6 +1752,7 @@ class Accumulator:
         result matches what running _accumulate over this source's file slice produces
         (the pre-single-pass per-source path). Inheriting corpus-level flags here would
         flip a prompt-only source's null metrics from None to 0 and mis-bound its churn."""
+        self._flush_pending_skills()
         _s_tool_total = self.tool_use_total
         # C4: cross-session consume-once credit, scoped to this source's sessions.
         _s_agg = aggregate_ordered(self.session_ordered_tools.values())
@@ -1614,7 +1788,11 @@ class Accumulator:
 
         _s_total_churn = self.lines_added + self.lines_removed
         _s_prompts = self.prompts_count
-        _s_actions_per_prompt = round(_s_tool_total / _s_prompts, 1) if _s_prompts else 0
+        # Match the corpus numerator and denominator so a single-source corpus has one reading.
+        _s_top_level = _s_tool_total - self.sidechain_tool_use_total
+        _s_instructions = _s_prompts + self.command_only_prompts
+        _s_actions_per_prompt = (
+            round(_s_top_level / _s_instructions, 1) if _s_instructions else 0)
 
         _s_tc = self.tool_counter
         _s_diversity = len(_s_tc)
@@ -1633,19 +1811,9 @@ class Accumulator:
             self.planning_dispatch_calls)
         _s_planning_ratio = round((_s_explore / _s_doing) if _s_doing else 0, 2)
 
-        # Source-local git window: requested --since/--until, else this source's own
-        # event span (same formula to_corpus_stats uses for the corpus span).
-        if since_dt is not None or until_dt is not None:
-            _s_gc_since = since_dt.strftime("%Y-%m-%d") if since_dt is not None else (self.all_min_dt.isoformat() if self.all_min_dt else "1970-01-01")
-            _s_gc_until = (until_dt.strftime("%Y-%m-%d")
-                           if until_dt is not None else (self.all_max_dt.isoformat() if self.all_max_dt else "2100-01-01"))
-        else:
-            _s_gc_since = self.all_min_dt.isoformat() if self.all_min_dt else "1970-01-01"
-            _s_gc_until = self.all_max_dt.isoformat() if self.all_max_dt else "2100-01-01"
-        _s_gc_cwds = self._git_cwds()
-        _s_gc = git_churn(_s_gc_cwds, _s_gc_since, _s_gc_until) if _s_gc_cwds else {
-            "repos_seen": 0, "repos_with_commits": 0, "insertions": 0,
-            "deletions": 0, "churn": 0, "commits": 0, "per_repo": []}
+        # Source-local git window: same intersection formula as to_corpus_stats
+        # (design decision D), scoped to this source's own observed span.
+        _s_gc, _s_gc_since, _s_gc_until = self._scoped_git_churn(since_dt, until_dt)
         _s_sessions = len(self.session_ts) or len(self.session_files)
 
         s_stats = {
@@ -1657,7 +1825,9 @@ class Accumulator:
             "volume": {
                 "total_sessions": _s_sessions,
                 "total_prompts": self.prompts_count,
+                "total_instructions": _s_instructions,
                 "tool_calls_total": _s_tool_total,
+                "sidechain_tool_calls": self.sidechain_tool_use_total,
                 "assistant_turns": self.assistant_turns,
                 "thinking_blocks": self.thinking_blocks,
             },
@@ -1698,6 +1868,10 @@ class Accumulator:
                 "delegated_orchestratable_sessions": _s_delegated_orchestratable,
                 "ordered_facts_state": ("measured" if _s_tool_total
                                         and self.ordered_facts_complete else "unmeasured"),
+                # A source slice is unmeasured when its observed delegation lacks labels.
+                "sidechain_label_state": ("unmeasured"
+                                          if self.unlabelled_delegate_dispatches
+                                          else "measured"),
                 "linked_model_pairs": _s_routing_pairs,
                 "linked_model_routing_state": _s_routing_state,
                 "delegate_actions": _s_cats.get("delegate", 0),

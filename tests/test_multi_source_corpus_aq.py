@@ -35,7 +35,12 @@ def _claude_rows(sessions, calls_per_session, test_runs_per_session, day=10):
         sid = f"claude-{s}"
         cwd = "/Users/demo/proj"
         for i in range(calls_per_session):
-            ts = f"2026-03-{day:02d}T{10 + s:02d}:{i:02d}:00.000Z"
+            # One call per minute, rolled over into hours: a bare `{i:02d}` minute field
+            # silently emitted invalid timestamps (and dropped the calls) past i=59, which
+            # capped this fixture at 60 calls/session however many were requested.
+            minute_of_day = s * calls_per_session + i
+            ts = (f"2026-03-{day:02d}T{minute_of_day // 60:02d}:"
+                  f"{minute_of_day % 60:02d}:00.000Z")
             tool, tool_input = "Read", {"file_path": "/Users/demo/proj/a.py"}
             if i < test_runs_per_session:
                 tool, tool_input = "Bash", {"command": "python3 -m pytest tests/"}
@@ -84,14 +89,25 @@ class TestMultiSourceCorpusAq(unittest.TestCase):
         sess_dir = os.path.join(claude_dir, "proj-x")
         os.makedirs(sess_dir, exist_ok=True)
         with open(os.path.join(sess_dir, "session.jsonl"), "w", encoding="utf-8") as fh:
-            # One test run per 50 tool calls keeps Claude's own rate BELOW target, so the
-            # merged reading is an unsaturated number and the arithmetic stays visible.
-            for r in _claude_rows(sessions=4, calls_per_session=50, test_runs_per_session=1):
+            # Three test runs per 175 tool calls keeps Claude's own rate BELOW target, so
+            # the merged reading is an unsaturated number and the arithmetic stays visible.
+            # The pooled 12/1000 is exact in the 6-decimal rounding the axis publishes, so
+            # test_merged_rate_is_not_the_pooled_session_rate's ratio identity holds exactly.
+            #
+            # Both sources are sized so every slice clears aq.py's rate evidence floor
+            # (RATE_MIN_EXPECTED_AT_TARGET): the review-skill target implies >250 tool calls,
+            # and the earlier fixture gave Claude only 200, so its (measured zero) review
+            # term was dropped on the slice while the pooled corpus kept it -- comparing a
+            # one-term slice against a two-term merged axis. Rates are unchanged (still one
+            # unsaturated Claude test-run rate, still no codex test runs); only the
+            # denominators grew, to 175 and 10 calls/session against the 39-179
+            # calls/session real corpora span documented in aq.py.
+            for r in _claude_rows(sessions=4, calls_per_session=175, test_runs_per_session=3):
                 fh.write(json.dumps(r) + "\n")
         codex_dir = cls._mkdtemp("codex-")
         for i in range(30):
             with open(os.path.join(codex_dir, f"s{i}.jsonl"), "w", encoding="utf-8") as fh:
-                for r in _codex_rows(i, calls=3):
+                for r in _codex_rows(i, calls=10):
                     fh.write(json.dumps(r) + "\n")
         cls.stats, cls.summary = cls._run(claude_dir, codex_dir)
 
@@ -193,7 +209,7 @@ class TestMultiSourceCorpusAq(unittest.TestCase):
         self.assertGreater(claude_alone, codex_alone)
         self.assertGreaterEqual(merged, codex_alone)
         self.assertLessEqual(merged, claude_alone)
-        # Codex carries ~47% of the tool calls here, so it may not cost more than half.
+        # Codex carries 30% of the tool calls here, so it may not cost more than half.
         self.assertGreater(merged, claude_alone * 0.5)
 
     def test_summary_publishes_per_source_and_aggregate_profiles(self):

@@ -65,6 +65,59 @@ def planning_session_scope(source):
     return PLANNING_SESSION_SCOPE_BY_SOURCE.get(str(source or "").lower(), "unmeasured")
 
 
+# Which source adapters stamp a per-EVENT `isSidechain` flag, i.e. can authoritatively say
+# whether a tool call was made by the human's own turn or by a delegated subagent. Sibling of
+# PLANNING_SESSION_SCOPE_BY_SOURCE above, and the same kind of fact one level down: that map
+# is about root-vs-child SESSION identity, this one is about root-vs-child EVENT identity.
+#
+# claude carries the field natively; codex, cursor and opencode synthesize it in their
+# adapters (see `isSidechain` in gnomon/sources/{codex,cursor,opencode}.py, normalized in
+# gnomon/sources/__init__.py). gemini, pi and antigravity never emit it.
+#
+# This gates `behavior.actions_per_prompt`, whose numerator counts TOP-LEVEL calls only since
+# v12. A source that cannot label sidechain leaves its subagent calls in that numerator, so
+# the field means something different there -- and nothing in the payload distinguishes the two
+# meanings. Of the three non-labelling sources only `antigravity` also carries the `delegate`
+# capability (and maps `invoke_subagent -> Agent`, see gnomon/sources/antigravity.py), so it is
+# the one that can genuinely delegate and genuinely cannot label. gemini and pi need no special
+# case: without `delegate` they cannot produce a dispatch at all, so every call they record
+# really is top-level.
+#
+# Deliberately a set of LABELLING sources rather than a third source->state map: the state is
+# compositional (see `sidechain_label_scope`), so deriving it from this set plus SOURCE_CAPS
+# keeps one fact in one place instead of two that can drift apart.
+SIDECHAIN_LABELLING_SOURCES = {"claude", "codex", "cursor", "opencode"}
+
+
+def sidechain_label_scope(source):
+    """Whether `actions_per_prompt`'s top-level numerator is trustworthy for this source.
+
+      "measured"        - the adapter labels sidechain events, OR the source cannot delegate
+                          at all (nothing to mislabel, so the numerator is exact).
+      "cannot_label"    - the source can delegate but emits no sidechain flag, so any subagent
+                          call it made is counted as top-level.
+
+    "cannot_label" is a statement about the ADAPTER's capability, not about the corpus. Whether
+    a given corpus was actually affected depends on whether it delegated, which only the
+    accumulator can see -- see `Accumulator`'s unlabelled-dispatch counter. A source that
+    cannot label but never dispatched has an exact ratio and stays scored.
+
+    An UNKNOWN source id fails CLOSED to "cannot_label": it is absent from the labelling set,
+    and `available_caps`'s fail-OPEN default hands it `delegate`. That is the opposite default
+    from `available_caps` and deliberately so -- failing open there avoids penalizing a source
+    for a signal it might be able to emit, whereas failing open HERE would mean trusting a
+    top-level count from an adapter nobody has checked. The case is close to unreachable in
+    practice (`discover_sources` only yields mapped ids, and replay refuses unmapped ones via
+    `_require_known_source_identity`), so this is a safety net rather than a live path.
+    """
+    key = str(source or "").lower()
+    if key in SIDECHAIN_LABELLING_SOURCES:
+        return "measured"
+    if "delegate" not in SOURCE_CAPS.get(key, _ALL_CAPS):
+        return "measured"
+    return "cannot_label"
+
+
 def available_caps(sources):
     """Union of capabilities across the sources present in this run. Unknown sources are
     assumed fully capable (don't silently strip signal for a source we haven't mapped)."""

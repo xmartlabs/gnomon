@@ -28,8 +28,8 @@ from gnomon.scoring.aq import (
 )
 from gnomon.scoring.archetype import pick_archetype
 from gnomon.scoring.inputs import SCORING_INPUTS_VERSION, build_scoring_inputs
-from gnomon.scoring.aggregate import AQ_BUCKETS, RECENCY_BLEND_ENABLED, RECENT_WEIGHT, HISTORY_WEIGHT, _blend_aq
 from gnomon.cli.accumulator import Accumulator
+from gnomon.coverage import month_index as _coverage_month_index, coverage_for as _coverage_for
 from gnomon.output.summary import build_summary
 from gnomon.output.report import write_report
 from gnomon.output.narrative import write_narrative_input
@@ -55,20 +55,72 @@ _TOOLS_DIAG = [
 ]
 
 
-def _rolling_aq_bucket_windows(until_dt=None, now=None):
-    """Return rolling AQ windows anchored at the effective scoring end."""
-    now = now or datetime.now().astimezone()
-    anchor = min(until_dt, now) if until_dt is not None else now
-    return [
-        {
-            "id": bucket["id"],
-            "configured_weight": bucket["configured_weight"],
-            "day_bounds": {"lower": bucket["lower_days"], "upper": bucket["upper_days"]},
-            "since": anchor - timedelta(days=bucket["upper_days"]),
-            "until": anchor - timedelta(days=bucket["lower_days"]),
-        }
-        for bucket in AQ_BUCKETS
-    ]
+# How many trailing calendar months the per-calendar-month EVIDENCE block is shaped over.
+# This is NOT the scoring window (that is aq.DEFAULT_SCORING_WINDOW_MONTHS = 1, and it is
+# the only one published as `context.window_months`). Nothing here is ever scored.
+#
+# Why the two must differ. mirdash stores one `buildMetricMonthlyStats` row per entry of
+# `noticed_stats_monthly`, keyed (userEmail, monthKey, anchorMonthKey), and every read
+# dedupes per monthKey keeping the GREATEST anchorMonthKey (`dedupeMonthlyStats` in
+# apps/web/convex/buildMetrics.ts). A trailing N-month block therefore lets each upload
+# re-state the previous N-1 months and win that dedupe -- that is the self-heal: a counting
+# fix, a re-scored month, or a month whose transcripts were thin at the time gets corrected
+# by the next upload instead of being frozen forever. Shipping the one-month scoring block
+# here would leave each month writable only by its own anchor and end the self-heal
+# silently, with no test failing.
+#
+# Why 6. The reach is bounded by what is still on disk to re-read, not by taste:
+# gnomon/cli/insights.py offers `cleanupPeriodDays = 180` (_SUGGESTED_RETENTION_DAYS), so
+# ~6 months is the deepest history gnomon itself asks users to keep. Reaching further back
+# would re-state months from whatever fragment survived retention and, because that
+# re-statement carries the newest anchor, it would WIN the dedupe and degrade a stored row
+# that was written when the transcripts were complete -- the same degradation the ingest
+# guard exists to stop, arriving through the door the guard does not watch. 6 also equals
+# the window that was in force before the 1-month change, so the healed depth does not
+# shrink relative to what shipped: what changes is that the SCORE narrows to one month
+# while the evidence stays six.
+#
+# Cost, MEASURED on a real 2,596-file 8-source corpus at anchor 2026-07, not estimated:
+#   pre-2.A, 6-month SCORING window (what shipped)      accumulate 126.9 s
+#   post-2.A, 1-month score + this 6-month self-heal    accumulate  73.7 s   (-42%)
+#   1-month score with this accumulator disabled        accumulate  37.8 s   (+95%)
+# A large net win against what actually shipped -- the per-source accumulators now span one
+# month while a single corpus-only accumulator covers the six -- but it is NOT free, and an
+# earlier plan calling it "~0 extra parse" was wrong. (Those figures were taken while the
+# recency blend still ran two more accumulator sets per source; v11 removed them, so the
+# real cost today is lower than measured here, never higher.) The event fan-out really
+# is nearly free (the stream is already materialized and `observe` is reentrant, taking its
+# window as a parameter), but `file_scan_since` has to widen to this window, which re-admits
+# every file the one-month mtime pre-filter would have skipped. That re-admitted parse is
+# the whole +95%.
+MONTHLY_SELF_HEAL_MONTHS = 6
+
+
+def _self_heal_since(since_dt, months=None):
+    """Start of the trailing self-heal window, or None when no second accumulator is needed.
+
+    Rolls `since_dt` back to the first instant of the calendar month `months - 1` months
+    before it, so the window is a whole number of calendar months ending where the scoring
+    window ends -- the same trailing-window shape `_anchor_window` produces.
+
+    None means "the scoring accumulator already reads everything the self-heal would":
+    an open-ended run (no `--since`) has no lower bound to widen, and a `months <= 1`
+    configuration asks for exactly the scoring window. Returning None rather than a
+    redundant window is what keeps the second accumulator off the hot path for a plain
+    `--local` run.
+
+    `months` defaults to None and is resolved from the module constant HERE, not bound as
+    a default argument value: a default is evaluated once at import, so
+    `MONTHLY_SELF_HEAL_MONTHS` would be frozen into the signature and overriding the module
+    attribute -- the obvious way to test or tune the reach -- would silently do nothing.
+    """
+    if months is None:
+        months = MONTHLY_SELF_HEAL_MONTHS
+    if since_dt is None or months <= 1:
+        return None
+    total = since_dt.year * 12 + (since_dt.month - 1) - (months - 1)
+    return since_dt.replace(year=total // 12, month=total % 12 + 1, day=1,
+                            hour=0, minute=0, second=0, microsecond=0)
 
 
 def tools_diagnostic(stats):
@@ -77,6 +129,16 @@ def tools_diagnostic(stats):
     count/tool_call against a per-tool-call target, absolutes score the raw count. A self-check
     for the user and the calibration sample for those targets. Reads the already-computed
     signals in stats['agentic']; no recomputation.
+
+    ONE WINDOW, both sides of the ratio. The numerators come out of `stats['agentic']` and
+    the denominator out of `stats['volume']`, so the two must describe the same corpus.
+    They did not until v11: the published AQ was a recency blend, and `_blend_aq` copies
+    each axis's `signals` from its highest-weight component (`recent_30d`, the trailing 30
+    days) while `volume.tool_calls_total` stayed scoped to the whole scoring window. Every
+    count in this table silently dropped any day of the scored month that fell outside
+    those 30 days -- measured on a 31-day month with 140 of 200 test runs on the 1st, the
+    table printed 60/200 = 0.30 for a habit whose real rate was 1.00. Removing the blend
+    fixed it by construction; `tests/test_recency_blend_removed.py` pins it.
 
     A zero tool-call corpus reports 0.000, matching aq.rate's fail-closed: clamping the
     denominator to 1 would print a saturated rate for a corpus that did no tool work."""
@@ -214,6 +276,27 @@ def main(argv=None, output_dir=None):
     source_files = narrative["source_files"]
     source_sessions = narrative["source_sessions"]
 
+    # ---- coverage-index (honest-aq-series): NEW, isolated observability lane --
+    # Never a scoring input -- composed outside scoring_inputs* entirely (real
+    # per-month session sets from this run, not the mtime-estimated pre-check
+    # gnomon.coverage.probe_month uses before a full accumulator run).
+    _history_idx = _coverage_month_index()
+    stats["coverage"] = {
+        mkey: _coverage_for(_history_idx.get(mkey), sids)
+        for mkey, sids in sorted(narrative.get("month_sessions", {}).items())
+    }
+
+    # ---- per-calendar-month evidence: the SELF-HEAL window, not the scoring window ---
+    # The scored corpus is one calendar month, so its monthly block has one entry --
+    # enough to score, not enough to keep mirdash's per-month self-heal alive (see
+    # MONTHLY_SELF_HEAL_MONTHS). Replace it with the trailing multi-month block before
+    # anything reads it: write_report, stats.json and build_summary all publish this key,
+    # and nothing scores off it (grep monthly_noticed_stats -- summary.py's
+    # `noticed_stats_monthly` is its only consumer, and it is evidence, not an input).
+    _self_heal_monthly = narrative.get("_self_heal_monthly_noticed_stats")
+    if _self_heal_monthly is not None:
+        stats["monthly_noticed_stats"] = _self_heal_monthly
+
     # ---- per-source scoring inputs (single-pass, from _accumulate) ----------
     # The per-source accumulators were tracked during the corpus _accumulate() run,
     # so we can build scoring_inputs without re-running _accumulate per source.
@@ -252,87 +335,42 @@ def main(argv=None, output_dir=None):
     # needed to later RE-derive that exact value from a persisted payload are gone.
     _payload_omitted = []
 
-    # Recompute the public corpus AQ now that source capability boundaries are available.
+    # The public corpus AQ, scored once over the merged corpus now that source capability
+    # boundaries are available. Since v11 this is FINAL -- it is what `profile.aq`
+    # publishes. Until v11 a recency blend overwrote it here with
+    # `0.65 * recent_30d + 0.35 * this`, which at a one-month scoring window averaged the
+    # month against itself (93.3-100% day overlap, measured 0.0-point effect) while
+    # replacing every axis's `signals` with the 30-day bucket's -- see the recency-blend
+    # block at the top of gnomon/scoring/aggregate.py.
     stats["agentic"] = compute_aq(stats)
 
-    # ---- rolling bucket scoring (internal raw inputs; only scored AQ is shared) ----
-    if RECENCY_BLEND_ENABLED:
-        bucket_metadata = [
-            {key: bucket[key] for key in ("id", "configured_weight", "day_bounds")}
-            for bucket in narrative.get("_aq_bucket_windows", [])
-        ]
-        bucket_scoring_by_source = {}
-        for bucket_id, per_source in narrative.get("_aq_bucket_per_source_stats", {}).items():
-            bucket_scoring_by_source[bucket_id] = {}
-            for src in srcs_present:
-                bucket_stats = per_source.get(src)
-                if bucket_stats is not None:
-                    bucket_scoring_by_source[bucket_id][src] = {
-                        "window": build_scoring_inputs(bucket_stats),
-                    }
-        stats["_aq_bucket_scoring_inputs_by_source"] = bucket_scoring_by_source
-        stats["_aq_bucket_metadata"] = bucket_metadata
+    # No bucket_scoring_inputs block ships any more: nothing computes a recency blend, so
+    # there is no bucket to persist for a later replay. Named in `omitted` rather than
+    # silently absent, so a reader branching on `omitted` alone (as
+    # docs/metrics-by-source.md documents) can tell "this runtime no longer blends" apart
+    # from "budget-trimmed" or "older client that never had the capability".
+    _payload_omitted.append({"feature": "bucket_scoring_inputs",
+                             "reason": "recency_blend_removed"})
 
-        # ---- shippable recency-blend replay block (Gap B, corpus-only) --------
-        # Per-source recent_30d bucket blocks are trimmed from the shipped payload
-        # (the cheapest available payload-budget lever, see tests/test_payload_budget.py),
-        # so only the merged bucket-corpus block ships. gnomon/scoring/replay.py's
-        # single-source path uses this corpus block for an EXACT recency blend
-        # (single-source corpus IS that one source); its multi-source path blends
-        # it against the approximate per-source-mean base value for a coarser,
-        # still-approximate recency correction -- see that module's docstring for
-        # the full approximate multi-source contract.
-        bucket_corpus_blocks = {}
-        for bucket_id, bucket_stats_raw in narrative.get("_aq_bucket_stats", {}).items():
-            bucket_block = build_scoring_inputs(bucket_stats_raw)
-            bucket_block["corpus"] = {"sources": {s: {} for s in srcs_present}}
-            bucket_corpus_blocks[bucket_id] = {"window": bucket_block}
-        stats["_bucket_scoring_inputs"] = {
-            "metadata": bucket_metadata,
-            "corpus": bucket_corpus_blocks,
-        }
-        _payload_omitted.append({"feature": "bucket_scoring_inputs.by_source",
-                                  "reason": "trimmed_unconditionally"})
-
-        corpus_components = []
-        metadata_by_id = {entry["id"]: entry for entry in bucket_metadata}
-        for bucket_id, bucket_stats in narrative.get("_aq_bucket_stats", {}).items():
-            if (bucket_stats.get("volume", {}).get("total_sessions", 0) or 0) <= 0:
-                continue
-            metadata = metadata_by_id[bucket_id]
-            bucket_stats["scoring_inputs_by_source"] = bucket_scoring_by_source.get(bucket_id, {})
-            corpus_components.append(dict(metadata, aq=compute_aq(bucket_stats)))
-        if corpus_components:
-            full_corpus_aq = stats["agentic"]
-            stats["_full_window_agentic"] = full_corpus_aq
-            corpus_components.append({
-                "id": "full_window",
-                "configured_weight": HISTORY_WEIGHT,
-                "aq": full_corpus_aq,
-            })
-            stats["agentic"] = _blend_aq(full_corpus_aq, corpus_components)
-    else:
-        # bucket_scoring_inputs is entirely absent from this payload -- name why
-        # in `omitted` too, not only via the separate recency_blend.enabled
-        # marker below, so a reader branching on `omitted` alone (as
-        # docs/metrics-by-source.md documents) can tell "blend disabled for
-        # this run" apart from "budget-trimmed" or "older client".
-        _payload_omitted.append({"feature": "bucket_scoring_inputs",
-                                  "reason": "recency_blend_disabled"})
-
-    # NOTE: these two keys (bucket_scoring_inputs, payload_features) are
-    # internal-only working fields on `stats`, kept underscore-prefixed on
-    # purpose -- see the stats_for_disk filter below and the narrative-input
-    # filter just above write_narrative_input(). summary.py's build_summary()
-    # reads them via their underscored names and publishes them under their
-    # real (non-underscored) names in summary.json only; they must never reach
-    # stats.json or the archetype/traits LLM prompt (narrative_input.md).
+    # NOTE: payload_features is an internal-only working field on `stats`, kept
+    # underscore-prefixed on purpose -- see the stats_for_disk filter below and the
+    # narrative-input filter just above write_narrative_input(). summary.py's
+    # build_summary() reads it via its underscored name and publishes it under its real
+    # (non-underscored) name in summary.json only; it must never reach stats.json or the
+    # archetype/traits LLM prompt (narrative_input.md).
+    #
+    # `bucket_scoring_inputs` stays in `supported`: replay() still understands the block,
+    # and a payload store full of pre-v11 payloads that carry one is exactly what that
+    # capability list describes. `recency_blend.enabled` is kept as an explicit False
+    # rather than dropped -- a consumer must be able to tell "this runtime does not blend"
+    # from "older client, marker never existed". Its `history_weight` sibling is gone with
+    # the blend: reporting a weight no live score applies would be a fiction.
     stats["_payload_features"] = {
         "version": 1,
         "supported": ["bucket_scoring_inputs", "upload_size_guard"],
-        "emitted": (["bucket_scoring_inputs"] if "_bucket_scoring_inputs" in stats else []),
+        "emitted": [],
         "omitted": _payload_omitted,
-        "recency_blend": {"enabled": RECENCY_BLEND_ENABLED, "history_weight": HISTORY_WEIGHT},
+        "recency_blend": {"enabled": False},
     }
 
     _t_scoring_inputs = time.monotonic() - _t0_si
@@ -340,22 +378,20 @@ def main(argv=None, output_dir=None):
     stats.pop("_scoring_monthly_full", None)
 
     write_report(stats, output_dir=_out_dir)
-    # The recompute-grade-payload blocks are needed in summary.json only (see
-    # build_summary()) -- they must not inflate the archetype/traits LLM
-    # prompt with data the narrative pass never reads.
+    # payload_features is a summary.json-only marker (see build_summary()) -- it must not
+    # inflate the archetype/traits LLM prompt with data the narrative pass never reads.
     _narrative_stats = {
         key: value for key, value in stats.items()
-        if key not in {"_bucket_scoring_inputs", "_payload_features"}
+        if key != "_payload_features"
     }
     write_narrative_input(_narrative_stats, opening_prompts, longest_prompts, output_dir=_out_dir)
     _t0_scores = time.monotonic()
     scores = compute_scores(stats)
     _t_compute_scores = time.monotonic() - _t0_scores
-    archetype_stats = stats
-    if stats.get("_full_window_agentic"):
-        archetype_stats = dict(stats)
-        archetype_stats["agentic"] = stats["_full_window_agentic"]
-    archetype, quote = pick_archetype(archetype_stats, scores)
+    # `stats["agentic"]` IS the full-window AQ since v11 (nothing overwrites it with a
+    # blend), so the archetype reads it directly -- there is no second, unblended copy to
+    # swap back in.
+    archetype, quote = pick_archetype(stats, scores)
 
     # ---- assemble timing metadata ------------------------------------------
     _t_compute_aq = stats.pop("_timing_compute_aq_s", 0)
@@ -371,9 +407,7 @@ def main(argv=None, output_dir=None):
     }
 
     stats_for_disk = {key: value for key, value in stats.items()
-                      if key not in {"_aq_bucket_scoring_inputs_by_source",
-                                     "_aq_bucket_metadata", "_full_window_agentic",
-                                     "_bucket_scoring_inputs", "_payload_features"}}
+                      if key != "_payload_features"}
     with open(os.path.join(_out_dir, "stats.json"), "w", encoding="utf-8") as f:
         json.dump(stats_for_disk, f, indent=2, default=str)
 
@@ -455,15 +489,24 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
     _srcs_present = sorted({s for s, _, _ in sources})
     src_accums = {s: Accumulator() for s in _srcs_present}
 
-    bucket_windows = (_rolling_aq_bucket_windows(until_dt) if RECENCY_BLEND_ENABLED else [])
-    bucket_corpora = {bucket["id"]: Accumulator() for bucket in bucket_windows}
-    bucket_src_accums = {
-        bucket["id"]: {source: Accumulator() for source in _srcs_present}
-        for bucket in bucket_windows
-    }
+    # ---- self-heal accumulator (corpus-only, trailing multi-month) --------------
+    # Same events, wider window, shaped ONLY into the per-calendar-month evidence block
+    # (see MONTHLY_SELF_HEAL_MONTHS, which carries the measured cost). The FAN-OUT itself
+    # is nearly free -- the event stream is already materialized below and `observe` is
+    # reentrant, taking its window as a parameter and never writing to the event -- so this
+    # is one more target alongside the 2 + 2·N_sources that already run. The real cost is
+    # the widened `file_scan_since` just below. None when the scoring window is already
+    # open-ended, in which case the corpus accumulator IS the self-heal corpus.
+    self_heal_since = _self_heal_since(since_dt)
+    self_heal_corpus = Accumulator() if self_heal_since is not None else None
+
     file_scan_since = since_dt
-    if since_dt is not None and bucket_windows:
-        file_scan_since = min(since_dt, min(bucket["since"] for bucket in bucket_windows))
+    if since_dt is not None and self_heal_since is not None:
+        # The mtime pre-filter must not clip a file the WIDEST reader still needs. Until
+        # v11 the recency bucket could reach up to two days before `since_dt` and was part
+        # of this minimum; the self-heal accumulator is now the only reader that looks
+        # further back than the scoring window.
+        file_scan_since = min(since_dt, self_heal_since)
 
     # ---- narrative quote candidates (corpus-only, never serialized) ----------
     phrase_counts = Counter()      # normalized short prompt -> times seen
@@ -488,9 +531,8 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
         sa = src_accums[cur_src]
         corpus.begin_file(cur_src, fp)
         sa.begin_file(cur_src, fp)
-        for bucket in bucket_windows:
-            bucket_corpora[bucket["id"]].begin_file(cur_src, fp)
-            bucket_src_accums[bucket["id"]][cur_src].begin_file(cur_src, fp)
+        if self_heal_corpus is not None:
+            self_heal_corpus.begin_file(cur_src, fp)
         if verbose and corpus.files_parsed % 300 == 0:
             print(f"  ...{corpus.files_parsed}/{total_file_count}")
 
@@ -510,18 +552,14 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
             ):
                 corpus.skip_file()
                 sa.skip_file()
-                for bucket in bucket_windows:
-                    bucket_corpora[bucket["id"]].skip_file()
-                    bucket_src_accums[bucket["id"]][cur_src].skip_file()
+                if self_heal_corpus is not None:
+                    self_heal_corpus.skip_file()
                 continue
             for ev in _ev_list:
                 info = corpus.observe(ev, since_dt, until_dt)
                 sa.observe(ev, since_dt, until_dt)
-                for bucket in bucket_windows:
-                    bucket_corpora[bucket["id"]].observe(
-                        ev, bucket["since"], bucket["until"])
-                    bucket_src_accums[bucket["id"]][cur_src].observe(
-                        ev, bucket["since"], bucket["until"])
+                if self_heal_corpus is not None:
+                    self_heal_corpus.observe(ev, self_heal_since, until_dt)
                 if info is None:
                     continue
                 # ---- narrative: verbatim-quote candidates from a genuine prompt ----
@@ -562,9 +600,8 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
                     del longest_prompts[120:]
         corpus.end_file()
         sa.end_file()
-        for bucket in bucket_windows:
-            bucket_corpora[bucket["id"]].end_file()
-            bucket_src_accums[bucket["id"]][cur_src].end_file()
+        if self_heal_corpus is not None:
+            self_heal_corpus.end_file()
 
     # ---- whole-corpus stats (also stashes corpus gc window + null-honesty flag) --
     stats = corpus.to_corpus_stats(since_dt, until_dt, antigravity)
@@ -584,32 +621,6 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
             continue
         _per_source_stats[_src_name] = _sa.to_source_stats(_src_name, since_dt, until_dt)
 
-    # ---- rolling AQ bucket stats (internal only) -------------------------------
-    bucket_stats = {}
-    bucket_per_source_stats = {}
-    for bucket in bucket_windows:
-        bucket_id = bucket["id"]
-        bucket_corpus = bucket_corpora[bucket_id]
-        bucket_corpus.project_activity = {}
-        for source_accumulator in bucket_src_accums[bucket_id].values():
-            source_accumulator.project_activity = {}
-        bucket_stats[bucket_id] = bucket_corpus.to_source_stats(
-            ",".join(_srcs_present), bucket["since"], bucket["until"])
-        # to_source_stats accepts one source name, but this accumulator is the
-        # multi-source corpus. Restore the real source keys so capability-aware
-        # AQ sees the same union as the full-window corpus.
-        bucket_stats[bucket_id]["corpus"]["sources"] = {
-            source_name: {}
-            for source_name in _srcs_present
-        }
-        bucket_per_source_stats[bucket_id] = {}
-        for source_name, source_accumulator in bucket_src_accums[bucket_id].items():
-            if _single_source:
-                bucket_per_source_stats[bucket_id][source_name] = bucket_stats[bucket_id]
-                continue
-            bucket_per_source_stats[bucket_id][source_name] = source_accumulator.to_source_stats(
-                source_name, bucket["since"], bucket["until"])
-
     narrative = {
         "opening_prompts": opening_prompts,
         "longest_prompts": longest_prompts,
@@ -621,10 +632,19 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
         "gc": corpus.gc,
         "source_files": corpus.source_files,
         "source_sessions": corpus.source_sessions,
+        # coverage-index capability: real (not mtime-estimated) per-month
+        # session-id sets, composed against history.jsonl's month_index() by
+        # main() into stats["coverage"] -- see gnomon/coverage.py.
+        "month_sessions": dict(corpus.month_sessions),
         "_per_source_stats": _per_source_stats,
-        "_aq_bucket_windows": bucket_windows,
-        "_aq_bucket_per_source_stats": bucket_per_source_stats,
-        "_aq_bucket_stats": bucket_stats,
+        # Trailing multi-month per-calendar-month evidence, or None when the scoring
+        # window already covers everything the self-heal would read. Shaped by the
+        # monthly builder DIRECTLY, never through to_corpus_stats: that would run a
+        # second windowed git_churn, a second compute_aq and a second to_monthly, all
+        # of which this block throws away.
+        "_self_heal_monthly_noticed_stats": (
+            self_heal_corpus.to_monthly_noticed_stats()
+            if self_heal_corpus is not None else None),
     }
     return stats, narrative
 

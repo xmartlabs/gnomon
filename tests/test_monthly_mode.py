@@ -12,6 +12,7 @@ import datetime
 import calendar
 import os
 import sys
+import threading
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -96,41 +97,48 @@ class TestDecideMode(unittest.TestCase):
 
 
 class TestMonthWindowsCurrentMonth(unittest.TestCase):
-    def test_march_returns_march_window(self):
-        windows = month_windows(1, datetime.date(2025, 3, 15))
+    """Current-month windows use a trailing 30-day window from today."""
+
+    def test_march_returns_trailing_window(self):
+        today = datetime.date(2025, 3, 15)
+        windows = month_windows(1, today)
         self.assertEqual(len(windows), 1)
         since, until, label = windows[0]
-        self.assertEqual(since, "2025-03-01")
-        self.assertEqual(until, "2025-04-01")
+        self.assertEqual(since, (today - datetime.timedelta(days=30)).isoformat())
+        self.assertEqual(until, (today + datetime.timedelta(days=1)).isoformat())
         self.assertEqual(label, "2025-03")
 
     def test_january_year_rollover(self):
-        # January: since = YYYY-01-01, until = YYYY-02-01 (same year)
-        windows = month_windows(1, datetime.date(2026, 1, 5))
+        today = datetime.date(2026, 1, 5)
+        windows = month_windows(1, today)
         since, until, label = windows[0]
-        self.assertEqual(since, "2026-01-01")
-        self.assertEqual(until, "2026-02-01")
+        # Trailing 30 days from Jan 5 crosses the year boundary
+        self.assertEqual(since, (today - datetime.timedelta(days=30)).isoformat())
+        self.assertEqual(until, (today + datetime.timedelta(days=1)).isoformat())
         self.assertEqual(label, "2026-01")
 
-    def test_december_until_is_next_jan(self):
-        windows = month_windows(1, datetime.date(2025, 12, 1))
+    def test_december_trailing(self):
+        today = datetime.date(2025, 12, 1)
+        windows = month_windows(1, today)
         since, until, label = windows[0]
-        self.assertEqual(since, "2025-12-01")
-        self.assertEqual(until, "2026-01-01")
+        self.assertEqual(since, (today - datetime.timedelta(days=30)).isoformat())
+        self.assertEqual(until, (today + datetime.timedelta(days=1)).isoformat())
         self.assertEqual(label, "2025-12")
 
     def test_first_day_of_month(self):
-        windows = month_windows(1, datetime.date(2025, 6, 1))
+        today = datetime.date(2025, 6, 1)
+        windows = month_windows(1, today)
         since, until, label = windows[0]
-        self.assertEqual(since, "2025-06-01")
-        self.assertEqual(until, "2025-07-01")
+        self.assertEqual(since, (today - datetime.timedelta(days=30)).isoformat())
+        self.assertEqual(until, (today + datetime.timedelta(days=1)).isoformat())
         self.assertEqual(label, "2025-06")
 
     def test_last_day_of_month(self):
-        windows = month_windows(1, datetime.date(2025, 1, 31))
+        today = datetime.date(2025, 1, 31)
+        windows = month_windows(1, today)
         since, until, label = windows[0]
-        self.assertEqual(since, "2025-01-01")
-        self.assertEqual(until, "2025-02-01")
+        self.assertEqual(since, (today - datetime.timedelta(days=30)).isoformat())
+        self.assertEqual(until, (today + datetime.timedelta(days=1)).isoformat())
         self.assertEqual(label, "2025-01")
 
 
@@ -257,22 +265,88 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
             uploaded = _current_only_uploaded(datetime.date.today())
         if "--console" not in argv:
             argv = argv + ["--console"]
+
+        # -- Token-based dispatch for deterministic parallel execution --------
+        # The console loop runs months through ThreadPoolExecutor.  List-based
+        # side_effects are consumed in call order, which is non-deterministic
+        # with threads.  Instead, map each token to its expected paxel/upload
+        # result so each window gets the right outcome regardless of order.
+
+        _thread_token = threading.local()
+
+        # Map token -> paxel result (positional: tokens[i] -> paxel[i]).
+        _paxel_map = dict(zip(tokens, run_paxel_side_effect))
+
+        def _paxel_succeeds(result):
+            if result is None or isinstance(result, BaseException):
+                return False
+            return result.get("context", {}).get("total_sessions", 0) > 0
+
+        # Map token -> upload result.  Only tokens whose paxel result leads
+        # to an upload attempt get a mapping (paxel None/exception/empty skip).
+        _upload_map = {}
+        _upload_iter = iter(upload_return_values)
+        for t in tokens[:len(run_paxel_side_effect)]:
+            if _paxel_succeeds(_paxel_map.get(t)):
+                try:
+                    _upload_map[t] = next(_upload_iter)
+                except StopIteration:
+                    break
+
+        def _paxel_dispatch(paxel_src, args, verbose, **kwargs):
+            token = getattr(_thread_token, "value", None)
+            if token is not None and token in _paxel_map:
+                result = _paxel_map[token]
+                if isinstance(result, BaseException):
+                    raise result
+                return result
+            # Fallback for any unexpected call.
+            return None
+
+        def _upload_dispatch(mirdash_base, token, summary):
+            if token in _upload_map:
+                result = _upload_map[token]
+                if isinstance(result, BaseException):
+                    raise result
+                return result
+            raise RuntimeError(f"no upload result mapped for token {token!r}")
+
+        # Wrap _upload_window so the thread-local token is set before
+        # _run_paxel / _upload_summary are called inside it.
+        _real_upload_window = _mirdash._upload_window
+
+        def _window_wrapper(*args, **kwargs):
+            _thread_token.value = args[1]          # token is 2nd positional arg
+            return _real_upload_window(*args, **kwargs)
+
         with (
             patch.object(_insights, "_capture_cli_token", return_value=(tokens, uploaded)),
             patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
+            # main() now offers the retention config on a real interactive run;
+            # stub it out like every other side effect here (it would otherwise
+            # prompt on stdin and write the developer's ~/.claude/settings.json).
+            patch.object(_insights, "offer_retention_config"),
             patch.object(_insights, "webbrowser") as mock_wb,
+            # Set the thread-local token before each _upload_window call.
+            patch.object(_insights, "_upload_window", side_effect=_window_wrapper),
             patch.object(
                 _mirdash,
                 "_run_paxel",
-                side_effect=run_paxel_side_effect,
+                side_effect=_paxel_dispatch,
             ) as mock_paxel,
             patch.object(
                 _mirdash,
                 "_upload_summary",
-                side_effect=upload_return_values,
+                side_effect=_upload_dispatch,
             ) as mock_upload,
             patch.object(_insights.os.path, "isfile", return_value=True),
             patch.object(_insights.sys, "argv", ["xl-ai-insights"] + argv),
+            # Deterministic, filesystem-free stand-in for the real cheap
+            # pre-check (gnomon.coverage.probe_month over discover_sources):
+            # a high producible coverage so fixtures with a low STORED
+            # coverage on the previous month reconstruct a "previous +
+            # current" 2-window plan without touching the real filesystem.
+            patch.object(_insights, "default_producible_coverage_for", return_value=(2, 999)),
         ):
             mock_wb.open.return_value = True
             exit_code = None
@@ -307,14 +381,17 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         until_args = [a for a in call_args if a.startswith("--until=")]
         self.assertEqual(len(since_args), 1)
         self.assertEqual(len(until_args), 1)
-        # since must be 1st of the month
+        # Current month uses a trailing 30-day window, so since is today-30 and
+        # until (inclusive for paxel) is today.
+        today = datetime.date.today()
         since_val = since_args[0].split("=", 1)[1]
-        self.assertTrue(since_val.endswith("-01"), f"since={since_val} should end in -01")
         since_d = datetime.date.fromisoformat(since_val)
+        self.assertEqual(since_d, today - datetime.timedelta(days=30))
         until_val = until_args[0].split("=", 1)[1]
         until_d = datetime.date.fromisoformat(until_val)
-        last_day = calendar.monthrange(since_d.year, since_d.month)[1]
-        self.assertEqual(until_d, datetime.date(since_d.year, since_d.month, last_day))
+        # _paxel_until_arg subtracts 1 day from the exclusive bound, so
+        # paxel sees today as the inclusive until.
+        self.assertEqual(until_d, today)
 
     def test_auto_empty_server_sweeps_twelve_months(self):
         """auto + empty server-state → full backfill of 12 windows (oldest first)."""
@@ -375,7 +452,8 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         history = {
             "state": "valid",
             "months": [
-                {"monthKey": prev, "uploadedAt": 1, "scoreContractId": "old-contract"}
+                {"monthKey": prev, "uploadedAt": 1,
+                 "coverage": {"flag": "insufficient", "indexed": 50, "transcripts": 0}}
             ],
         }
         mock_paxel, mock_upload = self._run_main(
@@ -387,11 +465,11 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         )
         self.assertEqual(mock_paxel.call_count, 2)
         self.assertEqual(
-            [call.args[1] for call in mock_upload.call_args_list],
-            ["previous-token", "current-token"],
+            {call.args[1] for call in mock_upload.call_args_list},
+            {"previous-token", "current-token"},
         )
 
-    def test_failed_previous_bridge_still_runs_current_and_warns(self):
+    def test_failed_previous_bridge_still_runs_current(self):
         today = datetime.date.today()
         cur_total = today.year * 12 + (today.month - 1)
         prev_total = cur_total - 1
@@ -399,28 +477,22 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         history = {
             "state": "valid",
             "months": [
-                {"monthKey": prev, "uploadedAt": 1, "scoreContractId": "old-contract"}
+                {"monthKey": prev, "uploadedAt": 1,
+                 "coverage": {"flag": "insufficient", "indexed": 50, "transcripts": 0}}
             ],
         }
-        with patch("builtins.print") as mock_print:
-            mock_paxel, mock_upload = self._run_main(
-                argv=["--no-open"],
-                run_paxel_side_effect=[None, _make_summary(sessions=3)],
-                upload_return_values=["/r/current"],
-                tokens=["previous-token", "current-token"],
-                uploaded=history,
-            )
+        mock_paxel, mock_upload = self._run_main(
+            argv=["--no-open"],
+            run_paxel_side_effect=[None, _make_summary(sessions=3)],
+            upload_return_values=["/r/current"],
+            tokens=["previous-token", "current-token"],
+            uploaded=history,
+        )
         self.assertEqual(mock_paxel.call_count, 2)
         self.assertEqual(mock_upload.call_count, 1)
         self.assertEqual(mock_upload.call_args.args[1], "current-token")
-        self.assertTrue(
-            any(
-                "comparable baseline was not rebuilt" in str(call)
-                for call in mock_print.call_args_list
-            )
-        )
 
-    def test_empty_previous_bridge_still_runs_current_and_warns(self):
+    def test_empty_previous_bridge_still_runs_current(self):
         today = datetime.date.today()
         cur_total = today.year * 12 + (today.month - 1)
         prev_total = cur_total - 1
@@ -428,29 +500,23 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         history = {
             "state": "valid",
             "months": [
-                {"monthKey": prev, "uploadedAt": 1, "scoreContractId": "old-contract"}
+                {"monthKey": prev, "uploadedAt": 1,
+                 "coverage": {"flag": "insufficient", "indexed": 50, "transcripts": 0}}
             ],
         }
-        with patch("builtins.print") as mock_print:
-            mock_paxel, mock_upload = self._run_main(
-                argv=["--no-open"],
-                run_paxel_side_effect=[
-                    _make_summary(sessions=0),
-                    _make_summary(sessions=3),
-                ],
-                upload_return_values=["/r/current"],
-                tokens=["previous-token", "current-token"],
-                uploaded=history,
-            )
+        mock_paxel, mock_upload = self._run_main(
+            argv=["--no-open"],
+            run_paxel_side_effect=[
+                _make_summary(sessions=0),
+                _make_summary(sessions=3),
+            ],
+            upload_return_values=["/r/current"],
+            tokens=["previous-token", "current-token"],
+            uploaded=history,
+        )
         self.assertEqual(mock_paxel.call_count, 2)
         self.assertEqual(mock_upload.call_count, 1)
         self.assertEqual(mock_upload.call_args.args[1], "current-token")
-        self.assertTrue(
-            any(
-                "comparable baseline was not rebuilt" in str(call)
-                for call in mock_print.call_args_list
-            )
-        )
 
     def test_current_month_paxel_error_does_not_fall_back(self):
         """A paxel run FAILURE (None) for the only window must NOT trigger any
@@ -503,14 +569,12 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         )
         self.assertEqual(exit_code, 1)
 
-        with patch("builtins.print") as printed:
-            paxel, upload, exit_code = self._run_main(
-                ["--no-open"], [RuntimeError("previous crashed"), _make_summary()],
-                ["/r/current"], ["previous-token", "current-token"], history, True,
-            )
+        paxel, upload, exit_code = self._run_main(
+            ["--no-open"], [RuntimeError("previous crashed"), _make_summary()],
+            ["/r/current"], ["previous-token", "current-token"], history, True,
+        )
         self.assertIsNone(exit_code)
         self.assertEqual((paxel.call_count, upload.call_args.args[1]), (2, "current-token"))
-        self.assertTrue(any("comparable baseline was not rebuilt" in str(c) for c in printed.call_args_list))
 
 
 class TestWebContractBridgeOrchestration(unittest.TestCase):
@@ -526,6 +590,10 @@ class TestWebContractBridgeOrchestration(unittest.TestCase):
             patch("gnomon.upload.progress_server.ProgressServer", return_value=server),
             patch.object(_insights, "_wait_for_auth_tokens", return_value=tokens),
             patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
+            # main() now offers the retention config on a real interactive run;
+            # stub it out like every other side effect here (it would otherwise
+            # prompt on stdin and write the developer's ~/.claude/settings.json).
+            patch.object(_insights, "offer_retention_config"),
             patch.object(_insights.webbrowser, "open", return_value=True),
             patch.object(_insights.os.path, "isfile", return_value=True),
             patch.object(
@@ -533,6 +601,7 @@ class TestWebContractBridgeOrchestration(unittest.TestCase):
                 "_upload_window_web",
                 side_effect=upload_results,
             ) as mock_upload_window,
+            patch.object(_insights, "default_producible_coverage_for", return_value=(2, 999)),
         ):
             exit_code = None
             try:
@@ -544,6 +613,11 @@ class TestWebContractBridgeOrchestration(unittest.TestCase):
 
     @staticmethod
     def _bridge_history():
+        """History with a previous month whose STORED coverage is low
+        (insufficient) -- combined with the module-level patch of
+        default_producible_coverage_for to a high value in _run_main/_run_web,
+        this deterministically reconstructs the "previous + current" 2-window
+        plan (honest-aq-series coverage gate, replacing contract-bridge)."""
         today = datetime.date.today()
         current_total = today.year * 12 + (today.month - 1)
         previous_total = current_total - 1
@@ -554,7 +628,7 @@ class TestWebContractBridgeOrchestration(unittest.TestCase):
                 {
                     "monthKey": previous,
                     "uploadedAt": 1,
-                    "scoreContractId": "old-contract",
+                    "coverage": {"flag": "insufficient", "indexed": 50, "transcripts": 0},
                 }
             ],
         }
@@ -581,9 +655,7 @@ class TestWebContractBridgeOrchestration(unittest.TestCase):
 
     def test_web_bridge_continues_current_after_previous_empty_or_failure(self):
         for previous_result in (None, _PAXEL_ERROR):
-            with self.subTest(previous_result=previous_result), patch(
-                "builtins.print"
-            ) as mock_print:
+            with self.subTest(previous_result=previous_result):
                 server, mock_upload_window, _ = self._run_web(
                     self._bridge_history(),
                     [previous_result, "/r/current"],
@@ -591,12 +663,6 @@ class TestWebContractBridgeOrchestration(unittest.TestCase):
 
             self.assertEqual(mock_upload_window.call_count, 2)
             self.assertEqual(mock_upload_window.call_args_list[1].args[1], "current-token")
-            self.assertTrue(
-                any(
-                    "comparable baseline was not rebuilt" in str(call)
-                    for call in mock_print.call_args_list
-                )
-            )
             done_events = [
                 call.args[1]
                 for call in server.push_event.call_args_list
@@ -604,6 +670,22 @@ class TestWebContractBridgeOrchestration(unittest.TestCase):
             ]
             self.assertEqual(done_events[-1]["reportUrl"], "/r/current")
             self.assertEqual(done_events[-1]["uploaded"], 1)
+
+    def test_web_done_counts_archive_only_as_guarded_not_uploaded(self):
+        archived = {"outcome": "archived_only", "reportUrl": "/metrics"}
+        server, _, exit_code = self._run_web(
+            self._bridge_history(),
+            [archived, "/r/current"],
+        )
+
+        done = [
+            call.args[1]
+            for call in server.push_event.call_args_list
+            if call.args[0] == "done"
+        ][-1]
+        self.assertEqual(done["uploaded"], 1)
+        self.assertEqual(done["guarded"], 1)
+        self.assertIsNone(exit_code)
 
     def test_web_bridge_enforces_cardinality_exceptions_and_current_success(self):
         history = self._bridge_history()
@@ -620,11 +702,9 @@ class TestWebContractBridgeOrchestration(unittest.TestCase):
                 self.assertEqual((exit_code, done["reportUrl"]), (1, ""))
                 self.assertTrue(server.shutdown.called)
 
-        with patch("builtins.print") as printed:
-            server, upload, exit_code = self._run_web(history, [RuntimeError("previous crashed"), "/r/current"])
+        server, upload, exit_code = self._run_web(history, [RuntimeError("previous crashed"), "/r/current"])
         done = [c.args[1] for c in server.push_event.call_args_list if c.args[0] == "done"][-1]
         self.assertEqual((exit_code, upload.call_count, done["reportUrl"]), (None, 2, "/r/current"))
-        self.assertTrue(any("comparable baseline was not rebuilt" in str(c) for c in printed.call_args_list))
 
     def test_web_bridge_budget_violation_on_non_latest_month_exits_nonzero(self):
         """The reupload-loop gap this change closes: a non-latest (previous) month
@@ -658,6 +738,10 @@ class TestForceMode(unittest.TestCase):
         with (
             patch.object(_insights, "_capture_cli_token", return_value=(tokens, [])),
             patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
+            # main() now offers the retention config on a real interactive run;
+            # stub it out like every other side effect here (it would otherwise
+            # prompt on stdin and write the developer's ~/.claude/settings.json).
+            patch.object(_insights, "offer_retention_config"),
             patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(
                 _mirdash,
@@ -737,6 +821,10 @@ class TestForceModeConcurrentBudgetViolation(unittest.TestCase):
         with (
             patch.object(_insights, "_capture_cli_token", return_value=(tokens, [])),
             patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
+            # main() now offers the retention config on a real interactive run;
+            # stub it out like every other side effect here (it would otherwise
+            # prompt on stdin and write the developer's ~/.claude/settings.json).
+            patch.object(_insights, "offer_retention_config"),
             patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(_mirdash, "_run_paxel", side_effect=summaries) as mock_paxel,
             patch.object(_mirdash, "_upload_summary", side_effect=upload_rets) as mock_upload,
@@ -772,6 +860,10 @@ class TestForceModeConcurrentBudgetViolation(unittest.TestCase):
             patch("gnomon.upload.progress_server.ProgressServer", return_value=server),
             patch.object(_insights, "_wait_for_auth_tokens", return_value=tokens),
             patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
+            # main() now offers the retention config on a real interactive run;
+            # stub it out like every other side effect here (it would otherwise
+            # prompt on stdin and write the developer's ~/.claude/settings.json).
+            patch.object(_insights, "offer_retention_config"),
             patch.object(_insights.webbrowser, "open", return_value=True),
             patch.object(_insights.os.path, "isfile", return_value=True),
             patch.object(_insights, "_upload_window_web", side_effect=upload_results) as mock_upload_window,
@@ -795,6 +887,212 @@ class TestForceModeConcurrentBudgetViolation(unittest.TestCase):
         self.assertEqual(exit_code, 1)
 
 
+class TestForceDirectiveInUploadedPayload(unittest.TestCase):
+    """`--force` must cross the wire, not just steer gnomon's local plan.
+
+    mirdash's /api/gnomon/ingest route is a field-by-field zod whitelist that
+    forwards a TOP-LEVEL `force` boolean to the ingestBuildMetrics mutation,
+    whose anti-degradation guard reads `!args.force`. Without `force` in the
+    posted body the guard rejects any payload a stored row beats on
+    completeness and still answers HTTP 200 -- so the recovery hatch fails
+    silently exactly when Claude Code's shrinking 30-day retention makes a
+    fresh force upload carry FEWER sessions than the stored row.
+
+    The key is a sibling of `context` and `coverage` (matching how
+    gnomon/output/summary.py attaches `coverage`), and is sent ONLY when true:
+    the route types it optional and reads `!args.force`, so an explicit
+    `false` is indistinguishable from an absent key -- omitting it keeps every
+    auto/backfill payload byte-identical to what shipped before.
+    """
+
+    def _run_console(self, argv, summaries, tokens, uploaded=None):
+        """Run main() in console mode; return the list of posted summary dicts."""
+        if uploaded is None:
+            uploaded = []
+        posted = []
+
+        def capture_upload(mirdash_base, token, summary):
+            posted.append(summary)
+            return "/r/x"
+
+        with (
+            patch.object(_insights, "_capture_cli_token", return_value=(tokens, uploaded)),
+            patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
+            patch.object(_insights, "offer_retention_config"),
+            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_mirdash, "_run_paxel", side_effect=list(summaries)),
+            patch.object(_mirdash, "_upload_summary", side_effect=capture_upload),
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(_insights.sys, "argv", ["xl-ai-insights"] + argv),
+            patch.object(_insights, "default_producible_coverage_for", return_value=(2, 999)),
+        ):
+            mock_wb.open.return_value = True
+            try:
+                _insights.main()
+            except SystemExit:
+                pass
+        return posted
+
+    def test_force_mode_posts_top_level_force_true_on_every_month(self):
+        posted = self._run_console(
+            argv=["--force", "--no-open", "--console"],
+            summaries=[_make_summary(sessions=i + 1) for i in range(12)],
+            tokens=[f"t{i}" for i in range(12)],
+        )
+        self.assertEqual(len(posted), 12)
+        for summary in posted:
+            self.assertIs(summary.get("force"), True)
+
+    def test_force_key_is_a_sibling_of_context_not_nested_inside_it(self):
+        """mirdash whitelists `force` at the TOP level of summarySchema; a nested
+        copy would be dropped by the whitelist and never reach the mutation."""
+        posted = self._run_console(
+            argv=["--force", "--no-open", "--console"],
+            summaries=[_make_summary(sessions=5)] + [_make_summary(sessions=0)] * 11,
+            tokens=[f"t{i}" for i in range(12)],
+        )
+        self.assertEqual(len(posted), 1)
+        self.assertIn("force", posted[0])
+        self.assertNotIn("force", posted[0]["context"])
+
+    def test_auto_mode_posts_no_force_key_at_all(self):
+        """No regression: a normal run's payload must stay exactly as before --
+        not `force: False`, but no `force` key whatsoever."""
+        posted = self._run_console(
+            argv=["--no-open", "--console"],
+            summaries=[_make_summary(sessions=5)],
+            tokens=["tok1"],
+            uploaded=_current_only_uploaded(datetime.date.today()),
+        )
+        self.assertEqual(len(posted), 1)
+        self.assertNotIn("force", posted[0])
+
+    def test_backfill_mode_posts_no_force_key_at_all(self):
+        """--backfill is an explicit re-upload of N months, NOT a force: it must
+        keep obeying the server's anti-degradation guard."""
+        posted = self._run_console(
+            argv=["--backfill=3", "--no-open", "--console"],
+            summaries=[_make_summary(sessions=i + 1) for i in range(3)],
+            tokens=["t1", "t2", "t3"],
+        )
+        self.assertEqual(len(posted), 3)
+        for summary in posted:
+            self.assertNotIn("force", summary)
+
+    def test_upload_window_stamps_force_alongside_window_months(self):
+        """Unit level (console helper): the force stamp lands next to the
+        existing context.window_months stamp, before the budget check."""
+        posted = []
+
+        def capture_upload(mirdash_base, token, summary):
+            posted.append(summary)
+            return "/r/1"
+
+        with (
+            patch.object(_mirdash, "_run_paxel", return_value=_make_summary(sessions=4)),
+            patch.object(_mirdash, "_upload_summary", side_effect=capture_upload),
+        ):
+            _mirdash._upload_window(
+                "https://mirdash.example", "tok", "/tmp/paxel.py", [],
+                "2025-03-01", "2025-04-01", "2025-03", False, True,
+                force=True,
+            )
+        self.assertEqual(len(posted), 1)
+        self.assertIs(posted[0]["force"], True)
+        self.assertEqual(posted[0]["context"]["window_months"], _mirdash._DEFAULT_WINDOW_MONTHS)
+
+    def test_upload_window_web_stamps_force(self):
+        posted = []
+
+        def capture_upload(mirdash_base, token, summary):
+            posted.append(summary)
+            return "/r/1"
+
+        with (
+            patch.object(_mirdash, "_run_paxel", return_value=_make_summary(sessions=4)),
+            patch.object(_mirdash, "_upload_summary", side_effect=capture_upload),
+        ):
+            _mirdash._upload_window_web(
+                "https://mirdash.example", "tok", "/tmp/paxel.py", [],
+                "2025-03-01", "2025-04-01", "2025-03", False, MagicMock(), 0, 1,
+                force=True,
+            )
+        self.assertEqual(len(posted), 1)
+        self.assertIs(posted[0]["force"], True)
+
+    def test_upload_window_helpers_default_to_no_force_key(self):
+        """Default (no force kwarg) leaves the payload untouched -- the replay /
+        recompute payload shape is unchanged for every non-force caller."""
+        posted = []
+
+        def capture_upload(mirdash_base, token, summary):
+            posted.append(summary)
+            return "/r/1"
+
+        with (
+            patch.object(_mirdash, "_run_paxel", return_value=_make_summary(sessions=4)),
+            patch.object(_mirdash, "_upload_summary", side_effect=capture_upload),
+        ):
+            _mirdash._upload_window(
+                "https://mirdash.example", "tok", "/tmp/paxel.py", [],
+                "2025-03-01", "2025-04-01", "2025-03", False, True,
+            )
+            _mirdash._upload_window_web(
+                "https://mirdash.example", "tok", "/tmp/paxel.py", [],
+                "2025-03-01", "2025-04-01", "2025-03", False, MagicMock(), 0, 1,
+            )
+        self.assertEqual(len(posted), 2)
+        for summary in posted:
+            self.assertNotIn("force", summary)
+
+
+class TestForcePlanReasonDrivesPayloadDirective(unittest.TestCase):
+    """The stamped value is derived from the per-month plan REASON returned by
+    plan_upload, not from the global `mode` string. Today the two agree by
+    construction (plan_upload's force branch labels every anchor 'force', and
+    no other branch ever emits 'force'), but binding the payload to the reason
+    means a future mixed plan cannot silently mark non-force months as force."""
+
+    def test_only_months_planned_as_force_get_the_directive(self):
+        posted = []
+
+        def capture_upload(mirdash_base, token, summary):
+            posted.append((summary["context"]["date_range"], summary.get("force")))
+            return "/r/x"
+
+        today = datetime.date.today()
+        anchors = [label for _, _, label in month_windows(12, today, 1)]
+        # A plan where only ONE anchor carries reason 'force'; every other month
+        # is a plain 'gap'. Only the force-labelled month may be stamped.
+        forced = anchors[3]
+        plan = [(a, "force" if a == forced else "gap") for a in anchors]
+
+        with (
+            patch.object(_insights, "_capture_cli_token",
+                         return_value=([f"t{i}" for i in range(12)], [])),
+            patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
+            patch.object(_insights, "offer_retention_config"),
+            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_insights, "plan_upload", return_value=plan),
+            patch.object(_mirdash, "_run_paxel",
+                         side_effect=[_make_summary(sessions=i + 1) for i in range(12)]),
+            patch.object(_mirdash, "_upload_summary", side_effect=capture_upload),
+            patch.object(_insights.os.path, "isfile", return_value=True),
+            patch.object(_insights.sys, "argv",
+                         ["xl-ai-insights", "--force", "--no-open", "--console"]),
+            patch.object(_insights, "default_producible_coverage_for", return_value=(2, 999)),
+        ):
+            mock_wb.open.return_value = True
+            try:
+                _insights.main()
+            except SystemExit:
+                pass
+
+        self.assertEqual(len(posted), 12)
+        stamped = [flag for _, flag in posted if flag is True]
+        self.assertEqual(len(stamped), 1)
+
+
 class TestHeadlessAuthCleanExit(unittest.TestCase):
     """No-browser environments (headless/CI/SSH) must skip cleanly, never fail the job.
 
@@ -808,6 +1106,10 @@ class TestHeadlessAuthCleanExit(unittest.TestCase):
         with (
             patch.object(_insights, "_capture_cli_token") as mock_capture,
             patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
+            # main() now offers the retention config on a real interactive run;
+            # stub it out like every other side effect here (it would otherwise
+            # prompt on stdin and write the developer's ~/.claude/settings.json).
+            patch.object(_insights, "offer_retention_config"),
             patch.object(_insights, "webbrowser") as mock_wb,
             patch.object(_insights, "_run_paxel") as mock_paxel,
             patch.object(_insights, "_upload_summary") as mock_upload,
@@ -855,6 +1157,11 @@ class TestIsReportUrl(unittest.TestCase):
     def test_upload_error_sentinel_is_not_report_url(self):
         self.assertFalse(_is_report_url(_UPLOAD_ERROR))
 
+    def test_archive_only_result_is_not_a_successful_report_upload(self):
+        self.assertFalse(
+            _is_report_url({"outcome": "archived_only", "reportUrl": "/metrics"})
+        )
+
 
 class TestUploadWindowWebSentinels(unittest.TestCase):
     """_upload_window_web distinguishes paxel failure / empty / upload failure / success."""
@@ -888,6 +1195,25 @@ class TestUploadWindowWebSentinels(unittest.TestCase):
         good = _make_summary(sessions=5)
         result = self._call(run_paxel_return=good, upload_side=["/report/m"])
         self.assertEqual(result, "/report/m")
+
+    def test_archive_only_pushes_guarded_instead_of_uploaded(self):
+        server = MagicMock()
+        archived = {"outcome": "archived_only", "reportUrl": "/metrics"}
+        with (
+            patch.object(_mirdash, "_run_paxel", return_value=_make_summary(sessions=5)),
+            patch.object(_mirdash, "_upload_summary", return_value=archived),
+        ):
+            from gnomon.upload.mirdash import _upload_window_web
+
+            result = _upload_window_web(
+                "https://m", "tok", "/paxel.py", [], "2025-12-01", "2026-01-01",
+                "2025-12", False, server, 0, 1,
+            )
+
+        events = [call.args[0] for call in server.push_event.call_args_list]
+        self.assertEqual(result, archived)
+        self.assertIn("guarded", events)
+        self.assertNotIn("uploaded", events)
 
     def _events(self, **kw):
         """Run _upload_window_web and return the list of pushed event types."""

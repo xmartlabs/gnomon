@@ -17,10 +17,10 @@ AGGREGATE RULE (documented contract — mirdash mirrors this in TS):
 
         aggregate_score = Σ_s (w_s · score_s) / Σ_s w_s
 
-    For blended profiles (recent + full-window), w_s is the sum of configured
-    component weight multiplied by that component's tool calls. Without blended
-    components, w_s remains the full-window tool_calls_total(s) for backward
-    compatibility.
+    Live runs pass no blend components, so w_s is the window's
+    tool_calls_total(s). A REPLAY of a payload captured before v11 can still supply
+    per-source recency buckets (see `_blend_profiles`), and then w_s is the sum of
+    configured component weight multiplied by that component's tool calls.
 
     Applied to the AQ total, each AQ pillar, and the Execution/Engineering
     gstack axes. Aggregate Planning is recomputed from synthesized corpus stats
@@ -38,18 +38,17 @@ AGGREGATE RULE (documented contract — mirdash mirrors this in TS):
 
 ONE CANONICAL COMBINED AQ:
     The aggregate AQ is a DIAGNOSTIC (`aggregate.aq_diagnostic`), not a published score.
-    `profile.aq` — compute_aq over the merged corpus — is the canonical combined AQ, because
-    distinct counts are UNIONS. Measured on a real three-source corpus: the merged stats see
+    `profile.aq` is the canonical combined AQ that gets PUBLISHED, and since v11 it IS the
+    `compute_aq` output over the merged corpus, unmodified: `gnomon/cli/local.py` scores the
+    merged corpus once and publishes that. Distinct counts being UNIONS is the reason the
+    merged corpus is preferred over combining per-source SCORES. Measured on a real
+    three-source corpus: the merged stats see
     7 MCP servers where the Claude slice alone sees 6, and 42 CLIs where it sees 41, so merged
     Tool command scores 22.5/28 against 21.5/28 for Claude alone. A user who commands 7 MCP
     servers spread across three tools genuinely commands 7; blending per-source SCORES
     systematically under-counts breadth of tooling, and no post-hoc weighting recovers a union
     from already-collapsed numbers. Publishing two combined numbers also forced every consumer
     to pick one, which is a scoring decision no dashboard should be making.
-
-    Why the blend stays computed at all: the aggregate's Planning axis, archetype, steering,
-    growth edges and signature moves are derived from it, and they remain useful per-source
-    diagnostics. Only its status as a published score is retired.
 
     The two numbers do NOT converge, and that is the argument for picking the merged one:
     distinct counts are unions. Measured on a real three-source corpus, the merged stats
@@ -72,13 +71,44 @@ from gnomon.scoring.profiles import build_profile, stats_from_scoring_block
 from gnomon.scoring.versioning import SCORE_CONTRACT_ID, IncompatibleScoreContract
 
 
-RECENCY_BLEND_ENABLED = True
-RECENT_WINDOW_DAYS = 30
-RECENT_WEIGHT = 0.65
+# ---- The recency blend: REMOVED as a producer in v11, kept as a reader ---------------
+# Until v11 the published AQ was `0.65 * recent_30d + 0.35 * full_window`, applied axis by
+# axis (`_blend_aq`). The blend was written when the default scoring window was SIX
+# calendar months: `recent_30d` was a short, reactive reading and `full_window` a genuinely
+# longer baseline, so 65/35 damped one unusual month against five stable ones. v10 narrowed
+# the scoring window to ONE calendar month (aq.DEFAULT_SCORING_WINDOW_MONTHS) and that
+# stopped being true. Both components ended at the same anchor, `full_window` spanned the
+# calendar month (28-31 days) and `recent_30d` the trailing 30, so their intersection was
+# 28-30 days -- 93.3% of their union for a 28-day February, 96.7% for a 29-day one, 96.8%
+# for a 31-day month and exactly 100% for any 30-day month. The blend was no longer damping
+# anything: it read one month twice and averaged it with itself.
+#
+# Measured before removing it, on a real 8-source corpus over 2026-07 (31 days, the worst
+# overlap case at 96.8%): the two components' per-axis normalized scores agreed to within
+# 0.006, the blended published AQ was 92 against an unblended 92 -- a 0.0 point difference
+# -- and the largest per-axis movement was 0.2 points on Orchestration
+# (.context/blend-degeneracy-measure.py). Removing it is therefore a near-zero-movement
+# change, shipped as its own contract bump (11:11:11) anyway so that any movement stays
+# attributable to exactly one cause.
+#
+# It also removed a real defect. `_blend_aq` copies each axis's `signals` verbatim from the
+# highest-effective-weight component, i.e. `recent_30d`, while `stats["volume"]` stayed
+# full-window. Anything reading a count out of the published AQ and dividing it by a
+# full-window denominator was mixing two spans -- `gnomon/cli/local.py::tools_diagnostic`
+# (the `--tools` table) did exactly that, and under-reported every count for any month
+# whose first day fell outside the trailing 30 days.
+#
+# WHAT STAYS, AND WHY. Everything below that READS a blend is still here: `_blend_aq`,
+# `_blend_partial_terms`, `_blend_profiles` and `HISTORY_WEIGHT`. `gnomon/scoring/replay.py`
+# recomputes payloads captured BEFORE v11, and those carry `bucket_scoring_inputs` blocks
+# that must still be replayable -- dropping the composition would silently retire data this
+# code already published. What is gone is everything that PRODUCED a blend: the bucket
+# definitions (`AQ_BUCKETS`, `RECENT_WEIGHT`, `RECENT_WINDOW_DAYS`), the enable flag, and
+# `gnomon/cli/local.py`'s bucket windows and bucket accumulators.
+#
+# `HISTORY_WEIGHT` is the weight replay gives the `full_window` component when it
+# reconstructs one of those historical blends. It is not applied to any live score.
 HISTORY_WEIGHT = 0.35
-AQ_BUCKETS = (
-    {"id": "recent_30d", "configured_weight": RECENT_WEIGHT, "lower_days": 0, "upper_days": RECENT_WINDOW_DAYS},
-)
 
 
 def blend_model_mix_components(components):
@@ -204,6 +234,11 @@ def _aggregate_profile(per_source):
         "combination": {
             "rule": "weighted_mean_except_synthesized_planning",
             "weight": "tool_calls_total",
+            # Declared rather than left implicit: `weight` above is the rule mirdash mirrors in
+            # TS, and one field genuinely departs from it. `behavior.actions_per_prompt` is
+            # pooled on its own denominator so the result is the POOLED ratio instead of a
+            # tool-volume average of per-source ratios (see _synth_stats_for_aggregate).
+            "weight_exceptions": {"behavior.actions_per_prompt": "total_instructions"},
             "weights": {src: e["weight"] for src, e in items},
             "axes": {
                 "execution": "tool_volume_weighted_mean",
@@ -244,14 +279,37 @@ def _synth_stats_for_aggregate(items, agg_aq):
     """Tool-volume-weighted blend of the per-source behavior/volume/velocity/stack/tools
     fields, so the narrative pickers (archetype/steering/growth/signature) read numbers
     consistent with the combined score. AQ is the already-combined aggregate AQ."""
-    def wmean(path_get):
+    def wmean(path_get, weight_get=None):
+        """Tool-volume-weighted mean, or weighted by `weight_get(block)` when supplied.
+
+        `weight_get` exists for ONE field, `behavior.actions_per_prompt`. Every other field
+        pooled here is a per-tool-call quantity, so `e["weight"]` (the source's
+        `tool_calls_total`, see score_by_source) is genuinely its population. That field's
+        population is its own denominator, and since v12 the two are not even close: its
+        numerator counts TOP-LEVEL calls while `tool_calls_total` stays deliberately
+        sidechain-inclusive, so a delegation-heavy source arrives with a large weight and a
+        small value at once and drags the mean far below the truth.
+        """
         pairs = []
         for _, e in items:
-            w = e["weight"]
+            w = e["weight"] if weight_get is None else weight_get(e["block"])
             v = path_get(e["block"])
             if v is not None:
                 pairs.append((w, v))
         return _weighted_mean(pairs) if pairs else 0
+
+    def _instructions(blk):
+        """The denominator `behavior.actions_per_prompt` was divided by, per source.
+
+        Weighting a mean of ratios by each ratio's own denominator is what makes the result
+        the POOLED ratio rather than an average of ratios:
+            sum_i d_i * (n_i / d_i) / sum_i d_i  ==  sum_i n_i / sum_i d_i
+        so this is exact, not a closer approximation. Falls back to `total_prompts` for a
+        pre-v12 block, which is the denominator that block's own ratio was built with;
+        falling back to 0 would drop the source out of the pool entirely.
+        """
+        vol = blk.get("volume") or {}
+        return vol.get("total_instructions", vol.get("total_prompts", 0)) or 0
 
     def wsum(path_get):
         return sum(int(path_get(e["block"]) or 0) for _, e in items)
@@ -333,7 +391,14 @@ def _synth_stats_for_aggregate(items, agg_aq):
         },
         "behavior": {
             "planning_ratio_explore_to_doing": round(wmean(lambda blk: b(blk).get("planning_ratio_explore_to_doing")), 2),
-            "actions_per_prompt": round(wmean(lambda blk: b(blk).get("actions_per_prompt")), 1),
+            # Weighted by the ratio's OWN denominator, not by tool volume -- see wmean /
+            # _instructions above. Worked example that motivated it: source A (10
+            # instructions, 100 top-level, 0 sidechain -> 10.0) and source B (10 instructions,
+            # 10 top-level, 990 sidechain -> 1.0) pooled to 1.8 under a tool-volume weight
+            # against a true pooled ratio of 5.5, a 3x understatement pushing the reading onto
+            # the Steering band's low-end ramp.
+            "actions_per_prompt": round(
+                wmean(lambda blk: b(blk).get("actions_per_prompt"), _instructions), 1),
             "questions_asked": wsum(lambda blk: b(blk).get("questions_asked")),
             "delegate_actions": wsum(lambda blk: b(blk).get("delegate_actions")),
             "background_tasks": wsum(lambda blk: b(blk).get("background_tasks")),
@@ -444,12 +509,66 @@ def _synth_stats_for_aggregate(items, agg_aq):
     return synth
 
 
+def _blend_partial_terms(axis_components, axis_weight_total):
+    """Blend the per-component `partial_terms` disclosures into one axis-level statement,
+    or None when every contributing component measured all of its terms.
+
+    Everything else about an axis is taken from the highest-weight component (see
+    `primary`), and for `signals` that is fine -- they are that component's raw numbers and
+    the payload also ships every component's own. `partial_terms` cannot follow that rule:
+    it is a statement about the axis the reader is looking at, and copying it from the
+    primary would publish "fully measured" for an axis a third of whose score came from a
+    component that could only measure one term. Measured on a real corpus at a thin scoring
+    window: recent_30d spans more days than the window, keeps its Compounding rate term and
+    reports nothing, while the full-window component drops that term -- so the disclosure
+    disappeared exactly where it mattered.
+
+    `weight_scored` blends with the SAME effective weights the score does, treating a
+    silent component as a fully scored 1.0, so it reads as "this fraction of the axis's
+    configured weight was actually measured, across the blend".
+
+    `scored`/`total` are counts, and averaging counts is meaningless, so they report the
+    WORST component -- the one that measured fewest terms. `total` comes from that same
+    component so the pair stays internally consistent (it is the same term list for every
+    component of one axis anyway).
+    """
+    disclosures = [(component, axis.get("partial_terms"))
+                   for component, axis in axis_components]
+    if not any(partial for _, partial in disclosures):
+        return None
+    weighted = 0.0
+    worst = None
+    for component, partial in disclosures:
+        share = component["effective_weight"] / axis_weight_total
+        scored_fraction = 1.0 if not partial else partial.get("weight_scored", 1.0)
+        weighted += share * scored_fraction
+        if partial is not None and (worst is None
+                                    or partial.get("weight_scored", 1.0)
+                                    < worst.get("weight_scored", 1.0)):
+            worst = partial
+    return {"scored": worst.get("scored"), "total": worst.get("total"),
+            "weight_scored": round(weighted, 4)}
+
+
 def _blend_aq(full_aq, components):
     """Blend named, weighted AQ components axis-by-axis.
 
     ``full_aq`` remains the compatibility/fallback score. It is intentionally not a
     weighted component. Components with no AQ are omitted and the configured weights
     of the remaining components are renormalized to one.
+
+    This function is generic over any set of named, weighted components and stays
+    correct whatever they span. Since v11 NOTHING in the live scoring path calls it: the
+    published AQ is the merged-corpus ``compute_aq`` result and carries no ``blend`` block.
+    Its remaining callers all replay a payload captured BEFORE v11, whose
+    ``bucket_scoring_inputs`` block still describes the ``recent_30d`` / ``full_window``
+    pair (see ``gnomon/scoring/replay.py``). Read the recency-blend block at the top of
+    this module before reintroducing a caller.
+
+    Note for anyone tempted to reuse it: ``signals`` on the returned axis are copied
+    verbatim from the highest-effective-weight component, so they describe THAT
+    component's span, not the union of the components'. Dividing one of those counts by a
+    corpus-wide denominator mixes two windows -- that was a live bug until v11.
     """
     contracts = {component.get("aq", {}).get("score_contract_id")
                  for component in components if component.get("aq")}
@@ -533,10 +652,20 @@ def _blend_aq(full_aq, components):
                         axis["score"] / (axis.get("weight") or 1),
                     ),
                     "signals": axis.get("signals", {}),
+                    # Per-component partial-term disclosure. Always present (None when
+                    # that component measured every term) so a reader never has to tell
+                    # "fully measured" apart from "an older component that predates the
+                    # field" by the absence of a key inside a component list.
+                    "partial_terms": axis.get("partial_terms"),
                     "effective_weight": component["effective_weight"] / axis_weight_total,
                 }
                 for component, axis in axis_components
             ]
+            blended_partial = _blend_partial_terms(axis_components, axis_weight_total)
+            if blended_partial is None:
+                blended_axis.pop("partial_terms", None)
+            else:
+                blended_axis["partial_terms"] = blended_partial
             blended_axes.append(blended_axis)
 
         # Axis scores arriving from compute_aq are contributions that already include
@@ -602,7 +731,12 @@ def _blend_aq(full_aq, components):
 
 
 def _blend_profiles(full_profile, components, full_block):
-    """Apply bucketed AQ while keeping non-AQ profile fields full-window scoped."""
+    """Apply bucketed AQ while keeping non-AQ profile fields full-window scoped.
+
+    REPLAY-ONLY since v11: a live run supplies no bucket components, so `score_by_source`
+    never reaches this function. It stays because `gnomon/scoring/replay.py` can be handed
+    a pre-v11 payload whose `bucket_scoring_inputs.by_source` breakdown is intact, and
+    reproducing what that payload published means reproducing this split."""
     aq_components = [dict(component, aq=component["profile"]["aq"])
                      for component in components]
     aq_components.append({
@@ -640,10 +774,11 @@ def score_by_source(scoring_inputs_by_source, bucket_scoring_inputs_by_source=No
     source's own caps (single-source → no union dilution). The aggregate combines the
     per-source SCORES per the module's documented weighted-mean rule.
 
-    When bucket inputs are provided, each source's AQ is blended from the recent
-    rolling bucket plus the full window (65/35). Full-window gstack and narratives
-    stay full-window scoped except AQ-derived growth edges, which are refreshed
-    from the blended AQ.
+    Bucket inputs are a REPLAY-ONLY path since v11 (no live caller supplies them; see the
+    recency-blend block at the top of this module). When a pre-v11 payload does provide
+    them, each source's AQ is blended from the recent rolling bucket plus the full window
+    (65/35), full-window gstack and narratives stay full-window scoped, and AQ-derived
+    growth edges are refreshed from the blended AQ.
     """
     metadata_by_id = {entry["id"]: entry for entry in (bucket_metadata or [])}
     by_source = {}

@@ -6,6 +6,12 @@ profile.html
 narrative_input.md
 _antigravity_ide/
 
+# Agent scratch space. Same rule, stronger reason: calibration work pulls real
+# per-user rows out of the mirdash upload archive, so files here can join real
+# names to per-person metrics. Tracked here rather than left to .git/info/exclude,
+# which is never cloned and so protects exactly one checkout.
+.context/
+
 # Python
 __pycache__/
 *.pyc

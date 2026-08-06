@@ -10,7 +10,9 @@ import sys
 import tempfile
 import urllib.parse
 
+from gnomon.scoring.aq import DEFAULT_SCORING_WINDOW_MONTHS
 from gnomon.scoring.versioning import SCORE_CONTRACT_ID
+from gnomon.coverage import COVERAGE_RANK, flag_for_counts, month_index, probe_month
 
 
 _COPIED_OUTPUTS = (
@@ -41,7 +43,9 @@ _DEFAULT_MIRDASH_BASE = "https://mirdash.xmartlabs.com"
 # approximate multi-source recompute is acceptable, so `scoring_inputs_corpus`
 # is no longer built or shipped at all, for any source count. Real measurement
 # after dropping it (keeping bucket_scoring_inputs + payload_features):
-# 839,496 bytes, ratio 0.9109 -- FITS.
+# 839,496 bytes, ratio 0.9109 -- FITS. v11 then removed the recency blend and with it
+# `bucket_scoring_inputs`, so a current payload is strictly smaller than that figure;
+# the number is left as measured rather than re-estimated.
 #
 # KNOWN RISK (documented, not a blocker): the real baseline (everything except
 # this capability's two additive blocks) already sits at ~89% of this budget
@@ -107,8 +111,12 @@ def _resolve_mirdash_base(argv):
 # Maximum batch size supported by the mirdash auth endpoint.
 _MAX_BACKFILL = 12
 
-# Default window size when --window is absent.
-_DEFAULT_WINDOW_MONTHS = 6
+# Default window size when --window is absent. Re-exported, not defined: the window is a
+# calibration input (it decides the corpus every absolute ceiling and session-count floor
+# in aq.py is judged against), so it is owned by the scoring module and covered by
+# gnomon/scoring/calibration.py's fingerprint. This alias keeps every existing importer --
+# gnomon/cli/insights.py, xl_ai_insights.py, tests -- reading the same value.
+_DEFAULT_WINDOW_MONTHS = DEFAULT_SCORING_WINDOW_MONTHS
 
 # Parallel month uploads. Each month runs paxel.py as a subprocess (CPU-bound),
 # so threads only block on subprocess.run -- no GIL contention, real multi-core.
@@ -121,15 +129,29 @@ _UPLOAD_ERROR = "UPLOAD_ERROR"
 
 
 def _is_report_url(value):
-    """True only for a real reportUrl — not None and not a failure sentinel."""
-    return value is not None and value not in (_PAXEL_ERROR, _UPLOAD_ERROR)
+    """True only when a live upload was stored and has a report URL."""
+    return not _is_archived_only(value) and _result_report_url(value) is not None
+
+
+def _is_archived_only(value):
+    return isinstance(value, dict) and value.get("outcome") == "archived_only"
+
+
+def _result_report_url(value):
+    if isinstance(value, dict):
+        report_url = value.get("reportUrl")
+        return report_url if isinstance(report_url, str) and report_url else None
+    if isinstance(value, str) and value not in (_PAXEL_ERROR, _UPLOAD_ERROR):
+        return value
+    return None
 
 
 def _upload_summary(mirdash_base, token, summary):
     """POST summary dict to mirdash /api/gnomon/ingest.
 
-    Returns the reportUrl string from the JSON response, or raises on error.
-    Token is never logged.
+    Returns a tagged stored/archive-only response when the server supplies an
+    outcome. Legacy responses without an outcome remain reportUrl strings.
+    Raises on error. Token is never logged.
     """
     import urllib.error
     import urllib.request
@@ -151,7 +173,13 @@ def _upload_summary(mirdash_base, token, summary):
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-        return data["reportUrl"]
+        report_url = data["reportUrl"]
+        outcome = data.get("outcome")
+        if outcome is None:
+            return report_url
+        if outcome not in ("stored", "archived_only"):
+            raise RuntimeError(f"upload returned unsupported outcome: {outcome}")
+        return {"outcome": outcome, "reportUrl": report_url}
     except urllib.error.HTTPError as exc:
         try:
             server_msg = exc.read().decode("utf-8", errors="replace").strip()
@@ -363,16 +391,39 @@ def latest_month_with_data(progression_monthly):
     return max(months)
 
 
-def _anchor_window(anchor_year, anchor_month, window_months=1):
+def _anchor_window(anchor_year, anchor_month, window_months=1, today=None):
     """Return (since_iso, until_iso, label) for a single anchor month.
 
-    Trailing-window semantics (same as month_windows per entry):
+    When *today* is provided, the anchor is today's current month, and
+    ``window_months == 1``, the window becomes a **trailing 30-day window**
+    ending at *today* (inclusive) instead of the full calendar month::
+
+        since = today - 30 days
+        until = today + 1 day  (exclusive upper bound)
+
+    Closed months (anchor != today's month) and multi-month windows
+    (``window_months > 1``) always use full calendar-month bounds regardless
+    of *today*.
+
+    Calendar-month semantics (closed months / multi-month windows):
       since = first day of the month that is (window_months-1) months before the anchor (inclusive).
       until = first day of the month AFTER the anchor (exclusive).
       label = 'YYYY-MM' of the anchor.
 
     window_months=1 gives a single-calendar-month window (since == anchor's first day).
     """
+    label = f"{anchor_year:04d}-{anchor_month:02d}"
+
+    # Current month with single-month window: trailing 30-day window
+    if (today is not None
+            and window_months == 1
+            and anchor_year == today.year
+            and anchor_month == today.month):
+        since = today - datetime.timedelta(days=30)
+        until = today + datetime.timedelta(days=1)
+        return (since.isoformat(), until.isoformat(), label)
+
+    # Closed month or multi-month window: full calendar-month bounds
     anchor_total_months = anchor_year * 12 + (anchor_month - 1)
 
     # Compute start month
@@ -384,7 +435,7 @@ def _anchor_window(anchor_year, anchor_month, window_months=1):
     # until = first day of the month after the anchor
     _, last_day = calendar.monthrange(anchor_year, anchor_month)
     until = datetime.date(anchor_year, anchor_month, 1) + datetime.timedelta(days=last_day)
-    return (since.isoformat(), until.isoformat(), f"{anchor_year:04d}-{anchor_month:02d}")
+    return (since.isoformat(), until.isoformat(), label)
 
 
 def month_windows(n, today, window_months=1):
@@ -408,22 +459,57 @@ def month_windows(n, today, window_months=1):
         anchor_total_months = today.year * 12 + (today.month - 1) - i
         anchor_year = anchor_total_months // 12
         anchor_month = anchor_total_months % 12 + 1  # 1-based
-        windows.append(_anchor_window(anchor_year, anchor_month, window_months))
+        windows.append(_anchor_window(anchor_year, anchor_month, window_months, today=today))
     return windows
 
 
-def windows_for_anchors(anchor_labels, window_months=1):
+def windows_for_anchors(anchor_labels, window_months=1, today=None):
     """Map a list of anchor labels ['YYYY-MM', ...] to [(since_iso, until_iso, label), ...].
 
     Preserves the input order.  Uses _anchor_window for each label.
     anchor_labels: list of 'YYYY-MM' strings, oldest first.
+
+    When *today* is provided it is forwarded to ``_anchor_window`` so the
+    current month can use a trailing 30-day window instead of full calendar
+    bounds.
     """
     result = []
     for label in anchor_labels:
         year = int(label[:4])
         month = int(label[5:7])
-        result.append(_anchor_window(year, month, window_months))
+        result.append(_anchor_window(year, month, window_months, today=today))
     return result
+
+
+def default_producible_coverage_for(month_key):
+    """Real `producible_coverage_for` implementation: the cheap pre-scoring
+    check (no accumulator run, no JSON parsing of transcripts) that decides
+    whether re-scoring the previous month is even worth attempting.
+
+    Wired by gnomon/cli/insights.py's real console/web call sites; deliberately
+    NOT plan_upload's default (see its docstring) so a caller that has not
+    explicitly opted in never touches the filesystem for this decision."""
+    from gnomon.sources.discovery import ALL_SOURCES, discover_sources
+    source_paths = [fp for _, fp, _ in discover_sources(ALL_SOURCES)]
+    idx = month_index()
+    indexed, transcripts = probe_month(month_key, source_paths, history_index=idx)
+    flag = flag_for_counts(indexed, transcripts)
+    return (COVERAGE_RANK.get(flag), transcripts)
+
+
+def _stored_coverage_rank_and_transcripts(previous_entry):
+    """(rank, transcripts) from a server-stored month entry's `coverage` field,
+    or (None, 0) when absent/invalid -- `None` is INCOMPARABLE (never a
+    justification to refresh), covering both a pre-coverage-capability upload
+    (old client/server) and a genuinely unknown month."""
+    coverage = previous_entry.get("coverage") if isinstance(previous_entry, dict) else None
+    if not isinstance(coverage, dict):
+        return (None, 0)
+    rank = COVERAGE_RANK.get(coverage.get("flag"))
+    transcripts = coverage.get("transcripts") or 0
+    if not isinstance(transcripts, int) or isinstance(transcripts, bool):
+        transcripts = 0
+    return (rank, transcripts)
 
 
 def plan_upload(
@@ -433,6 +519,7 @@ def plan_upload(
     max_months=_MAX_BACKFILL,
     *,
     active_contract=SCORE_CONTRACT_ID,
+    producible_coverage_for=None,
 ):
     """Return sorted list (oldest first) of (anchor 'YYYY-MM', reason) pairs to upload.
 
@@ -442,13 +529,28 @@ def plan_upload(
                    internal backward compatibility only.
     force:         bool — when True, behave as if server were empty (full backfill).
     max_months:    hard cap; never return more than this many anchors.
+    producible_coverage_for: optional `month_key -> (rank, transcripts)` callable
+                   (see gnomon.coverage.COVERAGE_RANK) used ONLY to decide whether
+                   the previous month is worth a coverage-gated refresh. Omitting
+                   it (the default) is the SAFE choice: no refresh is ever
+                   triggered, so a caller that has not wired a real cheap
+                   pre-check (gnomon.coverage.probe_month over discover_sources)
+                   never spends an upload on a refresh it cannot justify.
 
-    reason ∈ {'force', 'initial', 'current', 'gap', 'refresh', 'contract-bridge'}
+    reason ∈ {'force', 'initial', 'current', 'gap', 'refresh'}
       explicit valid history:
-        previous contract matches active → current only
-        previous missing/unstamped/different → previous then current
+        previous entry missing                        → gap, then current
+        previous or producible coverage rank is None   → current only (incomparable)
+        producible (rank, transcripts) > stored         → refresh, then current
+        otherwise                                       → current only
       unavailable/legacy/malformed/valid-empty → current only
       force=True → full explicit backfill
+
+    `contract-bridge` (scoreContractId-based comparison) is REMOVED: coverage
+    is the only comparison basis for whether the previous month is worth
+    re-scoring (see design.md decision B; a coverage-gated refresh is safe
+    across a contract change too, since the anti-degradation guard on the
+    server never lets a worse payload replace a better stored row).
     Legacy list compatibility:
       force=True                      → each anchor gets reason 'force'
       server empty (no valid entries) → each anchor gets reason 'initial'
@@ -478,12 +580,28 @@ def plan_upload(
             if isinstance(entry, dict) and isinstance(entry.get("monthKey"), str)
         }
         previous_entry = by_month.get(previous)
-        if (
-            previous_entry is not None
-            and previous_entry.get("scoreContractId") == active_contract
-        ):
+        if previous_entry is None:
+            return [(previous, "gap"), (current, "current")]
+
+        stored_rank, stored_transcripts = _stored_coverage_rank_and_transcripts(previous_entry)
+        producible = producible_coverage_for(previous) if producible_coverage_for else (None, 0)
+        producible_rank, producible_transcripts = producible if producible else (None, 0)
+
+        if stored_rank is not None and producible_rank is not None:
+            if (producible_rank, producible_transcripts) > (stored_rank, stored_transcripts):
+                return [(previous, "refresh"), (current, "current")]
             return [(current, "current")]
-        return [(previous, "contract-bridge"), (current, "current")]
+
+        # No coverage comparison possible (legacy row without coverage field).
+        # Fall back to transcript count: if we can produce MORE transcripts
+        # locally than the server reported at upload time, refresh.  When
+        # totalSessions is absent (server hasn't been updated yet), treat it
+        # as incomparable and skip — defaulting to 0 would refresh every run.
+        stored_sessions = previous_entry.get("totalSessions")
+        if stored_sessions is not None and producible_transcripts > stored_sessions:
+            return [(previous, "refresh"), (current, "current")]
+
+        return [(current, "current")]
 
     # Parse server_months defensively; skip malformed entries
     valid_server = {}
@@ -561,6 +679,7 @@ def months_to_upload(
     max_months=_MAX_BACKFILL,
     *,
     active_contract=SCORE_CONTRACT_ID,
+    producible_coverage_for=None,
 ):
     """Return sorted list (oldest first) of anchor 'YYYY-MM' labels to upload.
 
@@ -588,6 +707,7 @@ def months_to_upload(
             force,
             max_months,
             active_contract=active_contract,
+            producible_coverage_for=producible_coverage_for,
         )
     ]
 
@@ -636,9 +756,29 @@ def _history_from_query(parsed_qs):
         contract = entry.get("scoreContractId")
         if contract is not None and (not isinstance(contract, str) or not contract):
             return {"state": "malformed", "months": []}
+        coverage = entry.get("coverage")
+        if coverage is not None:
+            _flag = coverage.get("flag") if isinstance(coverage, dict) else None
+            _indexed = coverage.get("indexed") if isinstance(coverage, dict) else None
+            _transcripts = coverage.get("transcripts") if isinstance(coverage, dict) else None
+            if (
+                not isinstance(coverage, dict)
+                or _flag not in ("complete", "partial", "insufficient", "unknown")
+                or not isinstance(_indexed, int) or isinstance(_indexed, bool)
+                or not isinstance(_transcripts, int) or isinstance(_transcripts, bool)
+            ):
+                # All-or-nothing strictness (consistent with the rest of this
+                # parser): a structurally invalid coverage object invalidates
+                # the WHOLE history, not just this one entry.
+                return {"state": "malformed", "months": []}
+        total_sessions = entry.get("totalSessions")
         normalized = {"monthKey": month_key, "uploadedAt": uploaded_at}
         if contract is not None:
             normalized["scoreContractId"] = contract
+        if coverage is not None:
+            normalized["coverage"] = coverage
+        if isinstance(total_sessions, (int, float)) and not isinstance(total_sessions, bool):
+            normalized["totalSessions"] = int(total_sessions)
         existing = best.get(month_key)
         if existing is None or normalized["uploadedAt"] > existing["uploadedAt"]:
             best[month_key] = normalized
@@ -747,19 +887,73 @@ def _summary_is_empty(summary):
     return ctx.get("total_sessions", 0) == 0 or not dr[0] or not dr[1]
 
 
+def _stamp_window_months(summary, window_months):
+    """Fill in `context.window_months` ONLY when the payload does not already declare it.
+
+    `gnomon/output/summary.py::build_summary` owns this field. It derives the span from
+    the bounds the run actually covered, which is a fact about the corpus; `--window=N`
+    is only what this wrapper ASKED for, and a payload that echoed the request rather
+    than the corpus is exactly how a six-month corpus used to end up pooled with the
+    one-month cohort (see gnomon/scoring/replay.py's corpus-scale gate).
+
+    The two writers cannot disagree: `_anchor_window` only ever requests bounds that are
+    a whole number of calendar months, and those bounds derive back to exactly the
+    `window_months` that produced them (pinned in tests/test_window_flag.py). This stamp
+    therefore only ever fires for a summary built by something that does not derive it --
+    an older paxel, or a hand-built dict -- and when a payload DOES declare a span, that
+    declaration wins. Overwriting it with the request would let the wrapper certify a
+    corpus scale it never observed.
+    """
+    ctx = summary.setdefault("context", {})
+    if ctx.get("window_months") is None:
+        ctx["window_months"] = window_months
+    return summary
+
+
+def _stamp_force_directive(summary, force):
+    """Attach the top-level `force` upload directive to a summary, in place.
+
+    Shape contract with mirdash: /api/gnomon/ingest's `summarySchema` is a
+    field-by-field zod whitelist carrying `force: z.boolean().optional()` as a
+    TOP-LEVEL key -- a sibling of `context` and `coverage` (which
+    gnomon/output/summary.py attaches the same way), NOT nested under
+    `context`. A nested copy would be silently dropped by the whitelist. The
+    route forwards it to the ingestBuildMetrics mutation, whose
+    anti-degradation guard reads `!args.force`; without it the mutation
+    rejects any payload a stored row beats on completeness and the route still
+    answers HTTP 200, so `--force` fails silently exactly when Claude Code's
+    shrinking 30-day retention makes a fresh force upload carry FEWER sessions
+    than the stored row.
+
+    Written ONLY when force is true. The field is optional server-side and the
+    guard tests falsiness, so an explicit `false` is indistinguishable from an
+    absent key -- omitting it keeps every auto/backfill payload byte-identical
+    to what shipped before this change (no new key for replay/recompute
+    consumers to reason about, no added bytes against _INGEST_MAX_BYTES).
+    """
+    if force:
+        summary["force"] = True
+    return summary
+
+
 def _upload_window(mirdash_base, token, paxel_src, paxel_args_base, since, until, label,
                    verbose, quiet, output_dir=None, window_months=_DEFAULT_WINDOW_MONTHS,
-                   file_prefix=""):
+                   file_prefix="", force=False):
     """Run paxel for one calendar window and upload the summary.
 
     Returns a ``(result, summary)`` tuple mirroring the sentinel semantics of
     ``_upload_window_web`` so the console loop can distinguish a real success
     from the two failure modes:
-      - ``result``: the reportUrl string on success | ``None`` when the window
-        is genuinely empty (a normal skip) | ``_PAXEL_ERROR`` if the paxel run
-        failed | ``_UPLOAD_ERROR`` if the upload POST failed.
+      - ``result``: a tagged stored/archive-only response (or a legacy
+        reportUrl string) | ``None`` when the window is genuinely empty (a
+        normal skip) | ``_PAXEL_ERROR`` if the paxel run failed |
+        ``_UPLOAD_ERROR`` if the upload POST failed.
       - ``summary``: the paxel summary dict on a successful upload; ``None``
         otherwise (enables the caller to print ``_format_summary``).
+
+    ``force``: True only when THIS month's plan reason is 'force'; stamps the
+    top-level ``force`` upload directive on the payload (see
+    ``_stamp_force_directive``).
     """
     window_args = paxel_args_base + [
         f"--since={since}",
@@ -782,7 +976,8 @@ def _upload_window(mirdash_base, token, paxel_src, paxel_args_base, since, until
             print(f"  skip {label} -- no activity")
         return (None, None)
 
-    summary.setdefault("context", {})["window_months"] = window_months
+    _stamp_window_months(summary, window_months)
+    _stamp_force_directive(summary, force)
     try:
         return (_upload_summary(mirdash_base, token, summary), summary)
     except PayloadTooLarge:
@@ -798,12 +993,16 @@ def _upload_window(mirdash_base, token, paxel_src, paxel_args_base, since, until
 
 def _upload_window_web(mirdash_base, token, paxel_src, paxel_args_base, since, until, label,
                        verbose, server, index, total, output_dir=None, quiet=False,
-                       window_months=_DEFAULT_WINDOW_MONTHS, file_prefix=""):
+                       window_months=_DEFAULT_WINDOW_MONTHS, file_prefix="", force=False):
     """Run paxel for one calendar window, push SSE events, and upload.
 
-    Returns the reportUrl string on success, or one of the failure sentinels:
-    `_PAXEL_ERROR` (paxel run failed), `_UPLOAD_ERROR` (upload POST failed), or
-    None when the window is genuinely empty (no activity — a normal skip).
+    Returns a tagged stored/archive-only response (or a legacy reportUrl
+    string), one of the failure sentinels (`_PAXEL_ERROR` or `_UPLOAD_ERROR`),
+    or None when the window is genuinely empty (no activity — a normal skip).
+
+    ``force``: True only when THIS month's plan reason is 'force'; stamps the
+    top-level ``force`` upload directive on the payload (see
+    ``_stamp_force_directive``).
     """
     window_args = paxel_args_base + [
         f"--since={since}",
@@ -826,13 +1025,15 @@ def _upload_window_web(mirdash_base, token, paxel_src, paxel_args_base, since, u
         server.push_event("skipped", {"month": label, "label": label, "reason": "no activity"})
         return None
 
-    summary.setdefault("context", {})["window_months"] = window_months
+    _stamp_window_months(summary, window_months)
+    _stamp_force_directive(summary, force)
     server.push_event("uploading", {"month": label, "label": label, "index": index, "total": total})
 
     try:
-        report_url = _upload_summary(mirdash_base, token, summary)
-        server.push_event("uploaded", {"month": label, "label": label, "index": index, "total": total})
-        return report_url
+        result = _upload_summary(mirdash_base, token, summary)
+        event = "guarded" if _is_archived_only(result) else "uploaded"
+        server.push_event(event, {"month": label, "label": label, "index": index, "total": total})
+        return result
     except PayloadTooLarge as exc:
         # The browser sees the reason (naming the byte size) via the SSE event,
         # AND the exception still propagates -- unlike every other upload

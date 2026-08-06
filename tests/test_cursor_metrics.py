@@ -351,9 +351,14 @@ class TestCursorVerificationScoring(unittest.TestCase):
     def test_review_skills_count_for_cursor_skill_reads(self):
         from gnomon.scoring.aq import compute_aq
 
+        # 1000 tool calls over 10 sessions (100/session, inside the 39-179 real corpora
+        # span): the review-skill rate target implies >250 tool calls before one invocation
+        # stops maxing the term, so a 100-call corpus would be dropped by aq.py's rate
+        # evidence floor and prove nothing about whether Cursor's skill READS reach scoring.
+        # The rate is unchanged in kind (10 review reads is still well above target).
         stats = {
             "corpus": {"sources": {"cursor": {}}},
-            "volume": {"total_sessions": 10, "tool_calls_total": 100},
+            "volume": {"total_sessions": 10, "tool_calls_total": 1000},
             "stack": {"top_skills": [("code-review", 10)], "skills_all": [("code-review", 10)]},
             "tools": {},
             "behavior": {"shell_test_runs": 0},

@@ -21,9 +21,10 @@ import copy
 import unittest
 
 from gnomon.scoring.aq import (
-    COMPOUNDING_WRITES_PER_CALL_TARGET, REVIEW_SKILLS_PER_CALL_TARGET,
-    SKILLS_TOTAL_PER_CALL_TARGET, TASK_CALLS_PER_CALL_TARGET,
-    TEST_RUNS_PER_CALL_TARGET, TOOLSEARCH_PER_CALL_TARGET, compute_aq,
+    COMPOUNDING_WRITES_PER_CALL_TARGET, RATE_MIN_EXPECTED_AT_TARGET,
+    REVIEW_SKILLS_PER_CALL_TARGET, SKILLS_TOTAL_PER_CALL_TARGET,
+    TASK_CALLS_PER_CALL_TARGET, TEST_RUNS_PER_CALL_TARGET,
+    TOOLSEARCH_PER_CALL_TARGET, compute_aq,
 )
 
 # Planning practice deliberately reports "unmeasured" in these fixtures (all six selector
@@ -316,13 +317,16 @@ class TestTargetsStayInsideTheirMeasuredBands(unittest.TestCase):
     value, so recalibration stays free but walking outside the measured population does not.
     """
 
-    # (constant, p40, p50, n) exactly as documented at aq.py's module top.
+    # (constant, p40, p50, n) exactly as documented at aq.py's module top. The two skill
+    # bands are the 9:9:9 POST-dedup projection; the other four are the v7 pre-dedup
+    # measurement, unchanged because the dedup moved numerators and not the shared
+    # denominator (aq.py records that decision and the re-measured drift).
     BANDS = (
-        ("skills_total", SKILLS_TOTAL_PER_CALL_TARGET, 0.2248, 0.2538, 16),
+        ("skills_total", SKILLS_TOTAL_PER_CALL_TARGET, 0.00865, 0.00981, 16),
         ("toolsearch", TOOLSEARCH_PER_CALL_TARGET, 0.00732, 0.00773, 15),
         ("task_calls", TASK_CALLS_PER_CALL_TARGET, 0.00817, 0.01475, 13),
         ("test_runs", TEST_RUNS_PER_CALL_TARGET, 0.02219, 0.02715, 16),
-        ("review_skills", REVIEW_SKILLS_PER_CALL_TARGET, 0.04412, 0.08306, 13),
+        ("review_skills", REVIEW_SKILLS_PER_CALL_TARGET, 0.00338, 0.00440, 13),
         ("compounding_writes", COMPOUNDING_WRITES_PER_CALL_TARGET, 0.00170, 0.00207, 16),
     )
 
@@ -339,6 +343,108 @@ class TestTargetsStayInsideTheirMeasuredBands(unittest.TestCase):
             with self.subTest(target=name):
                 self.assertGreaterEqual(n, 13, "n < 13 cannot support a p40/p50 split")
                 self.assertLess(p40, p50, "p40 must sit below p50")
+
+
+class TestRateEvidenceFloorDropsNoiseInsteadOfSaturating(unittest.TestCase):
+    """A rate term is `min(1, x / (tool_calls · target))`, so it maxes out at
+    x = tool_calls · target. Once that product falls to 1, ONE occurrence saturates the
+    term — the same failure mode `MIN_ELIGIBLE_SESSIONS` already fixes for the two
+    session-share terms ("one planning-skill invocation maxed the term forever").
+
+    The v9 re-fit is what made it reachable: SKILLS_TOTAL_PER_CALL_TARGET 0.25 -> 0.009
+    moved the boundary from tool_calls <= 4 (unreachable) to <= 111, and
+    REVIEW_SKILLS_PER_CALL_TARGET 0.060 -> 0.004 from <= 16 to <= 250. Below the floor the
+    term must be DROPPED (None -> wsum renormalizes), never scored.
+    """
+
+    # 100 tool calls over 2 sessions: below the implied floor for skills_total (>111),
+    # review_skills (>250) and compounding_writes (>556); above it for test_runs (>40)
+    # and task calls (>91). One occurrence of each thin signal is exactly the pathology.
+    THIN = dict(source="claude", sessions=2, tool_calls=100)
+
+    def test_one_skill_use_in_a_thin_corpus_drops_the_term_instead_of_maxing_it(self):
+        thin = _corpus([_block(**self.THIN, other_skill_uses=1, skills_distinct=1)])
+        self.assertIsNone(_signals(thin, "Breadth", "Skill fluency")["skills_total_per_call"],
+                          "a rate the scorer refused must not be published as a number")
+        # The two surviving terms, renormalized over their own weights (.40 + .30).
+        expected = (.40 * (1 / 40) + .30 * 0.6) / 0.70
+        self.assertAlmostEqual(_norm(thin, "Breadth", "Skill fluency"), expected, places=9)
+        # What it replaces: 1 use / 100 calls = 0.010/call is 111% of the 0.009 target, so
+        # the old code credited the full .30 weight on a single skill invocation.
+        phantom = .40 * (1 / 40) + .30 * 1.0 + .30 * 0.6
+        self.assertLess(_norm(thin, "Breadth", "Skill fluency"), phantom)
+
+    def test_one_review_use_in_a_thin_corpus_leaves_the_axis_on_its_measurable_half(self):
+        thin = _corpus([_block(**self.THIN, review_uses=1, test_runs=2)])
+        sig = _signals(thin, "Craft", "Verification")
+        self.assertIsNone(sig["review_skills_per_call"])
+        self.assertIsNotNone(sig["test_runs_per_call"],
+                             "test_runs' own floor is 40 calls — it stays measurable here")
+        # Renormalized onto the one live term (test runs), NOT half a phantom 1.0.
+        self.assertAlmostEqual(_norm(thin, "Craft", "Verification"),
+                               _sat(2 / 100, TEST_RUNS_PER_CALL_TARGET), places=9)
+        self.assertLess(_norm(thin, "Craft", "Verification"),
+                        .5 * _sat(2 / 100, TEST_RUNS_PER_CALL_TARGET) + .5 * 1.0)
+
+    def test_a_corpus_above_the_floor_scores_exactly_as_before(self):
+        """The floor must not touch a corpus that carries real evidence: same counts, a
+        denominator above every implied floor, and both halves score normally."""
+        thick = _corpus([_block(source="claude", sessions=12, tool_calls=900,
+                                review_uses=4, test_runs=12)])
+        sig = _signals(thick, "Craft", "Verification")
+        self.assertIsNotNone(sig["review_skills_per_call"])
+        expected = (.5 * _sat(12 / 900, TEST_RUNS_PER_CALL_TARGET)
+                    + .5 * _sat(4 / 900, REVIEW_SKILLS_PER_CALL_TARGET))
+        self.assertAlmostEqual(_norm(thick, "Craft", "Verification"), expected, places=9)
+
+    def test_a_measured_zero_denominator_keeps_its_existing_fail_closed_zero(self):
+        """The floor only applies where a rate is computable at all. Zero tool calls stays
+        the deliberate 0.0 of TestFailClosedAndObservability above (no numerator can
+        saturate a term that is never divided), so that decision is not silently reversed."""
+        idle = _corpus([_block(source="claude", sessions=40, tool_calls=0, test_runs=7,
+                               review_uses=7)])
+        self.assertEqual(_norm(idle, "Craft", "Verification"), 0.0)
+
+
+class TestRateEvidenceFloorIsCalibratedFromThePopulation(unittest.TestCase):
+    """The floor is expressed in occurrences-implied-by-the-target, not in tool calls, so
+    it cannot drift out from under a re-fit (a hardcoded call count would silently stop
+    covering any target later re-fitted downwards — the exact bug under repair).
+
+    Hardcoded here, like the band guard above: both bounds come from the population, so a
+    later value change has to come and re-argue them.
+    """
+
+    # Smallest of the 16 real 6-month corpora in .context/population-pre-dedup.psv,
+    # pooled across every source the user runs: 2,036 tool calls over 17 sessions
+    # (119.8 calls/session).
+    SMALLEST_REAL_CORPUS_TOOL_CALLS = 2036
+
+    def test_the_floor_is_at_least_the_single_occurrence_invariant(self):
+        """Below 1.0 a single occurrence can still max a term, which is the whole finding."""
+        self.assertGreaterEqual(RATE_MIN_EXPECTED_AT_TARGET, 1.0)
+
+    def test_the_floor_moves_no_real_corpus(self):
+        """Every rate term of the LIGHTEST real corpus must stay scored. The tightest
+        target (compounding, 0.0018) is what binds: 2036 · 0.0018 = 3.66, so the data
+        permits [1.0, 3.66) and anything at or above 3.66 would start dropping terms for a
+        real, uploaded user."""
+        for name, target, _p40, _p50, _n in (
+                TestTargetsStayInsideTheirMeasuredBands.BANDS):
+            with self.subTest(target=name):
+                self.assertLess(RATE_MIN_EXPECTED_AT_TARGET,
+                                self.SMALLEST_REAL_CORPUS_TOOL_CALLS * target)
+
+    def test_each_target_implies_the_documented_minimum_denominator(self):
+        """The floor a reader can check against aq.py's comment block."""
+        implied = {name: RATE_MIN_EXPECTED_AT_TARGET / target
+                   for name, target, _p40, _p50, _n in
+                   TestTargetsStayInsideTheirMeasuredBands.BANDS}
+        for name, calls in (("skills_total", 111), ("toolsearch", 133),
+                            ("task_calls", 90), ("test_runs", 40),
+                            ("review_skills", 250), ("compounding_writes", 555)):
+            with self.subTest(target=name):
+                self.assertAlmostEqual(implied[name], calls, delta=1.0)
 
 
 if __name__ == "__main__":

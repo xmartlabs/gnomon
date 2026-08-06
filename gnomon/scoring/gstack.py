@@ -22,8 +22,10 @@ REPO_URL = "https://github.com/Photobombastic/paxel-local"
 SCORE_NOTES = {
     "Execution": "How much you produce, and how efficiently — your tool output rate (Edit/Write "
                  "lines per active hour) and how hard you delegate to agents.",
-    "Planning": "How much you think before you build — exploring before writing, reasoning "
-                "depth, and laying out a plan first. (Prompt length was dropped — terse expert "
+    "Planning": "How much you think before you build — weighted 0.30 exploring before "
+                "writing, 0.30 reasoning depth, 0.25×coverage laying out a plan (planning "
+                "ceremony, scaled by how much of your activity was actually classified), and "
+                "0.15 ordered planning readiness. (Prompt length was dropped — terse expert "
                 "prompts shouldn't score below verbose ones.)",
     "Engineering": "How clean your work is — getting files right early, not re-editing the same "
                    "one over and over, low error rate, and checking your work.",
@@ -65,8 +67,16 @@ AQ_AXIS_NOTES = {
                             "write plus two distinct files or ten substantive tool calls. "
                             f"Score = min(1, coverage / {CONTEXT_INTELLIGENCE_TARGET:.2f}).",
     "Compounding": "Whether learnings persist: writes to memory/docs/skills, plus retro and planning habits.",
-    "Steering leverage": "Agent actions per prompt, scored as a sweet spot (5–20): enough leash "
-                         "to run, not so loose it drifts.",
+    # Kept, not deleted: 12:12:12 WITHHOLDS this axis, so the note is only rendered where the
+    # band flag is on (see STEERING_LEVERAGE_BAND_VALIDATED in aq.py). It has to describe the
+    # band it would be scored through, and say why it currently is not.
+    "Steering leverage": "Top-level agent actions per human instruction (subagent calls "
+                         "excluded from the count, slash commands included as instructions), "
+                         "read against a sweet spot (5–20): enough leash to run, not so loose "
+                         "it drifts. Not scored in v12 — that band was never fitted against a "
+                         "population, so the count is published and left ungraded rather than "
+                         "graded on an unvalidated threshold. Also unscored where the source "
+                         "can delegate but cannot label a call as delegated.",
     "Recovery": "Share of tool errors recovered from, minus API-retry noise.",
     "Model mix": "Using more than one model, with real work routed off your default — "
                  "match the model to the task.",
@@ -540,9 +550,41 @@ def score_breakdown(stats):
     eng_subs = [_enrich_sub(s) for s in eng_subs]
 
     def _mark_drag(axis_name, subs, gloss):
-        """Flag the sub with the smallest weight*pct contribution; build a drag_note."""
+        """Flag the sub with the smallest weight*pct contribution; build a drag_note.
+        Subs already clamped at ceiling (pct>=1.0) already met their target and are
+        NEVER eligible to be blamed as the drag — only subs genuinely below target
+        (pct<1.0) are drag candidates. If every live sub is at/above ceiling, nothing
+        is flagged and a graceful no-drag note is emitted instead (no IndexError from
+        an empty candidate set)."""
         live_indices = [i for i, sub in enumerate(subs) if sub.get("pct") is not None]
-        drag_idx = min(live_indices, key=lambda i: subs[i]["weight"] * subs[i]["pct"])
+        drag_candidates = [i for i in live_indices if subs[i]["pct"] < 1.0]
+        _axis_values = {
+            "execution": execution_val,
+            "planning": planning_val,
+            "engineering": engineering_val,
+        }
+        av = _axis_verdict(_axis_values[axis_name])
+        axis_name_display = axis_name.capitalize()
+        best_sub = (max((subs[i] for i in live_indices), key=lambda s: s["pct"])
+                    if live_indices else None)
+
+        if not drag_candidates:
+            for s in subs:
+                s["is_drag"] = False
+            note = ("Nothing is dragging this axis down — every measured sub-metric "
+                    "is at or above target.")
+            axis_narr = f"{axis_name_display} scores {_axis_values[axis_name]}/10 ({av})."
+            if best_sub is not None:
+                axis_narr += (f" Every measured sub-metric is at or above target "
+                              f"(strongest: {best_sub['label']} ({best_sub['score_pct']}%)).")
+            return {"value": _axis_values[axis_name],
+                    "gloss": gloss, "drag_note": note, "subs": subs,
+                    "axis_verdict": av,
+                    "score_out_of_10": f"{_axis_values[axis_name]} / 10",
+                    "drag_narrative": note,
+                    "axis_narrative": axis_narr}
+
+        drag_idx = min(drag_candidates, key=lambda i: subs[i]["weight"] * subs[i]["pct"])
         for i, s in enumerate(subs):
             s["is_drag"] = (i == drag_idx)
         d = subs[drag_idx]
@@ -552,19 +594,11 @@ def score_breakdown(stats):
         else:
             note = (f"{d['label']} is dragging this down — "
                     f"{d['your_value']:.2g} {d['unit']} (target ≤{d['target']:.2g}).")
-        _axis_values = {
-            "execution": execution_val,
-            "planning": planning_val,
-            "engineering": engineering_val,
-        }
         drag_sub = subs[drag_idx]
-        best_sub = max((subs[i] for i in live_indices), key=lambda s: s["pct"])
-        av = _axis_verdict(_axis_values[axis_name])
         dir_hint = "higher is better" if drag_sub["direction"] == "higher" else "lower is better"
         drag_narr = (
             f"{drag_sub['label']} is the weakest contributor, scoring {drag_sub['score_pct']}%. "
             f"Your value: {drag_sub['display_value']} (target: {drag_sub['display_target']}, {dir_hint}).")
-        axis_name_display = axis_name.capitalize()
         axis_narr = (
             f"{axis_name_display} scores {_axis_values[axis_name]}/10 ({av}). "
             f"Strongest: {best_sub['label']} ({best_sub['score_pct']}%); "

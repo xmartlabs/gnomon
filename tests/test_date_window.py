@@ -213,17 +213,20 @@ class TestWindowedGitChurnBounds(unittest.TestCase):
         return captured["since"], captured["until"]
 
     def test_windowed_churn_uses_requested_bounds(self):
-        """With --since/--until, churn is scanned over the full requested window —
-        even though the earliest Feb event is Feb 10, the since bound must be Feb 1.
-        --until is inclusive-end, so --until=2025-03-01 internally becomes 2025-03-02
-        (exclusive next-midnight), and git churn gets 2025-03-02 to include March 1."""
+        """With --since/--until, churn is scanned over the INTERSECTION of the
+        requested window and the corpus's own observed span (honest-aq-series
+        design decision D: scope, not winsorize). Within [Feb 1, Mar 2) only
+        the Feb 10 and Feb 20 fixture events survive the window filter, so the
+        churn bound narrows to [Feb 10, Feb 21) — even though --until=2025-03-01
+        (internally the exclusive next-midnight 2025-03-02) was requested,
+        nothing observed reaches that far."""
         since, until = self._capture_churn_args(["--since=2025-02-01", "--until=2025-03-01"])
-        self.assertTrue(since.startswith("2025-02-01"),
-                        f"churn since should be the requested window start, got {since!r}")
-        self.assertTrue(until.startswith("2025-03-02"),
-                        f"churn until should be the day after the inclusive --until, got {until!r}")
-        self.assertEqual(since, "2025-02-01")
-        self.assertEqual(until, "2025-03-02")
+        self.assertTrue(since.startswith("2025-02-10"),
+                        f"churn since should be narrowed to the corpus's observed min, got {since!r}")
+        self.assertTrue(until.startswith("2025-02-21"),
+                        f"churn until should be narrowed to the corpus's observed max + 1 day, got {until!r}")
+        self.assertEqual(since, "2025-02-10")
+        self.assertEqual(until, "2025-02-21")
 
     def test_no_window_churn_uses_data_minmax(self):
         """Without a window, churn bounds remain the actual corpus min/max (unchanged)."""
@@ -234,10 +237,12 @@ class TestWindowedGitChurnBounds(unittest.TestCase):
                         f"churn until should be corpus max, got {until!r}")
 
     def test_since_only_churn_until_is_data_max(self):
-        """With only --since, the until bound falls back to the actual corpus max."""
+        """With only --since, the until bound is narrowed to the intersection of
+        the requested start and the corpus's observed min (Feb 10), and falls
+        back to the actual corpus max on the until side."""
         since, until = self._capture_churn_args(["--since=2025-02-01"])
-        self.assertTrue(since.startswith("2025-02-01"),
-                        f"churn since should be requested start, got {since!r}")
+        self.assertTrue(since.startswith("2025-02-10"),
+                        f"churn since should be narrowed to the corpus's observed min, got {since!r}")
         self.assertTrue(until.startswith("2025-03"),
                         f"churn until should fall back to corpus max, got {until!r}")
 
@@ -282,20 +287,29 @@ class TestWindowedCursorGitChurnRoots(unittest.TestCase):
                 antigravity=False,
                 verbose=False,
             )
-        return churn_roots[0], workspace
+        return (churn_roots[0] if churn_roots else set()), workspace, len(churn_roots)
 
     def test_out_of_window_cursor_transcript_does_not_seed_git_churn(self):
+        """An out-of-window transcript is dropped entirely by observe(), so the
+        corpus stays empty (all_min_dt is None) and git_churn is never even
+        called (design decision D's empty-corpus guard) -- a stronger guarantee
+        than merely "workspace absent from the call"."""
         jan10 = datetime(2025, 1, 10, 12, 0, tzinfo=timezone.utc).timestamp()
 
-        roots, workspace = self._capture_cursor_churn_roots(jan10)
+        roots, workspace, call_count = self._capture_cursor_churn_roots(jan10)
 
+        self.assertEqual(call_count, 0)
         self.assertNotIn(workspace, roots)
 
     def test_admitted_cursor_event_contributes_workspace_to_git_churn(self):
         feb15 = datetime(2025, 2, 15, 12, 0, tzinfo=timezone.utc).timestamp()
 
-        roots, workspace = self._capture_cursor_churn_roots(feb15)
+        roots, workspace, call_count = self._capture_cursor_churn_roots(feb15)
 
+        # _accumulate feeds both the corpus accumulator and its per-source
+        # accumulator, each of which calls git_churn once via to_corpus_stats /
+        # to_source_stats respectively.
+        self.assertGreaterEqual(call_count, 1)
         self.assertIn(workspace, roots)
 
 

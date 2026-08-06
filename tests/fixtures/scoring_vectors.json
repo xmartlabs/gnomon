@@ -3,21 +3,21 @@
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 83,
+          "aq_0_100": 85,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 76.9,
+              "score": 77.6,
               "weight": 30
             },
             {
               "name": "Craft",
-              "score": 80.8,
+              "score": 92.5,
               "weight": 35
             },
             {
               "name": "Efficiency",
-              "score": 91.1,
+              "score": 82.2,
               "weight": 20
             },
             {
@@ -26,7 +26,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "7:7:7",
+          "score_contract_id": "13:13:13",
           "tier": "Advanced"
         },
         "archetype": {
@@ -42,6 +42,9 @@
           },
           "rule": "weighted_mean_except_synthesized_planning",
           "weight": "tool_calls_total",
+          "weight_exceptions": {
+            "behavior.actions_per_prompt": "total_instructions"
+          },
           "weights": {
             "claude": 4000
           }
@@ -190,8 +193,8 @@
           "planning": {
             "axis_narrative": "Planning scores 10.0/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning practice (100%).",
             "axis_verdict": "excellent",
-            "drag_narrative": "Planning practice is the weakest contributor, scoring 100%. Your value: 0.4 planning sessions/session (target: 0.3 planning sessions/session, higher is better).",
-            "drag_note": "Planning practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.3.",
+            "drag_narrative": "Nothing is dragging this axis down \u2014 every measured sub-metric is at or above target.",
+            "drag_note": "Nothing is dragging this axis down \u2014 every measured sub-metric is at or above target.",
             "gloss": "Think before you build",
             "score_out_of_10": "10.0 / 10",
             "subs": [
@@ -232,7 +235,7 @@
                 "display_target": "0.3 planning sessions/session",
                 "display_value": "0.4 planning sessions/session",
                 "effective_weight": 0.25,
-                "is_drag": true,
+                "is_drag": false,
                 "label": "Planning practice",
                 "narrative": "Planning practice is excellent (0.4 planning sessions/session, target 0.3 planning sessions/session \u2014 well above target, scoring 100%).",
                 "pct": 1.0,
@@ -289,7 +292,7 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 83,
+            "aq_0_100": 85,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -322,13 +325,13 @@
                   {
                     "base_weight": 22,
                     "name": "Skill fluency",
-                    "normalized_score": 0.82,
-                    "score": 18.0,
+                    "normalized_score": 0.85,
+                    "score": 18.7,
                     "signals": {
                       "skills_distinct": 25,
                       "skills_total": 900,
                       "skills_total_per_call": 0.225,
-                      "skills_total_per_call_target": 0.25,
+                      "skills_total_per_call_target": 0.009,
                       "tool_calls": 4000
                     },
                     "weight": 22
@@ -352,6 +355,11 @@
                     "base_weight": 17,
                     "name": "Discipline",
                     "normalized_score": 1.0,
+                    "partial_terms": {
+                      "scored": 2,
+                      "total": 3,
+                      "weight_scored": 0.8
+                    },
                     "score": 17.0,
                     "signals": {
                       "planning_practice_eligible_sessions": 40,
@@ -366,7 +374,7 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 76.9,
+                "score": 77.6,
                 "weight": 30
               },
               {
@@ -374,12 +382,12 @@
                   {
                     "base_weight": 35,
                     "name": "Verification",
-                    "normalized_score": 0.666666666666667,
-                    "score": 23.3,
+                    "normalized_score": 1.0,
+                    "score": 35.0,
                     "signals": {
                       "review_skills": 80,
                       "review_skills_per_call": 0.02,
-                      "review_skills_per_call_target": 0.06,
+                      "review_skills_per_call_target": 0.004,
                       "test_runs": 120,
                       "test_runs_per_call": 0.03,
                       "test_runs_per_call_target": 0.025,
@@ -428,36 +436,29 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 80.8,
+                "score": 92.5,
                 "weight": 35
               },
               {
                 "axes": [
                   {
                     "base_weight": 50,
-                    "name": "Steering leverage",
-                    "normalized_score": 1.0,
-                    "score": 50.0,
-                    "signals": {
-                      "actions_per_prompt": 13.0
-                    },
-                    "weight": 50
-                  },
-                  {
-                    "base_weight": 50,
                     "name": "Recovery",
                     "normalized_score": 0.8225,
-                    "score": 41.1,
+                    "score": 82.2,
                     "signals": {
                       "api_per_100_tools": 0.1,
                       "api_retries": 4,
                       "recovery_ratio": 0.8
                     },
-                    "weight": 50
+                    "weight": 100
                   }
                 ],
                 "name": "Efficiency",
-                "score": 91.1,
+                "not_applicable": [
+                  "Steering leverage"
+                ],
+                "score": 82.2,
                 "weight": 20
               },
               {
@@ -500,7 +501,11 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "7:7:7",
+            "score_contract_id": "13:13:13",
+            "steering_leverage": {
+              "actions_per_prompt": 13.0,
+              "state": "withheld_unvalidated_band"
+            },
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -653,10 +658,10 @@
               "value": 7.8
             },
             "planning": {
-              "axis_narrative": "Planning scores 10.0/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning practice (100%).",
+              "axis_narrative": "Planning scores 10.0/10 (excellent). Every measured sub-metric is at or above target (strongest: Explore-before-build (100%)).",
               "axis_verdict": "excellent",
-              "drag_narrative": "Planning practice is the weakest contributor, scoring 100%. Your value: 0.4 planning sessions/session (target: 0.3 planning sessions/session, higher is better).",
-              "drag_note": "Planning practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.3.",
+              "drag_narrative": "Nothing is dragging this axis down \u2014 every measured sub-metric is at or above target.",
+              "drag_note": "Nothing is dragging this axis down \u2014 every measured sub-metric is at or above target.",
               "gloss": "Think before you build",
               "score_out_of_10": "10.0 / 10",
               "subs": [
@@ -697,7 +702,7 @@
                   "display_target": "0.3 planning sessions/session",
                   "display_value": "0.4 planning sessions/session",
                   "effective_weight": 0.25,
-                  "is_drag": true,
+                  "is_drag": false,
                   "label": "Planning practice",
                   "narrative": "Planning practice is excellent (0.4 planning sessions/session, target 0.3 planning sessions/session \u2014 well above target, scoring 100%).",
                   "pct": 1.0,
@@ -784,6 +789,7 @@
           "source": "claude",
           "stack": {
             "compounding_writes": 20,
+            "max_session_subagent_types": 2,
             "models": [
               [
                 "claude-opus-4-8",
@@ -905,27 +911,27 @@
         }
       }
     },
-    "scoring_inputs_version": 7
+    "scoring_inputs_version": 13
   },
   {
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 49,
+          "aq_0_100": 40,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 26.6,
+              "score": 20.0,
               "weight": 30
             },
             {
               "name": "Craft",
-              "score": 31.3,
+              "score": 26.5,
               "weight": 35
             },
             {
               "name": "Efficiency",
-              "score": 77.2,
+              "score": 54.5,
               "weight": 20
             },
             {
@@ -934,12 +940,12 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "7:7:7",
-          "tier": "Adequate"
+          "score_contract_id": "13:13:13",
+          "tier": "Apprentice"
         },
         "archetype": {
-          "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is breadth \u2014 that's where the next gain is.",
-          "title": "Adequate"
+          "quote": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is breadth \u2014 that's where the next gain is.",
+          "title": "Apprentice"
         },
         "canonical_aq": "profile.aq",
         "combination": {
@@ -950,6 +956,9 @@
           },
           "rule": "weighted_mean_except_synthesized_planning",
           "weight": "tool_calls_total",
+          "weight_exceptions": {
+            "behavior.actions_per_prompt": "total_instructions"
+          },
           "weights": {
             "cursor": 500
           }
@@ -1195,7 +1204,7 @@
       "by_source": {
         "cursor": {
           "aq": {
-            "aq_0_100": 49,
+            "aq_0_100": 40,
             "mcp_vs_cli": {
               "cli_calls": 100,
               "cli_distinct": 8,
@@ -1209,17 +1218,22 @@
                   {
                     "base_weight": 33,
                     "name": "Orchestration",
-                    "normalized_score": 0.2,
-                    "score": 6.6,
+                    "normalized_score": 0.0,
+                    "partial_terms": {
+                      "scored": 2,
+                      "total": 3,
+                      "weight_scored": 0.8
+                    },
+                    "score": 0.0,
                     "signals": {
-                      "coordination_quality": 0.2,
+                      "coordination_quality": 0.0,
                       "delegated_orchestratable_sessions": 0,
-                      "fanout_median": 1,
+                      "fanout_median": 0,
                       "frequency": null,
                       "frequency_confidence": 0.0,
                       "frequency_score": null,
                       "frequency_weight": 0.0,
-                      "o_harn": 0.6,
+                      "o_harn": null,
                       "orchestratable_sessions": 0,
                       "subagent_types": 0
                     },
@@ -1234,7 +1248,7 @@
                       "skills_distinct": 0,
                       "skills_total": 0,
                       "skills_total_per_call": 0.0,
-                      "skills_total_per_call_target": 0.25,
+                      "skills_total_per_call_target": 0.009,
                       "tool_calls": 500
                     },
                     "weight": 22
@@ -1243,6 +1257,11 @@
                     "base_weight": 28,
                     "name": "Tool command (MCP + CLI)",
                     "normalized_score": 0.166666666666667,
+                    "partial_terms": {
+                      "scored": 2,
+                      "total": 3,
+                      "weight_scored": 0.8
+                    },
                     "score": 4.7,
                     "signals": {
                       "clis": 8,
@@ -1258,6 +1277,11 @@
                     "base_weight": 17,
                     "name": "Discipline",
                     "normalized_score": 0.666666666666667,
+                    "partial_terms": {
+                      "scored": 1,
+                      "total": 3,
+                      "weight_scored": 0.4
+                    },
                     "score": 11.3,
                     "signals": {
                       "planning_practice_eligible_sessions": 10,
@@ -1272,7 +1296,7 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 26.6,
+                "score": 20.0,
                 "weight": 30
               },
               {
@@ -1285,7 +1309,7 @@
                     "signals": {
                       "review_skills": 0,
                       "review_skills_per_call": 0.0,
-                      "review_skills_per_call_target": 0.06,
+                      "review_skills_per_call_target": 0.004,
                       "test_runs": 5,
                       "test_runs_per_call": 0.01,
                       "test_runs_per_call_target": 0.025,
@@ -1322,11 +1346,16 @@
                   {
                     "base_weight": 20,
                     "name": "Compounding",
-                    "normalized_score": 0.84,
-                    "score": 16.8,
+                    "normalized_score": 0.6,
+                    "partial_terms": {
+                      "scored": 1,
+                      "total": 2,
+                      "weight_scored": 0.4
+                    },
+                    "score": 12.0,
                     "signals": {
                       "compounding_writes": 1,
-                      "compounding_writes_per_call": 0.002,
+                      "compounding_writes_per_call": null,
                       "compounding_writes_per_call_target": 0.0018,
                       "tool_calls": 500
                     },
@@ -1334,36 +1363,29 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 31.3,
+                "score": 26.5,
                 "weight": 35
               },
               {
                 "axes": [
                   {
                     "base_weight": 50,
-                    "name": "Steering leverage",
-                    "normalized_score": 1.0,
-                    "score": 50.0,
-                    "signals": {
-                      "actions_per_prompt": 6.0
-                    },
-                    "weight": 50
-                  },
-                  {
-                    "base_weight": 50,
                     "name": "Recovery",
                     "normalized_score": 0.545,
-                    "score": 27.2,
+                    "score": 54.5,
                     "signals": {
                       "api_per_100_tools": 0.4,
                       "api_retries": 2,
                       "recovery_ratio": 0.5
                     },
-                    "weight": 50
+                    "weight": 100
                   }
                 ],
                 "name": "Efficiency",
-                "score": 77.2,
+                "not_applicable": [
+                  "Steering leverage"
+                ],
+                "score": 54.5,
                 "weight": 20
               },
               {
@@ -1372,6 +1394,11 @@
                     "base_weight": 50,
                     "name": "Token economy",
                     "normalized_score": 0.952380952380952,
+                    "partial_terms": {
+                      "scored": 1,
+                      "total": 2,
+                      "weight_scored": 0.5
+                    },
                     "score": 95.2,
                     "signals": {
                       "cli_share": 0.67,
@@ -1391,16 +1418,20 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "7:7:7",
-            "tier": "Adequate",
+            "score_contract_id": "13:13:13",
+            "steering_leverage": {
+              "actions_per_prompt": 6.0,
+              "state": "withheld_unvalidated_band"
+            },
+            "tier": "Apprentice",
             "tool_diversity": {
               "distinct": 12,
               "entropy": 0.6
             }
           },
           "archetype": {
-            "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is breadth \u2014 that's where the next gain is.",
-            "title": "Adequate"
+            "quote": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is breadth \u2014 that's where the next gain is.",
+            "title": "Apprentice"
           },
           "growth_edges": [
             {
@@ -1414,20 +1445,20 @@
               "title": "When a file fights back, root-cause it"
             },
             {
+              "advice": "Breadth \u00b7 Orchestration is your thinnest AQ signal. 0 distinct subagent types with a median fan-out of 0. When a task splits into independent pieces, hand them to parallel subagents in one orchestrating session instead of grinding through them serially.",
+              "axis": "Orchestration",
+              "commands": [],
+              "eyebrow": "Multiply yourself",
+              "severity": "medium",
+              "title": "Run agents in parallel, not in series"
+            },
+            {
               "advice": "Breadth \u00b7 Tool command (MCP + CLI) is your thinnest AQ signal. 2 MCP servers and 8 CLIs in evidence. Connect the things you touch every day \u2014 issue tracker, browser, cloud \u2014 as MCP servers or CLIs, so the agent reaches them directly instead of through you.",
               "axis": "Tool command (MCP + CLI)",
               "commands": [],
               "eyebrow": "Widen the toolbelt",
               "severity": "medium",
               "title": "Wire your daily services into the agent"
-            },
-            {
-              "advice": "Breadth \u00b7 Orchestration is your thinnest AQ signal. 0 distinct subagent types with a median fan-out of 1. When a task splits into independent pieces, hand them to parallel subagents in one orchestrating session instead of grinding through them serially.",
-              "axis": "Orchestration",
-              "commands": [],
-              "eyebrow": "Multiply yourself",
-              "severity": "medium",
-              "title": "Run agents in parallel, not in series"
             }
           ],
           "model_usage": [],
@@ -1646,7 +1677,7 @@
             "delegate_actions": 2,
             "error_rate_per_100_tools": 5.0,
             "error_recovery_ratio": 0.5,
-            "fanout_median": 1,
+            "fanout_median": 0,
             "files_hammered_over_15x": 5,
             "iteration_depth_max": 40,
             "iteration_depth_mean": 6.0,
@@ -1715,27 +1746,27 @@
         }
       }
     },
-    "scoring_inputs_version": 7
+    "scoring_inputs_version": 13
   },
   {
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 79,
+          "aq_0_100": 80,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 71.3,
+              "score": 71.2,
               "weight": 30
             },
             {
               "name": "Craft",
-              "score": 75.3,
+              "score": 85.2,
               "weight": 35
             },
             {
               "name": "Efficiency",
-              "score": 89.6,
+              "score": 79.1,
               "weight": 20
             },
             {
@@ -1744,7 +1775,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "7:7:7",
+          "score_contract_id": "13:13:13",
           "tier": "Advanced"
         },
         "archetype": {
@@ -1760,6 +1791,9 @@
           },
           "rule": "weighted_mean_except_synthesized_planning",
           "weight": "tool_calls_total",
+          "weight_exceptions": {
+            "behavior.actions_per_prompt": "total_instructions"
+          },
           "weights": {
             "claude": 4000,
             "cursor": 500
@@ -1909,8 +1943,8 @@
           "planning": {
             "axis_narrative": "Planning scores 10.0/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning practice (100%).",
             "axis_verdict": "excellent",
-            "drag_narrative": "Planning practice is the weakest contributor, scoring 100%. Your value: 0.36 planning sessions/session (target: 0.3 planning sessions/session, higher is better).",
-            "drag_note": "Planning practice is dragging this down \u2014 0.36 planning sessions/session, target ~0.3.",
+            "drag_narrative": "Nothing is dragging this axis down \u2014 every measured sub-metric is at or above target.",
+            "drag_note": "Nothing is dragging this axis down \u2014 every measured sub-metric is at or above target.",
             "gloss": "Think before you build",
             "score_out_of_10": "10.0 / 10",
             "subs": [
@@ -1951,7 +1985,7 @@
                 "display_target": "0.3 planning sessions/session",
                 "display_value": "0.36 planning sessions/session",
                 "effective_weight": 0.25,
-                "is_drag": true,
+                "is_drag": false,
                 "label": "Planning practice",
                 "narrative": "Planning practice is excellent (0.36 planning sessions/session, target 0.3 planning sessions/session \u2014 well above target, scoring 100%).",
                 "pct": 1.0,
@@ -2001,14 +2035,14 @@
         ],
         "steering": {
           "detail": "~12 actions per turn before you weigh in \u00b7 the agent checked in on 2% of your prompts",
-          "gloss": "you point the agent and let it run",
-          "label": "Long leash"
+          "gloss": "autonomous stretches, hands-on steering",
+          "label": "Medium leash"
         }
       },
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 83,
+            "aq_0_100": 85,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -2041,13 +2075,13 @@
                   {
                     "base_weight": 22,
                     "name": "Skill fluency",
-                    "normalized_score": 0.82,
-                    "score": 18.0,
+                    "normalized_score": 0.85,
+                    "score": 18.7,
                     "signals": {
                       "skills_distinct": 25,
                       "skills_total": 900,
                       "skills_total_per_call": 0.225,
-                      "skills_total_per_call_target": 0.25,
+                      "skills_total_per_call_target": 0.009,
                       "tool_calls": 4000
                     },
                     "weight": 22
@@ -2071,6 +2105,11 @@
                     "base_weight": 17,
                     "name": "Discipline",
                     "normalized_score": 1.0,
+                    "partial_terms": {
+                      "scored": 2,
+                      "total": 3,
+                      "weight_scored": 0.8
+                    },
                     "score": 17.0,
                     "signals": {
                       "planning_practice_eligible_sessions": 40,
@@ -2085,7 +2124,7 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 76.9,
+                "score": 77.6,
                 "weight": 30
               },
               {
@@ -2093,12 +2132,12 @@
                   {
                     "base_weight": 35,
                     "name": "Verification",
-                    "normalized_score": 0.666666666666667,
-                    "score": 23.3,
+                    "normalized_score": 1.0,
+                    "score": 35.0,
                     "signals": {
                       "review_skills": 80,
                       "review_skills_per_call": 0.02,
-                      "review_skills_per_call_target": 0.06,
+                      "review_skills_per_call_target": 0.004,
                       "test_runs": 120,
                       "test_runs_per_call": 0.03,
                       "test_runs_per_call_target": 0.025,
@@ -2147,36 +2186,29 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 80.8,
+                "score": 92.5,
                 "weight": 35
               },
               {
                 "axes": [
                   {
                     "base_weight": 50,
-                    "name": "Steering leverage",
-                    "normalized_score": 1.0,
-                    "score": 50.0,
-                    "signals": {
-                      "actions_per_prompt": 13.0
-                    },
-                    "weight": 50
-                  },
-                  {
-                    "base_weight": 50,
                     "name": "Recovery",
                     "normalized_score": 0.8225,
-                    "score": 41.1,
+                    "score": 82.2,
                     "signals": {
                       "api_per_100_tools": 0.1,
                       "api_retries": 4,
                       "recovery_ratio": 0.8
                     },
-                    "weight": 50
+                    "weight": 100
                   }
                 ],
                 "name": "Efficiency",
-                "score": 91.1,
+                "not_applicable": [
+                  "Steering leverage"
+                ],
+                "score": 82.2,
                 "weight": 20
               },
               {
@@ -2219,7 +2251,11 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "7:7:7",
+            "score_contract_id": "13:13:13",
+            "steering_leverage": {
+              "actions_per_prompt": 13.0,
+              "state": "withheld_unvalidated_band"
+            },
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -2372,10 +2408,10 @@
               "value": 7.8
             },
             "planning": {
-              "axis_narrative": "Planning scores 10.0/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning practice (100%).",
+              "axis_narrative": "Planning scores 10.0/10 (excellent). Every measured sub-metric is at or above target (strongest: Explore-before-build (100%)).",
               "axis_verdict": "excellent",
-              "drag_narrative": "Planning practice is the weakest contributor, scoring 100%. Your value: 0.4 planning sessions/session (target: 0.3 planning sessions/session, higher is better).",
-              "drag_note": "Planning practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.3.",
+              "drag_narrative": "Nothing is dragging this axis down \u2014 every measured sub-metric is at or above target.",
+              "drag_note": "Nothing is dragging this axis down \u2014 every measured sub-metric is at or above target.",
               "gloss": "Think before you build",
               "score_out_of_10": "10.0 / 10",
               "subs": [
@@ -2416,7 +2452,7 @@
                   "display_target": "0.3 planning sessions/session",
                   "display_value": "0.4 planning sessions/session",
                   "effective_weight": 0.25,
-                  "is_drag": true,
+                  "is_drag": false,
                   "label": "Planning practice",
                   "narrative": "Planning practice is excellent (0.4 planning sessions/session, target 0.3 planning sessions/session \u2014 well above target, scoring 100%).",
                   "pct": 1.0,
@@ -2472,7 +2508,7 @@
         },
         "cursor": {
           "aq": {
-            "aq_0_100": 49,
+            "aq_0_100": 40,
             "mcp_vs_cli": {
               "cli_calls": 100,
               "cli_distinct": 8,
@@ -2486,17 +2522,22 @@
                   {
                     "base_weight": 33,
                     "name": "Orchestration",
-                    "normalized_score": 0.2,
-                    "score": 6.6,
+                    "normalized_score": 0.0,
+                    "partial_terms": {
+                      "scored": 2,
+                      "total": 3,
+                      "weight_scored": 0.8
+                    },
+                    "score": 0.0,
                     "signals": {
-                      "coordination_quality": 0.2,
+                      "coordination_quality": 0.0,
                       "delegated_orchestratable_sessions": 0,
-                      "fanout_median": 1,
+                      "fanout_median": 0,
                       "frequency": null,
                       "frequency_confidence": 0.0,
                       "frequency_score": null,
                       "frequency_weight": 0.0,
-                      "o_harn": 0.6,
+                      "o_harn": null,
                       "orchestratable_sessions": 0,
                       "subagent_types": 0
                     },
@@ -2511,7 +2552,7 @@
                       "skills_distinct": 0,
                       "skills_total": 0,
                       "skills_total_per_call": 0.0,
-                      "skills_total_per_call_target": 0.25,
+                      "skills_total_per_call_target": 0.009,
                       "tool_calls": 500
                     },
                     "weight": 22
@@ -2520,6 +2561,11 @@
                     "base_weight": 28,
                     "name": "Tool command (MCP + CLI)",
                     "normalized_score": 0.166666666666667,
+                    "partial_terms": {
+                      "scored": 2,
+                      "total": 3,
+                      "weight_scored": 0.8
+                    },
                     "score": 4.7,
                     "signals": {
                       "clis": 8,
@@ -2535,6 +2581,11 @@
                     "base_weight": 17,
                     "name": "Discipline",
                     "normalized_score": 0.666666666666667,
+                    "partial_terms": {
+                      "scored": 1,
+                      "total": 3,
+                      "weight_scored": 0.4
+                    },
                     "score": 11.3,
                     "signals": {
                       "planning_practice_eligible_sessions": 10,
@@ -2549,7 +2600,7 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 26.6,
+                "score": 20.0,
                 "weight": 30
               },
               {
@@ -2562,7 +2613,7 @@
                     "signals": {
                       "review_skills": 0,
                       "review_skills_per_call": 0.0,
-                      "review_skills_per_call_target": 0.06,
+                      "review_skills_per_call_target": 0.004,
                       "test_runs": 5,
                       "test_runs_per_call": 0.01,
                       "test_runs_per_call_target": 0.025,
@@ -2599,11 +2650,16 @@
                   {
                     "base_weight": 20,
                     "name": "Compounding",
-                    "normalized_score": 0.84,
-                    "score": 16.8,
+                    "normalized_score": 0.6,
+                    "partial_terms": {
+                      "scored": 1,
+                      "total": 2,
+                      "weight_scored": 0.4
+                    },
+                    "score": 12.0,
                     "signals": {
                       "compounding_writes": 1,
-                      "compounding_writes_per_call": 0.002,
+                      "compounding_writes_per_call": null,
                       "compounding_writes_per_call_target": 0.0018,
                       "tool_calls": 500
                     },
@@ -2611,36 +2667,29 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 31.3,
+                "score": 26.5,
                 "weight": 35
               },
               {
                 "axes": [
                   {
                     "base_weight": 50,
-                    "name": "Steering leverage",
-                    "normalized_score": 1.0,
-                    "score": 50.0,
-                    "signals": {
-                      "actions_per_prompt": 6.0
-                    },
-                    "weight": 50
-                  },
-                  {
-                    "base_weight": 50,
                     "name": "Recovery",
                     "normalized_score": 0.545,
-                    "score": 27.2,
+                    "score": 54.5,
                     "signals": {
                       "api_per_100_tools": 0.4,
                       "api_retries": 2,
                       "recovery_ratio": 0.5
                     },
-                    "weight": 50
+                    "weight": 100
                   }
                 ],
                 "name": "Efficiency",
-                "score": 77.2,
+                "not_applicable": [
+                  "Steering leverage"
+                ],
+                "score": 54.5,
                 "weight": 20
               },
               {
@@ -2649,6 +2698,11 @@
                     "base_weight": 50,
                     "name": "Token economy",
                     "normalized_score": 0.952380952380952,
+                    "partial_terms": {
+                      "scored": 1,
+                      "total": 2,
+                      "weight_scored": 0.5
+                    },
                     "score": 95.2,
                     "signals": {
                       "cli_share": 0.67,
@@ -2668,16 +2722,20 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "7:7:7",
-            "tier": "Adequate",
+            "score_contract_id": "13:13:13",
+            "steering_leverage": {
+              "actions_per_prompt": 6.0,
+              "state": "withheld_unvalidated_band"
+            },
+            "tier": "Apprentice",
             "tool_diversity": {
               "distinct": 12,
               "entropy": 0.6
             }
           },
           "archetype": {
-            "quote": "Adequate. The fundamentals are there, with real room to grow. Your thinnest axis is breadth \u2014 that's where the next gain is.",
-            "title": "Adequate"
+            "quote": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is breadth \u2014 that's where the next gain is.",
+            "title": "Apprentice"
           },
           "growth_edges": [
             {
@@ -2691,20 +2749,20 @@
               "title": "When a file fights back, root-cause it"
             },
             {
+              "advice": "Breadth \u00b7 Orchestration is your thinnest AQ signal. 0 distinct subagent types with a median fan-out of 0. When a task splits into independent pieces, hand them to parallel subagents in one orchestrating session instead of grinding through them serially.",
+              "axis": "Orchestration",
+              "commands": [],
+              "eyebrow": "Multiply yourself",
+              "severity": "medium",
+              "title": "Run agents in parallel, not in series"
+            },
+            {
               "advice": "Breadth \u00b7 Tool command (MCP + CLI) is your thinnest AQ signal. 2 MCP servers and 8 CLIs in evidence. Connect the things you touch every day \u2014 issue tracker, browser, cloud \u2014 as MCP servers or CLIs, so the agent reaches them directly instead of through you.",
               "axis": "Tool command (MCP + CLI)",
               "commands": [],
               "eyebrow": "Widen the toolbelt",
               "severity": "medium",
               "title": "Wire your daily services into the agent"
-            },
-            {
-              "advice": "Breadth \u00b7 Orchestration is your thinnest AQ signal. 0 distinct subagent types with a median fan-out of 1. When a task splits into independent pieces, hand them to parallel subagents in one orchestrating session instead of grinding through them serially.",
-              "axis": "Orchestration",
-              "commands": [],
-              "eyebrow": "Multiply yourself",
-              "severity": "medium",
-              "title": "Run agents in parallel, not in series"
             }
           ],
           "model_usage": [],
@@ -2942,6 +3000,7 @@
           "source": "claude",
           "stack": {
             "compounding_writes": 20,
+            "max_session_subagent_types": 2,
             "models": [
               [
                 "claude-opus-4-8",
@@ -3072,7 +3131,7 @@
             "delegate_actions": 2,
             "error_rate_per_100_tools": 5.0,
             "error_recovery_ratio": 0.5,
-            "fanout_median": 1,
+            "fanout_median": 0,
             "files_hammered_over_15x": 5,
             "iteration_depth_max": 40,
             "iteration_depth_mean": 6.0,
@@ -3141,27 +3200,27 @@
         }
       }
     },
-    "scoring_inputs_version": 7
+    "scoring_inputs_version": 13
   },
   {
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 77,
+          "aq_0_100": 80,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 76.9,
+              "score": 77.6,
               "weight": 30
             },
             {
               "name": "Craft",
-              "score": 64.8,
+              "score": 76.5,
               "weight": 35
             },
             {
               "name": "Efficiency",
-              "score": 91.1,
+              "score": 82.2,
               "weight": 20
             },
             {
@@ -3170,7 +3229,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "7:7:7",
+          "score_contract_id": "13:13:13",
           "tier": "Advanced"
         },
         "archetype": {
@@ -3186,6 +3245,9 @@
           },
           "rule": "weighted_mean_except_synthesized_planning",
           "weight": "tool_calls_total",
+          "weight_exceptions": {
+            "behavior.actions_per_prompt": "total_instructions"
+          },
           "weights": {
             "claude-boundary": 4000
           }
@@ -3334,8 +3396,8 @@
           "planning": {
             "axis_narrative": "Planning scores 10.0/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning practice (100%).",
             "axis_verdict": "excellent",
-            "drag_narrative": "Planning practice is the weakest contributor, scoring 100%. Your value: 0.4 planning sessions/session (target: 0.3 planning sessions/session, higher is better).",
-            "drag_note": "Planning practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.3.",
+            "drag_narrative": "Nothing is dragging this axis down \u2014 every measured sub-metric is at or above target.",
+            "drag_note": "Nothing is dragging this axis down \u2014 every measured sub-metric is at or above target.",
             "gloss": "Think before you build",
             "score_out_of_10": "10.0 / 10",
             "subs": [
@@ -3376,7 +3438,7 @@
                 "display_target": "0.3 planning sessions/session",
                 "display_value": "0.4 planning sessions/session",
                 "effective_weight": 0.25,
-                "is_drag": true,
+                "is_drag": false,
                 "label": "Planning practice",
                 "narrative": "Planning practice is excellent (0.4 planning sessions/session, target 0.3 planning sessions/session \u2014 well above target, scoring 100%).",
                 "pct": 1.0,
@@ -3433,7 +3495,7 @@
       "by_source": {
         "claude-boundary": {
           "aq": {
-            "aq_0_100": 77,
+            "aq_0_100": 80,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -3466,13 +3528,13 @@
                   {
                     "base_weight": 22,
                     "name": "Skill fluency",
-                    "normalized_score": 0.82,
-                    "score": 18.0,
+                    "normalized_score": 0.85,
+                    "score": 18.7,
                     "signals": {
                       "skills_distinct": 25,
                       "skills_total": 900,
                       "skills_total_per_call": 0.225,
-                      "skills_total_per_call_target": 0.25,
+                      "skills_total_per_call_target": 0.009,
                       "tool_calls": 4000
                     },
                     "weight": 22
@@ -3496,6 +3558,11 @@
                     "base_weight": 17,
                     "name": "Discipline",
                     "normalized_score": 1.0,
+                    "partial_terms": {
+                      "scored": 2,
+                      "total": 3,
+                      "weight_scored": 0.8
+                    },
                     "score": 17.0,
                     "signals": {
                       "planning_practice_eligible_sessions": 40,
@@ -3510,7 +3577,7 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 76.9,
+                "score": 77.6,
                 "weight": 30
               },
               {
@@ -3518,12 +3585,12 @@
                   {
                     "base_weight": 35,
                     "name": "Verification",
-                    "normalized_score": 0.666666666666667,
-                    "score": 23.3,
+                    "normalized_score": 1.0,
+                    "score": 35.0,
                     "signals": {
                       "review_skills": 80,
                       "review_skills_per_call": 0.02,
-                      "review_skills_per_call_target": 0.06,
+                      "review_skills_per_call_target": 0.004,
                       "test_runs": 120,
                       "test_runs_per_call": 0.03,
                       "test_runs_per_call_target": 0.025,
@@ -3572,36 +3639,29 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 64.8,
+                "score": 76.5,
                 "weight": 35
               },
               {
                 "axes": [
                   {
                     "base_weight": 50,
-                    "name": "Steering leverage",
-                    "normalized_score": 1.0,
-                    "score": 50.0,
-                    "signals": {
-                      "actions_per_prompt": 13.0
-                    },
-                    "weight": 50
-                  },
-                  {
-                    "base_weight": 50,
                     "name": "Recovery",
                     "normalized_score": 0.8225,
-                    "score": 41.1,
+                    "score": 82.2,
                     "signals": {
                       "api_per_100_tools": 0.1,
                       "api_retries": 4,
                       "recovery_ratio": 0.8
                     },
-                    "weight": 50
+                    "weight": 100
                   }
                 ],
                 "name": "Efficiency",
-                "score": 91.1,
+                "not_applicable": [
+                  "Steering leverage"
+                ],
+                "score": 82.2,
                 "weight": 20
               },
               {
@@ -3644,7 +3704,11 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "7:7:7",
+            "score_contract_id": "13:13:13",
+            "steering_leverage": {
+              "actions_per_prompt": 13.0,
+              "state": "withheld_unvalidated_band"
+            },
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -3797,10 +3861,10 @@
               "value": 7.8
             },
             "planning": {
-              "axis_narrative": "Planning scores 10.0/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning practice (100%).",
+              "axis_narrative": "Planning scores 10.0/10 (excellent). Every measured sub-metric is at or above target (strongest: Explore-before-build (100%)).",
               "axis_verdict": "excellent",
-              "drag_narrative": "Planning practice is the weakest contributor, scoring 100%. Your value: 0.4 planning sessions/session (target: 0.3 planning sessions/session, higher is better).",
-              "drag_note": "Planning practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.3.",
+              "drag_narrative": "Nothing is dragging this axis down \u2014 every measured sub-metric is at or above target.",
+              "drag_note": "Nothing is dragging this axis down \u2014 every measured sub-metric is at or above target.",
               "gloss": "Think before you build",
               "score_out_of_10": "10.0 / 10",
               "subs": [
@@ -3841,7 +3905,7 @@
                   "display_target": "0.3 planning sessions/session",
                   "display_value": "0.4 planning sessions/session",
                   "effective_weight": 0.25,
-                  "is_drag": true,
+                  "is_drag": false,
                   "label": "Planning practice",
                   "narrative": "Planning practice is excellent (0.4 planning sessions/session, target 0.3 planning sessions/session \u2014 well above target, scoring 100%).",
                   "pct": 1.0,
@@ -3928,6 +3992,7 @@
           "source": "claude-boundary",
           "stack": {
             "compounding_writes": 20,
+            "max_session_subagent_types": 2,
             "models": [
               [
                 "claude-opus-4-8",
@@ -4034,17 +4099,17 @@
         }
       }
     },
-    "scoring_inputs_version": 7
+    "scoring_inputs_version": 13
   },
   {
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 7,
+          "aq_0_100": 8,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 8.0,
+              "score": 4.0,
               "weight": 30
             },
             {
@@ -4054,7 +4119,7 @@
             },
             {
               "name": "Efficiency",
-              "score": 7.5,
+              "score": 15.0,
               "weight": 20
             },
             {
@@ -4063,11 +4128,11 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "7:7:7",
+          "score_contract_id": "13:13:13",
           "tier": "Novice"
         },
         "archetype": {
-          "quote": "Just getting started. Broad gaps to close before the rest pays off. Your thinnest axis is craft \u2014 that's where the next gain is.",
+          "quote": "Just getting started. Broad gaps to close before the rest pays off. Your thinnest axis is breadth \u2014 that's where the next gain is.",
           "title": "Novice"
         },
         "canonical_aq": "profile.aq",
@@ -4079,6 +4144,9 @@
           },
           "rule": "weighted_mean_except_synthesized_planning",
           "weight": "tool_calls_total",
+          "weight_exceptions": {
+            "behavior.actions_per_prompt": "total_instructions"
+          },
           "weights": {
             "no-tool-activity": 0
           }
@@ -4320,7 +4388,7 @@
       "by_source": {
         "no-tool-activity": {
           "aq": {
-            "aq_0_100": 7,
+            "aq_0_100": 8,
             "mcp_vs_cli": {
               "cli_calls": 0,
               "cli_distinct": 0,
@@ -4334,17 +4402,22 @@
                   {
                     "base_weight": 33,
                     "name": "Orchestration",
-                    "normalized_score": 0.12,
-                    "score": 4.0,
+                    "normalized_score": 0.0,
+                    "partial_terms": {
+                      "scored": 1,
+                      "total": 3,
+                      "weight_scored": 0.4
+                    },
+                    "score": 0.0,
                     "signals": {
-                      "coordination_quality": 0.12,
+                      "coordination_quality": 0.0,
                       "delegated_orchestratable_sessions": 0,
-                      "fanout_median": 0,
+                      "fanout_median": null,
                       "frequency": null,
                       "frequency_confidence": 0.0,
                       "frequency_score": null,
                       "frequency_weight": 0.0,
-                      "o_harn": 0.6,
+                      "o_harn": null,
                       "orchestratable_sessions": 0,
                       "subagent_types": 0
                     },
@@ -4359,7 +4432,7 @@
                       "skills_distinct": 0,
                       "skills_total": 0,
                       "skills_total_per_call": null,
-                      "skills_total_per_call_target": 0.25,
+                      "skills_total_per_call_target": 0.009,
                       "tool_calls": 0
                     },
                     "weight": 22
@@ -4383,6 +4456,11 @@
                     "base_weight": 17,
                     "name": "Discipline",
                     "normalized_score": 0.0,
+                    "partial_terms": {
+                      "scored": 1,
+                      "total": 3,
+                      "weight_scored": 0.4
+                    },
                     "score": 0.0,
                     "signals": {
                       "planning_practice_eligible_sessions": 0,
@@ -4397,7 +4475,7 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 8.0,
+                "score": 4.0,
                 "weight": 30
               },
               {
@@ -4410,7 +4488,7 @@
                     "signals": {
                       "review_skills": 0,
                       "review_skills_per_call": null,
-                      "review_skills_per_call_target": 0.06,
+                      "review_skills_per_call_target": 0.004,
                       "test_runs": 0,
                       "test_runs_per_call": null,
                       "test_runs_per_call_target": 0.025,
@@ -4453,29 +4531,22 @@
                 "axes": [
                   {
                     "base_weight": 50,
-                    "name": "Steering leverage",
-                    "normalized_score": 0.0,
-                    "score": 0.0,
-                    "signals": {
-                      "actions_per_prompt": 0
-                    },
-                    "weight": 50
-                  },
-                  {
-                    "base_weight": 50,
                     "name": "Recovery",
                     "normalized_score": 0.15,
-                    "score": 7.5,
+                    "score": 15.0,
                     "signals": {
                       "api_per_100_tools": 0,
                       "api_retries": 0,
                       "recovery_ratio": 0
                     },
-                    "weight": 50
+                    "weight": 100
                   }
                 ],
                 "name": "Efficiency",
-                "score": 7.5,
+                "not_applicable": [
+                  "Steering leverage"
+                ],
+                "score": 15.0,
                 "weight": 20
               },
               {
@@ -4518,7 +4589,11 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "7:7:7",
+            "score_contract_id": "13:13:13",
+            "steering_leverage": {
+              "actions_per_prompt": 0,
+              "state": "withheld_unvalidated_band"
+            },
             "tier": "Novice",
             "tool_diversity": {
               "distinct": 0,
@@ -4526,7 +4601,7 @@
             }
           },
           "archetype": {
-            "quote": "Just getting started. Broad gaps to close before the rest pays off. Your thinnest axis is craft \u2014 that's where the next gain is.",
+            "quote": "Just getting started. Broad gaps to close before the rest pays off. Your thinnest axis is breadth \u2014 that's where the next gain is.",
             "title": "Novice"
           },
           "growth_edges": [
@@ -4555,12 +4630,12 @@
               "title": "Run a quality pass before you ship"
             },
             {
-              "advice": "Breadth \u00b7 Tool command (MCP + CLI) is your thinnest AQ signal. 0 MCP servers and 0 CLIs in evidence. Connect the things you touch every day \u2014 issue tracker, browser, cloud \u2014 as MCP servers or CLIs, so the agent reaches them directly instead of through you.",
-              "axis": "Tool command (MCP + CLI)",
+              "advice": "Breadth \u00b7 Orchestration is your thinnest AQ signal. 0 distinct subagent types with a median fan-out of 0. When a task splits into independent pieces, hand them to parallel subagents in one orchestrating session instead of grinding through them serially.",
+              "axis": "Orchestration",
               "commands": [],
-              "eyebrow": "Widen the toolbelt",
+              "eyebrow": "Multiply yourself",
               "severity": "medium",
-              "title": "Wire your daily services into the agent"
+              "title": "Run agents in parallel, not in series"
             }
           ],
           "model_usage": [],
@@ -4850,7 +4925,7 @@
         }
       }
     },
-    "scoring_inputs_version": 7
+    "scoring_inputs_version": 13
   },
   {
     "bucket_metadata": [
@@ -4893,6 +4968,7 @@
             "source": "claude",
             "stack": {
               "compounding_writes": 20,
+              "max_session_subagent_types": 2,
               "models": [
                 [
                   "claude-opus-4-8",
@@ -5010,21 +5086,21 @@
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 81,
+          "aq_0_100": 84,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 76.9,
+              "score": 77.6,
               "weight": 30
             },
             {
               "name": "Craft",
-              "score": 77.3,
+              "score": 89.0,
               "weight": 35
             },
             {
               "name": "Efficiency",
-              "score": 91.1,
+              "score": 82.2,
               "weight": 20
             },
             {
@@ -5033,7 +5109,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "7:7:7",
+          "score_contract_id": "13:13:13",
           "tier": "Advanced"
         },
         "archetype": {
@@ -5049,6 +5125,9 @@
           },
           "rule": "weighted_mean_except_synthesized_planning",
           "weight": "tool_calls_total",
+          "weight_exceptions": {
+            "behavior.actions_per_prompt": "total_instructions"
+          },
           "weights": {
             "claude": 2600.0
           }
@@ -5296,11 +5375,11 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 81,
+            "aq_0_100": 84,
             "blend": {
               "buckets": [
                 {
-                  "component_aq": 85,
+                  "component_aq": 88,
                   "configured_weight": 0.65,
                   "day_bounds": {
                     "lower": 0,
@@ -5310,14 +5389,14 @@
                   "id": "recent_30d"
                 },
                 {
-                  "component_aq": 74,
+                  "component_aq": 77,
                   "configured_weight": 0.35,
                   "day_bounds": null,
                   "effective_weight": 0.35,
                   "id": "full_window"
                 }
               ],
-              "full_aq": 74
+              "full_aq": 77
             },
             "mcp_vs_cli": {
               "cli_calls": 1500,
@@ -5336,6 +5415,7 @@
                         "effective_weight": 0.65,
                         "id": "recent_30d",
                         "normalized_score": 0.66,
+                        "partial_terms": null,
                         "score": 21.8,
                         "signals": {
                           "coordination_quality": 0.66,
@@ -5354,6 +5434,7 @@
                         "effective_weight": 0.35,
                         "id": "full_window",
                         "normalized_score": 0.66,
+                        "partial_terms": null,
                         "score": 21.8,
                         "signals": {
                           "coordination_quality": 0.66,
@@ -5392,38 +5473,40 @@
                       {
                         "effective_weight": 0.65,
                         "id": "recent_30d",
-                        "normalized_score": 0.82,
-                        "score": 18.0,
+                        "normalized_score": 0.85,
+                        "partial_terms": null,
+                        "score": 18.7,
                         "signals": {
                           "skills_distinct": 25,
                           "skills_total": 900,
                           "skills_total_per_call": 0.225,
-                          "skills_total_per_call_target": 0.25,
+                          "skills_total_per_call_target": 0.009,
                           "tool_calls": 4000
                         }
                       },
                       {
                         "effective_weight": 0.35,
                         "id": "full_window",
-                        "normalized_score": 0.82,
-                        "score": 18.0,
+                        "normalized_score": 0.85,
+                        "partial_terms": null,
+                        "score": 18.7,
                         "signals": {
                           "skills_distinct": 25,
                           "skills_total": 900,
                           "skills_total_per_call": 0.225,
-                          "skills_total_per_call_target": 0.25,
+                          "skills_total_per_call_target": 0.009,
                           "tool_calls": 4000
                         }
                       }
                     ],
                     "name": "Skill fluency",
-                    "normalized_score": 0.8200000000000001,
-                    "score": 18.0,
+                    "normalized_score": 0.85,
+                    "score": 18.7,
                     "signals": {
                       "skills_distinct": 25,
                       "skills_total": 900,
                       "skills_total_per_call": 0.225,
-                      "skills_total_per_call_target": 0.25,
+                      "skills_total_per_call_target": 0.009,
                       "tool_calls": 4000
                     },
                     "weight": 22
@@ -5435,6 +5518,7 @@
                         "effective_weight": 0.65,
                         "id": "recent_30d",
                         "normalized_score": 0.716666666666667,
+                        "partial_terms": null,
                         "score": 20.1,
                         "signals": {
                           "clis": 25,
@@ -5449,6 +5533,7 @@
                         "effective_weight": 0.35,
                         "id": "full_window",
                         "normalized_score": 0.716666666666667,
+                        "partial_terms": null,
                         "score": 20.1,
                         "signals": {
                           "clis": 25,
@@ -5480,6 +5565,11 @@
                         "effective_weight": 0.65,
                         "id": "recent_30d",
                         "normalized_score": 1.0,
+                        "partial_terms": {
+                          "scored": 2,
+                          "total": 3,
+                          "weight_scored": 0.8
+                        },
                         "score": 17.0,
                         "signals": {
                           "planning_practice_eligible_sessions": 10,
@@ -5495,6 +5585,11 @@
                         "effective_weight": 0.35,
                         "id": "full_window",
                         "normalized_score": 1.0,
+                        "partial_terms": {
+                          "scored": 2,
+                          "total": 3,
+                          "weight_scored": 0.8
+                        },
                         "score": 17.0,
                         "signals": {
                           "planning_practice_eligible_sessions": 30,
@@ -5509,6 +5604,11 @@
                     ],
                     "name": "Discipline",
                     "normalized_score": 1.0,
+                    "partial_terms": {
+                      "scored": 2,
+                      "total": 3,
+                      "weight_scored": 0.8
+                    },
                     "score": 17.0,
                     "signals": {
                       "planning_practice_eligible_sessions": 10,
@@ -5523,7 +5623,7 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 76.9,
+                "score": 77.6,
                 "weight": 30
               },
               {
@@ -5534,12 +5634,13 @@
                       {
                         "effective_weight": 0.65,
                         "id": "recent_30d",
-                        "normalized_score": 0.666666666666667,
-                        "score": 23.3,
+                        "normalized_score": 1.0,
+                        "partial_terms": null,
+                        "score": 35.0,
                         "signals": {
                           "review_skills": 80,
                           "review_skills_per_call": 0.02,
-                          "review_skills_per_call_target": 0.06,
+                          "review_skills_per_call_target": 0.004,
                           "test_runs": 100,
                           "test_runs_per_call": 0.025,
                           "test_runs_per_call_target": 0.025,
@@ -5549,12 +5650,13 @@
                       {
                         "effective_weight": 0.35,
                         "id": "full_window",
-                        "normalized_score": 0.316666666666667,
-                        "score": 11.1,
+                        "normalized_score": 0.65,
+                        "partial_terms": null,
+                        "score": 22.8,
                         "signals": {
                           "review_skills": 80,
                           "review_skills_per_call": 0.02,
-                          "review_skills_per_call_target": 0.06,
+                          "review_skills_per_call_target": 0.004,
                           "test_runs": 30,
                           "test_runs_per_call": 0.0075,
                           "test_runs_per_call_target": 0.025,
@@ -5563,12 +5665,12 @@
                       }
                     ],
                     "name": "Verification",
-                    "normalized_score": 0.5441666666666669,
-                    "score": 19.0,
+                    "normalized_score": 0.8775,
+                    "score": 30.7,
                     "signals": {
                       "review_skills": 80,
                       "review_skills_per_call": 0.02,
-                      "review_skills_per_call_target": 0.06,
+                      "review_skills_per_call_target": 0.004,
                       "test_runs": 100,
                       "test_runs_per_call": 0.025,
                       "test_runs_per_call_target": 0.025,
@@ -5583,6 +5685,7 @@
                         "effective_weight": 0.65,
                         "id": "recent_30d",
                         "normalized_score": 1.0,
+                        "partial_terms": null,
                         "score": 25.0,
                         "signals": {
                           "planning_ratio": 1.0
@@ -5592,6 +5695,7 @@
                         "effective_weight": 0.35,
                         "id": "full_window",
                         "normalized_score": 0.5,
+                        "partial_terms": null,
                         "score": 12.5,
                         "signals": {
                           "planning_ratio": 0.5
@@ -5613,6 +5717,7 @@
                         "effective_weight": 0.65,
                         "id": "recent_30d",
                         "normalized_score": 1.0,
+                        "partial_terms": null,
                         "score": 20.0,
                         "signals": {
                           "coverage": 1.0,
@@ -5628,6 +5733,7 @@
                         "effective_weight": 0.35,
                         "id": "full_window",
                         "normalized_score": 0.666666666666667,
+                        "partial_terms": null,
                         "score": 13.3,
                         "signals": {
                           "coverage": 0.4,
@@ -5661,6 +5767,7 @@
                         "effective_weight": 0.65,
                         "id": "recent_30d",
                         "normalized_score": 1.0,
+                        "partial_terms": null,
                         "score": 20.0,
                         "signals": {
                           "compounding_writes": 20,
@@ -5673,6 +5780,7 @@
                         "effective_weight": 0.35,
                         "id": "full_window",
                         "normalized_score": 1.0,
+                        "partial_terms": null,
                         "score": 20.0,
                         "signals": {
                           "compounding_writes": 20,
@@ -5695,7 +5803,7 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 77.3,
+                "score": 89.0,
                 "weight": 35
               },
               {
@@ -5706,38 +5814,9 @@
                       {
                         "effective_weight": 0.65,
                         "id": "recent_30d",
-                        "normalized_score": 1.0,
-                        "score": 50.0,
-                        "signals": {
-                          "actions_per_prompt": 13.0
-                        }
-                      },
-                      {
-                        "effective_weight": 0.35,
-                        "id": "full_window",
-                        "normalized_score": 1.0,
-                        "score": 50.0,
-                        "signals": {
-                          "actions_per_prompt": 13.0
-                        }
-                      }
-                    ],
-                    "name": "Steering leverage",
-                    "normalized_score": 1.0,
-                    "score": 50.0,
-                    "signals": {
-                      "actions_per_prompt": 13.0
-                    },
-                    "weight": 50
-                  },
-                  {
-                    "base_weight": 50,
-                    "components": [
-                      {
-                        "effective_weight": 0.65,
-                        "id": "recent_30d",
                         "normalized_score": 0.8225,
-                        "score": 41.1,
+                        "partial_terms": null,
+                        "score": 82.2,
                         "signals": {
                           "api_per_100_tools": 0.1,
                           "api_retries": 4,
@@ -5748,7 +5827,8 @@
                         "effective_weight": 0.35,
                         "id": "full_window",
                         "normalized_score": 0.8225,
-                        "score": 41.1,
+                        "partial_terms": null,
+                        "score": 82.2,
                         "signals": {
                           "api_per_100_tools": 0.1,
                           "api_retries": 4,
@@ -5758,17 +5838,20 @@
                     ],
                     "name": "Recovery",
                     "normalized_score": 0.8225,
-                    "score": 41.1,
+                    "score": 82.2,
                     "signals": {
                       "api_per_100_tools": 0.1,
                       "api_retries": 4,
                       "recovery_ratio": 0.8
                     },
-                    "weight": 50
+                    "weight": 100
                   }
                 ],
                 "name": "Efficiency",
-                "score": 91.1,
+                "not_applicable": [
+                  "Steering leverage"
+                ],
+                "score": 82.2,
                 "weight": 20
               },
               {
@@ -5780,6 +5863,7 @@
                         "effective_weight": 0.65,
                         "id": "recent_30d",
                         "normalized_score": 0.75,
+                        "partial_terms": null,
                         "score": 37.5,
                         "signals": {
                           "distinct_models": 2,
@@ -5797,6 +5881,7 @@
                         "effective_weight": 0.35,
                         "id": "full_window",
                         "normalized_score": 0.75,
+                        "partial_terms": null,
                         "score": 37.5,
                         "signals": {
                           "distinct_models": 2,
@@ -5834,6 +5919,7 @@
                         "effective_weight": 0.65,
                         "id": "recent_30d",
                         "normalized_score": 1.0,
+                        "partial_terms": null,
                         "score": 50.0,
                         "signals": {
                           "cli_share": 0.79,
@@ -5847,6 +5933,7 @@
                         "effective_weight": 0.35,
                         "id": "full_window",
                         "normalized_score": 1.0,
+                        "partial_terms": null,
                         "score": 50.0,
                         "signals": {
                           "cli_share": 0.79,
@@ -5875,7 +5962,11 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "7:7:7",
+            "score_contract_id": "13:13:13",
+            "steering_leverage": {
+              "actions_per_prompt": 13.0,
+              "state": "withheld_unvalidated_band"
+            },
             "tier": "Advanced",
             "tool_diversity": {
               "distinct": 30,
@@ -5883,8 +5974,8 @@
             }
           },
           "archetype": {
-            "quote": "Proficient and consistent, but not yet at the top tier. Your thinnest axis is craft \u2014 that's where the next gain is.",
-            "title": "Proficient"
+            "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is craft \u2014 that's where the next gain is.",
+            "title": "Advanced"
           },
           "growth_edges": [
             {
@@ -6158,6 +6249,7 @@
           "source": "claude",
           "stack": {
             "compounding_writes": 20,
+            "max_session_subagent_types": 2,
             "models": [
               [
                 "claude-opus-4-8",
@@ -6273,6 +6365,6 @@
         }
       }
     },
-    "scoring_inputs_version": 7
+    "scoring_inputs_version": 13
   }
 ]

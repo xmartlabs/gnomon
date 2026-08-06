@@ -142,14 +142,31 @@ def _is_review_skill_name(name):
     `review-reliability`, `review-resilience`) and adversarial review protocols
     (`judgment-day`, `jd-judge-*`)."""
     s = str(name or "").lower()
-    if any(k in s for k in ("code-review", "requesting-code-review", "cerberus", "verify")):
+    if any(k in s for k in ("code-review", "requesting-code-review", "cerberus")):
         return True
     tail = s.split(":")[-1].split("/")[-1]
     if tail in _PLANNING_REVIEW_TAILS or tail.startswith("plan"):
         return False
     if tail.startswith("review-") or tail.startswith("judgment") or tail.startswith("jd-judge"):
         return True
-    return tail == "review" or tail.endswith("-review")
+    if tail == "review" or tail.endswith("-review"):
+        return True
+    # `verif*` must LEAD the tail, or terminate it as `-verify`. That admits every real
+    # verification skill measured in production -- `verify`, `sdd-verify`,
+    # `verify-frontend`, `verify-backend`, `verify_changes`,
+    # `superpowers:verification-before-completion` -- while still rejecting
+    # `email-verify-flow`, where the word merely appears mid-name (the false positive the
+    # v8 narrowing was written for, and the only one it should ever have removed).
+    #
+    # v8 narrowed this from a bare substring to `tail == "verify" or -verify`, which ALSO
+    # dropped the prefix forms: measured on the mirdash upload archive that cost 2.2% of
+    # the pooled review numerator across 16 users and up to 59.5% for one of them
+    # (`verify_changes`), 10.5% for another (`verify-frontend`). Note that the noun form
+    # `verification-before-completion` was missed by BOTH the pre-v8 substring rule and
+    # v8's tail rule -- "verification" does not contain the substring "verify" -- so
+    # admitting it here is a NEW fix, not a restoration. It is worth 357 invocations
+    # (37% of the review numerator) on the corpus measured for the v9 re-fit.
+    return tail.startswith("verif") or tail.endswith("-verify")
 
 
 def _review_skill_uses(skills):

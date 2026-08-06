@@ -5,55 +5,38 @@ from gnomon.config import available_caps
 from gnomon.scoring.planning_evidence import _planning_skill_evidence
 from gnomon.scoring.versioning import SCORE_CONTRACT_ID
 
+# ---- Scoring window ---------------------------------------------------------------
+# Each published score covers one calendar month ending at the selected anchor.
+# The window is calibration input: changing it changes the scored corpus and must
+# be fingerprinted with the contract.
+DEFAULT_SCORING_WINDOW_MONTHS = 1
+
 PLANNING_TARGET = 0.50
-# Planning-practice target: fraction of eligible top-level sessions that should carry a
-# planning signal (plan mode OR a planning Skill). Read today by the GStack Planning axis;
-# it lives here rather than in gstack because gstack already imports from this module, so
-# this is the only side of that edge both scoring systems can share.
-#
-# 0.30 is anchored, not rounded: on a real corpus 374 of 1181 eligible top-level sessions
-# (0.317) carried a substantive code change at all — doc/config/lockfile/test-only sessions
-# are excluded from that count. So the target reads as "plan in about every session where
-# you touch real code", and NOT planning the other two thirds is correct rather than a gap.
-# The previous 0.40 predated any measurement. Recalibrate against a larger corpus if one
-# becomes available; the guard test pins a band, not this exact value.
+# Planning-practice is the share of eligible top-level sessions with plan-mode
+# or planning-skill evidence. It lives here because both AQ and GStack use it.
 PLANNING_PRACTICE_TARGET = 0.30
 CONTEXT_INTELLIGENCE_TARGET = 0.60
 
 # ---- Per-tool-call rate targets ---------------------------------------------------
-# Every rate term in compute_aq is `count / tool_calls_total` (see `rate`), so its target is
-# a per-TOOL-CALL figure and had to be fitted on that basis — not divided out of the old
-# per-session numbers by a calls-per-session constant, because that is not a constant: it
-# spans 39 to 179 calls/session across the users measured below, and picking one would just
-# hide the old session denominator inside a magic number.
-#
-# Sample: the 16 real corpora in the mirdash upload archive that still carry raw scoring
-# inputs — each a full 6-month window pooled across every source that user runs, 15 of them
-# anchored at 2026-07. Basis is the one the previous per-session targets documented: p40-50
-# of the users who record the signal AT ALL (a source that cannot record it drops the term
-# in `wsum`, so those zeros are structural, not weak practice). Each value is a round number
-# inside its own [p40, p50] band; the band is quoted so a later recalibration can tell a
-# population shift from a rounding choice. Six constants cover seven rate call sites —
-# ToolSearch is scored on both Tool command and Token economy against the same target.
-SKILLS_TOTAL_PER_CALL_TARGET = 0.25          # p40 .2248 / p50 .2538, n=16 — 1 skill use per 4 calls
-TOOLSEARCH_PER_CALL_TARGET = 0.0075          # p40 .00732 / p50 .00773, n=15 — ~7 per 1000 calls
-TASK_CALLS_PER_CALL_TARGET = 0.011           # p40 .00817 / p50 .01475, n=13 — ~11 per 1000 calls
-TEST_RUNS_PER_CALL_TARGET = 0.025            # p40 .02219 / p50 .02715, n=16 — 1 test run per 40 calls
-REVIEW_SKILLS_PER_CALL_TARGET = 0.060        # p40 .04412 / p50 .08306, n=13 — widest band of the six
-COMPOUNDING_WRITES_PER_CALL_TARGET = 0.0018  # p40 .00170 / p50 .00207, n=16 — ~2 per 1000 calls
-# Still PROVISIONAL, in the same sense the per-session targets were: n=16 is the entire
-# population that has uploaded raw inputs, not a sample drawn from a larger one. Recalibrate
-# the six TOGETHER — they share one denominator, so a shift in how tool-heavy the population
-# is moves every band at once.
+# Rate terms use `count / tool_calls_total`. Targets are calibration inputs and
+# are evaluated against observable source capabilities; unavailable signals drop
+# rather than scoring zero.
+SKILLS_TOTAL_PER_CALL_TARGET = 0.009
+TOOLSEARCH_PER_CALL_TARGET = 0.0075
+TASK_CALLS_PER_CALL_TARGET = 0.011
+TEST_RUNS_PER_CALL_TARGET = 0.025
+REVIEW_SKILLS_PER_CALL_TARGET = 0.004
+COMPOUNDING_WRITES_PER_CALL_TARGET = 0.0018
 
-# ---- Ordered-planning redesign (C1-C7) calibration placeholders ------------
-# All five constants below are PROVISIONAL calibration placeholders (proposal C5):
-# picked from qualitative guidance (Anthropic plan-mode guidance, Fowler's Design
-# Stamina Hypothesis), NOT yet fit against a real corpus. Recalibrate all of them
-# together once eligible/planned counts are available from production data —
-# do not tune one in isolation, they interact (a lower CHURN_MIN admits more
-# sessions as eligible, which shifts the denominator PLANNING_TARGET is judged
-# against).
+# ---- Rate evidence floor ------------------------------------------------------------
+# A term needs at least one expected occurrence at its target. Below this floor,
+# `rate` returns None so `wsum` drops and renormalizes the term instead of treating
+# a single event or absence as conclusive evidence.
+RATE_MIN_EXPECTED_AT_TARGET = 1.0
+
+# ---- Ordered-planning calibration -------------------------------------------------
+# These constants define eligibility and ordered-plan evidence. Recalibrate them
+# together because each changes the population used by the others.
 CHURN_MIN = 80              # net changed lines (C2): single-file eligibility via churn
 WINDOW = 72 * 3600           # seconds (C4): cross-session plan-credit lookback window
 PLAN_MIN_LINES = 8          # net lines (C6): minimum substantive plan-file size
@@ -63,9 +46,39 @@ MIN_ELIGIBLE_SESSIONS = 5   # sessions (C7): below this, drop+renormalize (noise
 # ---- Orchestration v2 — frequency + quality compound -------------------------
 ORCHESTRATABLE_CODE_FILES = 3    # code files written (stricter than eligible's 2)
 ORCHESTRATABLE_SUBSTANTIVE = 20  # substantive tool calls (stricter than eligible's 10)
-# PROVISIONAL: the current three-user sample is insufficient for recalibration.
-ORCHESTRATION_FREQUENCY_TARGET = 0.78  # 78% of orchestratable sessions should delegate
+# Provisional target; any recalibration requires a contract update.
+ORCHESTRATION_FREQUENCY_TARGET = 0.78  # share of orchestratable sessions that delegate
 ORCHESTRATION_FULL_CONFIDENCE_SESSIONS = 5
+
+# ---- Absolute count ceilings -------------------------------------------------
+# Named, not inline, because these five are the only sat() targets that read an ABSOLUTE
+# cumulative count instead of a rate, so they are the ones a scoring-window change moves:
+# `rate(x, t) = sat(x / tool_calls, t)` is window-invariant, a raw count is not. Naming them
+# puts them under the calibration fingerprint (gnomon/scoring/calibration.py), so they cannot
+# be re-fitted without a contract bump. Values are unchanged from the inline literals.
+SUBAGENT_TYPES_DISTINCT_CEILING = 8
+FANOUT_CEILING = 5  # span-of-control theory (Graicunas/Urwick) lands at 5-7
+SKILLS_DISTINCT_CEILING = 40
+MCP_SERVERS_DISTINCT_CEILING = 15
+CLIS_DISTINCT_CEILING = 40
+
+# ---- Harness taxonomy constants (v13) ----------------------------------------
+# Names for existing values. They are registered under the calibration fingerprint
+# so an equivalent refactor cannot hide a score-affecting change.
+HARNESS_TEAM_SESSION_TYPES = 3
+HARNESS_BELOW_TEAM_CREDIT = 0.6
+
+# ---- Steering leverage --------------------------------------------------------
+# The band operates on top-level actions per human instruction. It is registered
+# because changing either its values or its applicability changes scoring.
+STEERING_LEVERAGE_BAND_MIN = 5
+STEERING_LEVERAGE_BAND_MAX = 20
+STEERING_LEVERAGE_DECAY_SPAN = 40
+
+# The steering band is not validated. Keep publishing the measured ratio, but
+# withhold its score until a fitted replacement ships under a new contract.
+# The flag is fingerprinted, so re-enabling the term cannot happen silently.
+STEERING_LEVERAGE_BAND_VALIDATED = False
 
 _MODEL_TIERS = {
     "anthropic": (("opus", 3), ("sonnet", 2), ("haiku", 1)),
@@ -155,32 +168,11 @@ def compute_aq(stats):
     def sat(x, target):
         return min(1.0, x / target) if target else 0.0
 
-    # Rate score. An absolute cumulative count over the window penalizes low-volume users by
-    # their exact volume deficit (a volume artifact — verified: identical behavior scored
-    # 2.4x lower for a user with 2.4x less window), so score a RATE, not a count.
+    # Rate score. Absolute cumulative counts are window-size dependent, so score a
+    # rate instead of penalizing low-volume users for the size of their window.
     #
-    # The denominator is TOOL CALLS, not sessions. A session boundary is a UI artifact of
-    # whichever tool produced it, and one session is not one unit of work across tools:
-    # measured on a real three-source corpus, 397 Claude sessions carried 68.6% of the tool
-    # calls and 91.1% of the active hours (~68 calls / ~37 min each) while 540 `codex exec`
-    # one-shots carried 8.9% of the active hours (~18 calls / ~2.7 min each). Inside a
-    # per-session rate the short ones act as near-pure denominator — Verification scored
-    # 34.4/35 on the Claude slice alone, 4/35 on the codex slice alone and 22.9/35 merged,
-    # for identical behavior.
-    #
-    # Pooling numerator and denominator over the SAME unit is what makes that safe rather
-    # than merely different: Σx/Σc is exactly the tool-call-share-weighted mean of the
-    # per-source rates, so the corpus rate can never land outside the range its sources
-    # span, and no per-source reweighting is needed to get there. Weighting per-SESSION
-    # rates by tool volume instead mixes units (tool_calls × things/session is not a
-    # quantity) and inverts: 5 sessions / 2000 calls / 0 test runs beside 50 sessions / 500
-    # calls / 75 test runs scored 0.10 that way against 0.45 pooled — a 78% drop for a
-    # corpus where 50 of 55 sessions hit target. Targets are per tool call to match; see the
-    # calibrated constants at module top.
-    # `sessions` is still the right unit for the terms that count SESSIONS rather than work
-    # inside them — the planning-evidence share, ordered-planning readiness and the Context
-    # Intelligence coverage denominator all ask "in what fraction of your sessions did X
-    # happen". The unit argument above is about RATES of activity, not about those.
+    # Rate terms use `tool_calls_total`, pooling numerator and denominator over the same
+    # unit. Terms that measure session coverage continue to use sessions.
     sessions = max((stats.get("volume", {}) or {}).get("total_sessions", 0), 1)
     _volume = stats.get("volume", {}) or {}
     tool_calls = _volume.get("tool_calls_total", 0)
@@ -192,6 +184,11 @@ def compute_aq(stats):
     # N/A instead of scoring a phantom 0.
     _tool_calls_measured = "tool_calls_total" in _volume and isinstance(tool_calls, (int, float))
 
+    def _rate_has_evidence(per_call_target):
+        """Is the denominator big enough for THIS target to be evidence rather than noise?
+        See RATE_MIN_EXPECTED_AT_TARGET: below the floor one occurrence maxes the term."""
+        return tool_calls * per_call_target > RATE_MIN_EXPECTED_AT_TARGET
+
     def rate(x, per_call_target):
         # None -> wsum drops the term and renormalizes. 0.0 is reserved for a MEASURED zero:
         # real tool activity, none of this particular signal.
@@ -199,27 +196,59 @@ def compute_aq(stats):
             return None
         # `> 0`, not truthiness: a corrupt negative denominator would otherwise flip the sign
         # and escape sat()'s [0,1] range (a normalized_score of -2.9 propagating into the
-        # pillar and the AQ total).
-        return sat(x / tool_calls, per_call_target) if tool_calls > 0 else 0.0
+        # pillar and the AQ total). A measured zero denominator keeps its deliberate 0.0 —
+        # the evidence floor below is about saturation, and nothing saturates a term that is
+        # never divided.
+        if tool_calls <= 0:
+            return 0.0
+        # Second reason to drop the term, alongside an absent denominator: the denominator is
+        # real but too small for this target to mean anything (RATE_MIN_EXPECTED_AT_TARGET).
+        if not _rate_has_evidence(per_call_target):
+            return None
+        return sat(x / tool_calls, per_call_target)
 
     def rate_facts(key, x, per_call_target):
         """The three numbers that explain a rate term, for the axis `signals`: the count, the
         per-tool-call rate it became, and the target it was scored against. The denominator
         is corpus-wide, so a term can fall while its own count rises — publishing only the
-        count leaves that move unattributable. The rate is None when there is no usable
-        denominator, matching what the term itself scored."""
-        usable = _tool_calls_measured and tool_calls > 0
+        count leaves that move unattributable. The rate is None whenever the term itself was
+        NOT scored — no usable denominator, or one below this target's evidence floor — so a
+        consumer can never read "300% of target" off a term the scorer refused. The count and
+        the denominator stay published either way, which is what makes a dropped term
+        explainable (`tool_calls` + target vs the floor)."""
+        usable = _tool_calls_measured and tool_calls > 0 and _rate_has_evidence(per_call_target)
         return {key: x,
                 f"{key}_per_call": round(x / tool_calls, 6) if usable else None,
                 f"{key}_per_call_target": per_call_target}
 
-    def wsum(*terms):
+    # axis name -> how much of that axis was actually scored. Populated by `wsum` and read
+    # by build_pillar; see `partial_terms` there for why it is an axis sibling and not a
+    # signal.
+    partial_by_axis = {}
+
+    def wsum(*terms, axis=None):
         """Weighted mean of (coef, value, required_cap) terms, dropping terms whose cap is
         unavailable and renormalizing the remaining coefficients to sum 1. Returns None when
-        NO term is measurable (the whole axis is unsupported -> build_pillar drops it)."""
+        NO term is measurable (the whole axis is unsupported -> build_pillar drops it).
+
+        `axis` names the axis so a PARTIAL result can be disclosed. A dropped term is
+        renormalized away silently, which used to be invisible in the payload: Discipline
+        scored on the task-tool rate alone at 100% weight was indistinguishable from
+        Discipline scored on all three of its terms. That was tolerable while the window
+        was six months and a drop was rare; under the one-month window it is the common
+        case (see DEFAULT_SCORING_WINDOW_MONTHS for the measured rates). Recording WHICH
+        FRACTION of the configured weight survived is the honest disclosure -- it does not
+        change the number, it explains it."""
         live = [(c, v) for c, v, cap in terms
                 if v is not None and (cap is None or cap in caps)]
         tot = sum(c for c, _ in live)
+        if axis is not None and len(live) < len(terms):
+            configured = sum(c for c, _, _ in terms)
+            partial_by_axis[axis] = {
+                "scored": len(live),
+                "total": len(terms),
+                "weight_scored": round(tot / configured, 4) if configured else 0.0,
+            }
         return sum(c * v for c, v in live) / tot if tot else None
 
     skills = st.get("skills_all") or st.get("top_skills", [])
@@ -231,21 +260,37 @@ def compute_aq(stats):
         return any(any(nd in str(k).lower() for nd in needles) for k, _ in skills)
 
     # ---- Pillar 1: Breadth (unchanged axes) ----
-    fanout = b.get("fanout_median") or 0  # None (unmeasured) treated as 0 for AQ
-    # Harness use = a SINGLE session coordinating a team of >=3 distinct subagent roles
-    # (behavioral), not a subagent/skill NAMED "harness"/"trisel" (opaque), and not window-wide
-    # role variety (subagent_types_distinct would credit 3 roles fired one-per-session, which
-    # never coordinated a team). max_session_subagent_types is the per-session distinct-role
-    # peak — name-/content-agnostic, so it works in the cross-source aggregate.
-    o_harn = 1.0 if st.get("max_session_subagent_types", 0) >= 3 else 0.6
+    # ---- fanout: None (unmeasured) is DISTINCT from 0 (measured zero) --------
+    # Until v13 `or 0` coerced both to 0, hiding a legitimate measured zero.
+    _fanout_raw = b.get("fanout_median")
+    fanout = _fanout_raw if _fanout_raw is not None else None
+
+    # ---- o_harn taxonomy (v13) -----------------------------------------------
+    # Five cases, in order of discriminating evidence:
+    _max_types = st.get("max_session_subagent_types")
+    _agent_calls = t.get("agent_calls")
+    _types_distinct = st.get("subagent_types_distinct", 0)
+    _no_tool = b.get("no_tool_activity", False)
+    if _no_tool:
+        o_harn = None  # no tool activity at all -> drop
+    elif _max_types is None:
+        o_harn = None  # absent key ≠ measured zero -> drop
+    elif _max_types >= 1:
+        o_harn = 1.0 if _max_types >= HARNESS_TEAM_SESSION_TYPES else HARNESS_BELOW_TEAM_CREDIT
+    elif _agent_calls is None or _agent_calls > 0 or _types_distinct > 0:
+        o_harn = None  # dispatched but roles not registered -> drop
+    else:
+        o_harn = 0.0  # genuinely measured zero delegation
+
     # Orchestration v2: observed frequency (share of orchestratable sessions that
     # delegated), normalized target score, and coordination quality (subagent
     # diversity, fan-out, harness use). Frequency earns its full 30% weight
     # progressively over the first five eligible sessions.
-    # fanout target 5: span-of-control theory (Graicunas/Urwick) lands at 5-7.
-    o_quality = (0.40 * sat(st.get("subagent_types_distinct", 0), 8)
-               + 0.40 * sat(fanout, 5)
-               + 0.20 * o_harn)
+    o_quality = wsum(
+        (0.40, sat(_types_distinct, SUBAGENT_TYPES_DISTINCT_CEILING), None),
+        (0.40, sat(fanout, FANOUT_CEILING) if fanout is not None else None, None),
+        (0.20, o_harn, None),
+        axis="Orchestration")
     _o_orchestratable = b.get("orchestratable_sessions") or 0
     _o_delegated = b.get("delegated_orchestratable_sessions") or 0
     o_frequency = (_o_delegated / _o_orchestratable) if _o_orchestratable else None
@@ -254,24 +299,31 @@ def compute_aq(stats):
     o_frequency_confidence = min(
         _o_orchestratable / ORCHESTRATION_FULL_CONFIDENCE_SESSIONS, 1.0)
     o_frequency_weight = 0.30 * o_frequency_confidence
-    orchestration = ((1.0 - o_frequency_weight) * o_quality
-                     + o_frequency_weight * o_frequency_score
-                     if o_frequency_score is not None else o_quality)
+    orchestration = (
+        ((1.0 - o_frequency_weight) * o_quality
+         + o_frequency_weight * o_frequency_score)
+        if o_quality is not None and o_frequency_score is not None
+        else o_quality if o_quality is not None
+        else o_frequency_score if o_frequency_score is not None
+        else None)
     # skills_total -> per-tool-call rate; skills_distinct stays (diversity, correctly absolute).
     # Via wsum, not raw arithmetic: `rate` returns None when there is no usable tool-call
     # denominator, and wsum is what drops such a term and renormalizes the rest. Multiplying
     # by a coefficient directly would raise a TypeError instead.
     skill_fluency = wsum(
-        (.40, sat(st.get("skills_distinct", 0), 40), None),
+        (.40, sat(st.get("skills_distinct", 0), SKILLS_DISTINCT_CEILING), None),
         (.30, rate(st.get("skills_total", 0), SKILLS_TOTAL_PER_CALL_TARGET), None),
         (.30, 1.0 if has_skill(["subagent-driven", "brainstorm", "writing-plans",
-                                "cerberus", "systematic-debugging"]) else 0.6, None))
+                                "cerberus", "systematic-debugging"]) else 0.6, None),
+        axis="Skill fluency")
     # mcp_servers/clis are distinct-counts (kept absolute); toolsearch -> per-tool-call rate.
     # toolsearch term drops out (renormalized) when no present source can record it
-    tool_command = wsum((.40, sat(t.get("mcp_servers_distinct", 0), 15), None),
-                        (.40, sat(t.get("clis_distinct", 0), 40), None),
+    tool_command = wsum((.40, sat(t.get("mcp_servers_distinct", 0),
+                                  MCP_SERVERS_DISTINCT_CEILING), None),
+                        (.40, sat(t.get("clis_distinct", 0), CLIS_DISTINCT_CEILING), None),
                         (.20, rate(t.get("toolsearch_calls", 0), TOOLSEARCH_PER_CALL_TARGET),
-                         "toolsearch"))
+                         "toolsearch"),
+                        axis="Tool command (MCP + CLI)")
     # task-tool -> per-tool-call rate; TaskCreate/Update + SDD sdd-tasks skill invocations
     # both count as structured task planning. plan-skill term needs the Skill capability.
     task_calls = t.get("task_tool_calls", 0) + _task_skill_uses(skills)
@@ -305,18 +357,20 @@ def compute_aq(stats):
                       # (opencode has authoritative identity but emits neither signal).
                       (.40, planning_habit,
                        "skills" if _plan_practice["legacy"] else "planning_signal"),
-                      (.20, ordered_planning, None))
+                      (.20, ordered_planning, None),
+                      axis="Discipline")
     breadth_axes = [
         # Orchestration needs subagent delegation; a source that can't fan out by design
         # (Gemini/Pi/opencode) drops this axis (renormalized) instead of scoring ~0.
         ("Orchestration", 33, orchestration, {"subagent_types": st.get("subagent_types_distinct", 0),
-         "fanout_median": fanout, "o_harn": o_harn,
+         "fanout_median": fanout,
+         "o_harn": o_harn,
          "frequency": round(o_frequency, 3) if o_frequency is not None else None,
          "frequency_score": (round(o_frequency_score, 3)
                              if o_frequency_score is not None else None),
          "frequency_confidence": round(o_frequency_confidence, 3),
          "frequency_weight": round(o_frequency_weight, 3),
-         "coordination_quality": round(o_quality, 3),
+         "coordination_quality": round(o_quality, 3) if o_quality is not None else None,
          "orchestratable_sessions": _o_orchestratable,
          "delegated_orchestratable_sessions": _o_delegated},
          "delegate"),
@@ -348,7 +402,8 @@ def compute_aq(stats):
     # injected skills on Cursor). Skill fluency / Discipline still require `skills` only.
     # test runs + review skills -> per-tool-call rates
     verification = wsum((.5, rate(b.get("shell_test_runs", 0), TEST_RUNS_PER_CALL_TARGET), None),
-                        (.5, rate(review_n, REVIEW_SKILLS_PER_CALL_TARGET), "skill_reads"))
+                        (.5, rate(review_n, REVIEW_SKILLS_PER_CALL_TARGET), "skill_reads"),
+                        axis="Verification")
     grounding = sat(b.get("planning_ratio_explore_to_doing", 0), 1.0)
     # Context Intelligence: PURE per-session grounding COVERAGE, not knowledge-MCP call/
     # server volume (the old `<50 calls` gate was gameable by auto-fired knowledge-MCP
@@ -374,7 +429,8 @@ def compute_aq(stats):
     # compounding writes -> per-tool-call rate (rewards the habit, not raw volume)
     compounding = wsum((.6, rate(st.get("compounding_writes", 0),
                                  COMPOUNDING_WRITES_PER_CALL_TARGET), None),
-                       (.4, (1.0 if has_skill(["retro", "writing-plans", "brainstorm"]) else 0.6), "skill_reads"))
+                       (.4, (1.0 if has_skill(["retro", "writing-plans", "brainstorm"]) else 0.6), "skill_reads"),
+                       axis="Compounding")
     _review_skills_applicable = "skill_reads" in caps
     verification_signals = {
         "tool_calls": tool_calls,
@@ -403,15 +459,24 @@ def compute_aq(stats):
     ]
 
     # ---- Pillar 3: Efficiency ----
+    # A corpus with observed delegation but no sidechain labels cannot provide a
+    # trustworthy top-level numerator. Drop that term rather than score it as zero.
+    # Otherwise withhold it until the registered steering band is validated.
     app = b.get("actions_per_prompt", 0)
-    if app <= 0:
-        lever = 0.0
-    elif app < 5:
-        lever = app / 5
-    elif app <= 20:
-        lever = 1.0
+    if b.get("sidechain_label_state", "measured") != "measured":
+        steering_state, lever = "unmeasured_sidechain_labels", None
+    elif not STEERING_LEVERAGE_BAND_VALIDATED:
+        steering_state, lever = "withheld_unvalidated_band", None
+    elif app <= 0:
+        steering_state, lever = "scored", 0.0
+    elif app < STEERING_LEVERAGE_BAND_MIN:
+        steering_state, lever = "scored", app / STEERING_LEVERAGE_BAND_MIN
+    elif app <= STEERING_LEVERAGE_BAND_MAX:
+        steering_state, lever = "scored", 1.0
     else:
-        lever = max(0.0, 1 - (app - 20) / 40)
+        steering_state = "scored"
+        lever = max(0.0, 1 - (app - STEERING_LEVERAGE_BAND_MAX)
+                    / STEERING_LEVERAGE_DECAY_SPAN)
     # API-error hygiene is scored as a RATE (per 100 tool calls), not an absolute count:
     # an absolute threshold penalizes volume and is window-size dependent. Target 2/100 =
     # full penalty (healthy env < 0.5/100; retry-storm / broken setup > 2/100).
@@ -440,7 +505,8 @@ def compute_aq(stats):
     # toolsearch term drops out (renormalized) when unsupported, leaving CLI-share
     token_economy = wsum((.5, rate(t.get("toolsearch_calls", 0), TOOLSEARCH_PER_CALL_TARGET),
                           "toolsearch"),
-                         (.5, sat(cli_share, 0.70), None))
+                         (.5, sat(cli_share, 0.70), None),
+                         axis="Token economy")
     savvy_axes = [
         # Model mix needs a real per-turn model id; a source that masks it (Antigravity IDE)
         # drops this axis (renormalized) instead of scoring 0.
@@ -473,12 +539,23 @@ def compute_aq(stats):
         effective_weights = [round(a[1] * scale) for a in live]
         if effective_weights:
             effective_weights[-1] += 100 - sum(effective_weights)
+        # `partial_terms` is present ONLY when the axis was scored on fewer than all of its
+        # terms -- absence means fully measured, mirroring the pillar's `not_applicable`
+        # (also absent when nothing dropped). It is an axis SIBLING rather than an entry in
+        # `signals` on purpose: mirdash reads `signals` as Record<string, number> and shows
+        # the LOWEST value as the axis bottleneck (`pickDrivingSignal` in
+        # apps/web/lib/aq-report.ts), so a fractional weight share in there would be
+        # rendered as a phantom bottleneck on nearly every partial axis. As a sibling it
+        # falls outside `parseAxis`'s {name, weight, score, signals} whitelist and is simply
+        # ignored by consumers that have not opted in.
         out = [{"name": a[0], "base_weight": a[1], "weight": effective_weight,
                 # Binary64 guarantees 15 portable significant decimal digits. Canonicalize
                 # only the exported diagnostic; keep scoring on the unrounded value below.
                 "normalized_score": float(format(a[2], ".15g")),
                 "score": round(effective_weight * a[2], 1),
-                "signals": a[3]}
+                "signals": a[3],
+                **({"partial_terms": partial_by_axis[a[0]]}
+                   if a[0] in partial_by_axis else {})}
                for a, effective_weight in zip(live, effective_weights)]
         pillar = {"name": name, "weight": weight, "score": round(sum(x["score"] for x in out), 1), "axes": out}
         dropped = [a[0] for a in axes if a not in live]
@@ -496,6 +573,14 @@ def compute_aq(stats):
     return {
         "aq_0_100": total, "tier": tier, "pillars": pillars,
         "score_contract_id": SCORE_CONTRACT_ID,
+        # `actions_per_prompt` is MEASURED even when the term built from it is not scored, so
+        # the number keeps being published — the `partial_terms` principle: the value stands,
+        # the interpretation is withheld. It cannot ride in the axis's `signals` when the axis
+        # is dropped, so it sits here beside the other ungraded readings (`mcp_vs_cli`,
+        # `tool_diversity`). `state` is the *_state convention (`ordered_facts_state`,
+        # `linked_model_routing_state`, `sidechain_label_state`) applied to the OUTPUT rather
+        # than the input: "scored", or which of the two absences applies.
+        "steering_leverage": {"state": steering_state, "actions_per_prompt": app},
         "mcp_vs_cli": {"cli_calls": cli_calls, "cli_distinct": t.get("clis_distinct", 0),
                        "mcp_calls": mcp_calls, "mcp_distinct": t.get("mcp_servers_distinct", 0),
                        "ratio": round(cli_calls / mcp_calls, 1) if mcp_calls else None},

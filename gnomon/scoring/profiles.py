@@ -53,13 +53,12 @@ def build_profile(stats, model_usage=None):
         "Planning": sb["planning"]["value"],
         "Engineering": sb["engineering"]["value"],
     }
-    # AQ-derived growth edges use the rolling blend. Identity/descriptive fields
-    # remain explicitly full-window scoped so a short bucket cannot rewrite them.
-    full_window_stats = stats
-    if stats.get("_full_window_agentic"):
-        full_window_stats = dict(stats)
-        full_window_stats["agentic"] = stats["_full_window_agentic"]
-    arch_title, arch_quote = pick_archetype(full_window_stats, arch_scores)
+    # Every field below reads the SAME `stats["agentic"]`. Until v11 a corpus run stashed
+    # the pre-blend AQ under `_full_window_agentic` and the identity/descriptive fields
+    # (archetype, steering, signature moves) were derived from that copy so a 30-day
+    # bucket could not rewrite them. There is no blend and therefore no second copy any
+    # more: `stats["agentic"]` is the scoring-window AQ, full stop.
+    arch_title, arch_quote = pick_archetype(stats, arch_scores)
     if model_usage is None:
         all_models = (stats.get("stack") or {}).get("models") or []
         tok_by_model = {e["model_id"]: e for e in (stats.get("token_usage") or {}).get("by_model") or []}
@@ -68,8 +67,8 @@ def build_profile(stats, model_usage=None):
         "aq": aq,
         "archetype": {"title": arch_title, "quote": arch_quote},
         "scores": sb,
-        "steering": steering_reading(full_window_stats),
+        "steering": steering_reading(stats),
         "growth_edges": growth_edges_structured(stats, arch_scores),
-        "signature_moves": signature_moves_structured(full_window_stats),
+        "signature_moves": signature_moves_structured(stats),
         "model_usage": model_usage,
     }

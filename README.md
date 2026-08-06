@@ -90,19 +90,64 @@ uvx --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights --help
 ```
 
 Each scored point is computed over a **trailing window of `--window=N` calendar
-months** (default 6) ending at its anchor month, so a single weak month doesn't
-tank the score. `--window=1` scores each month on its own. The window applies to
-normal monthly runs and to `--backfill`/`--force`.
+months** (default 1) ending at its anchor month, so a month is scored on that
+month. Raise it with `--window=N` if you want a point smoothed over the N months
+ending at its anchor. The window applies to normal monthly runs and to
+`--backfill`/`--force`.
 
-Within the default six-month view, AQ is blended as **65% recent (rolling
-30-day) + 35% full-window** (the entire scored period). Because the full
-window includes recent activity, improvements are reflected in both
-components — recent behavior dominates while the full window provides
-stability. When the recent window has no sessions the blend falls back to the
-unblended full-window AQ.
+The **per-calendar-month evidence** block (`noticed_stats_monthly`) is
+deliberately wider than the scoring window: it is shaped over a trailing
+six-month read of the same transcripts, so re-running gnomon still corrects
+earlier months rather than freezing each one at whatever it looked like the day
+it was first uploaded. Only the scoring window is published as
+`context.window_months`.
 
-This runtime emits **scoring inputs version 7**, **AQ version 7**, and **GStack version 7** (`score_contract_id = 7:7:7`). Scores from the previous
-contract must not be presented as an improvement or regression against v6.
+Every payload declares the corpus span it was actually built over in
+`context.window_months`, derived from the dates the run covered rather than from
+the flag that asked for them. A run bounded to whole calendar months declares
+that count; a run with no bounds at all — a plain local run, which reads every
+transcript still on disk — declares `null`, because its span is whatever survived
+retention rather than anything the run chose. Recomputing a stored payload
+against a newer formula only accepts payloads that declare the current one-month
+window: a wider or unstated corpus produces roughly a different number of
+sessions and tool calls than the scoring targets are calibrated for, so it is
+refused instead of being pooled with genuine one-month scores.
+
+## Scoring contract
+
+Current runtime contract: **scoring inputs version 13**, **AQ version 13**, and
+**GStack version 13** (`score_contract_id = 13:13:13`). Compare scores only when
+the contract IDs match.
+
+AQ is computed once over the requested scoring window; there is no recency blend.
+The scoring window is a trailing `--window=N` calendar-month window (default 1).
+`noticed_stats_monthly` is separate six-month evidence used to correct monthly
+history; only the scoring window is published as `context.window_months`.
+
+`behavior.actions_per_prompt` is top-level tool calls per human instruction:
+`(volume.tool_calls_total - volume.sidechain_tool_calls) /
+volume.total_instructions`. `total_instructions` includes typed prompts and bare
+slash commands. `tool_calls_total` remains sidechain-inclusive because rate terms
+and source aggregation use it; `sidechain_tool_calls` is a diagnostic value, not a
+scored term.
+
+Steering leverage publishes the measured `actions_per_prompt` but is withheld while
+its band is unvalidated. `steering_leverage.state` is
+`"withheld_unvalidated_band"`, `"unmeasured_sidechain_labels"`, or `"scored"`.
+An unmeasured sidechain label drops the term rather than assigning zero; remaining
+Efficiency weight is renormalized.
+
+Rate terms require sufficient tool-call evidence. Terms below the evidence floor
+are dropped and their weights renormalized. An axis that scores fewer than all of
+its terms includes `partial_terms` with the scored-term count and surviving weight
+share.
+
+Replay recomputes stored inputs only when their counter definitions, top-level
+`actions_per_prompt` basis, and declared scoring window are compatible. It refuses
+incompatible payloads instead of guessing. Single-source replay is exact;
+multi-source replay reports its exactness and source-profile replay status. Uploads
+are checked before POST against the 900 KiB ingest limit and fail rather than being
+truncated.
 
 Rate terms (test runs, review skills, ToolSearch, task planning, skills,
 compounding writes) are scored **per tool call**, not per session. One session is
@@ -180,12 +225,11 @@ xl-ai-insights --local --last=90d                    # rolling last quarter (als
 xl-ai-insights --local --since=2026-03-01 --until=2026-05-31   # explicit window (until-day inclusive)
 ```
 
-Report metrics follow the requested window — **including git churn**, whose
-`git log --since/--until` range tracks the kept events. AQ is the documented
-exception: its recent-window blend may inspect up to 30 days before the
-effective anchor. Events without a timestamp are dropped in windowed runs
-(they can't honor explicit bounds); that includes Cursor JSONL-only sessions
-beyond their single file-mtime timestamp.
+Every metric follows the requested window — **including git churn**, whose
+`git log --since/--until` range tracks the kept events, and **including AQ**.
+Events without a timestamp are dropped in windowed runs because they cannot
+honor explicit bounds; that includes Cursor JSONL-only sessions beyond their
+single file-mtime timestamp.
 
 ### Sandbox / self-hosted / copied histories
 
@@ -251,7 +295,7 @@ Three 0–10 axes (Execution / Planning / Engineering) grounded in [gstack](http
 |--------|--------|----------|
 | **Breadth** | 30 | Orchestration · Skill fluency · Tool command (MCP+CLI) · Discipline |
 | **Craft** | 35 | Verification · Grounding · Compounding |
-| **Efficiency** | 20 | Steering leverage (sweet-spot) · Recovery |
+| **Efficiency** | 20 | Steering leverage (withheld while unvalidated) · Recovery |
 | **Savvy** | 15 | Model mix · Token economy |
 
 **Level** (one honest ladder, driven by AQ — no flattery at the floor): Novice <25 · Apprentice 25–45 · Adequate 45–60 · Proficient 60–75 · Advanced 75–88 · **Elite 88–100**. This is also the profile headline; the quote names your thinnest pillar so the gap is visible.

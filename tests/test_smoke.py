@@ -186,14 +186,19 @@ class TestPipeline(unittest.TestCase):
         "profiles_by_source", "source_usage", "source_usage_monthly", "token_usage",
         "aq_version", "gstack_version", "score_contract_id", "comparison_policy",
             "timing",
-            # recompute-grade-payload (persist-recompute-grade-inputs): an additive
-            # block so a future recompute job can re-derive profile.aq (and its
-            # 65/35 recency blend) from the payload alone -- exact for single-source,
-            # approximate for multi-source (see gnomon/scoring/replay.py). No
-            # merged-corpus block ships (scope relaxation: approximate recompute is
-            # acceptable, so the ~487 KB scoring_inputs_corpus block bought only
-            # exactness and was dropped entirely).
-            "bucket_scoring_inputs", "payload_features"})
+            # coverage-index capability (honest-aq-series): per-month history.jsonl
+            # coverage index, outside scoring_inputs* so replay()/scoring rate
+            # denominators are unaffected. Deliberate ceremony edit for this pin.
+            "coverage",
+            # recompute-grade-payload (persist-recompute-grade-inputs): a future
+            # recompute job re-derives profile.aq from scoring_inputs_by_source alone --
+            # exact for single-source, approximate for multi-source (see
+            # gnomon/scoring/replay.py). No merged-corpus block ships (scope relaxation:
+            # approximate recompute is acceptable, so the ~487 KB scoring_inputs_corpus
+            # block bought only exactness and was dropped entirely), and no
+            # `bucket_scoring_inputs` block ships either since v11 removed the recency
+            # blend that produced it. payload_features.omitted names both.
+            "payload_features"})
         # profile must have the expected sub-keys
         prof = summary["profile"]
         self.assertEqual(set(prof), {"aq", "archetype", "scores", "steering",

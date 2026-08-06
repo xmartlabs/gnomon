@@ -244,6 +244,9 @@ class TestOutputDirArgParsing(unittest.TestCase):
     def test_output_dir_is_consumed_by_wrapper_not_forwarded_to_paxel(self):
         with (
             patch.object(_insights, "_check_latest_cli_release", return_value={"status": "current"}),
+            # main() offers the retention config once it clears the freshness gate;
+            # stub it so no test prompts on stdin or writes ~/.claude/settings.json.
+            patch.object(_insights, "offer_retention_config"),
             patch.object(_insights, "_main_web") as mock_main_web,
             patch.object(
                 _insights.sys,
@@ -441,6 +444,22 @@ class TestConsoleFailureAndSummary(unittest.TestCase):
         self.assertIn("Report ready", out)
         self.assertFalse(exited)
 
+    def test_archive_only_is_counted_as_guarded_not_uploaded(self):
+        uploaded = [{"monthKey": "2025-07", "uploadedAt": 9999999999999}]
+        out, exited, code = self._run_console(
+            mode="auto",
+            token_count=12,
+            run_paxel_side_effect=[self._summary()],
+            upload_side_effect=[{"outcome": "archived_only", "reportUrl": "/metrics"}],
+            uploaded=uploaded,
+        )
+
+        self.assertIn("guarded 1", out)
+        self.assertIn("uploaded 0/1 months", out)
+        self.assertNotIn("uploaded 1/1 months", out)
+        self.assertFalse(exited)
+        self.assertIsNone(code)
+
 
 class TestCliReleaseFreshness(unittest.TestCase):
     MISMATCH_OLDER = {"status": "mismatch", "current": "1.0.0", "latest": "1.1.0", "reason": None}
@@ -491,6 +510,7 @@ class TestCliReleaseFreshness(unittest.TestCase):
         stdout = io.StringIO()
         with (
             patch.object(_insights, "_check_latest_cli_release", return_value=self.MISMATCH_OLDER),
+            patch.object(_insights, "offer_retention_config"),  # never prompt/write in tests
             patch.object(_insights, "_main_web") as mock_main_web,
             patch.object(_insights.sys, "argv", ["xl-ai-insights", "--allow-stale-cli", "claude"]),
             contextlib.redirect_stdout(stdout),
@@ -505,6 +525,7 @@ class TestCliReleaseFreshness(unittest.TestCase):
         stdout = io.StringIO()
         with (
             patch.object(_insights, "_check_latest_cli_release", return_value=self.CURRENT),
+            patch.object(_insights, "offer_retention_config"),  # never prompt/write in tests
             patch.object(_insights, "_main_web") as mock_main_web,
             patch.object(_insights.sys, "argv", ["xl-ai-insights", "codex"]),
             contextlib.redirect_stdout(stdout),
@@ -518,6 +539,7 @@ class TestCliReleaseFreshness(unittest.TestCase):
         stdout = io.StringIO()
         with (
             patch.object(_insights, "_check_latest_cli_release", return_value=self.UNKNOWN),
+            patch.object(_insights, "offer_retention_config"),  # never prompt/write in tests
             patch.object(_insights, "_main_web") as mock_main_web,
             patch.object(_insights.sys, "argv", ["xl-ai-insights", "gemini"]),
             contextlib.redirect_stdout(stdout),
@@ -530,6 +552,7 @@ class TestCliReleaseFreshness(unittest.TestCase):
     def test_custom_mirdash_base_skips_public_release_check(self):
         with (
             patch.object(_insights, "_check_latest_cli_release") as mock_check,
+            patch.object(_insights, "offer_retention_config"),  # never prompt/write in tests
             patch.object(_insights, "_main_web") as mock_main_web,
             patch.object(
                 _insights.sys,
@@ -559,6 +582,9 @@ class TestCliReleaseFreshness(unittest.TestCase):
     def test_local_bypasses_freshness_check_and_strips_wrapper_flag(self):
         with (
             patch.object(_insights, "_check_latest_cli_release") as mock_check,
+            # never prompt/write in tests: --local offers the retention config too, and
+            # the offer's only guard is a real tty, which `unittest discover` preserves
+            patch.object(_insights, "offer_retention_config"),
             patch("gnomon.cli.local.main") as mock_local_main,
             patch.object(_insights.sys, "argv", ["xl-ai-insights", "--local", "--allow-stale-cli", "claude"]),
         ):
@@ -702,31 +728,31 @@ class TestHelpOutput(unittest.TestCase):
 class TestMonthWindows(unittest.TestCase):
     """Test month_windows function with window_months parameter."""
 
-    def test_window_months_1_legacy_single_month(self):
-        """window_months=1 should produce single-calendar-month windows (legacy behavior)."""
+    def test_window_months_1_trailing_current_month(self):
+        """window_months=1: closed months use calendar bounds, current month uses trailing 30d."""
         today = datetime.date(2026, 6, 16)
         windows = month_windows(3, today, window_months=1)
 
         # Should be 3 months: 2026-04, 2026-05, 2026-06 (oldest first)
         self.assertEqual(len(windows), 3)
 
-        # Check 2026-04 (first/oldest)
+        # Check 2026-04 (first/oldest) - closed month, calendar bounds
         since, until, label = windows[0]
         self.assertEqual(label, "2026-04")
         self.assertEqual(since, "2026-04-01")
         self.assertEqual(until, "2026-05-01")
 
-        # Check 2026-05 (middle)
+        # Check 2026-05 (middle) - closed month, calendar bounds
         since, until, label = windows[1]
         self.assertEqual(label, "2026-05")
         self.assertEqual(since, "2026-05-01")
         self.assertEqual(until, "2026-06-01")
 
-        # Check 2026-06 (last/newest, the current month)
+        # Check 2026-06 (last/newest, the current month) - trailing 30-day window
         since, until, label = windows[2]
         self.assertEqual(label, "2026-06")
-        self.assertEqual(since, "2026-06-01")
-        self.assertEqual(until, "2026-07-01")
+        self.assertEqual(since, (today - datetime.timedelta(days=30)).isoformat())
+        self.assertEqual(until, (today + datetime.timedelta(days=1)).isoformat())
 
     def test_window_months_6_current_month(self):
         """window_months=6 with current month 2026-06 should span 6 months."""
@@ -803,30 +829,29 @@ class TestMonthWindows(unittest.TestCase):
         self.assertEqual(since, "2025-12-01")
         self.assertEqual(until, "2026-03-01")
 
-    def test_window_months_february_leap_year(self):
-        """Verify correct handling of February in a leap year."""
-        # 2024 is a leap year
+    def test_window_months_february_leap_year_trailing(self):
+        """Verify correct handling of February in a leap year (current month → trailing)."""
         today = datetime.date(2024, 2, 15)
         windows = month_windows(1, today, window_months=1)
 
         self.assertEqual(len(windows), 1)
         since, until, label = windows[0]
         self.assertEqual(label, "2024-02")
-        self.assertEqual(since, "2024-02-01")
-        # February 2024 has 29 days, so until = 2024-03-01
-        self.assertEqual(until, "2024-03-01")
+        # Current month: trailing 30 days
+        self.assertEqual(since, (today - datetime.timedelta(days=30)).isoformat())
+        self.assertEqual(until, (today + datetime.timedelta(days=1)).isoformat())
 
-    def test_window_months_february_non_leap_year(self):
-        """Verify correct handling of February in a non-leap year."""
+    def test_window_months_february_non_leap_year_trailing(self):
+        """Verify correct handling of February in a non-leap year (current month → trailing)."""
         today = datetime.date(2025, 2, 15)
         windows = month_windows(1, today, window_months=1)
 
         self.assertEqual(len(windows), 1)
         since, until, label = windows[0]
         self.assertEqual(label, "2025-02")
-        self.assertEqual(since, "2025-02-01")
-        # February 2025 has 28 days, so until = 2025-03-01
-        self.assertEqual(until, "2025-03-01")
+        # Current month: trailing 30 days
+        self.assertEqual(since, (today - datetime.timedelta(days=30)).isoformat())
+        self.assertEqual(until, (today + datetime.timedelta(days=1)).isoformat())
 
     def test_window_months_single_window_spanning_two_years(self):
         """window_months larger than 12 can span across year boundaries."""

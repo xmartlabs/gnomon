@@ -40,7 +40,7 @@ CLAUDE_BLOCK = {
     },
     "stack": {
         "skills_distinct": 25, "skills_total": 900, "compounding_writes": 20,
-        "subagent_types_distinct": 6,
+        "subagent_types_distinct": 6, "max_session_subagent_types": 2,
         "subagent_types": [["general-purpose", 120], ["code-reviewer", 40]],
         "top_skills": [["writing-plans", 60], ["code-review", 80],
                        ["systematic-debugging", 30]],
@@ -71,7 +71,7 @@ CURSOR_BLOCK = {
     "behavior": {
         "planning_ratio_explore_to_doing": 0.3, "actions_per_prompt": 6.0,
         "questions_asked": 1, "error_recovery_ratio": 0.5,
-        "error_rate_per_100_tools": 5.0, "api_errors_retries": 2, "fanout_median": 1,
+        "error_rate_per_100_tools": 5.0, "api_errors_retries": 2, "fanout_median": 0,
         "shell_test_runs": 5, "delegate_actions": 2, "background_tasks": 0,
         "iteration_depth_mean": 6.0, "iteration_depth_p90": 12, "iteration_depth_max": 40,
         "files_hammered_over_15x": 5, "plan_sessions": 2,
@@ -202,8 +202,13 @@ def _rolling_block(*, sessions, tests, planning_ratio, grounded_sessions):
 
 
 def rolling_cases():
-    """Cases that exercise scoring-contract v4 bucket composition (65% recent_30d +
-    35% full_window, the latter appended at blend time by score_by_source)."""
+    """Cases that exercise bucket composition (65% recent_30d + 35% full_window, the
+    latter appended at blend time by score_by_source).
+
+    v11 removed the recency blend from the scoring path, so no run produces these inputs
+    any more. They stay in the parity contract because `replay()` -- and mirdash's TS
+    reimplementation of it -- must keep recomputing payloads captured under v8-v10, which
+    do carry a bucket breakdown."""
     full = {"claude": {"window": _rolling_block(
         sessions=30, tests=30, planning_ratio=0.5, grounded_sessions=12)}}
     buckets = {
