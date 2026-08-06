@@ -1,9 +1,9 @@
 import unittest
 
 from gnomon.taxonomy import (
-    ASK_TOOLS, DELEGATE_TOOLS, DISCOVER_TOOLS, EXEC_TOOLS, PLAN_MODE_TOOLS,
-    PLAN_SIGNAL_TOOLS, PLAN_TOOLS, READ_TOOLS, SCHEDULE_TOOLS, SKILL_TOOLS,
-    WRITE_TOOLS, classify_tool, is_substantive_tool,
+    ASK_TOOLS, DELEGATE_TOOLS, DISCOVER_TOOLS, EXEC_TOOLS, ORCHESTRATION_TOOLS,
+    PLAN_MODE_TOOLS, PLAN_SIGNAL_TOOLS, PLAN_TOOLS, READ_TOOLS, SCHEDULE_TOOLS,
+    SKILL_TOOLS, WRITE_TOOLS, classify_tool, is_substantive_tool,
     classify_change_target, is_plan_file_target, _is_compounding_path, _norm_path_seps,
 )
 
@@ -131,6 +131,29 @@ class TestClassifyToolPlanCategory(unittest.TestCase):
     def test_todo_write_is_a_plan_signal_but_not_plan_mode(self):
         self.assertIn("TodoWrite", PLAN_SIGNAL_TOOLS)
         self.assertNotIn("TodoWrite", PLAN_MODE_TOOLS)
+
+
+class TestOrchestrationToolsTaxonomy(unittest.TestCase):
+    """WU4 (H1a/H1b/H6): ORCHESTRATION_TOOLS is the single named source of truth for
+    the accumulator's orchestration-dispatch gate, superseding the literal
+    `name == "Agent"` check. Task and Workflow are real dispatch tools and belong in
+    the set; TaskCreate/TaskUpdate/TaskList/TaskGet are todo-bookkeeping (PLAN_TOOLS)
+    and must stay excluded, or agents_per_session would be inflated by non-dispatch
+    events."""
+
+    def test_workflow_tool_classifies_as_delegate(self):
+        self.assertEqual(classify_tool("Workflow"), "delegate")
+
+    def test_workflow_is_added_to_delegate_tools(self):
+        self.assertIn("Workflow", DELEGATE_TOOLS)
+
+    def test_orchestration_tools_is_exactly_agent_task_workflow(self):
+        self.assertEqual(ORCHESTRATION_TOOLS, {"Agent", "Task", "Workflow"})
+
+    def test_orchestration_tools_excludes_todo_bookkeeping_task_variants(self):
+        for tool in ("TaskCreate", "TaskUpdate", "TaskList", "TaskGet"):
+            with self.subTest(tool=tool):
+                self.assertNotIn(tool, ORCHESTRATION_TOOLS)
 
 
 class TestClassifyToolOtherCategoriesUnchanged(unittest.TestCase):

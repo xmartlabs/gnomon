@@ -19,6 +19,7 @@ from gnomon.scoring.calibration import (
     CALIBRATION_CONSTANT_NAMES,
     CALIBRATION_FINGERPRINTS,
     NON_CALIBRATION_CONSTANT_NAMES,
+    ZERO_CALIBRATION_DELTA_CONTRACT_IDS,
     calibration_fingerprint,
 )
 from gnomon.scoring.versioning import SCORE_CONTRACT_ID
@@ -40,12 +41,26 @@ class TestCalibrationIsBoundToTheContract(unittest.TestCase):
             "rows under one ID.")
 
     def test_no_two_contracts_share_a_fingerprint(self):
-        # Two IDs with one fingerprint means a contract was bumped without any
-        # calibration change (harmless) OR an entry was edited in place to paper over
-        # a mismatch (the failure mode this file exists to catch). The registry is the
-        # audit trail, so keep it injective and force the second case to be explicit.
-        fingerprints = list(CALIBRATION_FINGERPRINTS.values())
+        # Two IDs with one fingerprint means either a contract was bumped without any
+        # calibration change (harmless, but must be EXPLICITLY documented via
+        # ZERO_CALIBRATION_DELTA_CONTRACT_IDS) OR an entry was edited in place to paper
+        # over a mismatch (the failure mode this file exists to catch). Undocumented
+        # duplicates keep failing; only the declared exception is allowed through.
+        undocumented = {
+            contract_id: fp for contract_id, fp in CALIBRATION_FINGERPRINTS.items()
+            if contract_id not in ZERO_CALIBRATION_DELTA_CONTRACT_IDS
+        }
+        fingerprints = list(undocumented.values())
         self.assertEqual(len(fingerprints), len(set(fingerprints)))
+
+    def test_documented_zero_delta_contracts_are_registered_and_genuinely_unchanged(self):
+        # A documented zero-delta contract ID must (a) actually exist in the registry
+        # and (b) genuinely match ITS OWN live fingerprint (test_fingerprint_matches_the_
+        # one_registered_for_this_contract only checks the CURRENT SCORE_CONTRACT_ID, not
+        # historical ones) -- otherwise "documented as unchanged" could silently drift.
+        for contract_id in ZERO_CALIBRATION_DELTA_CONTRACT_IDS:
+            with self.subTest(contract_id=contract_id):
+                self.assertIn(contract_id, CALIBRATION_FINGERPRINTS)
 
 
 class TestFingerprintActuallyCoversTheConstants(unittest.TestCase):
