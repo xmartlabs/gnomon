@@ -8,7 +8,7 @@ from gnomon.scoring.aq import (
     HARNESS_TEAM_SESSION_TYPES,
     STEERING_LEVERAGE_BAND_VALIDATED,
 )
-from gnomon.scoring.gstack import AQ_AXIS_NOTES
+from gnomon.scoring.gstack import AQ_AXIS_NOTES, SCORE_NOTES
 from gnomon.scoring.versioning import SCORE_CONTRACT_ID
 
 
@@ -133,6 +133,17 @@ class TestPublicDocumentationContract(unittest.TestCase):
                       normalized)
         self.assertIn("50% of eligible *non-trivial changes* for readiness, 30% of *all "
                       "eligible top-level sessions* for practice", normalized)
+
+    def test_planning_glossary_matches_the_real_four_term_formula(self):
+        """H4: SCORE_NOTES['Planning'] must describe the actual weights at
+        gstack.py:345-351 — 0.30 explore, 0.30 reasoning, 0.25*coverage planning
+        ceremony (NOT a flat 0.25), 0.15 ordered planning."""
+        note = SCORE_NOTES["Planning"]
+        self.assertIn("0.30", note)
+        self.assertIn("0.25", note)
+        self.assertIn("coverage", note)
+        self.assertIn("0.15", note)
+        self.assertIn("ordered planning", note)
 
     def test_context_intelligence_note_matches_executable_contract(self):
         note = AQ_AXIS_NOTES["Context Intelligence"]

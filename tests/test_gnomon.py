@@ -1589,6 +1589,98 @@ class TestPlanBadgeCreditsPlanSessions(unittest.TestCase):
         self.assertTrue(self._has_plan_badge(stats))
 
 
+class TestResearchSignatureMoveCitesRealServers(unittest.TestCase):
+    """H2: the Research signature move must cite the REAL knowledge-MCP server names
+    (mcp_knowledge_server_names), never the hardcoded '(codegraph, memory, docs)' literal,
+    and must never invent names when none are available."""
+
+    def _research_move_evidence(self, stats):
+        from gnomon.scoring.insights import signature_moves
+        for tag, _title, ev in signature_moves(stats):
+            if tag == "Research":
+                return ev
+        return None
+
+    def test_real_servers_named_and_escaped(self):
+        stats = _full_stats()
+        stats["tools"]["mcp_knowledge_calls"] = 200
+        stats["tools"]["mcp_knowledge_servers"] = 2
+        stats["tools"]["mcp_knowledge_server_names"] = ["codegraph", "linear"]
+        ev = self._research_move_evidence(stats)
+        self.assertIsNotNone(ev)
+        self.assertIn("codegraph, linear", ev)
+        self.assertNotIn("(codegraph, memory, docs)", ev)
+
+    def test_html_unsafe_server_name_is_escaped(self):
+        # Guards the FIRST transcript-derived interpolation into evidence_html: a
+        # malicious/odd server name must never inject raw HTML.
+        stats = _full_stats()
+        stats["tools"]["mcp_knowledge_calls"] = 200
+        stats["tools"]["mcp_knowledge_servers"] = 2
+        stats["tools"]["mcp_knowledge_server_names"] = ["<script>alert(1)</script>", "linear"]
+        ev = self._research_move_evidence(stats)
+        self.assertIsNotNone(ev)
+        self.assertNotIn("<script>", ev)
+        self.assertIn("&lt;script&gt;", ev)
+
+    def test_missing_server_names_omits_parenthetical(self):
+        # Legacy payload: knowledge_servers gate fires (>=2) but the names list is
+        # absent/empty -> never invent names, just omit the parenthetical entirely.
+        stats = _full_stats()
+        stats["tools"]["mcp_knowledge_calls"] = 200
+        stats["tools"]["mcp_knowledge_servers"] = 3
+        stats["tools"].pop("mcp_knowledge_server_names", None)
+        ev = self._research_move_evidence(stats)
+        self.assertIsNotNone(ev)
+        self.assertNotIn("(", ev)
+        self.assertNotIn("codegraph, memory, docs", ev)
+
+    def test_zero_knowledge_servers_move_never_fires(self):
+        stats = _full_stats()
+        stats["tools"]["mcp_knowledge_calls"] = 0
+        stats["tools"]["mcp_knowledge_servers"] = 0
+        stats["tools"]["mcp_knowledge_server_names"] = []
+        ev = self._research_move_evidence(stats)
+        self.assertIsNone(ev)
+
+
+class TestMarkDragExcludesCeilingSubs(unittest.TestCase):
+    """H3: a sub-metric already clamped at ceiling (pct>=1.0) already met its target and
+    must never be blamed as the axis's drag. Only genuinely below-target subs qualify as
+    drag candidates; if every live sub is at ceiling, no sub is flagged and no exception
+    is raised from an empty candidate set."""
+
+    def _push_execution_ceiling(self, stats, out=False, deleg=False):
+        if out:
+            # tool_churn_edit_write default 10000 / 1.0 hour >> _EXECUTION_OUTPUT_TARGET
+            stats["velocity"]["active_hours"] = 1.0
+        if deleg:
+            # (delegate_actions + background_tasks) >= prompts*0.3 -> deleg_pct clamps to 1.0
+            stats["behavior"]["delegate_actions"] = 400
+        return stats
+
+    def test_ceiling_sub_never_flagged_and_only_below_target_sub_is_drag(self):
+        stats = self._push_execution_ceiling(_full_stats(), out=True, deleg=False)
+        bd = paxel.score_breakdown(stats)
+        subs = {s["label"]: s for s in bd["execution"]["subs"]}
+        self.assertGreaterEqual(subs["Tool output rate"]["pct"], 1.0)
+        self.assertLess(subs["Delegation & parallelism"]["pct"], 1.0)
+        self.assertFalse(subs["Tool output rate"]["is_drag"])
+        self.assertTrue(subs["Delegation & parallelism"]["is_drag"])
+        self.assertIn("Delegation & parallelism", bd["execution"]["drag_note"])
+
+    def test_all_live_subs_at_ceiling_flags_nothing_and_does_not_raise(self):
+        stats = self._push_execution_ceiling(_full_stats(), out=True, deleg=True)
+        bd = paxel.score_breakdown(stats)  # must not raise IndexError
+        exec_subs = bd["execution"]["subs"]
+        self.assertTrue(all(s["pct"] >= 1.0 for s in exec_subs))
+        self.assertFalse(any(s["is_drag"] for s in exec_subs))
+        self.assertIsInstance(bd["execution"]["drag_note"], str)
+        self.assertGreater(len(bd["execution"]["drag_note"]), 0)
+        for s in exec_subs:
+            self.assertNotIn(s["label"], bd["execution"]["drag_note"])
+
+
 class TestRecoveryApiErrorRate(unittest.TestCase):
     """Recovery's API-error term is a RATE (per 100 tool calls), not an absolute count.
     Fixes the window-dependence and volume-penalty bugs of the old sat(api_errors, 50)."""

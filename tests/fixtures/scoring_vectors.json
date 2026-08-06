@@ -193,8 +193,8 @@
           "planning": {
             "axis_narrative": "Planning scores 10.0/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning practice (100%).",
             "axis_verdict": "excellent",
-            "drag_narrative": "Planning practice is the weakest contributor, scoring 100%. Your value: 0.4 planning sessions/session (target: 0.3 planning sessions/session, higher is better).",
-            "drag_note": "Planning practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.3.",
+            "drag_narrative": "Nothing is dragging this axis down \u2014 every measured sub-metric is at or above target.",
+            "drag_note": "Nothing is dragging this axis down \u2014 every measured sub-metric is at or above target.",
             "gloss": "Think before you build",
             "score_out_of_10": "10.0 / 10",
             "subs": [
@@ -235,7 +235,7 @@
                 "display_target": "0.3 planning sessions/session",
                 "display_value": "0.4 planning sessions/session",
                 "effective_weight": 0.25,
-                "is_drag": true,
+                "is_drag": false,
                 "label": "Planning practice",
                 "narrative": "Planning practice is excellent (0.4 planning sessions/session, target 0.3 planning sessions/session \u2014 well above target, scoring 100%).",
                 "pct": 1.0,
@@ -658,10 +658,10 @@
               "value": 7.8
             },
             "planning": {
-              "axis_narrative": "Planning scores 10.0/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning practice (100%).",
+              "axis_narrative": "Planning scores 10.0/10 (excellent). Every measured sub-metric is at or above target (strongest: Explore-before-build (100%)).",
               "axis_verdict": "excellent",
-              "drag_narrative": "Planning practice is the weakest contributor, scoring 100%. Your value: 0.4 planning sessions/session (target: 0.3 planning sessions/session, higher is better).",
-              "drag_note": "Planning practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.3.",
+              "drag_narrative": "Nothing is dragging this axis down \u2014 every measured sub-metric is at or above target.",
+              "drag_note": "Nothing is dragging this axis down \u2014 every measured sub-metric is at or above target.",
               "gloss": "Think before you build",
               "score_out_of_10": "10.0 / 10",
               "subs": [
@@ -702,7 +702,7 @@
                   "display_target": "0.3 planning sessions/session",
                   "display_value": "0.4 planning sessions/session",
                   "effective_weight": 0.25,
-                  "is_drag": true,
+                  "is_drag": false,
                   "label": "Planning practice",
                   "narrative": "Planning practice is excellent (0.4 planning sessions/session, target 0.3 planning sessions/session \u2014 well above target, scoring 100%).",
                   "pct": 1.0,
@@ -1943,8 +1943,8 @@
           "planning": {
             "axis_narrative": "Planning scores 10.0/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning practice (100%).",
             "axis_verdict": "excellent",
-            "drag_narrative": "Planning practice is the weakest contributor, scoring 100%. Your value: 0.36 planning sessions/session (target: 0.3 planning sessions/session, higher is better).",
-            "drag_note": "Planning practice is dragging this down \u2014 0.36 planning sessions/session, target ~0.3.",
+            "drag_narrative": "Nothing is dragging this axis down \u2014 every measured sub-metric is at or above target.",
+            "drag_note": "Nothing is dragging this axis down \u2014 every measured sub-metric is at or above target.",
             "gloss": "Think before you build",
             "score_out_of_10": "10.0 / 10",
             "subs": [
@@ -1985,7 +1985,7 @@
                 "display_target": "0.3 planning sessions/session",
                 "display_value": "0.36 planning sessions/session",
                 "effective_weight": 0.25,
-                "is_drag": true,
+                "is_drag": false,
                 "label": "Planning practice",
                 "narrative": "Planning practice is excellent (0.36 planning sessions/session, target 0.3 planning sessions/session \u2014 well above target, scoring 100%).",
                 "pct": 1.0,
@@ -2408,10 +2408,10 @@
               "value": 7.8
             },
             "planning": {
-              "axis_narrative": "Planning scores 10.0/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning practice (100%).",
+              "axis_narrative": "Planning scores 10.0/10 (excellent). Every measured sub-metric is at or above target (strongest: Explore-before-build (100%)).",
               "axis_verdict": "excellent",
-              "drag_narrative": "Planning practice is the weakest contributor, scoring 100%. Your value: 0.4 planning sessions/session (target: 0.3 planning sessions/session, higher is better).",
-              "drag_note": "Planning practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.3.",
+              "drag_narrative": "Nothing is dragging this axis down \u2014 every measured sub-metric is at or above target.",
+              "drag_note": "Nothing is dragging this axis down \u2014 every measured sub-metric is at or above target.",
               "gloss": "Think before you build",
               "score_out_of_10": "10.0 / 10",
               "subs": [
@@ -2452,7 +2452,7 @@
                   "display_target": "0.3 planning sessions/session",
                   "display_value": "0.4 planning sessions/session",
                   "effective_weight": 0.25,
-                  "is_drag": true,
+                  "is_drag": false,
                   "label": "Planning practice",
                   "narrative": "Planning practice is excellent (0.4 planning sessions/session, target 0.3 planning sessions/session \u2014 well above target, scoring 100%).",
                   "pct": 1.0,
@@ -3396,8 +3396,8 @@
           "planning": {
             "axis_narrative": "Planning scores 10.0/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning practice (100%).",
             "axis_verdict": "excellent",
-            "drag_narrative": "Planning practice is the weakest contributor, scoring 100%. Your value: 0.4 planning sessions/session (target: 0.3 planning sessions/session, higher is better).",
-            "drag_note": "Planning practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.3.",
+            "drag_narrative": "Nothing is dragging this axis down \u2014 every measured sub-metric is at or above target.",
+            "drag_note": "Nothing is dragging this axis down \u2014 every measured sub-metric is at or above target.",
             "gloss": "Think before you build",
             "score_out_of_10": "10.0 / 10",
             "subs": [
@@ -3438,7 +3438,7 @@
                 "display_target": "0.3 planning sessions/session",
                 "display_value": "0.4 planning sessions/session",
                 "effective_weight": 0.25,
-                "is_drag": true,
+                "is_drag": false,
                 "label": "Planning practice",
                 "narrative": "Planning practice is excellent (0.4 planning sessions/session, target 0.3 planning sessions/session \u2014 well above target, scoring 100%).",
                 "pct": 1.0,
@@ -3861,10 +3861,10 @@
               "value": 7.8
             },
             "planning": {
-              "axis_narrative": "Planning scores 10.0/10 (excellent). Strongest: Explore-before-build (100%); weakest: Planning practice (100%).",
+              "axis_narrative": "Planning scores 10.0/10 (excellent). Every measured sub-metric is at or above target (strongest: Explore-before-build (100%)).",
               "axis_verdict": "excellent",
-              "drag_narrative": "Planning practice is the weakest contributor, scoring 100%. Your value: 0.4 planning sessions/session (target: 0.3 planning sessions/session, higher is better).",
-              "drag_note": "Planning practice is dragging this down \u2014 0.4 planning sessions/session, target ~0.3.",
+              "drag_narrative": "Nothing is dragging this axis down \u2014 every measured sub-metric is at or above target.",
+              "drag_note": "Nothing is dragging this axis down \u2014 every measured sub-metric is at or above target.",
               "gloss": "Think before you build",
               "score_out_of_10": "10.0 / 10",
               "subs": [
@@ -3905,7 +3905,7 @@
                   "display_target": "0.3 planning sessions/session",
                   "display_value": "0.4 planning sessions/session",
                   "effective_weight": 0.25,
-                  "is_drag": true,
+                  "is_drag": false,
                   "label": "Planning practice",
                   "narrative": "Planning practice is excellent (0.4 planning sessions/session, target 0.3 planning sessions/session \u2014 well above target, scoring 100%).",
                   "pct": 1.0,

@@ -111,7 +111,7 @@ _MAX_RECOMPUTE_GRADE_DELTA_RATIO = 0.05  # hard relative cap (item 6b): the
                 # payload must stay under 5% of the mirdash ingest budget, so a
                 # future change to their contents cannot silently balloon the
                 # payload again. Measured ~3.7% in the synthetic worst case.
-_MAX_SHIPPED_WORST_CASE_BYTES = 678_000  # review remediation (round 2, Fix 6):
+_MAX_SHIPPED_WORST_CASE_BYTES = 679_060  # review remediation (round 2, Fix 6):
                 # a GROWTH RATCHET on the full shipped/trimmed synthetic worst-case
                 # payload. Before this ratchet the number was only PRINTED, so growth
                 # in the pre-existing fields (scoring_inputs_by_source /
@@ -156,6 +156,24 @@ _MAX_SHIPPED_WORST_CASE_BYTES = 678_000  # review remediation (round 2, Fix 6):
                 # 2.6 KB above the measurement is 2.6 KB of silent growth this test would no
                 # longer catch, and the whole point of the number is that the next per-block
                 # field goes red. Same ~160 bytes of dict-ordering headroom as before.
+                #
+                # WU1 re-anchor (gnomon-fidelity-fixes H2/H3): 678,000 -> 679,060, against a
+                # measured 678,900. Isolated the two report-truthfulness fixes to attribute the
+                # delta honestly:
+                #   - H3 (gstack.py _mark_drag excludes ceiling'd subs from the drag candidate
+                #     set) measured ALONE at 677,639 -- a 200-byte SAVING, because the shorter
+                #     "Nothing is dragging this axis down..." no-drag message replaces several
+                #     longer per-sub drag notes once the Planning axis in the worst-case fixture
+                #     is entirely at ceiling.
+                #   - H2 (insights.py Research signature move cites the REAL knowledge-MCP server
+                #     names from mcp_knowledge_server_names -- already present in this fixture's
+                #     tools block at 36 chars/name, _NAME_LEN -- instead of the hardcoded
+                #     "(codegraph, memory, docs)" literal) adds +1,261 bytes on top: the first
+                #     three real 36-char names, html-escaped and joined, land in evidence_html
+                #     once per source.
+                # Re-anchored just above the new measurement with the same ~160 bytes of
+                # dict-ordering headroom as before, not rounded up for comfort -- score-neutral,
+                # no SCORE_CONTRACT_ID bump (report/presentation text only).
 
 
 def _name(prefix, i):

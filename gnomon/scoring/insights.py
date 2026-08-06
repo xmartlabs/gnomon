@@ -1,3 +1,4 @@
+import html
 import re
 
 from gnomon.analysis.metrics import _review_skill_uses
@@ -45,9 +46,11 @@ def _signature_moves_pool(stats):
     Single source of truth — both the HTML wrapper and the structured emitter
     read from here, so the two outputs can never drift.
     MAINTAINERS: evidence_html is trusted / safe-by-construction — every value
-    interpolated below is a number or a static template. NEVER interpolate
-    user/transcript-derived strings (skill, project, tool names) without
-    html.escape (the lone tool-name use is gated to == "Bash" and emits a literal)."""
+    interpolated below is a number or a static template, EXCEPT the Research move's
+    knowledge-MCP server names (real, transcript-derived), which MUST be passed through
+    html.escape before interpolation. NEVER interpolate any other user/transcript-derived
+    string (skill, project, tool names) without html.escape (the lone tool-name use is
+    gated to == "Bash" and emits a literal)."""
     v, b, vel, t, st = (stats["volume"], stats["behavior"], stats["velocity"],
                         stats["tools"], stats["stack"])
     sess = max(v["total_sessions"], 1)
@@ -114,10 +117,12 @@ def _signature_moves_pool(stats):
     knowledge_calls = t.get("mcp_knowledge_calls", 0)
     knowledge_servers = t.get("mcp_knowledge_servers", 0)
     if knowledge_calls >= 100 and knowledge_servers >= 2:
+        real_names = [html.escape(str(n)) for n in (t.get("mcp_knowledge_server_names") or [])][:3]
+        servers_paren = f' ({", ".join(real_names)})' if real_names else ""
         raw.append((_clamp(knowledge_calls / 500.0), "Research",
             "You research before you write",
             f'<b>{knowledge_calls:,}</b> knowledge-tool calls across '
-            f'<b>{knowledge_servers}</b> servers (codegraph, memory, docs) &mdash; '
+            f'<b>{knowledge_servers}</b> servers{servers_paren} &mdash; '
             f'you ground your edits in indexed context, not guesswork.'))
 
     raw.sort(key=lambda x: -x[0])
@@ -132,8 +137,9 @@ def signature_moves(stats):
     Cites measured numbers, NEVER raw prompt text, so the profile stays shareable
     without leaking session content. NOTE for maintainers: evidence HTML is trusted /
     safe-by-construction — never interpolate user/transcript-derived strings (skill,
-    project, tool names) here without html.escape; today every value is a number or a
-    static template (the lone tool-name use is gated to == "Bash" and emits a literal)."""
+    project, tool names) here without html.escape; the Research move's real knowledge-MCP
+    server names are the one exception that IS interpolated, and they are html.escape'd
+    (the lone tool-name use is gated to == "Bash" and emits a literal)."""
     return [(d["tag"], d["title"], d["evidence_html"])
             for d in _signature_moves_pool(stats)]
 
