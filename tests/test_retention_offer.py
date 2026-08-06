@@ -61,6 +61,23 @@ class TestRetentionOfferSafety(unittest.TestCase):
         with open(self.settings_path, encoding="utf-8") as fh:
             self.assertEqual(json.load(fh), {})
 
+    def test_prompt_explains_default_retention_and_optional_recommendation(self):
+        self._write({})
+        output = io.StringIO()
+        with mock.patch("sys.stdin.isatty", return_value=True), \
+                mock.patch("builtins.input", return_value="n"), \
+                contextlib.redirect_stdout(output):
+            offer_retention_config(self.settings_path)
+
+        self.assertIn(
+            "Transcript history is kept for 30 days by default.", output.getvalue())
+        self.assertIn(
+            "For broader scoring and longer-term analysis, we recommend keeping 180 days.",
+            output.getvalue())
+        self.assertIn("This is optional.", output.getvalue())
+        self.assertIn(
+            "Set transcript retention to 180 days? [y/N]", output.getvalue())
+
     def test_accept_backs_up_before_writing_and_records_undo(self):
         self._write({"otherKey": "kept"})
         with mock.patch("sys.stdin.isatty", return_value=True), \

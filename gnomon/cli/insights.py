@@ -109,8 +109,9 @@ def offer_retention_config(settings_path=None):
         return {"action": "skipped", "reason": "already_set"}
 
     print(
-        f"\n  Claude Code detected. Set a {_SUGGESTED_RETENTION_DAYS}-day "
-        "transcript retention so history stays available for scoring? [y/N] "
+        "\n  Claude Code detected. Transcript history is kept for 30 days by default.\n"
+        "  For broader scoring and longer-term analysis, we recommend keeping 180 days.\n"
+        "  This is optional. Set transcript retention to 180 days? [y/N] "
     )
     try:
         answer = input().strip().lower()
