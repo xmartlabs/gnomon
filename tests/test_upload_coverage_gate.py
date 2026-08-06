@@ -160,8 +160,8 @@ class TestSessionCountFallbackRefresh(unittest.TestCase):
         )
         self.assertEqual(result, [("2026-01", "current")])
 
-    def test_no_total_sessions_and_producible_triggers_refresh(self):
-        """Legacy row without totalSessions (defaults to 0); any local data refreshes."""
+    def test_no_total_sessions_and_producible_skips_refresh(self):
+        """Legacy row without totalSessions is incomparable — skip refresh."""
         history = _history([
             {"monthKey": "2025-12", "uploadedAt": 1},
         ])
@@ -169,10 +169,10 @@ class TestSessionCountFallbackRefresh(unittest.TestCase):
             TODAY, history, active_contract="8:8:8",
             producible_coverage_for=self._producible("complete", 50),
         )
-        self.assertEqual(result, [("2025-12", "refresh"), ("2026-01", "current")])
+        self.assertEqual(result, [("2026-01", "current")])
 
-    def test_no_total_sessions_and_no_producible_skips_refresh(self):
-        """Legacy row without totalSessions and no local data — no refresh."""
+    def test_no_total_sessions_zero_producible_skips_refresh(self):
+        """Legacy row without totalSessions and zero local data — no refresh."""
         history = _history([
             {"monthKey": "2025-12", "uploadedAt": 1},
         ])

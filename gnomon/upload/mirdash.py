@@ -594,11 +594,11 @@ def plan_upload(
 
         # No coverage comparison possible (legacy row without coverage field).
         # Fall back to transcript count: if we can produce MORE transcripts
-        # locally than the server reported at upload time, refresh. This
-        # catches mid-month uploads that gained data after the upload, without
-        # refreshing when nothing changed.
-        stored_sessions = previous_entry.get("totalSessions") or 0
-        if producible_transcripts > stored_sessions:
+        # locally than the server reported at upload time, refresh.  When
+        # totalSessions is absent (server hasn't been updated yet), treat it
+        # as incomparable and skip — defaulting to 0 would refresh every run.
+        stored_sessions = previous_entry.get("totalSessions")
+        if stored_sessions is not None and producible_transcripts > stored_sessions:
             return [(previous, "refresh"), (current, "current")]
 
         return [(current, "current")]
