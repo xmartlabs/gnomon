@@ -1,4 +1,21 @@
-# Current scoring contract (14:14:14).
+# Current scoring contract (15:15:15).
+#
+# v15 fixes the Workflow fan-out under-credit that v14 introduced: `ORCHESTRATION_TOOLS`
+# membership (Agent/Task/Workflow) still drives agents_per_session/_fanouts/
+# delegating_sessions/o_frequency, but a `Workflow` tool_use event no longer increments
+# agents_per_session/month_fanouts directly -- one Workflow call can dispatch anywhere from
+# one to dozens of real agents, so counting the call itself under-counted real dispatch.
+# Fan-out for Workflow is instead sourced from the real dispatched-agent transcripts under
+# `.../subagents/workflows/wf_*/agent-*.jsonl` that the walker already visits: one distinct
+# `(parent_session, agentId)` transcript = one credited dispatch to the parent session,
+# deduped so a `resumeFromRunId` resume never double-counts. Agent/Task calls are unchanged
+# (1 call == 1 agent). Workflow-only sessions still count as delegating sessions because the
+# transcript attribution increments the SAME accumulators that used to be fed by the per-call
+# increment -- no separate membership special-case. This is a REAL score delta (fanout_median,
+# Orchestration, Breadth, AQ move) but a ZERO calibration delta: no rate target,
+# `PER_CALL_TARGET`, axis weight, cross-source weight, or denominator moved, and
+# `FANOUT_CEILING` stays 5 -- see calibration.py's `CALIBRATION_FINGERPRINTS["15:15:15"]`
+# and `ZERO_CALIBRATION_DELTA_CONTRACT_IDS`.
 #
 # v14 unions active_hours across concurrent/overlapping sessions instead of summing
 # independently-capped per-session durations (H10) -- summed hours over-counted engaged
@@ -27,9 +44,9 @@
 #
 # Contract IDs are comparison boundaries. Calibration fingerprints are append-only:
 # a score-affecting change requires a new ID and fingerprint entry.
-SCORING_INPUTS_VERSION = 14
-AQ_VERSION = 14
-GSTACK_VERSION = 14
+SCORING_INPUTS_VERSION = 15
+AQ_VERSION = 15
+GSTACK_VERSION = 15
 # First input version with deduplicated per-session skill counters. Earlier
 # payloads use different persisted quantities and cannot be replayed against these targets.
 SKILL_DEDUP_INPUTS_VERSION = 8

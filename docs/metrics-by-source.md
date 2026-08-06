@@ -53,9 +53,15 @@ directly — no external dependency). Both decode to the same normalized events.
 
 ## Uploaded summary contract
 
-Current runtime contract: **scoring inputs version 14**, **AQ version 14**, and
-**GStack version 14** (`score_contract_id = 14:14:14`). Compare scores only when
+Current runtime contract: **scoring inputs version 15**, **AQ version 15**, and
+**GStack version 15** (`score_contract_id = 15:15:15`). Compare scores only when
 contract IDs match.
+
+`Workflow` dispatch fan-out is sourced from the real dispatched-agent transcripts
+under `.../subagents/workflows/wf_*/agent-*.jsonl`, one credit per distinct
+dispatched agent, rather than from the `Workflow` tool_use call count (one call
+can fan out to many agents). `Agent`/`Task` calls are unchanged: one call is
+still one dispatched agent.
 
 ### Windows and evidence
 

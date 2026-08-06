@@ -115,9 +115,15 @@ refused instead of being pooled with genuine one-month scores.
 
 ## Scoring contract
 
-Current runtime contract: **scoring inputs version 14**, **AQ version 14**, and
-**GStack version 14** (`score_contract_id = 14:14:14`). Compare scores only when
+Current runtime contract: **scoring inputs version 15**, **AQ version 15**, and
+**GStack version 15** (`score_contract_id = 15:15:15`). Compare scores only when
 the contract IDs match.
+
+`Workflow` dispatch fan-out is sourced from the real dispatched-agent transcripts
+under `.../subagents/workflows/wf_*/agent-*.jsonl`, one credit per distinct
+dispatched agent, rather than from the `Workflow` tool_use call count (one call
+can fan out to many agents). `Agent`/`Task` calls are unchanged: one call is
+still one dispatched agent.
 
 AQ is computed once over the requested scoring window; there is no recency blend.
 The scoring window is a trailing `--window=N` calendar-month window (default 1).

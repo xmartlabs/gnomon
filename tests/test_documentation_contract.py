@@ -38,17 +38,17 @@ class TestPublicDocumentationContract(unittest.TestCase):
 
     def test_public_docs_publish_current_contract_only(self):
         expected = (
-            "scoring inputs version 14",
-            "AQ version 14",
-            "GStack version 14",
+            "scoring inputs version 15",
+            "AQ version 15",
+            "GStack version 15",
             SCORE_CONTRACT_ID,
         )
         for document in (self.readme, self.metrics):
             for phrase in expected:
                 with self.subTest(phrase=phrase):
                     self.assertIn(phrase, document)
-            self.assertNotIn("scoring inputs version 13", document)
-            self.assertNotIn("13:13:13", document)
+            self.assertNotIn("scoring inputs version 14", document)
+            self.assertNotIn("14:14:14", document)
             self.assertNotIn("96.8%", document)
 
     def test_public_docs_explain_actions_per_prompt_inputs(self):
@@ -102,14 +102,14 @@ class TestPublicDocumentationContract(unittest.TestCase):
             encoding="utf-8")
         calibration = (ROOT / "gnomon" / "scoring" / "calibration.py").read_text(
             encoding="utf-8")
-        self.assertEqual(SCORE_CONTRACT_ID, "14:14:14")
+        self.assertEqual(SCORE_CONTRACT_ID, "15:15:15")
         self.assertEqual(HARNESS_TEAM_SESSION_TYPES, 3)
         self.assertEqual(HARNESS_BELOW_TEAM_CREDIT, 0.6)
         self.assertIn("unmeasured delegation", source)
         self.assertIn("HARNESS_TEAM_SESSION_TYPES", calibration)
         self.assertIn("HARNESS_BELOW_TEAM_CREDIT", calibration)
         self.assertIn('"13:13:13"', calibration)
-        self.assertIn('"14:14:14"', calibration)
+        self.assertIn('"15:15:15"', calibration)
         self.assertNotIn("REUBICATIONS", source)
 
     def test_readme_discloses_raw_identifiers_without_overclaiming_privacy(self):

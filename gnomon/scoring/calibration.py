@@ -115,6 +115,12 @@ CALIBRATION_FINGERPRINTS = {
     # from 13:13:13 -- see versioning.py's v14 note and design's calibration-blind-spot
     # risk (the fingerprint hashes constant VALUES, not derivation/taxonomy logic).
     "14:14:14": "94f38d0963b1b195",
+    # v15 (Workflow fan-out under-credit fix): sources Workflow fan-out from real
+    # dispatched-agent transcripts instead of the per-call tool_use increment. A real
+    # score delta (fanout_median/Orchestration/Breadth/AQ move), but no registered
+    # CALIBRATION_CONSTANT_NAMES value changed -- FANOUT_CEILING stays 5 and no rate
+    # target/weight/denominator moved -- so the digest is unchanged from 13:13:13/14:14:14.
+    "15:15:15": "94f38d0963b1b195",
 }
 
 # Contract IDs whose fingerprint is a DOCUMENTED, deliberate duplicate of the contract
@@ -124,4 +130,4 @@ CALIBRATION_FINGERPRINTS = {
 # unchanged. test_calibration_contract.py's injectivity guard excludes exactly these IDs;
 # any OTHER duplicate fingerprint remains the accidental-drift failure mode it exists to
 # catch.
-ZERO_CALIBRATION_DELTA_CONTRACT_IDS = frozenset({"14:14:14"})
+ZERO_CALIBRATION_DELTA_CONTRACT_IDS = frozenset({"14:14:14", "15:15:15"})

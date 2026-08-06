@@ -32,6 +32,7 @@ from gnomon.scoring.inputs import _adjusted_doing
 from gnomon.taxonomy import (
     SCHEDULE_TOOLS, ASK_TOOLS, PLAN_MODE_TOOLS, PLAN_SIGNAL_TOOLS,
     PLAN_SKILL_NEEDLES, KNOWLEDGE_SKILL_NEEDLES, ORCHESTRATION_TOOLS,
+    FANOUT_BY_TRANSCRIPT_TOOLS, parse_workflow_agent_dispatch,
     classify_tool, classify_mcp_subcategory, CI_CONTEXT_SUBCATS,
     is_substantive_tool, classify_change_target, is_plan_file_target,
     bash_writes_file, bash_runs_tests, bash_runs_knowledge, _extract_clis,
@@ -281,6 +282,16 @@ class Accumulator:
         self._pending_knowledge_grounding = defaultdict(bool)
         self._file_edit_run = defaultdict(lambda: defaultdict(int))
         self._file_edit_month = defaultdict(dict)
+        # Workflow fan-out fix (contract 15:15:15): (parent_sid, dispatch_id) pairs
+        # already credited to agents_per_session/month_fanouts, so a resumed run
+        # that re-references the same dispatched-agent transcript credits once.
+        # Corpus-lifetime, NOT reset per-file (dedup must survive across files).
+        self._fanout_credited_agents = set()
+        # Set in begin_file when `_cur_fp` is a dispatched Workflow agent transcript
+        # (`.../subagents/workflows/wf_*/agent-*.jsonl`): (parent_sid,
+        # filename_agent_id), or None for every other file. Consumed in observe()
+        # AFTER the window early-return so an out-of-window run credits nothing.
+        self._pending_fanout_credit = None
 
         # set by to_corpus_stats to surface the raw git_churn dict in the narrative
         # payload main() consumes.
@@ -300,6 +311,12 @@ class Accumulator:
         self._pending_knowledge_grounding = defaultdict(bool)
         self._file_edit_run = defaultdict(lambda: defaultdict(int))  # session -> file -> edits since commit
         self._file_edit_month = defaultdict(dict)      # session -> file -> month key
+        # Workflow fan-out fix: (parent_sid, filename_agent_id) when `fp` is a
+        # dispatched Workflow agent transcript, else None. Read by observe() after
+        # its window early-return so an out-of-window run credits nothing.
+        parent_sid, filename_agent_id = parse_workflow_agent_dispatch(fp)
+        self._pending_fanout_credit = (
+            (parent_sid, filename_agent_id) if parent_sid else None)
 
     def skip_file(self):
         """Undo begin_file's bookkeeping for a file we end up not processing
@@ -769,6 +786,25 @@ class Accumulator:
             return None
         mkey = dt.strftime("%Y-%m") if dt is not None else None
 
+        # Workflow fan-out fix (contract 15:15:15): this event survived the window
+        # filter above, so if the CURRENT file is a dispatched Workflow agent
+        # transcript, credit one dispatch to the PARENT session now (never before
+        # the window check, so an entirely out-of-window run credits nothing).
+        # `agentId` is the real per-dispatch child identity (the file's own
+        # `sessionId` is the PARENT's, not distinct per child -- verified against a
+        # real corpus sample); the filename-derived id is a fallback for sources/
+        # shapes that omit the field. Dedup on (parent_sid, child_id) makes a
+        # resumed run that re-references the same transcript a no-op.
+        if self._pending_fanout_credit is not None:
+            _parent_sid, _filename_agent_id = self._pending_fanout_credit
+            _child_id = ev.get("agentId") or _filename_agent_id
+            _credit_key = (_parent_sid, _child_id)
+            if _credit_key not in self._fanout_credited_agents:
+                self._fanout_credited_agents.add(_credit_key)
+                self.agents_per_session[_parent_sid] += 1
+                if mkey:
+                    self.month_fanouts[mkey][_parent_sid] += 1
+
         # Planning eligibility is deliberately event-scoped. In particular,
         # Cursor root and child events can share a SID, so filtering only after
         # session dedupe would let a child marker credit its parent.
@@ -1163,10 +1199,21 @@ class Accumulator:
                             if mkey:
                                 self.month_subagent_counter[mkey][st] += 1
                             if sid:
-                                self.agents_per_session[sid] += 1
+                                # Workflow fan-out fix (contract 15:15:15): Agent/Task
+                                # stay 1-call==1-agent (unchanged) via this direct
+                                # increment. Workflow is excluded here -- one call can
+                                # dispatch many real agents, so its fan-out is sourced
+                                # from the real dispatched-agent transcripts instead
+                                # (observe()'s _pending_fanout_credit handling above),
+                                # which increments these SAME two accumulators, so
+                                # Workflow-only sessions still stay in _fanouts/
+                                # delegating_sessions -- no membership special-case.
+                                if name not in FANOUT_BY_TRANSCRIPT_TOOLS:
+                                    self.agents_per_session[sid] += 1
+                                    if mkey:
+                                        self.month_fanouts[mkey][sid] += 1
                                 self.session_subagent_types[sid].add(st)
                                 if mkey:
-                                    self.month_fanouts[mkey][sid] += 1
                                     self.month_session_subagent_types[mkey][sid].add(st)
                         if name in ASK_TOOLS:
                             self.questions_asked += 1
