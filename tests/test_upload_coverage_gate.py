@@ -1,9 +1,10 @@
 """Coverage-gated refresh (honest-aq-series step 2, design decision B):
 contract-bridge is DELETED from plan_upload's contract-aware branch. Refresh
 of the previous month is now gated purely on comparable coverage: refresh
-only when producible coverage strictly exceeds stored coverage
-(lexicographic (rank, transcripts)); scoreContractId is no longer consulted
-at all for this decision."""
+only when the locally producible coverage rank strictly exceeds the stored
+rank. The local transcript estimate and server transcript count are not
+cross-system comparable; scoreContractId is no longer consulted at all for
+this decision."""
 import datetime
 import unittest
 
@@ -100,8 +101,7 @@ class TestCoverageComparisonGate(unittest.TestCase):
 
     def test_missing_stored_coverage_never_refreshes_old_server_row(self):
         """Back-compat: a row uploaded before this capability has no `coverage`
-        field at all -- rank is None (incomparable). Falls back to
-        transcript count: no refresh when totalSessions >= producible."""
+        field at all -- rank is None (incomparable), so it never refreshes."""
         history = _history([
             {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": "8:8:8",
              "totalSessions": 999},
@@ -121,16 +121,15 @@ class TestCoverageComparisonGate(unittest.TestCase):
         self.assertEqual(result, [("2026-01", "current")])
 
 
-class TestSessionCountFallbackRefresh(unittest.TestCase):
-    """When the server entry has no coverage field, plan_upload falls back to
-    comparing producible transcript count against stored totalSessions."""
+class TestLegacyCoverageIncomparable(unittest.TestCase):
+    """Legacy entries without comparable coverage never trigger a refresh."""
 
     @staticmethod
     def _producible(rank_label, transcripts):
         rank = COVERAGE_RANK.get(rank_label)
         return lambda mk: (rank, transcripts)
 
-    def test_more_local_transcripts_triggers_refresh(self):
+    def test_more_local_transcripts_still_skips_refresh(self):
         history = _history([
             {"monthKey": "2025-12", "uploadedAt": 1, "totalSessions": 100},
         ])
@@ -138,7 +137,7 @@ class TestSessionCountFallbackRefresh(unittest.TestCase):
             TODAY, history, active_contract="8:8:8",
             producible_coverage_for=self._producible("complete", 200),
         )
-        self.assertEqual(result, [("2025-12", "refresh"), ("2026-01", "current")])
+        self.assertEqual(result, [("2026-01", "current")])
 
     def test_equal_transcripts_skips_refresh(self):
         history = _history([

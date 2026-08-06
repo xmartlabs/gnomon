@@ -353,13 +353,37 @@ class TestMainConsoleDryRun(unittest.TestCase):
         mock_upload.assert_not_called()
         self.assertEqual(code, 0)
 
+    def test_same_rank_with_different_transcript_estimate_dry_run_stays_current_only(self):
+        """The console planner must not reintroduce the incompatible count comparison."""
+        history = {
+            "state": "valid",
+            "months": [
+                {
+                    "monthKey": "2025-06",
+                    "uploadedAt": 1,
+                    "coverage": {"flag": "complete", "indexed": 24, "transcripts": 733},
+                },
+                {
+                    "monthKey": "2025-07",
+                    "uploadedAt": 2,
+                    "coverage": {"flag": "complete", "indexed": 3, "transcripts": 193},
+                },
+            ],
+        }
+        out, mock_paxel, mock_upload, _, code = self._run_dry_run_console(uploaded=history)
+        self.assertIn("1 month(s)", out)
+        self.assertIn("2025-07  current month", out)
+        self.assertNotIn("2025-06  refresh", out)
+        mock_paxel.assert_not_called()
+        mock_upload.assert_not_called()
+        self.assertEqual(code, 0)
+
     def test_contract_mismatch_alone_never_triggers_a_bridge(self):
         """A pure scoreContractId mismatch with no coverage data at all must
         plan current-only -- contract is no longer a comparison basis.
-        The mock producible_coverage_for returns (2, 999) transcripts and
-        totalSessions is absent (legacy), so the fallback compares
-        999 > 0 and triggers a refresh. To isolate the contract-only case,
-        set totalSessions to match the producible count."""
+        The mock producible_coverage_for returns (2, 999), but the legacy
+        row has no comparable coverage, so the planner must not use either
+        transcript count or scoreContractId to trigger a refresh."""
         history = {
             "state": "valid",
             "months": [
