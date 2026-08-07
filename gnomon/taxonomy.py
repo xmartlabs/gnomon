@@ -254,10 +254,9 @@ def _norm_path_seps(path):
     return str(path or "").replace("\\", "/")
 
 
-# Ephemeral temp roots the harness assigns for throwaway scratchpads
-# (e.g. /private/tmp/claude-<pid>/<project>/<session-uuid>/scratchpad/). A write here is
-# discardable by construction, so it must NOT count as a real change target for C2
-# eligibility regardless of file extension. Location beats extension.
+# Scratchpad files under ephemeral temp roots are discarded by construction, so they
+# must not count as real code changes for code-change eligibility regardless of file
+# extension. Location takes precedence over the filename extension.
 _EPHEMERAL_PATH_RX = re.compile(r'^(?:/private)?/tmp/|^/var/folders/')
 
 

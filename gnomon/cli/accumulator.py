@@ -122,11 +122,10 @@ class Accumulator:
         # scoring layer drops Steering for this case rather than guessing.
         self.unlabelled_delegate_dispatches = 0
         self.tool_counter = Counter()
-        # F3 anti-gaming (STEP 1, instrumentation only): discovery-only subset of
-        # ToolSearch calls -- a `select:`-prefixed query is deterministic mandatory
-        # tool-loading, not deliberate discovery. Additive alongside the raw
-        # `tool_counter["ToolSearch"]` count (kept unchanged for transparency); scoring
-        # continues to read the raw field until STEP 2 re-fits the calibration target.
+        # Keep a separate discovery count: a `select:`-prefixed query deterministically
+        # loads named tools rather than searching for a capability. The raw
+        # `tool_counter["ToolSearch"]` count remains unchanged for consumers that need
+        # the total number of ToolSearch calls.
         self.toolsearch_discovery_calls = 0
         self.cat_counter = Counter()
         # Planning DISPATCHES — the Skill call or Agent dispatch itself. Named 'dispatch',
@@ -251,7 +250,6 @@ class Accumulator:
         self.month_hour_hist = defaultdict(Counter)
         self.month_weekday_hist = defaultdict(Counter)
         self.month_tool_counter = defaultdict(Counter)
-        # Per-month twin of toolsearch_discovery_calls (see __init__ comment above).
         self.month_toolsearch_discovery = defaultdict(int)
         self.month_session_ts = defaultdict(lambda: defaultdict(list))
         self.month_skill_counter = defaultdict(Counter)

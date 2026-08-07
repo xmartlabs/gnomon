@@ -718,12 +718,8 @@ class TestMcpKnowledgeWriteCompoundingCredit(unittest.TestCase):
 
 
 class TestToolSearchDiscoveryCalls(unittest.TestCase):
-    """F3 anti-gaming instrumentation (STEP 1, discovery-only): a `select:`-prefixed
-    ToolSearch query is deterministic mandatory tool-loading, NOT deliberate
-    discovery, and must not be counted toward the new
-    `toolsearch_discovery_calls` numerator -- while the existing raw
-    `toolsearch_calls` counter keeps counting every ToolSearch call unchanged
-    (transparency: the raw field is not redefined, only a new field is added)."""
+    """Verify that discovery counts exclude deterministic `select:` tool loading
+    while the raw ToolSearch counter continues to include every call."""
 
     def test_select_prefixed_query_does_not_count_as_discovery(self):
         acc = Accumulator()

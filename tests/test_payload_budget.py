@@ -111,7 +111,7 @@ _MAX_RECOMPUTE_GRADE_DELTA_RATIO = 0.05  # hard relative cap (item 6b): the
                 # payload must stay under 5% of the mirdash ingest budget, so a
                 # future change to their contents cannot silently balloon the
                 # payload again. Measured ~3.7% in the synthetic worst case.
-_MAX_SHIPPED_WORST_CASE_BYTES = 679_600  # review remediation (round 2, Fix 6):
+_MAX_SHIPPED_WORST_CASE_BYTES = 679_600  # measured ceiling for the current payload shape:
                 # a GROWTH RATCHET on the full shipped/trimmed synthetic worst-case
                 # payload. Before this ratchet the number was only PRINTED, so growth
                 # in the pre-existing fields (scoring_inputs_by_source /
@@ -128,13 +128,10 @@ _MAX_SHIPPED_WORST_CASE_BYTES = 679_600  # review remediation (round 2, Fix 6):
                 # (see the module docstring's v10 UPDATE for why that is a side effect
                 # and not a fix).
                 #
-                # toolsearch-discovery-numerator (STEP 1, instrumentation only):
-                # re-anchored from 679_060 to 679_600 against a measured 679,461 bytes
-                # after adding the additive `toolsearch_discovery_calls` field
-                # (per-source window + per-month blocks in `scoring_inputs_by_source`).
-                # This is the expected, bounded cost of one small int field replicated
-                # across sources/months -- not an uncontrolled growth signal.
-                #
+                # The bound includes the per-source and per-month scoring-input blocks.
+                # The current synthetic worst case measures 679,461 bytes, so the
+                # additional field has a small, explicit allowance rather than an
+                # open-ended payload increase.
                 # v12 re-anchor, 680,000 -> 680,600, against a measured 680,441. Three fields
                 # joined every per-source and per-month block, each one measured as it landed:
                 #   `sidechain_tool_calls`   678,843 -> 679,302  (+459)  volume
