@@ -125,13 +125,10 @@ class TestV17DropToolsearchContract(unittest.TestCase):
     delta AND -- unlike v14/v15/v16 -- a REAL calibration delta. Removing
     TOOLSEARCH_PER_CALL_TARGET from CALIBRATION_CONSTANT_NAMES genuinely moves the
     fingerprint, so 17:17:17 carries a NEW digest and is NOT a zero-calibration-delta
-    contract."""
+    contract. (17:17:17 is now historical; v18 is the live contract below.)"""
 
-    def test_contract_is_seventeen(self):
-        self.assertEqual(SCORE_CONTRACT_ID, "17:17:17")
-
-    def test_live_fingerprint_matches_registered_entry(self):
-        self.assertEqual(calibration_fingerprint(), CALIBRATION_FINGERPRINTS["17:17:17"])
+    def test_seventeen_is_registered(self):
+        self.assertIn("17:17:17", CALIBRATION_FINGERPRINTS)
 
     def test_seventeen_fingerprint_is_pinned(self):
         self.assertEqual(CALIBRATION_FINGERPRINTS["17:17:17"], "dc99dad882305bb6")

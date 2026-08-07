@@ -1089,6 +1089,14 @@ class Accumulator:
                                 "loc": self._write_loc(name, inp),
                                 "plan_file": is_plan_file_target(_target),
                                 "plan_skill": self._fact_plan_skill(name, inp, ev),
+                                # v18 — per-session Verification COVERAGE numerator: mark a
+                                # Bash fact that ran a shell test (bash_runs_tests), so
+                                # derive_session_ordered_facts/aggregate_ordered can count the
+                                # eligible change-sessions that verified, next to the raw
+                                # cumulative shell_test_runs density that fed the dropped term.
+                                "runs_tests": bool(
+                                    name == "Bash"
+                                    and bash_runs_tests(inp.get("command", "") or "")),
                             }
                             self.session_ordered_tools[_fact_sid].append(_ordered_fact)
                             if dt is None:
@@ -1387,6 +1395,7 @@ class Accumulator:
         _eligible = _agg["eligible"]
         _planned = _agg["planned"]
         _evidence = _agg["evidence"]
+        _test_covered = _agg["test_covered"]
         # Orchestratable: per-session cross-ref with agents_per_session
         _orchestratable = _agg["orchestratable"]
         _orchestratable_sids = set()
@@ -1657,6 +1666,7 @@ class Accumulator:
                     len(self.planning_skill_eligible_sessions),
                     self._counted_planning_skill_unmeasured_sessions()),
                 "eligible_change_sessions": _eligible,
+                "test_covered_change_sessions": _test_covered,
                 "planned_eligible_sessions": _planned,
                 "evidence_eligible_sessions": _evidence,
                 "orchestratable_sessions": _orchestratable,
@@ -1831,6 +1841,7 @@ class Accumulator:
         # C4: cross-session consume-once credit, scoped to this source's sessions.
         _s_agg = aggregate_ordered(self.session_ordered_tools.values())
         _s_eligible = _s_agg["eligible"]
+        _s_test_covered = _s_agg["test_covered"]
         _s_orchestratable = _s_agg["orchestratable"]
         _s_orchestratable_sids = set()
         for (src, sid), facts in self.session_ordered_tools.items():
@@ -1936,6 +1947,7 @@ class Accumulator:
                     len(self.planning_skill_eligible_sessions),
                     self._counted_planning_skill_unmeasured_sessions()),
                 "eligible_change_sessions": _s_eligible,
+                "test_covered_change_sessions": _s_test_covered,
                 "planned_eligible_sessions": _s_agg["planned"],
                 "evidence_eligible_sessions": _s_agg["evidence"],
                 "orchestratable_sessions": _s_orchestratable,
@@ -2063,9 +2075,12 @@ def derive_session_ordered_facts(events):
     todo_threshold_hit = None       # (cwd, order) once >=PLAN_MIN_STEPS is first reached
     plan_file_events = []           # (cwd, order, loc) for plan-file writes before the cutoff
     saw_plan_skill = False
+    ran_test = False                # v18: any shell-test Bash fact in this session
 
     for index, event in enumerate(events):
         name = str(event.get("name") or "")
+        if event.get("runs_tests"):
+            ran_test = True
         target = _normalized_ordered_target(event)
         is_write = name in _WRITE_TOOLS_V5
         file_class = event.get("file_class")
@@ -2135,6 +2150,7 @@ def derive_session_ordered_facts(events):
         "orchestratable": orchestratable,
         "planned_intra": planned_intra,
         "evidence": eligible and evidence_before,
+        "ran_test": ran_test,
         "first_write_order": first_write_order,
         "cwd": first_write_cwd,
         "plan_artifacts": plan_artifacts,
@@ -2207,5 +2223,9 @@ def aggregate_ordered(sessions):
                   if d["eligible"] and (d["planned_intra"] or d.get("planned_final")))
     evidence = sum(1 for d in derived if d["evidence"])
     orchestratable = sum(1 for d in derived if d.get("orchestratable"))
+    # v18 — Verification coverage numerator: eligible change-sessions that also ran a
+    # shell test, computed HERE beside `eligible` so the coverage ratio shares the exact
+    # same eligibility population (no duplicated eligibility logic downstream).
+    test_covered = sum(1 for d in derived if d["eligible"] and d.get("ran_test"))
     return {"eligible": eligible, "planned": planned, "evidence": evidence,
-            "orchestratable": orchestratable}
+            "orchestratable": orchestratable, "test_covered": test_covered}

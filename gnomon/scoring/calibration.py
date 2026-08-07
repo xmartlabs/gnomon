@@ -13,15 +13,15 @@ from gnomon.scoring import aq
 CALIBRATION_CONSTANT_NAMES = (
     # scoring window: it determines the corpus all window-sensitive inputs score.
     "DEFAULT_SCORING_WINDOW_MONTHS",
-    # rate targets -- the five that share the tool_calls_total denominator. (v17 removed
-    # TOOLSEARCH_PER_CALL_TARGET: its rate term left both scoring axes, so the constant left
-    # this set too -- the source of 17:17:17's genuinely new fingerprint.)
+    # rate targets -- the three that share the tool_calls_total denominator. (v17 removed
+    # TOOLSEARCH_PER_CALL_TARGET; v18 removed TASK_CALLS_PER_CALL_TARGET, whose Discipline
+    # rate term was dropped as trivially saturated, and TEST_RUNS_PER_CALL_TARGET, whose
+    # Verification density term was replaced by a no-target per-session coverage fraction --
+    # both constants left this set, the source of 18:18:18's genuinely new fingerprint.)
     "SKILLS_TOTAL_PER_CALL_TARGET",
-    "TASK_CALLS_PER_CALL_TARGET",
-    "TEST_RUNS_PER_CALL_TARGET",
     "REVIEW_SKILLS_PER_CALL_TARGET",
     "COMPOUNDING_WRITES_PER_CALL_TARGET",
-    # the evidence floor those six are scored through (occurrences implied by the target)
+    # the evidence floor those rate terms are scored through (occurrences implied by target)
     "RATE_MIN_EXPECTED_AT_TARGET",
     # absolute count ceilings -- the window-sensitive ones
     "SUBAGENT_TYPES_DISTINCT_CEILING",
@@ -136,6 +136,14 @@ CALIBRATION_FINGERPRINTS = {
     # fingerprinted set. Unlike 14/15/16 the digest therefore CHANGES (a unique new value),
     # and 17:17:17 is deliberately NOT in ZERO_CALIBRATION_DELTA_CONTRACT_IDS.
     "17:17:17": "dc99dad882305bb6",
+    # v18 (Verification per-call density -> pure-fraction per-session coverage; Discipline
+    # task-tool rate term dropped as trivially saturated): a REAL score delta (Verification
+    # renormalizes when coverage is N/A and reads a fraction otherwise; Discipline renormalizes
+    # to .667/.333) AND a REAL calibration delta -- BOTH TEST_RUNS_PER_CALL_TARGET and
+    # TASK_CALLS_PER_CALL_TARGET were removed from CALIBRATION_CONSTANT_NAMES, so two
+    # registered constants genuinely left the fingerprinted set. The digest therefore CHANGES
+    # (a unique new value), and 18:18:18 is deliberately NOT in ZERO_CALIBRATION_DELTA_CONTRACT_IDS.
+    "18:18:18": "7fd9a230f7fb2264",
 }
 
 # Contract IDs whose fingerprint is a DOCUMENTED, deliberate duplicate of the contract

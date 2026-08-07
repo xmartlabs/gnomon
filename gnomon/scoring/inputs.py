@@ -86,6 +86,11 @@ def build_scoring_inputs(stats):
             "plan_sessions": b.get("plan_sessions", 0),
             "planning_skill_sessions": b.get("planning_skill_sessions", 0),
             "eligible_change_sessions": b.get("eligible_change_sessions", 0),
+            # v18 — Verification coverage numerator. `.get(..., 0)` is load-bearing for
+            # REPLAY: a payload captured before v18 carries no such key and must project as
+            # a plain 0 (aq.py's coverage term stays N/A when ordered_facts_state is not
+            # measured, so a 0 here never fabricates coverage for a legacy row).
+            "test_covered_change_sessions": b.get("test_covered_change_sessions", 0),
             "planned_eligible_sessions": b.get("planned_eligible_sessions", 0),
             "evidence_eligible_sessions": b.get("evidence_eligible_sessions", 0),
             "ordered_facts_state": b.get("ordered_facts_state", "unmeasured"),
@@ -328,6 +333,7 @@ def build_monthly_scoring_stats(
                         _planning_denominator + _planning_unmeasured), 6)
                     if _planning_scope_state in {"measured", "partial"} else None),
                 "eligible_change_sessions": eligible,
+                "test_covered_change_sessions": _month_agg["test_covered"],
                 "planned_eligible_sessions": _month_agg["planned"],
                 "evidence_eligible_sessions": _month_agg["evidence"],
                 "ordered_facts_state": "measured" if m_tool_total else "unmeasured",

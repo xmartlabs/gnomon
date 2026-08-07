@@ -1,4 +1,24 @@
-# Current scoring contract (17:17:17).
+# Current scoring contract (18:18:18).
+#
+# v18 makes TWO anti-gaming term redesigns, each dropping a term whose signal is confounded
+# or trivially saturated -- the same shape as v17's toolsearch removal (drop the term, let
+# wsum renormalize, remove its calibration constant).
+#  - Verification: the test half switches from a per-CALL DENSITY (shell_test_runs /
+#    tool_calls) to a per-SESSION COVERAGE fraction = (eligible change-sessions that also ran
+#    a shell test) / eligible_change_sessions, scored as a PURE FRACTION with NO fitted target
+#    (sat(coverage, 1.0), like Grounding). The density was confounded by delegation (sidechain
+#    tool calls inflate the denominator) so it did not measure whether the developer verified.
+#    The coverage numerator (`test_covered_change_sessions`) is emitted beside
+#    `eligible_change_sessions` from aggregate_ordered. TEST_RUNS_PER_CALL_TARGET is removed.
+#    The term is N/A (renormalized onto review skills) when ordered facts are not measured.
+#  - Discipline: the (.40) task-tool rate term is DROPPED. task_calls ran at ~3.2x its target
+#    so rate()'s sat() pinned it at 1.0 for virtually everyone -- todo-tool ceremony that did
+#    not discriminate and rewarded TaskUpdate spam. wsum renormalizes the survivors
+#    (planning_habit .40 + ordered_planning .20) to .667 / .333. TASK_CALLS_PER_CALL_TARGET
+#    is removed. task_tool_calls stays a published diagnostic, not scored.
+# BOTH remove a registered calibration constant, so 18:18:18 carries a NEW fingerprint and is
+# deliberately NOT in ZERO_CALIBRATION_DELTA_CONTRACT_IDS -- see calibration.py's
+# CALIBRATION_FINGERPRINTS.
 #
 # v17 removes the `toolsearch_calls` per-tool-call rate term from BOTH scoring axes it fed
 # -- Tool command (weight .20) and Token economy (weight .50). ToolSearch is a
@@ -78,9 +98,9 @@
 #
 # Contract IDs are comparison boundaries. Calibration fingerprints are append-only:
 # a score-affecting change requires a new ID and fingerprint entry.
-SCORING_INPUTS_VERSION = 17
-AQ_VERSION = 17
-GSTACK_VERSION = 17
+SCORING_INPUTS_VERSION = 18
+AQ_VERSION = 18
+GSTACK_VERSION = 18
 # First input version with deduplicated per-session skill counters. Earlier
 # payloads use different persisted quantities and cannot be replayed against these targets.
 SKILL_DEDUP_INPUTS_VERSION = 8

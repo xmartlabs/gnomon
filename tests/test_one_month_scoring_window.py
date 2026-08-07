@@ -322,18 +322,28 @@ class TestPartialScoringIsDisclosed(unittest.TestCase):
         self.assertAlmostEqual(axis["partial_terms"]["weight_scored"], 0.4)
 
     def test_an_eligibility_floor_drop_is_disclosed(self):
-        # eligible_change_sessions < MIN_ELIGIBLE_SESSIONS drops ordered_planning; the
-        # planning-practice floor drops planning_habit. Discipline collapses to the
-        # task-tool rate alone at 100% weight -- the measured 1-month failure mode.
+        # eligible_change_sessions < MIN_ELIGIBLE_SESSIONS drops ordered_planning -- the
+        # measured 1-month failure mode. v18 dropped Discipline's third term (the task-tool
+        # rate), so only two terms remain: planning_habit (.40) survives on the default
+        # 30/100 share (above its own floor), and Discipline renormalizes onto it alone.
         axis = self._axis(
             self._stats(20_000, eligible_change_sessions=3, planned_eligible_sessions=1,
                         evidence_eligible_sessions=1,
-                        planning_skill_eligible_sessions=2, planning_skill_sessions=1),
+                        # Fully qualify the planning-skill scope (all 6 fields) so
+                        # planning_habit is genuinely MEASURED rather than dropped for
+                        # incomplete evidence -- the base fixture only sets 3 of the 6
+                        # `_PLANNING_SKILL_NEW_FIELDS`, which `_planning_skill_evidence`
+                        # treats as unmeasured.
+                        planning_skill_sessions=30, planning_skill_eligible_sessions=100,
+                        planning_skill_unmeasured_sessions=0,
+                        planning_skill_session_scope_state="measured",
+                        planning_skill_session_share=0.3,
+                        planning_skill_session_coverage=1.0),
             "Breadth", "Discipline")
         self.assertIn("partial_terms", axis)
         self.assertEqual(axis["partial_terms"]["scored"], 1)
-        self.assertEqual(axis["partial_terms"]["total"], 3)
-        self.assertAlmostEqual(axis["partial_terms"]["weight_scored"], 0.4)
+        self.assertEqual(axis["partial_terms"]["total"], 2)
+        self.assertAlmostEqual(axis["partial_terms"]["weight_scored"], round(0.4 / 0.6, 4))
 
     def test_disclosure_never_moves_the_score(self):
         stats = self._stats(300)

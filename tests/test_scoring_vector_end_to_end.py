@@ -37,8 +37,7 @@ import unittest
 from gnomon.analysis.metrics import _is_review_skill_name
 from gnomon.cli.accumulator import Accumulator
 from gnomon.scoring.aq import (REVIEW_SKILLS_PER_CALL_TARGET,
-                               SKILLS_TOTAL_PER_CALL_TARGET,
-                               TEST_RUNS_PER_CALL_TARGET, compute_aq)
+                               SKILLS_TOTAL_PER_CALL_TARGET, compute_aq)
 from tests.test_skill_dedup import _attribution_turn, _feed, _skill_tool_event, _ts
 
 # ---- corpus shape -----------------------------------------------------------
@@ -73,9 +72,9 @@ OTHER_SKILLS = ("superpowers:test-driven-development", "brainstorming", "writing
                 "superpowers:systematic-debugging", "sdd-tasks", "skill-creator")
 
 # A plausible working mix: reads, searches, edits, shell. One in 34 calls is a test
-# run, which puts `test_runs_per_call` on its own target -- see
-# TestSyntheticCorpusVolumeIsHonest, the control that proves the fixture's volume
-# is right and the two skill rates are what is wrong.
+# run; every session both writes code (two distinct Edit targets) and runs a test, so
+# under v18 these sessions are test-COVERED eligible change-sessions (Verification's
+# coverage numerator), while the skill rates remain the focus of the band tests below.
 TOOL_CYCLE = (
     ("Read", {"file_path": "/repo/gnomon/analysis/metrics.py"}),
     ("Grep", {"pattern": "compute_aq"}),
@@ -218,18 +217,12 @@ class TestRatesReachTheScoringLayer(_ScoredCorpus):
 
 
 class TestSyntheticCorpusVolumeIsHonest(_ScoredCorpus):
-    """The control. Every rate term shares ONE denominator (tool_calls_total), so if
-    this corpus were simply too tool-heavy, EVERY rate would land far below target.
-    `test_runs_per_call` lands ON its target, which localizes the misalignment to the
-    two skill terms rather than to the fixture's volume."""
-
-    def test_test_runs_per_call_lands_on_target(self):
-        lo, hi = self._band(TEST_RUNS_PER_CALL_TARGET)
-        rate = self.verification["test_runs_per_call"]
-        self.assertTrue(lo <= rate <= hi,
-                        f"control term off target: test_runs_per_call={rate} "
-                        f"not in [{lo}, {hi}] -- the fixture's tool volume is wrong, "
-                        f"fix the fixture before trusting the band tests below")
+    """The control. Every surviving rate term shares ONE denominator (tool_calls_total),
+    so if this corpus were simply too tool-heavy, EVERY rate would land far below target.
+    The fixture's calls/session sits on the documented median, which localizes any
+    band failure to the skill terms rather than to the fixture's volume. (v18 removed the
+    `test_runs_per_call` density control: Verification's test half is now per-session
+    coverage, not a per-call rate, so it no longer shares this denominator.)"""
 
     def test_denominator_is_the_documented_median_session_size(self):
         calls = self.stats["volume"]["tool_calls_total"]

@@ -23,8 +23,7 @@ from gnomon.analysis.quotes import _safe_quote, _cryptic_score, _crashout_score,
 from gnomon.scoring.gstack import compute_scores
 from gnomon.scoring.aq import (
     COMPOUNDING_WRITES_PER_CALL_TARGET, REVIEW_SKILLS_PER_CALL_TARGET,
-    SKILLS_TOTAL_PER_CALL_TARGET, TASK_CALLS_PER_CALL_TARGET,
-    TEST_RUNS_PER_CALL_TARGET, compute_aq,
+    SKILLS_TOTAL_PER_CALL_TARGET, compute_aq,
 )
 from gnomon.scoring.archetype import pick_archetype
 from gnomon.scoring.inputs import SCORING_INPUTS_VERSION, build_scoring_inputs
@@ -41,14 +40,16 @@ from gnomon.output.profile_html import write_profile_html
 # them, and are divided by the same tool-call denominator AQ divides by, so the % column is
 # the number AQ actually scored — not a parallel reading that can drift from it. ToolSearch
 # is no longer listed here: v17 removed its rate term from AQ, so it has no scored %; the
-# raw count stays a published diagnostic on the Tool command axis instead. knowledge_calls is
+# raw count stays a published diagnostic on the Tool command axis instead. task_tool_calls
+# and shell_test_runs are likewise no longer listed: v18 dropped the Discipline task-tool rate
+# term and replaced the Verification test-run density with a per-session coverage fraction, so
+# neither has a scored per-call % anymore (their raw counts stay published diagnostics on the
+# Discipline and Verification axes). knowledge_calls is
 # a self-check diagnostic only (it feeds the Research signature move, not an AQ axis) and
 # orchestratable is a session count, so both are reported absolute (is_rate=False).
 _TOOLS_DIAG = [
-    ("task_tool_calls", "task_tool_calls", TASK_CALLS_PER_CALL_TARGET, True),
     ("skills_total", "skills_total", SKILLS_TOTAL_PER_CALL_TARGET, True),
     ("review_skills", "review_skills", REVIEW_SKILLS_PER_CALL_TARGET, True),
-    ("shell_test_runs", "test_runs", TEST_RUNS_PER_CALL_TARGET, True),
     ("compounding_writes", "compounding_writes", COMPOUNDING_WRITES_PER_CALL_TARGET, True),
     ("orchestratable", "orchestratable_sessions", 1.0, False),
     ("knowledge_calls", "knowledge_calls", 200, False),  # gated, absolute (not a rate)

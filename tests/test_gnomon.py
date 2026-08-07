@@ -1943,48 +1943,61 @@ class TestPerToolCallRates(unittest.TestCase):
     """The converted metrics score a per-TOOL-CALL rate: the same rate at different corpus
     sizes scores identically (kills the volume artifact), a denser rate scores higher, and
     re-cutting the same work into more sessions moves nothing (a session boundary is a UI
-    artifact of whichever tool produced the transcript)."""
+    artifact of whichever tool produced the transcript).
 
-    def _discipline(self, task_calls, tool_calls, sessions=100):
+    Exercised through Verification's review-skill rate term. v18 dropped Discipline's
+    task-tool rate term (the previous vehicle for this invariant) entirely -- Discipline no
+    longer has ANY per-tool-call rate term, only session-share fractions. review_skills is
+    the modern still-per-call-rate representative; leaving `ordered_facts_state`/
+    `eligible_change_sessions` unset (the `_sample_stats()` default) keeps the coverage half
+    of Verification at None, so the axis is scored 100% on the rate term, isolating it
+    exactly the way the old fixture isolated the task-tool term."""
+
+    def _verification(self, review_calls, tool_calls, sessions=100):
         s = _sample_stats()
         s["volume"] = {"total_sessions": sessions, "tool_calls_total": tool_calls}
-        s["tools"]["task_tool_calls"] = task_calls
+        s["stack"]["skills_all"] = [("verify-changes", review_calls)]
+        s["stack"]["top_skills"] = [("verify-changes", review_calls)]
         aq = paxel.compute_aq(s)
-        breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
-        return next(a for a in breadth["axes"] if a["name"] == "Discipline")["score"]
+        craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
+        return next(a for a in craft["axes"] if a["name"] == "Verification")["score"]
 
     def test_same_rate_same_score(self):
-        # 0.010 task-tool/call either way -> identical Discipline (volume artifact gone)
-        self.assertEqual(self._discipline(50, 5000), self._discipline(500, 50000))
+        # 0.010 review-skill/call either way -> identical Verification (volume artifact gone)
+        self.assertEqual(self._verification(50, 5000), self._verification(500, 50000))
 
     def test_denser_rate_beats_sparser_rate_at_equal_count(self):
-        # Same 50 task-tool calls; the corpus that spent a quarter of the tool budget
-        # getting there is the one planning more per unit of work.
-        self.assertGreater(self._discipline(50, 5000), self._discipline(50, 20000))
+        # Same 50 review-skill calls; the corpus that spent a quarter of the tool budget
+        # getting there is the one verifying more per unit of work.
+        self.assertGreater(self._verification(50, 5000), self._verification(50, 20000))
 
     def test_resegmenting_the_same_work_does_not_move_the_score(self):
-        self.assertEqual(self._discipline(50, 5000, sessions=10),
-                         self._discipline(50, 5000, sessions=1000))
+        self.assertEqual(self._verification(50, 5000, sessions=10),
+                         self._verification(50, 5000, sessions=1000))
 
     def test_zero_tool_calls_guarded(self):
-        self._discipline(10, 0)  # must not divide by zero
+        self._verification(10, 0)  # must not divide by zero
 
 
 class TestToolsDiagnostic(unittest.TestCase):
     """--tools diagnostic: per-TOOL-CALL rates read off the already-computed agentic signals."""
 
     def _stats(self, tool_calls):
+        # v18 dropped task_tool_calls (Discipline) and shell_test_runs (Verification density)
+        # from _TOOLS_DIAG's scored rates -- neither has a scored per-call % anymore. Exercise
+        # the fixture against skills_total instead, which stays a genuine per-call rate.
         return {
             "volume": {"total_sessions": 100, "total_prompts": 400,
                        "tool_calls_total": tool_calls},
             "velocity": {"active_hours": 50.0},
             "agentic": {"pillars": [
                 {"name": "Breadth", "axes": [
-                    {"name": "Discipline", "signals": {"task_tool_calls": 50}},
+                    {"name": "Skill fluency", "signals": {"skills_total": 50}},
                     {"name": "Orchestration", "signals": {"orchestratable_sessions": 200}},
                 ]},
                 {"name": "Craft", "axes": [
-                    {"name": "Verification", "signals": {"test_runs": 150, "review_skills": 20,
+                    {"name": "Verification", "signals": {"shell_test_runs": 150,
+                                                         "review_skills": 20,
                                                          "knowledge_calls": 10}},
                 ]},
             ]},
@@ -1995,16 +2008,16 @@ class TestToolsDiagnostic(unittest.TestCase):
         lines, rec = tools_diagnostic(self._stats(10000))
         self.assertEqual(rec["sessions"], 100)
         self.assertEqual(rec["tool_calls"], 10000)
-        self.assertEqual(rec["rates"]["task_tool_calls"], 0.005)   # 50/10000
+        self.assertEqual(rec["rates"]["skills_total"], 0.005)   # 50/10000
         self.assertEqual(rec["counts"]["orchestratable"], 200)     # absolute, not a rate
         self.assertEqual(rec["counts"]["review_skills"], 20)
-        self.assertTrue(any("task_tool_calls" in l for l in lines))
+        self.assertTrue(any("skills_total" in l for l in lines))
 
     def test_zero_tool_calls_no_crash(self):
         from gnomon.cli.local import tools_diagnostic
         lines, rec = tools_diagnostic({"volume": {"total_sessions": 0}, "agentic": {"pillars": []}})
         self.assertEqual(rec["tool_calls"], 0)
-        self.assertEqual(rec["rates"]["task_tool_calls"], 0.0)
+        self.assertEqual(rec["rates"]["skills_total"], 0.0)
 
     def test_percent_column_equals_what_aq_scored(self):
         """The header comment claims the % column matches AQ's scoring. Pin the claim: read

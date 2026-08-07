@@ -26,7 +26,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "17:17:17",
+          "score_contract_id": "18:18:18",
           "tier": "Advanced"
         },
         "archetype": {
@@ -354,9 +354,9 @@
                     "name": "Discipline",
                     "normalized_score": 1.0,
                     "partial_terms": {
-                      "scored": 2,
-                      "total": 3,
-                      "weight_scored": 0.8
+                      "scored": 1,
+                      "total": 2,
+                      "weight_scored": 0.6667
                     },
                     "score": 17.0,
                     "signals": {
@@ -364,8 +364,6 @@
                       "planning_practice_share": 0.4,
                       "planning_practice_target": 0.3,
                       "task_tool_calls": 300,
-                      "task_tool_calls_per_call": 0.075,
-                      "task_tool_calls_per_call_target": 0.011,
                       "tool_calls": 4000
                     },
                     "weight": 17
@@ -381,14 +379,20 @@
                     "base_weight": 35,
                     "name": "Verification",
                     "normalized_score": 1.0,
+                    "partial_terms": {
+                      "scored": 1,
+                      "total": 2,
+                      "weight_scored": 0.5
+                    },
                     "score": 35.0,
                     "signals": {
+                      "eligible_change_sessions": 0,
                       "review_skills": 80,
                       "review_skills_per_call": 0.02,
                       "review_skills_per_call_target": 0.004,
-                      "test_runs": 120,
-                      "test_runs_per_call": 0.03,
-                      "test_runs_per_call_target": 0.025,
+                      "shell_test_runs": 120,
+                      "test_coverage": null,
+                      "test_covered_change_sessions": 0,
                       "tool_calls": 4000
                     },
                     "weight": 35
@@ -496,7 +500,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "17:17:17",
+            "score_contract_id": "18:18:18",
             "steering_leverage": {
               "actions_per_prompt": 13.0,
               "state": "withheld_unvalidated_band"
@@ -906,13 +910,13 @@
         }
       }
     },
-    "scoring_inputs_version": 17
+    "scoring_inputs_version": 18
   },
   {
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 40,
+          "aq_0_100": 38,
           "pillars": [
             {
               "name": "Breadth",
@@ -921,7 +925,7 @@
             },
             {
               "name": "Craft",
-              "score": 26.5,
+              "score": 19.5,
               "weight": 35
             },
             {
@@ -935,11 +939,11 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "17:17:17",
+          "score_contract_id": "18:18:18",
           "tier": "Apprentice"
         },
         "archetype": {
-          "quote": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is breadth \u2014 that's where the next gain is.",
+          "quote": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is craft \u2014 that's where the next gain is.",
           "title": "Apprentice"
         },
         "canonical_aq": "profile.aq",
@@ -1199,7 +1203,7 @@
       "by_source": {
         "cursor": {
           "aq": {
-            "aq_0_100": 40,
+            "aq_0_100": 38,
             "mcp_vs_cli": {
               "cli_calls": 100,
               "cli_distinct": 8,
@@ -1267,8 +1271,8 @@
                     "normalized_score": 0.666666666666667,
                     "partial_terms": {
                       "scored": 1,
-                      "total": 3,
-                      "weight_scored": 0.4
+                      "total": 2,
+                      "weight_scored": 0.6667
                     },
                     "score": 11.3,
                     "signals": {
@@ -1276,8 +1280,6 @@
                       "planning_practice_share": 0.2,
                       "planning_practice_target": 0.3,
                       "task_tool_calls": 0,
-                      "task_tool_calls_per_call": 0.0,
-                      "task_tool_calls_per_call_target": 0.011,
                       "tool_calls": 500
                     },
                     "weight": 17
@@ -1292,15 +1294,21 @@
                   {
                     "base_weight": 35,
                     "name": "Verification",
-                    "normalized_score": 0.2,
-                    "score": 7.0,
+                    "normalized_score": 0.0,
+                    "partial_terms": {
+                      "scored": 1,
+                      "total": 2,
+                      "weight_scored": 0.5
+                    },
+                    "score": 0.0,
                     "signals": {
+                      "eligible_change_sessions": 0,
                       "review_skills": 0,
                       "review_skills_per_call": 0.0,
                       "review_skills_per_call_target": 0.004,
-                      "test_runs": 5,
-                      "test_runs_per_call": 0.01,
-                      "test_runs_per_call_target": 0.025,
+                      "shell_test_runs": 5,
+                      "test_coverage": null,
+                      "test_covered_change_sessions": 0,
                       "tool_calls": 500
                     },
                     "weight": 35
@@ -1351,7 +1359,7 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 26.5,
+                "score": 19.5,
                 "weight": 35
               },
               {
@@ -1398,7 +1406,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "17:17:17",
+            "score_contract_id": "18:18:18",
             "steering_leverage": {
               "actions_per_prompt": 6.0,
               "state": "withheld_unvalidated_band"
@@ -1410,7 +1418,7 @@
             }
           },
           "archetype": {
-            "quote": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is breadth \u2014 that's where the next gain is.",
+            "quote": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is craft \u2014 that's where the next gain is.",
             "title": "Apprentice"
           },
           "growth_edges": [
@@ -1726,7 +1734,7 @@
         }
       }
     },
-    "scoring_inputs_version": 17
+    "scoring_inputs_version": 18
   },
   {
     "expected": {
@@ -1741,7 +1749,7 @@
             },
             {
               "name": "Craft",
-              "score": 85.2,
+              "score": 84.4,
               "weight": 35
             },
             {
@@ -1755,7 +1763,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "17:17:17",
+          "score_contract_id": "18:18:18",
           "tier": "Advanced"
         },
         "archetype": {
@@ -2084,9 +2092,9 @@
                     "name": "Discipline",
                     "normalized_score": 1.0,
                     "partial_terms": {
-                      "scored": 2,
-                      "total": 3,
-                      "weight_scored": 0.8
+                      "scored": 1,
+                      "total": 2,
+                      "weight_scored": 0.6667
                     },
                     "score": 17.0,
                     "signals": {
@@ -2094,8 +2102,6 @@
                       "planning_practice_share": 0.4,
                       "planning_practice_target": 0.3,
                       "task_tool_calls": 300,
-                      "task_tool_calls_per_call": 0.075,
-                      "task_tool_calls_per_call_target": 0.011,
                       "tool_calls": 4000
                     },
                     "weight": 17
@@ -2111,14 +2117,20 @@
                     "base_weight": 35,
                     "name": "Verification",
                     "normalized_score": 1.0,
+                    "partial_terms": {
+                      "scored": 1,
+                      "total": 2,
+                      "weight_scored": 0.5
+                    },
                     "score": 35.0,
                     "signals": {
+                      "eligible_change_sessions": 0,
                       "review_skills": 80,
                       "review_skills_per_call": 0.02,
                       "review_skills_per_call_target": 0.004,
-                      "test_runs": 120,
-                      "test_runs_per_call": 0.03,
-                      "test_runs_per_call_target": 0.025,
+                      "shell_test_runs": 120,
+                      "test_coverage": null,
+                      "test_covered_change_sessions": 0,
                       "tool_calls": 4000
                     },
                     "weight": 35
@@ -2226,7 +2238,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "17:17:17",
+            "score_contract_id": "18:18:18",
             "steering_leverage": {
               "actions_per_prompt": 13.0,
               "state": "withheld_unvalidated_band"
@@ -2483,7 +2495,7 @@
         },
         "cursor": {
           "aq": {
-            "aq_0_100": 40,
+            "aq_0_100": 38,
             "mcp_vs_cli": {
               "cli_calls": 100,
               "cli_distinct": 8,
@@ -2551,8 +2563,8 @@
                     "normalized_score": 0.666666666666667,
                     "partial_terms": {
                       "scored": 1,
-                      "total": 3,
-                      "weight_scored": 0.4
+                      "total": 2,
+                      "weight_scored": 0.6667
                     },
                     "score": 11.3,
                     "signals": {
@@ -2560,8 +2572,6 @@
                       "planning_practice_share": 0.2,
                       "planning_practice_target": 0.3,
                       "task_tool_calls": 0,
-                      "task_tool_calls_per_call": 0.0,
-                      "task_tool_calls_per_call_target": 0.011,
                       "tool_calls": 500
                     },
                     "weight": 17
@@ -2576,15 +2586,21 @@
                   {
                     "base_weight": 35,
                     "name": "Verification",
-                    "normalized_score": 0.2,
-                    "score": 7.0,
+                    "normalized_score": 0.0,
+                    "partial_terms": {
+                      "scored": 1,
+                      "total": 2,
+                      "weight_scored": 0.5
+                    },
+                    "score": 0.0,
                     "signals": {
+                      "eligible_change_sessions": 0,
                       "review_skills": 0,
                       "review_skills_per_call": 0.0,
                       "review_skills_per_call_target": 0.004,
-                      "test_runs": 5,
-                      "test_runs_per_call": 0.01,
-                      "test_runs_per_call_target": 0.025,
+                      "shell_test_runs": 5,
+                      "test_coverage": null,
+                      "test_covered_change_sessions": 0,
                       "tool_calls": 500
                     },
                     "weight": 35
@@ -2635,7 +2651,7 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 26.5,
+                "score": 19.5,
                 "weight": 35
               },
               {
@@ -2682,7 +2698,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "17:17:17",
+            "score_contract_id": "18:18:18",
             "steering_leverage": {
               "actions_per_prompt": 6.0,
               "state": "withheld_unvalidated_band"
@@ -2694,7 +2710,7 @@
             }
           },
           "archetype": {
-            "quote": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is breadth \u2014 that's where the next gain is.",
+            "quote": "Still developing \u2014 the habits aren't compounding yet. Your thinnest axis is craft \u2014 that's where the next gain is.",
             "title": "Apprentice"
           },
           "growth_edges": [
@@ -3160,7 +3176,7 @@
         }
       }
     },
-    "scoring_inputs_version": 17
+    "scoring_inputs_version": 18
   },
   {
     "expected": {
@@ -3189,7 +3205,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "17:17:17",
+          "score_contract_id": "18:18:18",
           "tier": "Advanced"
         },
         "archetype": {
@@ -3517,9 +3533,9 @@
                     "name": "Discipline",
                     "normalized_score": 1.0,
                     "partial_terms": {
-                      "scored": 2,
-                      "total": 3,
-                      "weight_scored": 0.8
+                      "scored": 1,
+                      "total": 2,
+                      "weight_scored": 0.6667
                     },
                     "score": 17.0,
                     "signals": {
@@ -3527,8 +3543,6 @@
                       "planning_practice_share": 0.4,
                       "planning_practice_target": 0.3,
                       "task_tool_calls": 300,
-                      "task_tool_calls_per_call": 0.075,
-                      "task_tool_calls_per_call_target": 0.011,
                       "tool_calls": 4000
                     },
                     "weight": 17
@@ -3544,14 +3558,20 @@
                     "base_weight": 35,
                     "name": "Verification",
                     "normalized_score": 1.0,
+                    "partial_terms": {
+                      "scored": 1,
+                      "total": 2,
+                      "weight_scored": 0.5
+                    },
                     "score": 35.0,
                     "signals": {
+                      "eligible_change_sessions": 0,
                       "review_skills": 80,
                       "review_skills_per_call": 0.02,
                       "review_skills_per_call_target": 0.004,
-                      "test_runs": 120,
-                      "test_runs_per_call": 0.03,
-                      "test_runs_per_call_target": 0.025,
+                      "shell_test_runs": 120,
+                      "test_coverage": null,
+                      "test_covered_change_sessions": 0,
                       "tool_calls": 4000
                     },
                     "weight": 35
@@ -3659,7 +3679,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "17:17:17",
+            "score_contract_id": "18:18:18",
             "steering_leverage": {
               "actions_per_prompt": 13.0,
               "state": "withheld_unvalidated_band"
@@ -4054,7 +4074,7 @@
         }
       }
     },
-    "scoring_inputs_version": 17
+    "scoring_inputs_version": 18
   },
   {
     "expected": {
@@ -4064,7 +4084,7 @@
           "pillars": [
             {
               "name": "Breadth",
-              "score": 4.0,
+              "score": 4.9,
               "weight": 30
             },
             {
@@ -4083,7 +4103,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "17:17:17",
+          "score_contract_id": "18:18:18",
           "tier": "Novice"
         },
         "archetype": {
@@ -4376,13 +4396,13 @@
                       "orchestratable_sessions": 0,
                       "subagent_types": 0
                     },
-                    "weight": 33
+                    "weight": 40
                   },
                   {
                     "base_weight": 22,
                     "name": "Skill fluency",
                     "normalized_score": 0.18,
-                    "score": 4.0,
+                    "score": 4.9,
                     "signals": {
                       "skills_distinct": 0,
                       "skills_total": 0,
@@ -4390,7 +4410,7 @@
                       "skills_total_per_call_target": 0.009,
                       "tool_calls": 0
                     },
-                    "weight": 22
+                    "weight": 27
                   },
                   {
                     "base_weight": 28,
@@ -4403,32 +4423,14 @@
                       "tool_calls": 0,
                       "toolsearch_calls": 0
                     },
-                    "weight": 28
-                  },
-                  {
-                    "base_weight": 17,
-                    "name": "Discipline",
-                    "normalized_score": 0.0,
-                    "partial_terms": {
-                      "scored": 1,
-                      "total": 3,
-                      "weight_scored": 0.4
-                    },
-                    "score": 0.0,
-                    "signals": {
-                      "planning_practice_eligible_sessions": 0,
-                      "planning_practice_share": null,
-                      "planning_practice_target": 0.3,
-                      "task_tool_calls": 0,
-                      "task_tool_calls_per_call": null,
-                      "task_tool_calls_per_call_target": 0.011,
-                      "tool_calls": 0
-                    },
-                    "weight": 17
+                    "weight": 33
                   }
                 ],
                 "name": "Breadth",
-                "score": 4.0,
+                "not_applicable": [
+                  "Discipline"
+                ],
+                "score": 4.9,
                 "weight": 30
               },
               {
@@ -4437,14 +4439,20 @@
                     "base_weight": 35,
                     "name": "Verification",
                     "normalized_score": 0.0,
+                    "partial_terms": {
+                      "scored": 1,
+                      "total": 2,
+                      "weight_scored": 0.5
+                    },
                     "score": 0.0,
                     "signals": {
+                      "eligible_change_sessions": 0,
                       "review_skills": 0,
                       "review_skills_per_call": null,
                       "review_skills_per_call_target": 0.004,
-                      "test_runs": 0,
-                      "test_runs_per_call": null,
-                      "test_runs_per_call_target": 0.025,
+                      "shell_test_runs": 0,
+                      "test_coverage": null,
+                      "test_covered_change_sessions": 0,
                       "tool_calls": 0
                     },
                     "weight": 44
@@ -4539,7 +4547,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "17:17:17",
+            "score_contract_id": "18:18:18",
             "steering_leverage": {
               "actions_per_prompt": 0,
               "state": "withheld_unvalidated_band"
@@ -4875,7 +4883,7 @@
         }
       }
     },
-    "scoring_inputs_version": 17
+    "scoring_inputs_version": 18
   },
   {
     "bucket_metadata": [
@@ -5036,7 +5044,7 @@
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 83,
+          "aq_0_100": 85,
           "pillars": [
             {
               "name": "Breadth",
@@ -5045,7 +5053,7 @@
             },
             {
               "name": "Craft",
-              "score": 89.0,
+              "score": 93.3,
               "weight": 35
             },
             {
@@ -5059,7 +5067,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "17:17:17",
+          "score_contract_id": "18:18:18",
           "tier": "Advanced"
         },
         "archetype": {
@@ -5325,7 +5333,7 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 83,
+            "aq_0_100": 85,
             "blend": {
               "buckets": [
                 {
@@ -5339,14 +5347,14 @@
                   "id": "recent_30d"
                 },
                 {
-                  "component_aq": 76,
+                  "component_aq": 81,
                   "configured_weight": 0.35,
                   "day_bounds": null,
                   "effective_weight": 0.35,
                   "id": "full_window"
                 }
               ],
-              "full_aq": 76
+              "full_aq": 81
             },
             "mcp_vs_cli": {
               "cli_calls": 1500,
@@ -5510,9 +5518,9 @@
                         "id": "recent_30d",
                         "normalized_score": 1.0,
                         "partial_terms": {
-                          "scored": 2,
-                          "total": 3,
-                          "weight_scored": 0.8
+                          "scored": 1,
+                          "total": 2,
+                          "weight_scored": 0.6667
                         },
                         "score": 17.0,
                         "signals": {
@@ -5520,8 +5528,6 @@
                           "planning_practice_share": 0.4,
                           "planning_practice_target": 0.3,
                           "task_tool_calls": 300,
-                          "task_tool_calls_per_call": 0.075,
-                          "task_tool_calls_per_call_target": 0.011,
                           "tool_calls": 4000
                         }
                       },
@@ -5530,9 +5536,9 @@
                         "id": "full_window",
                         "normalized_score": 1.0,
                         "partial_terms": {
-                          "scored": 2,
-                          "total": 3,
-                          "weight_scored": 0.8
+                          "scored": 1,
+                          "total": 2,
+                          "weight_scored": 0.6667
                         },
                         "score": 17.0,
                         "signals": {
@@ -5540,8 +5546,6 @@
                           "planning_practice_share": 0.4,
                           "planning_practice_target": 0.3,
                           "task_tool_calls": 300,
-                          "task_tool_calls_per_call": 0.075,
-                          "task_tool_calls_per_call_target": 0.011,
                           "tool_calls": 4000
                         }
                       }
@@ -5549,9 +5553,9 @@
                     "name": "Discipline",
                     "normalized_score": 1.0,
                     "partial_terms": {
-                      "scored": 2,
-                      "total": 3,
-                      "weight_scored": 0.8
+                      "scored": 1,
+                      "total": 2,
+                      "weight_scored": 0.6667
                     },
                     "score": 17.0,
                     "signals": {
@@ -5559,8 +5563,6 @@
                       "planning_practice_share": 0.4,
                       "planning_practice_target": 0.3,
                       "task_tool_calls": 300,
-                      "task_tool_calls_per_call": 0.075,
-                      "task_tool_calls_per_call_target": 0.011,
                       "tool_calls": 4000
                     },
                     "weight": 17
@@ -5579,45 +5581,61 @@
                         "effective_weight": 0.65,
                         "id": "recent_30d",
                         "normalized_score": 1.0,
-                        "partial_terms": null,
+                        "partial_terms": {
+                          "scored": 1,
+                          "total": 2,
+                          "weight_scored": 0.5
+                        },
                         "score": 35.0,
                         "signals": {
+                          "eligible_change_sessions": 0,
                           "review_skills": 80,
                           "review_skills_per_call": 0.02,
                           "review_skills_per_call_target": 0.004,
-                          "test_runs": 100,
-                          "test_runs_per_call": 0.025,
-                          "test_runs_per_call_target": 0.025,
+                          "shell_test_runs": 100,
+                          "test_coverage": null,
+                          "test_covered_change_sessions": 0,
                           "tool_calls": 4000
                         }
                       },
                       {
                         "effective_weight": 0.35,
                         "id": "full_window",
-                        "normalized_score": 0.65,
-                        "partial_terms": null,
-                        "score": 22.8,
+                        "normalized_score": 1.0,
+                        "partial_terms": {
+                          "scored": 1,
+                          "total": 2,
+                          "weight_scored": 0.5
+                        },
+                        "score": 35.0,
                         "signals": {
+                          "eligible_change_sessions": 0,
                           "review_skills": 80,
                           "review_skills_per_call": 0.02,
                           "review_skills_per_call_target": 0.004,
-                          "test_runs": 30,
-                          "test_runs_per_call": 0.0075,
-                          "test_runs_per_call_target": 0.025,
+                          "shell_test_runs": 30,
+                          "test_coverage": null,
+                          "test_covered_change_sessions": 0,
                           "tool_calls": 4000
                         }
                       }
                     ],
                     "name": "Verification",
-                    "normalized_score": 0.8775,
-                    "score": 30.7,
+                    "normalized_score": 1.0,
+                    "partial_terms": {
+                      "scored": 1,
+                      "total": 2,
+                      "weight_scored": 0.5
+                    },
+                    "score": 35.0,
                     "signals": {
+                      "eligible_change_sessions": 0,
                       "review_skills": 80,
                       "review_skills_per_call": 0.02,
                       "review_skills_per_call_target": 0.004,
-                      "test_runs": 100,
-                      "test_runs_per_call": 0.025,
-                      "test_runs_per_call_target": 0.025,
+                      "shell_test_runs": 100,
+                      "test_coverage": null,
+                      "test_covered_change_sessions": 0,
                       "tool_calls": 4000
                     },
                     "weight": 35
@@ -5747,7 +5765,7 @@
                   }
                 ],
                 "name": "Craft",
-                "score": 89.0,
+                "score": 93.3,
                 "weight": 35
               },
               {
@@ -5897,7 +5915,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "17:17:17",
+            "score_contract_id": "18:18:18",
             "steering_leverage": {
               "actions_per_prompt": 13.0,
               "state": "withheld_unvalidated_band"
@@ -5909,7 +5927,7 @@
             }
           },
           "archetype": {
-            "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is craft \u2014 that's where the next gain is.",
+            "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is breadth \u2014 that's where the next gain is.",
             "title": "Advanced"
           },
           "growth_edges": [
@@ -6300,6 +6318,6 @@
         }
       }
     },
-    "scoring_inputs_version": 17
+    "scoring_inputs_version": 18
   }
 ]
