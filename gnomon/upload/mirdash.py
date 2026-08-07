@@ -573,8 +573,10 @@ def plan_upload(
 
         state = server_months.get("state")
         months = server_months.get("months")
-        if state != "valid" or not isinstance(months, list) or not months:
+        if state != "valid" or not isinstance(months, list):
             return [(current, "current")]
+        if not months:
+            return [(w[2], "initial") for w in month_windows(max_months, today, 1)]
 
         current_total = today.year * 12 + (today.month - 1)
         previous_total = current_total - 1

@@ -477,9 +477,14 @@ class TestContractAwareHistory(unittest.TestCase):
             {"state": "malformed", "months": []},
         )
 
-    def test_valid_empty_and_degraded_states_plan_current_only(self):
+    def test_valid_empty_triggers_initial_backfill(self):
+        history = {"state": "valid", "months": []}
+        result = plan_upload(self.TODAY, history, active_contract=self.CONTRACT)
+        self.assertTrue(all(r == "initial" for _, r in result))
+        self.assertEqual(len(result), 12)
+
+    def test_degraded_states_plan_current_only(self):
         for history in (
-            {"state": "valid", "months": []},
             {"state": "unavailable", "months": []},
             {"state": "legacy", "months": []},
             {"state": "malformed", "months": []},
