@@ -445,6 +445,7 @@ def _synth_stats_for_aggregate(items, agg_aq):
             "cli_calls": wsum(lambda blk: t(blk).get("cli_calls")),
             "mcp_calls": wsum(lambda blk: t(blk).get("mcp_calls")),
             "toolsearch_calls": wsum(lambda blk: t(blk).get("toolsearch_calls")),
+            "toolsearch_discovery_calls": wsum(lambda blk: t(blk).get("toolsearch_discovery_calls")),
             "tool_diversity": max((t(e["block"]).get("tool_diversity") or 0) for _, e in items) if items else 0,
             "tool_entropy_normalized": wmean(lambda blk: t(blk).get("tool_entropy_normalized")),
             "mcp_knowledge_calls": wsum(lambda blk: t(blk).get("mcp_knowledge_calls")),

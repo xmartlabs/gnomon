@@ -135,6 +135,7 @@ def build_scoring_inputs(stats):
             "mcp_servers_distinct": t.get("mcp_servers_distinct", 0),
             "clis_distinct": t.get("clis_distinct", 0),
             "toolsearch_calls": t.get("toolsearch_calls", 0),
+            "toolsearch_discovery_calls": t.get("toolsearch_discovery_calls", 0),
             "task_tool_calls": t.get("task_tool_calls", 0),
             "cli_calls": t.get("cli_calls", 0),
             "mcp_calls": t.get("mcp_calls", 0),
@@ -191,6 +192,7 @@ def build_monthly_scoring_stats(
     month_grounded_sessions=None, month_write_sessions=None,
     month_session_ordered_tools=None, month_planning_dispatch_calls=None,
     month_sidechain_tools=None, month_command_only=None,
+    month_toolsearch_discovery=None,
 ):
     out = []
     for mk in months:
@@ -209,6 +211,7 @@ def build_monthly_scoring_stats(
 
         m_prompts = month_prompts.get(mk, 0)
         tcounter = month_tool_counter.get(mk, Counter())
+        m_toolsearch_discovery = (month_toolsearch_discovery or {}).get(mk, 0)
         skill_c = month_skill_counter.get(mk, Counter())
         sub_c = month_subagent_counter.get(mk, Counter())
         mcp_c = month_mcp_server_counter.get(mk, Counter())
@@ -379,6 +382,7 @@ def build_monthly_scoring_stats(
                 "clis_distinct": len(cli_c),
                 "cli_calls": sum(cli_c.values()),
                 "toolsearch_calls": tcounter.get("ToolSearch", 0),
+                "toolsearch_discovery_calls": m_toolsearch_discovery,
                 "task_tool_calls": tcounter.get("TaskCreate", 0) + tcounter.get("TaskUpdate", 0),
                 "agent_calls": tcounter.get("Agent", 0),
             },

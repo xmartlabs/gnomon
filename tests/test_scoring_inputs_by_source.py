@@ -123,6 +123,7 @@ class TestScoringInputsBySource(unittest.TestCase):
               "subagent_types_distinct", "subagent_types", "max_session_subagent_types",
               "top_skills", "skills_all", "models"}
     _TOOLS = {"agent_calls", "mcp_servers_distinct", "clis_distinct", "toolsearch_calls",
+              "toolsearch_discovery_calls",
               "task_tool_calls", "cli_calls", "mcp_calls", "tool_diversity",
               "tool_entropy_normalized", "top_tools",
               "mcp_knowledge_calls", "mcp_knowledge_servers", "mcp_knowledge_server_names",

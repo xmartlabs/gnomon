@@ -717,5 +717,108 @@ class TestMcpKnowledgeWriteCompoundingCredit(unittest.TestCase):
         self.assertEqual(acc.tool_use_total, 1)
 
 
+class TestToolSearchDiscoveryCalls(unittest.TestCase):
+    """F3 anti-gaming instrumentation (STEP 1, discovery-only): a `select:`-prefixed
+    ToolSearch query is deterministic mandatory tool-loading, NOT deliberate
+    discovery, and must not be counted toward the new
+    `toolsearch_discovery_calls` numerator -- while the existing raw
+    `toolsearch_calls` counter keeps counting every ToolSearch call unchanged
+    (transparency: the raw field is not redefined, only a new field is added)."""
+
+    def test_select_prefixed_query_does_not_count_as_discovery(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event(
+            "s1", "2026-01-01T00:00:00Z", "ToolSearch",
+            {"query": "select:Read,Edit"}), None, None)
+        acc.end_file()
+        self.assertEqual(acc.tool_counter.get("ToolSearch", 0), 1)
+        self.assertEqual(acc.toolsearch_discovery_calls, 0)
+
+    def test_keyword_query_counts_as_discovery(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event(
+            "s1", "2026-01-01T00:00:00Z", "ToolSearch",
+            {"query": "notebook jupyter"}), None, None)
+        acc.end_file()
+        self.assertEqual(acc.tool_counter.get("ToolSearch", 0), 1)
+        self.assertEqual(acc.toolsearch_discovery_calls, 1)
+
+    def test_leading_whitespace_before_select_is_still_mandatory_load(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event(
+            "s1", "2026-01-01T00:00:00Z", "ToolSearch",
+            {"query": "   select:Bash"}), None, None)
+        acc.end_file()
+        self.assertEqual(acc.toolsearch_discovery_calls, 0)
+
+    def test_corpus_stats_tools_dict_contains_discovery_field(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event(
+            "s1", "2026-01-01T00:00:00Z", "ToolSearch",
+            {"query": "select:Read"}), None, None)
+        acc.observe(_fact_event(
+            "s1", "2026-01-01T00:00:01Z", "ToolSearch",
+            {"query": "how to parse json"}), None, None)
+        acc.end_file()
+        stats = acc.to_corpus_stats(None, None, False)
+        self.assertEqual(stats["tools"]["toolsearch_calls"], 2)
+        self.assertEqual(stats["tools"]["toolsearch_discovery_calls"], 1)
+
+    def test_source_stats_tools_dict_contains_discovery_field(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event(
+            "s1", "2026-01-01T00:00:00Z", "ToolSearch",
+            {"query": "select:Read"}), None, None)
+        acc.observe(_fact_event(
+            "s1", "2026-01-01T00:00:01Z", "ToolSearch",
+            {"query": "how to parse json"}), None, None)
+        acc.end_file()
+        s_stats = acc.to_source_stats("claude", None, None)
+        self.assertEqual(s_stats["tools"]["toolsearch_calls"], 2)
+        self.assertEqual(s_stats["tools"]["toolsearch_discovery_calls"], 1)
+
+    def test_monthly_stats_tools_dict_contains_discovery_field(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event(
+            "s1", "2026-01-01T00:00:00Z", "ToolSearch",
+            {"query": "select:Read"}), None, None)
+        acc.observe(_fact_event(
+            "s1", "2026-01-01T00:00:01Z", "ToolSearch",
+            {"query": "how to parse json"}), None, None)
+        acc.end_file()
+        stats = acc.to_corpus_stats(None, None, False)
+        monthly = stats["_scoring_monthly_full"]
+        self.assertEqual(len(monthly), 1)
+        m_tools = monthly[0]["stats_full"]["tools"]
+        self.assertEqual(m_tools["toolsearch_calls"], 2)
+        self.assertEqual(m_tools["toolsearch_discovery_calls"], 1)
+
+    def test_discovery_never_exceeds_raw_on_mixed_corpus(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        queries = [
+            "select:Read,Edit", "select:Bash", "  select:Grep",
+            "how to parse json", "notebook jupyter", "select:Write",
+            "refactor patterns", "select:MultiEdit",
+        ]
+        for i, q in enumerate(queries):
+            acc.observe(_fact_event(
+                "s1", f"2026-01-01T00:00:{i:02d}Z", "ToolSearch", {"query": q}),
+                None, None)
+        acc.end_file()
+        stats = acc.to_corpus_stats(None, None, False)
+        raw = stats["tools"]["toolsearch_calls"]
+        discovery = stats["tools"]["toolsearch_discovery_calls"]
+        self.assertEqual(raw, 8)
+        self.assertEqual(discovery, 3)
+        self.assertLessEqual(discovery, raw)
+
+
 if __name__ == "__main__":
     unittest.main()

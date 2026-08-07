@@ -122,6 +122,12 @@ class Accumulator:
         # scoring layer drops Steering for this case rather than guessing.
         self.unlabelled_delegate_dispatches = 0
         self.tool_counter = Counter()
+        # F3 anti-gaming (STEP 1, instrumentation only): discovery-only subset of
+        # ToolSearch calls -- a `select:`-prefixed query is deterministic mandatory
+        # tool-loading, not deliberate discovery. Additive alongside the raw
+        # `tool_counter["ToolSearch"]` count (kept unchanged for transparency); scoring
+        # continues to read the raw field until STEP 2 re-fits the calibration target.
+        self.toolsearch_discovery_calls = 0
         self.cat_counter = Counter()
         # Planning DISPATCHES — the Skill call or Agent dispatch itself. Named 'dispatch',
         # not 'ceremony', because gstack already uses plan_ceremony for the CREDITED
@@ -245,6 +251,8 @@ class Accumulator:
         self.month_hour_hist = defaultdict(Counter)
         self.month_weekday_hist = defaultdict(Counter)
         self.month_tool_counter = defaultdict(Counter)
+        # Per-month twin of toolsearch_discovery_calls (see __init__ comment above).
+        self.month_toolsearch_discovery = defaultdict(int)
         self.month_session_ts = defaultdict(lambda: defaultdict(list))
         self.month_skill_counter = defaultdict(Counter)
         self.month_subagent_counter = defaultdict(Counter)
@@ -1035,6 +1043,12 @@ class Accumulator:
                         if _sidechain_call:
                             self.sidechain_tool_use_total += 1
                         self.tool_counter[name] += 1
+                        if name == "ToolSearch" and not str(
+                                inp.get("query", "")).lstrip().startswith("select:"):
+                            self.toolsearch_discovery_calls += 1
+                            _toolsearch_discovery_call = True
+                        else:
+                            _toolsearch_discovery_call = False
                         _cat = classify_tool(name)
                         # A dispatch on a source that cannot label sidechain means subagent
                         # calls are about to be counted as top-level. Recorded here (on the
@@ -1100,6 +1114,8 @@ class Accumulator:
                             if _sidechain_call:
                                 self.month_sidechain_tools[mkey] += 1
                             self.month_tool_counter[mkey][name] += 1
+                            if _toolsearch_discovery_call:
+                                self.month_toolsearch_discovery[mkey] += 1
                             if _cat == "delegate":
                                 self.month_delegate[mkey] += 1
                         self.cat_counter[_cat] += 1
@@ -1592,6 +1608,7 @@ class Accumulator:
                 "clis_distinct": len(self.cli_counter),
                 "cli_calls": sum(self.cli_counter.values()),
                 "toolsearch_calls": self.tool_counter.get("ToolSearch", 0),
+                "toolsearch_discovery_calls": self.toolsearch_discovery_calls,
                 "task_tool_calls": self.tool_counter.get("TaskCreate", 0) + self.tool_counter.get("TaskUpdate", 0),
                 "agent_calls": self.tool_counter.get("Agent", 0),
             },
@@ -1797,6 +1814,7 @@ class Accumulator:
             month_scheduled=self.month_scheduled, month_fanouts=self.month_fanouts,
             month_session_subagent_types=self.month_session_subagent_types,
             month_tool_counter=self.month_tool_counter, month_session_ts=self.month_session_ts,
+            month_toolsearch_discovery=self.month_toolsearch_discovery,
             month_skill_counter=self.month_skill_counter, month_subagent_counter=self.month_subagent_counter,
             month_mcp_server_counter=self.month_mcp_server_counter, month_cli_counter=self.month_cli_counter,
             month_mcp_subcategory_counter=self.month_mcp_subcategory_counter,
@@ -1983,6 +2001,7 @@ class Accumulator:
                 "clis_distinct": len(self.cli_counter),
                 "cli_calls": sum(self.cli_counter.values()),
                 "toolsearch_calls": _s_tc.get("ToolSearch", 0),
+                "toolsearch_discovery_calls": self.toolsearch_discovery_calls,
                 "task_tool_calls": (_s_tc.get("TaskCreate", 0)
                                     + _s_tc.get("TaskUpdate", 0)),
                 "agent_calls": _s_tc.get("Agent", 0),
