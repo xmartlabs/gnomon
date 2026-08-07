@@ -26,7 +26,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "14:14:14",
+          "score_contract_id": "16:16:16",
           "tier": "Advanced"
         },
         "archetype": {
@@ -501,7 +501,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "14:14:14",
+            "score_contract_id": "16:16:16",
             "steering_leverage": {
               "actions_per_prompt": 13.0,
               "state": "withheld_unvalidated_band"
@@ -911,7 +911,7 @@
         }
       }
     },
-    "scoring_inputs_version": 14
+    "scoring_inputs_version": 16
   },
   {
     "expected": {
@@ -940,7 +940,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "14:14:14",
+          "score_contract_id": "16:16:16",
           "tier": "Apprentice"
         },
         "archetype": {
@@ -1418,7 +1418,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "14:14:14",
+            "score_contract_id": "16:16:16",
             "steering_leverage": {
               "actions_per_prompt": 6.0,
               "state": "withheld_unvalidated_band"
@@ -1746,7 +1746,7 @@
         }
       }
     },
-    "scoring_inputs_version": 14
+    "scoring_inputs_version": 16
   },
   {
     "expected": {
@@ -1775,7 +1775,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "14:14:14",
+          "score_contract_id": "16:16:16",
           "tier": "Advanced"
         },
         "archetype": {
@@ -2251,7 +2251,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "14:14:14",
+            "score_contract_id": "16:16:16",
             "steering_leverage": {
               "actions_per_prompt": 13.0,
               "state": "withheld_unvalidated_band"
@@ -2722,7 +2722,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "14:14:14",
+            "score_contract_id": "16:16:16",
             "steering_leverage": {
               "actions_per_prompt": 6.0,
               "state": "withheld_unvalidated_band"
@@ -3200,7 +3200,7 @@
         }
       }
     },
-    "scoring_inputs_version": 14
+    "scoring_inputs_version": 16
   },
   {
     "expected": {
@@ -3229,7 +3229,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "14:14:14",
+          "score_contract_id": "16:16:16",
           "tier": "Advanced"
         },
         "archetype": {
@@ -3704,7 +3704,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "14:14:14",
+            "score_contract_id": "16:16:16",
             "steering_leverage": {
               "actions_per_prompt": 13.0,
               "state": "withheld_unvalidated_band"
@@ -4099,7 +4099,7 @@
         }
       }
     },
-    "scoring_inputs_version": 14
+    "scoring_inputs_version": 16
   },
   {
     "expected": {
@@ -4128,7 +4128,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "14:14:14",
+          "score_contract_id": "16:16:16",
           "tier": "Novice"
         },
         "archetype": {
@@ -4589,7 +4589,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "14:14:14",
+            "score_contract_id": "16:16:16",
             "steering_leverage": {
               "actions_per_prompt": 0,
               "state": "withheld_unvalidated_band"
@@ -4925,7 +4925,7 @@
         }
       }
     },
-    "scoring_inputs_version": 14
+    "scoring_inputs_version": 16
   },
   {
     "bucket_metadata": [
@@ -5109,7 +5109,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "14:14:14",
+          "score_contract_id": "16:16:16",
           "tier": "Advanced"
         },
         "archetype": {
@@ -5962,7 +5962,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "14:14:14",
+            "score_contract_id": "16:16:16",
             "steering_leverage": {
               "actions_per_prompt": 13.0,
               "state": "withheld_unvalidated_band"
@@ -6365,6 +6365,6 @@
         }
       }
     },
-    "scoring_inputs_version": 14
+    "scoring_inputs_version": 16
   }
 ]

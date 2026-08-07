@@ -15,6 +15,17 @@ PLAN_TOOLS = {"TodoWrite", "TodoRead", "ExitPlanMode", "EnterPlanMode", "EnterWo
 # and are deliberately EXCLUDED: admitting them would inflate agents_per_session with
 # non-dispatch events (most sessions carry a TaskCreate at least once).
 ORCHESTRATION_TOOLS = {"Agent", "Task", "Workflow"}
+# Membership in ORCHESTRATION_TOOLS drives the delegation/frequency signal
+# (agents_per_session > 0, _fanouts, delegating_sessions, o_frequency); this
+# narrower set names which of those tools additionally fan out to MULTIPLE real
+# dispatched agents per single tool_use call. Agent/Task stay 1-call==1-agent
+# (unchanged): the accumulator gate still increments agents_per_session/
+# month_fanouts directly for them. Workflow can dispatch anywhere from one to
+# dozens of agents per call, so its fan-out is instead sourced from the real
+# `.../subagents/workflows/wf_*/agent-*.jsonl` transcripts the walker already
+# visits -- see parse_workflow_agent_dispatch below and accumulator.py's
+# begin_file/observe handling of _pending_fanout_credit.
+FANOUT_BY_TRANSCRIPT_TOOLS = {"Workflow"}
 # Explicit plan-mode ceremony: the human chose to plan and a plan was produced before any
 # code. EnterPlanMode = Cursor create_plan / switch_mode(plan); ExitPlanMode = Claude Code
 # native plan mode (shift+tab -> present plan -> approve). These carry the same construct as
@@ -92,9 +103,69 @@ def extract_skill_name_from_path(path):
     m = _SKILL_MD_RX.search(str(path).replace("\\", "/"))
     return m.group(1) if m else None
 
+
+# Matches a dispatched Workflow agent transcript path:
+# `.../subagents/workflows/wf_<runId>/agent-<hash>.jsonl`. Group 1 is the PARENT
+# session id (the directory that owns `subagents/`); group 2 is the dispatch
+# identity encoded in the filename. Verified against a real corpus sample
+# (2026-08-06): each event inside these files also carries the SAME value in its
+# own `agentId` field, while the file's `sessionId` field is the PARENT's session
+# id, not a distinct child identity -- `agentId` (falling back to this
+# filename-derived value) is therefore the correct dedup key component, not
+# `sessionId`. One level shallower, `.../subagents/agent-*.jsonl` (no
+# `/workflows/wf_*/` segment) is a regular Agent/Task dispatch sidechain, which
+# already counts via the 1-call==1-agent tool_use gate, and is deliberately
+# excluded here to avoid double-crediting.
+_WORKFLOW_AGENT_RX = re.compile(
+    r'(?:^|/)([^/]+)/subagents/workflows/wf_[^/]+/agent-([^/]+)\.jsonl$'
+)
+
+
+def parse_workflow_agent_dispatch(path):
+    """Return (parent_session_id, filename_agent_id) for a dispatched Workflow
+    agent transcript path, else (None, None) when `path` doesn't match."""
+    if not path:
+        return None, None
+    m = _WORKFLOW_AGENT_RX.search(_norm_path_seps(path))
+    if not m:
+        return None, None
+    return m.group(1), m.group(2)
+
 MCP_INSPECT_HINTS = ("read", "get", "list", "search", "find", "describe",
                      "snapshot", "screenshot", "query", "fetch", "whoami",
                      "details", "status", "info", "show", "doc_", "explore")
+
+# Compounding credit for MCP knowledge-writes (contract 16:16:16): the positive
+# mirror of MCP_INSPECT_HINTS above, scoped to knowledge-subcategory MCP servers.
+# Symmetric-to-existing-design, not a novel taxonomy -- see
+# is_mcp_knowledge_write's precedence rules.
+MCP_WRITE_HINTS = ("add", "write", "store", "create", "update", "upsert",
+                   "save", "remember", "persist")
+
+# Knowledge-subcategory MCP servers that persist NOTHING -- doc/search fetchers
+# only (context7 resolves library docs, exa is a web search MCP). A server-level
+# DENYLIST checked before any write-hint match, so a future fetch-only tool leaf
+# that happens to contain a write substring can never false-positive. Extensible.
+MCP_FETCH_ONLY_KNOWLEDGE_SERVERS = ("context7", "exa")
+
+
+def is_mcp_knowledge_write(server_name, tool_name=""):
+    """True when an MCP call is BOTH knowledge-subcategory AND a genuine
+    persistence write, for Compounding axis crediting. Strict precedence:
+    1. classify_mcp_subcategory(server, tool) == "knowledge", else False.
+    2. server not in MCP_FETCH_ONLY_KNOWLEDGE_SERVERS (substring match), else False.
+    3. leaf matches any MCP_INSPECT_HINTS -> False (read-hint match wins).
+    4. leaf matches any MCP_WRITE_HINTS -> True, else False.
+    """
+    if classify_mcp_subcategory(server_name, tool_name) != "knowledge":
+        return False
+    low_server = (server_name or "").lower()
+    if any(needle in low_server for needle in MCP_FETCH_ONLY_KNOWLEDGE_SERVERS):
+        return False
+    low_tool = (tool_name or "").lower()
+    if any(needle in low_tool for needle in MCP_INSPECT_HINTS):
+        return False
+    return any(needle in low_tool for needle in MCP_WRITE_HINTS)
 
 # Two-layer MCP subcategory classification, grounded in awesome-mcp-servers ecosystem
 # data (500+ servers, 51 categories) and validated against 62-user production corpus

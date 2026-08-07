@@ -2,9 +2,13 @@ import unittest
 
 from gnomon.taxonomy import (
     ASK_TOOLS, DELEGATE_TOOLS, DISCOVER_TOOLS, EXEC_TOOLS, ORCHESTRATION_TOOLS,
+    FANOUT_BY_TRANSCRIPT_TOOLS,
     PLAN_MODE_TOOLS, PLAN_SIGNAL_TOOLS, PLAN_TOOLS, READ_TOOLS, SCHEDULE_TOOLS,
     SKILL_TOOLS, WRITE_TOOLS, classify_tool, is_substantive_tool,
     classify_change_target, is_plan_file_target, _is_compounding_path, _norm_path_seps,
+    parse_workflow_agent_dispatch,
+    MCP_INSPECT_HINTS, MCP_WRITE_HINTS, MCP_FETCH_ONLY_KNOWLEDGE_SERVERS,
+    is_mcp_knowledge_write,
 )
 
 
@@ -156,6 +160,61 @@ class TestOrchestrationToolsTaxonomy(unittest.TestCase):
                 self.assertNotIn(tool, ORCHESTRATION_TOOLS)
 
 
+class TestWorkflowAgentDispatchPathParsing(unittest.TestCase):
+    """Fix for Workflow fan-out under-credit: real dispatched-agent transcripts live
+    at `.../subagents/workflows/wf_*/agent-*.jsonl`, one file per dispatched agent.
+    `parse_workflow_agent_dispatch` recovers (parent_session_id, filename_agent_id)
+    from that path so the accumulator can attribute the dispatch to the parent
+    session instead of the per-Workflow-call count."""
+
+    def test_matches_real_corpus_shaped_path(self):
+        # Phase 5 (5.1) real-corpus confirmation: this exact path shape (parent sid,
+        # `wf_<runId>` dir, `agent-<hash>.jsonl` filename) was found and inspected
+        # live under a real `~/.claude/projects/**` corpus during apply (2026-08-06);
+        # the parent sid / run id / agent hash below are copied verbatim from that
+        # sample, not invented. `agentId` inside each such file's own events was also
+        # confirmed to equal this same filename hash, while the file's `sessionId`
+        # field carries the PARENT's session id, not a distinct child id -- see
+        # parse_workflow_agent_dispatch's docstring and TestWorkflowFanoutTranscript
+        # Attribution in tests/test_accumulator.py, which uses `agentId` accordingly.
+        path = (
+            "/Users/x/.claude/projects/-repo/c83998c6-540d-488b-8f79-fd6249316102/"
+            "subagents/workflows/wf_6551bb5e-ac0/agent-a9cdfb752480e84ef.jsonl"
+        )
+        parent_sid, agent_id = parse_workflow_agent_dispatch(path)
+        self.assertEqual(parent_sid, "c83998c6-540d-488b-8f79-fd6249316102")
+        self.assertEqual(agent_id, "a9cdfb752480e84ef")
+
+    def test_matches_with_backslash_separators(self):
+        path = (
+            r"C:\Users\x\.claude\projects\-repo\parent-sid"
+            r"\subagents\workflows\wf_abc\agent-def123.jsonl"
+        )
+        parent_sid, agent_id = parse_workflow_agent_dispatch(path)
+        self.assertEqual(parent_sid, "parent-sid")
+        self.assertEqual(agent_id, "def123")
+
+    def test_non_workflow_subagent_path_does_not_match(self):
+        # Regular (non-Workflow) Agent/Task dispatch sidechain: one level shallower
+        # (no /workflows/wf_*/ segment), and Agent/Task already count 1-call==1-agent
+        # via the tool_use gate, so this path must NOT also earn transcript credit.
+        path = "/base/proj/parent-sid/subagents/agent-abc123.jsonl"
+        self.assertEqual(parse_workflow_agent_dispatch(path), (None, None))
+
+    def test_root_transcript_path_does_not_match(self):
+        path = "/base/proj/parent-sid.jsonl"
+        self.assertEqual(parse_workflow_agent_dispatch(path), (None, None))
+
+    def test_empty_path_does_not_match(self):
+        self.assertEqual(parse_workflow_agent_dispatch(""), (None, None))
+        self.assertEqual(parse_workflow_agent_dispatch(None), (None, None))
+
+    def test_fanout_by_transcript_tools_is_exactly_workflow(self):
+        # Agent/Task stay 1-call==1-agent (unchanged); only Workflow fans out
+        # per-call to a variable number of real dispatched agents.
+        self.assertEqual(FANOUT_BY_TRANSCRIPT_TOOLS, {"Workflow"})
+
+
 class TestClassifyToolOtherCategoriesUnchanged(unittest.TestCase):
     """Guard: carving `plan` out of the explore branch must not shift anything else."""
 
@@ -187,6 +246,60 @@ class TestClassifyToolOtherCategoriesUnchanged(unittest.TestCase):
                       DELEGATE_TOOLS, SKILL_TOOLS, SCHEDULE_TOOLS, ASK_TOOLS):
             with self.subTest(other=sorted(other)):
                 self.assertEqual(PLAN_TOOLS & other, set())
+
+
+class TestIsMcpKnowledgeWrite(unittest.TestCase):
+    """Compounding credit for MCP knowledge-writes (contract 16:16:16): a MCP call
+    credits the Compounding axis only when it is BOTH knowledge-subcategory AND a
+    genuine persistence write, gated by an explicit positive write-verb predicate
+    (NOT classify_tool=="produce", which over-selects and wrongly credits reads
+    like context7 resolve-library-id / engram mem_context / mem0 delete_memory)."""
+
+    def test_must_credit_mem0_add_memory(self):
+        self.assertTrue(is_mcp_knowledge_write("mem0", "add_memory"))
+
+    def test_must_credit_mem0_update_memory(self):
+        self.assertTrue(is_mcp_knowledge_write("mem0", "update_memory"))
+
+    def test_must_credit_engram_mem_save(self):
+        self.assertTrue(is_mcp_knowledge_write("engram", "mem_save"))
+
+    def test_must_credit_engram_mem_update(self):
+        self.assertTrue(is_mcp_knowledge_write("engram", "mem_update"))
+
+    def test_must_reject_context7_resolve_library_id(self):
+        self.assertFalse(is_mcp_knowledge_write("context7", "resolve-library-id"))
+
+    def test_must_reject_engram_mem_context(self):
+        self.assertFalse(is_mcp_knowledge_write("engram", "mem_context"))
+
+    def test_must_reject_engram_mem_current_project(self):
+        self.assertFalse(is_mcp_knowledge_write("engram", "mem_current_project"))
+
+    def test_must_reject_engram_mem_review(self):
+        self.assertFalse(is_mcp_knowledge_write("engram", "mem_review"))
+
+    def test_must_reject_mem0_search_memory(self):
+        self.assertFalse(is_mcp_knowledge_write("mem0", "search_memory"))
+
+    def test_must_reject_mem0_delete_memory(self):
+        self.assertFalse(is_mcp_knowledge_write("mem0", "delete_memory"))
+
+    def test_read_hint_precedence_rejects_hypothetical_get_or_create(self):
+        # Read-hint match wins: "get_or_create" contains "get" (MCP_INSPECT_HINTS),
+        # so it must NOT be treated as a write even though it also contains "create".
+        self.assertFalse(is_mcp_knowledge_write("engram", "get_or_create"))
+
+    def test_non_knowledge_server_never_credits_even_with_a_write_verb(self):
+        # e.g. a "data"-subcategory server calling something named "add_record":
+        # only knowledge-subcategory MCPs are eligible at all.
+        self.assertFalse(is_mcp_knowledge_write("supabase", "add_record"))
+
+    def test_write_and_inspect_hint_lists_are_disjoint(self):
+        self.assertEqual(set(MCP_WRITE_HINTS) & set(MCP_INSPECT_HINTS), set())
+
+    def test_fetch_only_knowledge_servers_present(self):
+        self.assertIn("context7", MCP_FETCH_ONLY_KNOWLEDGE_SERVERS)
 
 
 if __name__ == "__main__":

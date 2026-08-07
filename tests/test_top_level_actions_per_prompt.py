@@ -627,11 +627,11 @@ class TestSteeringIsUnmeasuredWhereSidechainCannotBeLabelled(unittest.TestCase):
 
 
 class TestScoreContractMovesWithTheNumeratorChange(unittest.TestCase):
-    def test_contract_is_fourteen(self):
-        self.assertEqual(SCORE_CONTRACT_ID, "14:14:14")
-        self.assertEqual(SCORING_INPUTS_VERSION, 14)
-        self.assertEqual(AQ_VERSION, 14)
-        self.assertEqual(GSTACK_VERSION, 14)
+    def test_contract_is_sixteen(self):
+        self.assertEqual(SCORE_CONTRACT_ID, "16:16:16")
+        self.assertEqual(SCORING_INPUTS_VERSION, 16)
+        self.assertEqual(AQ_VERSION, 16)
+        self.assertEqual(GSTACK_VERSION, 16)
 
     def test_the_new_contract_has_its_own_fingerprint_entry(self):
         self.assertIn(SCORE_CONTRACT_ID, CALIBRATION_FINGERPRINTS)

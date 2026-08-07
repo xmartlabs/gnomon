@@ -53,9 +53,21 @@ directly — no external dependency). Both decode to the same normalized events.
 
 ## Uploaded summary contract
 
-Current runtime contract: **scoring inputs version 14**, **AQ version 14**, and
-**GStack version 14** (`score_contract_id = 14:14:14`). Compare scores only when
+Current runtime contract: **scoring inputs version 16**, **AQ version 16**, and
+**GStack version 16** (`score_contract_id = 16:16:16`). Compare scores only when
 contract IDs match.
+
+`Workflow` dispatch fan-out is sourced from the real dispatched-agent transcripts
+under `.../subagents/workflows/wf_*/agent-*.jsonl`, one credit per distinct
+dispatched agent, rather than from the `Workflow` tool_use call count (one call
+can fan out to many agents). `Agent`/`Task` calls are unchanged: one call is
+still one dispatched agent.
+
+Compounding credits MCP knowledge-write persistence calls (mem0
+`add_memory`/`update_memory`, engram `mem_save`/`mem_update`) in addition to
+filesystem memory/ADR writes, deduped per distinct persisted target within a
+session so target-less or repeat-target spam cannot saturate the axis. Reads,
+deletions, and fetch-only knowledge servers (context7-class) still credit zero.
 
 ### Windows and evidence
 

@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime, timedelta
 
 from gnomon.cli.accumulator import (
     Accumulator, derive_session_ordered_facts, aggregate_ordered,
@@ -13,6 +14,17 @@ def _fact_event(sid, timestamp, name, inp=None, attribution=None):
     if attribution:
         event["attributionSkill"] = attribution
     return event
+
+
+def _workflow_agent_event(parent_sid, timestamp, agent_id):
+    """One event inside a dispatched Workflow agent transcript
+    (`.../subagents/workflows/wf_*/agent-*.jsonl`). Verified against a real corpus
+    sample: `sessionId` carries the PARENT's session id (not a distinct child id),
+    while `agentId` carries the per-dispatch child identity."""
+    return {"type": "assistant", "sessionId": parent_sid, "agentId": agent_id,
+            "isSidechain": True, "timestamp": timestamp,
+            "message": {"role": "assistant", "model": "claude-sonnet-4-6",
+                        "content": [{"type": "text", "text": "working"}]}}
 
 
 def _facts_for(acc, src, sid):
@@ -136,7 +148,10 @@ class TestOrchestrationToolsGate(unittest.TestCase):
         self.assertEqual(stats["behavior"]["delegated_orchestratable_sessions"], 1)
 
     def test_workflow_only_session_also_counts_toward_delegated_orchestratable(self):
-        # Triangulation: Workflow must behave identically to Task/Agent, not just Task.
+        # Triangulation: a Workflow-only session (no Agent/Task calls) must still
+        # reach delegated_orchestratable_sessions -- but honestly, via a real
+        # dispatched-agent transcript, not the bare Workflow tool_use call itself
+        # (contract 15:15:15 fix: the bare call alone no longer credits fan-out).
         acc = Accumulator()
         acc.begin_file("claude", "f.jsonl")
         for i, path in enumerate(("src/a.py", "src/b.py", "src/c.py")):
@@ -145,6 +160,9 @@ class TestOrchestrationToolsGate(unittest.TestCase):
                 {"file_path": path, "content": "line1\nline2"},
             ), None, None)
         acc.observe(_fact_event("s1", "2026-01-01T00:00:03Z", "Workflow", {}), None, None)
+        acc.end_file()
+        acc.begin_file("claude", "/base/proj/s1/subagents/workflows/wf_1/agent-a1.jsonl")
+        acc.observe(_workflow_agent_event("s1", "2026-01-01T00:00:04Z", "a1"), None, None)
         acc.end_file()
         stats = acc.to_corpus_stats(None, None, False)
         self.assertEqual(stats["behavior"]["delegated_orchestratable_sessions"], 1)
@@ -166,6 +184,112 @@ class TestOrchestrationToolsGate(unittest.TestCase):
         stats = acc.to_corpus_stats(None, None, False)
         self.assertEqual(acc.agents_per_session.get("s1", 0), 0)
         self.assertEqual(stats["behavior"]["delegated_orchestratable_sessions"], 0)
+
+
+class TestWorkflowFanoutTranscriptAttribution(unittest.TestCase):
+    """Fix for Workflow fan-out under-credit (contract 15:15:15): a single `Workflow`
+    tool_use call may dispatch many real agents. Fan-out (agents_per_session,
+    month_fanouts) is now sourced from the real dispatched-agent transcripts under
+    `.../subagents/workflows/wf_*/agent-*.jsonl`, one credit per distinct
+    `(parent_sid, agentId)`, instead of one credit per `Workflow` tool_use event."""
+
+    def test_agent_task_calls_keep_prior_fanout_unchanged(self):
+        # 2.1: Real Agent/Task calls keep prior fan-out (spec scenario).
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        for i in range(4):
+            acc.observe(_fact_event("s1", f"2026-01-01T00:00:0{i}Z", "Agent", {}), None, None)
+        acc.end_file()
+        self.assertEqual(acc.agents_per_session.get("s1"), 4)
+
+    def test_bare_workflow_tool_call_alone_credits_nothing(self):
+        # 2.3: no per-call increment on Workflow tool_use events.
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "Workflow", {}), None, None)
+        acc.end_file()
+        self.assertEqual(acc.agents_per_session.get("s1", 0), 0)
+
+    def test_workflow_fanout_reflects_dispatched_agents_not_tool_calls(self):
+        # 2.2: representative corpus shape -- 25 Workflow tool_use events (fewer than
+        # the number of runs), 211 distinct dispatched-agent transcripts. Attributed
+        # raw count must equal 211, not 25 and not the run count.
+        acc = Accumulator()
+        acc.begin_file("claude", "parent.jsonl")
+        for i in range(25):
+            acc.observe(_fact_event(
+                "parent1", f"2026-01-01T00:{i:02d}:00Z", "Workflow", {}), None, None)
+        acc.end_file()
+        for i in range(211):
+            fp = f"/base/proj/parent1/subagents/workflows/wf_{i % 22}/agent-{i}.jsonl"
+            acc.begin_file("claude", fp)
+            acc.observe(_workflow_agent_event(
+                "parent1", "2026-01-02T00:00:00Z", str(i)), None, None)
+            acc.end_file()
+        self.assertEqual(acc.agents_per_session.get("parent1"), 211)
+
+    def test_out_of_window_workflow_agent_transcript_credits_nothing(self):
+        # 2.4: dispatched-agent transcript events all before since_dt -> uncredited.
+        acc = Accumulator()
+        fp = "/base/proj/parent1/subagents/workflows/wf_1/agent-abc.jsonl"
+        acc.begin_file("claude", fp)
+        since_dt = datetime(2026, 2, 1).astimezone()
+        acc.observe(_workflow_agent_event(
+            "parent1", "2026-01-01T00:00:00Z", "abc"), since_dt, None)
+        acc.end_file()
+        self.assertEqual(acc.agents_per_session.get("parent1", 0), 0)
+        self.assertEqual(acc.month_fanouts.get("2026-01", {}).get("parent1", 0), 0)
+
+    def test_resumed_workflow_run_credits_same_agent_once(self):
+        # 2.5 / Phase 5 (5.2), SYNTHETIC-FIXTURE SUBSTITUTE, lower confidence: the
+        # local real corpus sampled during apply (2026-08-06) contains exactly one
+        # `wf_*` run directory total (no `resumeFromRunId` occurrence anywhere in
+        # that corpus), so a genuine resumed-run duplicate could not be confirmed
+        # against real data. This test instead synthesizes the scenario the design
+        # describes -- the same child agentId re-referenced from a second `wf_*`
+        # dir under the same parent -- and asserts the dedup key (parent_sid,
+        # agentId) credits it once. Re-run this confirmation against a real
+        # resumed-workflow sample if one becomes available.
+        acc = Accumulator()
+        fp1 = "/base/proj/parent1/subagents/workflows/wf_original/agent-shared.jsonl"
+        acc.begin_file("claude", fp1)
+        acc.observe(_workflow_agent_event(
+            "parent1", "2026-01-01T00:00:00Z", "shared"), None, None)
+        acc.end_file()
+        fp2 = "/base/proj/parent1/subagents/workflows/wf_resumed/agent-shared.jsonl"
+        acc.begin_file("claude", fp2)
+        acc.observe(_workflow_agent_event(
+            "parent1", "2026-01-01T01:00:00Z", "shared"), None, None)
+        acc.end_file()
+        self.assertEqual(acc.agents_per_session.get("parent1"), 1)
+
+    def test_workflow_only_session_counts_as_delegating(self):
+        # 2.6: zero Agent/Task events, N>=1 dispatched transcripts -> session
+        # appears in delegating_sessions (feeds o_frequency numerator).
+        acc = Accumulator()
+        fp = "/base/proj/parent1/subagents/workflows/wf_1/agent-a1.jsonl"
+        acc.begin_file("claude", fp)
+        acc.observe(_workflow_agent_event(
+            "parent1", "2026-01-01T00:00:00Z", "a1"), None, None)
+        acc.end_file()
+        stats = acc.to_corpus_stats(None, None, False)
+        self.assertGreaterEqual(acc.agents_per_session.get("parent1", 0), 1)
+        self.assertEqual(stats["behavior"]["delegating_sessions"], 1)
+
+    def test_mixed_corpus_agent_only_session_fanout_unaffected(self):
+        # 2.7: mixed corpus -- an Agent-only session's fan-out count is identical
+        # to before this fix (no median drag introduced by Workflow attribution).
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        for i in range(3):
+            acc.observe(_fact_event("agent_only", f"2026-01-01T00:00:0{i}Z", "Agent", {}), None, None)
+        acc.end_file()
+        fp = "/base/proj/wf_parent/subagents/workflows/wf_1/agent-a1.jsonl"
+        acc.begin_file("claude", fp)
+        acc.observe(_workflow_agent_event(
+            "wf_parent", "2026-01-01T00:00:00Z", "a1"), None, None)
+        acc.end_file()
+        self.assertEqual(acc.agents_per_session.get("agent_only"), 3)
 
 
 class TestPlannedC3C6(unittest.TestCase):
@@ -481,6 +605,116 @@ class TestBackslashPathsOnWindowsTranscripts(unittest.TestCase):
         acc.end_file()
         self.assertEqual(acc.compounding_counter, 1)
         self.assertEqual(sorted(acc.edits_per_file_events), [1, 1])
+
+
+class TestMcpKnowledgeWriteCompoundingCredit(unittest.TestCase):
+    """Compounding credit for MCP knowledge-writes (contract 16:16:16): mem0/engram
+    persistence writes now credit compounding_counter/month_compounding, gated by
+    taxonomy.is_mcp_knowledge_write, with a corpus-lifetime per-distinct-target
+    dedup set so target-less/repeat-target spam cannot saturate the axis while
+    genuinely distinct persisted targets still each earn credit (reconciled spec
+    Scenarios A and B)."""
+
+    def test_mem0_add_memory_credits_compounding(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T12:00:00Z", "mcp__mem0__add_memory", {
+            "memory_id": "m1", "text": "note",
+        }), None, None)
+        acc.end_file()
+        self.assertEqual(acc.compounding_counter, 1)
+        self.assertEqual(acc.month_compounding.get("2026-01"), 1)
+
+    def test_engram_mem_save_credits_compounding(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "mcp__engram__mem_save", {
+            "topic_key": "sdd/foo/spec",
+        }), None, None)
+        acc.end_file()
+        self.assertEqual(acc.compounding_counter, 1)
+
+    def test_reads_and_deletes_and_context7_credit_zero(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        for i, (name, inp) in enumerate([
+            ("mcp__context7__resolve-library-id", {"query": "react"}),
+            ("mcp__engram__mem_context", {}),
+            ("mcp__engram__mem_current_project", {}),
+            ("mcp__engram__mem_review", {}),
+            ("mcp__mem0__search_memory", {"query": "x"}),
+            ("mcp__mem0__delete_memory", {"memory_id": "m1"}),
+        ]):
+            acc.observe(_fact_event(
+                "s1", f"2026-01-01T00:00:0{i}Z", name, inp), None, None)
+        acc.end_file()
+        self.assertEqual(acc.compounding_counter, 0)
+
+    def test_anti_saturation_target_less_repeat_calls_credit_once(self):
+        # Scenario A: 10 target-less mem_save calls in one session -> +1, not +10.
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        for i in range(10):
+            acc.observe(_fact_event(
+                "s1", f"2026-01-01T00:00:{i:02d}Z", "mcp__engram__mem_save", {}),
+                None, None)
+        acc.end_file()
+        self.assertEqual(acc.compounding_counter, 1)
+
+    def test_anti_saturation_same_target_repeat_calls_credit_once(self):
+        # Scenario A variant: same distinct target repeated -> +1, not +N.
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        for i in range(5):
+            acc.observe(_fact_event(
+                "s1", f"2026-01-01T00:00:{i:02d}Z", "mcp__engram__mem_save",
+                {"topic_key": "sdd/foo/spec"}), None, None)
+        acc.end_file()
+        self.assertEqual(acc.compounding_counter, 1)
+
+    def test_distinct_targets_each_credit(self):
+        # Scenario B: N distinct memory_id/topic_key values -> +N, not collapsed to 1.
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        for i in range(4):
+            acc.observe(_fact_event(
+                "s1", f"2026-01-01T00:00:0{i}Z", "mcp__engram__mem_save",
+                {"topic_key": f"sdd/foo/target-{i}"}), None, None)
+        acc.end_file()
+        self.assertEqual(acc.compounding_counter, 4)
+
+    def test_out_of_window_mcp_write_credits_nothing(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        since_dt = datetime(2026, 2, 1).astimezone()
+        acc.observe(_fact_event(
+            "s1", "2026-01-01T00:00:00Z", "mcp__mem0__add_memory",
+            {"memory_id": "m1"}), since_dt, None)
+        acc.end_file()
+        self.assertEqual(acc.compounding_counter, 0)
+
+    def test_filesystem_compounding_path_unaffected(self):
+        # Regression: filesystem compounding sites (memory/ path) still credit
+        # exactly as before, independent of any MCP knowledge-write.
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "Write", {
+            "file_path": "/repo/memory/note.md", "content": "a\nb",
+        }), None, None)
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:01Z", "mcp__mem0__add_memory", {
+            "memory_id": "m1",
+        }), None, None)
+        acc.end_file()
+        self.assertEqual(acc.compounding_counter, 2)
+
+    def test_tool_calls_total_unchanged_by_mcp_writes(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "mcp__mem0__add_memory", {
+            "memory_id": "m1",
+        }), None, None)
+        acc.end_file()
+        self.assertEqual(acc.tool_use_total, 1)
 
 
 if __name__ == "__main__":
