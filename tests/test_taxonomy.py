@@ -40,6 +40,21 @@ class TestClassifyChangeTarget(unittest.TestCase):
         self.assertEqual(classify_change_target("assets/logo.png"), "other")
         self.assertEqual(classify_change_target(""), "other")
 
+    def test_ephemeral_scratchpad_writes_are_not_code(self):
+        # The harness assigns a throwaway scratchpad under an ephemeral temp root; a code
+        # write there is discardable by construction and MUST NOT count toward change-session
+        # eligibility (C2). Classify by location before extension so a .ts/.py there is "other".
+        for path in (
+            "/private/tmp/claude-12345/myproject/8f0c-uuid/scratchpad/foo.ts",
+            "/tmp/claude-999/proj/abcd-uuid/scratchpad/bar.py",
+            "/var/folders/xy/abcd/T/claude-1/proj/uuid/scratchpad/baz.go",
+        ):
+            self.assertEqual(classify_change_target(path), "other", path)
+
+    def test_real_project_code_still_classifies_as_code(self):
+        # Control: a normal absolute checkout path is unaffected by the ephemeral filter.
+        self.assertEqual(classify_change_target("/Users/dev/repo/src/app.py"), "code")
+
 
 class TestIsPlanFileTarget(unittest.TestCase):
     def test_matches_claude_plans_markdown(self):

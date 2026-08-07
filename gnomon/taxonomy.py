@@ -254,15 +254,25 @@ def _norm_path_seps(path):
     return str(path or "").replace("\\", "/")
 
 
+# Ephemeral temp roots the harness assigns for throwaway scratchpads
+# (e.g. /private/tmp/claude-<pid>/<project>/<session-uuid>/scratchpad/). A write here is
+# discardable by construction, so it must NOT count as a real change target for C2
+# eligibility regardless of file extension. Location beats extension.
+_EPHEMERAL_PATH_RX = re.compile(r'^(?:/private)?/tmp/|^/var/folders/')
+
+
 def classify_change_target(path):
     """Classify a write target into code/test/doc/config/lockfile/other for
     change-session eligibility (C2) and file-type semantics (P1/P2 fixes).
     Order matters: lockfile and test checks run before the generic extension/
     name maps, since e.g. package-lock.json is a .json (config-looking) file
-    and foo.test.ts has a code extension."""
+    and foo.test.ts has a code extension. Ephemeral temp paths short-circuit to
+    "other" first: a scratchpad write is discardable, not a real code change."""
     if not path:
         return "other"
     path = _norm_path_seps(path)
+    if _EPHEMERAL_PATH_RX.match(path):
+        return "other"
     name = path.rsplit("/", 1)[-1]
     low = name.lower()
     if low in _LOCKFILE_NAMES:
