@@ -214,5 +214,31 @@ class TestHistoryFromQueryParsesCoverage(unittest.TestCase):
         self.assertEqual(result, {"state": "malformed", "months": []})
 
 
+class TestDictProtocolEmptyMonthsBackfill(unittest.TestCase):
+    """Dict protocol with state=valid but empty months list should trigger
+    a full initial backfill, not a single-month upload."""
+
+    def test_valid_empty_months_triggers_initial_backfill(self):
+        history = _history([])
+        result = plan_upload(TODAY, history, active_contract="8:8:8")
+        reasons = [r for _, r in result]
+        self.assertTrue(all(r == "initial" for r in reasons))
+        self.assertEqual(len(result), 12)
+
+    def test_valid_empty_months_backfill_respects_max_months(self):
+        history = _history([])
+        result = plan_upload(TODAY, history, active_contract="8:8:8", max_months=3)
+        reasons = [r for _, r in result]
+        self.assertTrue(all(r == "initial" for r in reasons))
+        self.assertEqual(len(result), 3)
+
+    def test_valid_empty_months_force_gives_force_reason(self):
+        history = _history([])
+        result = plan_upload(TODAY, history, force=True, active_contract="8:8:8")
+        reasons = [r for _, r in result]
+        self.assertTrue(all(r == "force" for r in reasons))
+        self.assertEqual(len(result), 12)
+
+
 if __name__ == "__main__":
     unittest.main()
