@@ -53,6 +53,18 @@ npx skills add OWNER/REPO -a claude-code
 **As part of a plugin.** If it ships inside one, install the plugin and read the update
 note below, which matters more than it looks.
 
+### Why it is not a plugin here
+
+The layout is already what a Claude Code plugin expects, so wrapping it needs one file:
+a `.claude-plugin/plugin.json` manifest beside this `skills/` directory.
+
+That wrapper was left out on purpose. A plugin buys marketplace distribution, versioning,
+and the ability to bundle agents, hooks and commands alongside a skill. This is a skill on
+its own, and a personal skill copied to `~/.claude/skills/` is already available in every
+project, so the wrapper would add ceremony without adding reach. Wrapping it would also
+mean turning its host repository into a plugin marketplace, which is a separate decision
+for whoever owns that repository.
+
 ## Use
 
 ```
