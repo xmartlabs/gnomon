@@ -531,17 +531,22 @@ def plan_upload(
     max_months:    hard cap; never return more than this many anchors.
     producible_coverage_for: optional `month_key -> (rank, transcripts)` callable
                    (see gnomon.coverage.COVERAGE_RANK) used ONLY to decide whether
-                   the previous month is worth a coverage-gated refresh. Omitting
-                   it (the default) is the SAFE choice: no refresh is ever
-                   triggered, so a caller that has not wired a real cheap
-                   pre-check (gnomon.coverage.probe_month over discover_sources)
-                   never spends an upload on a refresh it cannot justify.
+                   the previous month is worth a coverage-gated refresh. The
+                   transcript value is a local estimate and is used to derive the
+                   rank, but is not compared numerically with the server value:
+                   the local pre-check counts files by mtime while the server
+                   stores unique transcript sessions. Omitting it (the default)
+                   is the SAFE choice: no refresh is ever triggered, so a caller
+                   that has not wired a real cheap pre-check
+                   (gnomon.coverage.probe_month over discover_sources) never
+                   spends an upload on a refresh it cannot justify.
 
     reason ∈ {'force', 'initial', 'current', 'gap', 'refresh'}
       explicit valid history:
         previous entry missing                        → gap, then current
-        previous or producible coverage rank is None   → current only (incomparable)
-        producible (rank, transcripts) > stored         → refresh, then current
+        previous or producible coverage rank is None   → current only (incomparable; no refresh)
+        producible rank > stored rank                   → refresh, then current
+        equal ranks                                     → current only
         otherwise                                       → current only
       unavailable/legacy/malformed/valid-empty → current only
       force=True → full explicit backfill
@@ -583,23 +588,14 @@ def plan_upload(
         if previous_entry is None:
             return [(previous, "gap"), (current, "current")]
 
-        stored_rank, stored_transcripts = _stored_coverage_rank_and_transcripts(previous_entry)
+        stored_rank, _ = _stored_coverage_rank_and_transcripts(previous_entry)
         producible = producible_coverage_for(previous) if producible_coverage_for else (None, 0)
-        producible_rank, producible_transcripts = producible if producible else (None, 0)
+        producible_rank, _ = producible if producible else (None, 0)
 
         if stored_rank is not None and producible_rank is not None:
-            if (producible_rank, producible_transcripts) > (stored_rank, stored_transcripts):
+            if producible_rank > stored_rank:
                 return [(previous, "refresh"), (current, "current")]
             return [(current, "current")]
-
-        # No coverage comparison possible (legacy row without coverage field).
-        # Fall back to transcript count: if we can produce MORE transcripts
-        # locally than the server reported at upload time, refresh.  When
-        # totalSessions is absent (server hasn't been updated yet), treat it
-        # as incomparable and skip — defaulting to 0 would refresh every run.
-        stored_sessions = previous_entry.get("totalSessions")
-        if stored_sessions is not None and producible_transcripts > stored_sessions:
-            return [(previous, "refresh"), (current, "current")]
 
         return [(current, "current")]
 
