@@ -19,32 +19,29 @@ allowed-tools: Read Grep Glob
 Audits a score someone else's code computed about your work. It does not compute a score,
 propose formula changes, or rank anyone.
 
-**The anchor question survives the formula changing: does the number measure what this
-person actually does in their sessions?** Findings are shapes of infidelity, not a list of
-known bugs — that list expires every release.
+**Does the number measure what this person actually does in their sessions?** That question
+survives the formula changing. Findings are shapes of infidelity, not a list of known bugs;
+that list expires every release.
 
-**Paths.** Everything below is relative to this skill's directory. Resolve it once (the
-Skill tool result reports `Base directory for this skill:`) and prefix every script call.
-Never assume the working directory.
+**Paths.** Resolve this skill's directory once (the Skill tool result reports it) and prefix
+every script call. Never assume the working directory.
 
 <investigate_before_measuring>
-Never claim an axis is unfaithful without having run the measurement that shows it. Never
-cite a file:line you have not opened. Never report a number you did not produce in this
-run. If uncertain, run the check — an unrun check is not evidence.
+Never claim an axis is unfaithful without having run the measurement. Never cite a file:line
+you have not opened. Never report a number you did not produce in this run. An unrun check
+is not evidence.
 </investigate_before_measuring>
 
 ## Phase 0 — Anchor. Gate.
 
-1. Resolve the installed version of the scoring tool and compare it to
-   `references/known-state.md`. If it differs, say so and mark every finding as unvalidated
-   against that version.
+1. Resolve the tool's installed version; compare to `references/known-state.md`. If it
+   differs, mark every finding unvalidated against that version.
 2. Reproduce the published number on a **copy** of the checkout. For gnomon:
-   `--local --console --no-open --last=30d`; without the window flag the published pillars
-   are blended and will not reproduce.
-3. **If the base run does not reproduce the published number, stop and fix that first.**
-   The method is wrong before any finding is.
-4. Print the corpus fingerprint — files, lines, tool calls, sources, window — before any
-   other number. Counts compared across machines mean nothing without it.
+   `--local --console --no-open --last=30d`; without the window flag the pillars are
+   blended and will not reproduce.
+3. **If the base run does not reproduce it, stop.** The method is wrong before any finding.
+4. Print the corpus fingerprint (files, lines, tool calls, sources, window) before any other
+   number. Counts compared across machines mean nothing without it.
 
 ## Phase 1 — Per-axis fidelity
 
@@ -53,8 +50,8 @@ run. If uncertain, run the check — an unrun check is not evidence.
    the tool's own aggregates; a comparison against itself proves nothing.
 3. Report the gap **and its direction**: faithful, overestimates, underestimates.
 
-Use `scripts/` where a check exists. Where none does, reason from the axis's declared
-signals — that is the case scripts cannot cover.
+Use `scripts/` where a check exists. Where none does, reason from the declared signals:
+that is the case scripts cannot cover.
 
 ## Phase 2 — Structural shapes
 
@@ -87,21 +84,20 @@ nobody reopens them. Worked examples: `references/refutation.md`.
 
 ## Phase 4 — Emit
 
-Write `miraudit-<date>.json`, then generate `miraudit-<date>.md` **from it** — two
+Write `miraudit-<date>.json`, then render `miraudit-<date>.md` **from it**. Two
 hand-written sources drift, and a report that drifted from its evidence is the defect this
-skill exists to catch.
+skill catches.
 
 Report only findings carrying a reproducible command and a control that passed. **An empty
-`findings` with a populated `dismissed` is a good result** — a run that finds nothing has
-told you something.
+`findings` with a populated `dismissed` is a good result.**
 
 ## Never
 
 - **Write inside the audited repository.** Patch a throwaway copy.
-- **Ship a fixture without a control** — a case that must come out non-zero. Otherwise a
+- **Ship a fixture without a control**, a case that must come out non-zero. Otherwise a
   zero may just be a broken fixture.
-- **Invent a denominator.** Find their predicate and use it.
+- **Invent a denominator.** Find their predicate.
 - **Recommend an action whose only purpose is moving the number.**
 - **State a claim that could vary as a fact.** Mark it a hypothesis.
 - **Write "only", "never" or "always"** without running the enumeration that would falsify
-  it. Too expensive? Weaken the claim to what you checked.
+  it. Too expensive? Weaken the claim.
