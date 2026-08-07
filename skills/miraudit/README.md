@@ -78,10 +78,18 @@ The checks in `scripts/` also run standalone. Each one takes a read-only checkou
 scoring tool and reads your transcript corpus:
 
 ```bash
-python3 scripts/fidelity-audit.py --checkout /path/to/gnomon
+python3 scripts/fidelity-audit.py --checkout /path/to/gnomon \
+        --until 2026-08-06 --stats /path/to/anchored-run/stats.json
 python3 scripts/verification-reality.py --checkout /path/to/gnomon \
-        --repo /path/to/your/repo --ref main
+        --until 2026-08-06 --repo /path/to/your/repo --ref main
 ```
+
+`--until` is the report's own end date. Leave it out and the window ends now, which drifts
+every day and includes the audit session itself, so the checks describe different days than
+the report does.
+
+`--stats` points at the anchored run's `stats.json`. Axis scores are read from there and
+never baked into the scripts, so a header cannot go stale when an axis moves.
 
 They import the scoring tool's own predicates on purpose. A denominator you define yourself
 produces a number that is true and means nothing. That mistake is documented in

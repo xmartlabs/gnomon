@@ -25,7 +25,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import parse, header  # noqa: E402
 
-args, CUT = parse(__doc__.strip().splitlines()[0], extra={
+args, WINDOW = parse(__doc__.strip().splitlines()[0], extra={
     "--repo": dict(help="path to one git repo for the file-level co-located-test check"),
     "--ref": dict(default="HEAD",
                   help="git ref to resolve file existence against (default: HEAD)"),
@@ -84,7 +84,7 @@ for p in sorted(glob.glob(os.path.join(ROOT, "**", "*.jsonl"), recursive=True)):
                 dt = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
             except ValueError:
                 continue
-            if dt < CUT:
+            if dt not in WINDOW:
                 continue
             c = (e.get("message") or {}).get("content")
             if not isinstance(c, list):
@@ -125,7 +125,7 @@ for s in S.values():
         by_day_repo[k]["testrun"] += s["testrun"]
         by_day_repo[k]["push"] += s["push"]
 
-print(header(args, CUT))
+print(header(args, WINDOW))
 print("=" * 92)
 print("Sessions that edited code, by repository, with widening numerators")
 print("=" * 92)

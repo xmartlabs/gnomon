@@ -14,12 +14,36 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import parse, header  # noqa: E402
 
-args, CUT = parse(__doc__.strip().splitlines()[0])
+args, WINDOW = parse(__doc__.strip().splitlines()[0], extra={
+    "--stats": dict(help="stats.json from the anchored Phase 0 run. Without it the axis "
+                         "headers state no scores, because this script measures behaviour "
+                         "and must not assert numbers it did not read."),
+})
 REPO, ROOT = args.checkout, args.corpus
 from gnomon.taxonomy import (classify_mcp_subcategory, _is_compounding_path,  # noqa: E402
                              classify_change_target)
 
 WRITES = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
+
+# Axis scores are READ from the report, never baked in. An earlier version hardcoded one
+# person's values into the section headers, so the script asserted numbers it had not read
+# and went stale the moment an axis moved.
+_AXES = {}
+if args.stats:
+    with open(os.path.expanduser(args.stats)) as _f:
+        for _pillar in (json.load(_f).get("agentic") or {}).get("pillars") or []:
+            for _ax in _pillar.get("axes") or []:
+                _AXES[_ax.get("name")] = _ax
+
+
+def axis(name, note=""):
+    """'<name> <score>/<max>' from the report, or a marker when no report was given."""
+    a = _AXES.get(name)
+    if a is None:
+        head = f"{name} (score not read: pass --stats)"
+    else:
+        head = f"{name} {a.get('score')}/{a.get('weight', a.get('base_weight'))}"
+    return f"{head}{' ' + note if note else ''}"
 
 # --- per-session state, in order ---
 events = collections.defaultdict(list)   # sid -> [(order, name, input, is_error)]
@@ -44,7 +68,7 @@ for p in sorted(glob.glob(os.path.join(ROOT, "**", "*.jsonl"), recursive=True)):
                 dt = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
             except ValueError:
                 continue
-            if dt < CUT:
+            if dt not in WINDOW:
                 continue
             c = (e.get("message") or {}).get("content")
             if not isinstance(c, list):
@@ -60,7 +84,8 @@ for p in sorted(glob.glob(os.path.join(ROOT, "**", "*.jsonl"), recursive=True)):
 for sid in events:
     events[sid].sort(key=lambda x: x[0])
 
-print(f"repo: {REPO}\nwindow: last 30 days, {len(events)} sessions with activity\n")
+print(header(args, WINDOW))
+print(f"sessions with activity in window: {len(events)}\n")
 
 
 def is_knowledge_mcp(name):
@@ -74,7 +99,7 @@ def is_knowledge_mcp(name):
 
 # ============ A. Context Intelligence: is grounding judgment or boilerplate? ============
 print("=" * 78)
-print("A. Context Intelligence 20/20 (coverage = 1.00, 50/50 sessions 'grounded')")
+print("A. " + axis("Context Intelligence", "- is grounding judgment or boilerplate?"))
 print("=" * 78)
 pos_hist = collections.Counter()
 first_tool = collections.Counter()
@@ -110,10 +135,11 @@ for n, c in first_tool.most_common(5):
 # before retrying. tmp-and-recovery.py pairs tool_use with its tool_result and looks for
 # a later SUCCESSFUL retry of the same tool, which gives 0.90 against the 0.967 reported.
 # One question, one owner. See references/refutation.md, example flattering-operationalization.
-# ============ C. Discipline: 1474 'Task' calls ============
+
+# ============ C. Discipline: what the task-tool counter is made of ============
 print()
 print("=" * 78)
-print("C. Discipline 16.5/17 (task_tool_calls = 1474, 3.2x over target)")
+print("C. " + axis("Discipline", "- what the task-tool counter is made of"))
 print("=" * 78)
 task_names = collections.Counter()
 for sid, evs in events.items():
@@ -126,7 +152,8 @@ for n, c in task_names.most_common():
 # ============ D. ToolSearch: choice or harness requirement? ============
 print()
 print("=" * 78)
-print("D. ToolSearch = 543 (feeds Tool command AND Token economy, two pillars)")
+print("D. ToolSearch - one counter, two pillars: "
+      + axis("Tool command (MCP + CLI)") + " and " + axis("Token economy"))
 print("=" * 78)
 ts_kind = collections.Counter()
 for sid, evs in events.items():
@@ -141,7 +168,7 @@ for k, c in ts_kind.most_common():
 # ============ E. Compounding: what it is made of ============
 print()
 print("=" * 78)
-print("E. Compounding 20/20 (compounding_writes = 206)")
+print("E. " + axis("Compounding", "- what it is made of"))
 print("=" * 78)
 comp = collections.Counter()
 paths = collections.Counter()
@@ -165,7 +192,7 @@ for k, c in paths.most_common(6):
 # ============ F. Verification: verdict right even if the mechanism is not? ============
 print()
 print("=" * 78)
-print("F. Verification 20.1/35 - the mechanism is wrong, but the verdict?")
+print("F. " + axis("Verification", "- the mechanism is wrong, but the verdict?"))
 print("=" * 78)
 code_sess, tested_sess = set(), set()
 for sid, evs in events.items():
@@ -179,4 +206,10 @@ for sid, evs in events.items():
 print(f"  sessions that edited code         : {len(code_sess)}")
 print(f"  of those, ran tests               : {len(code_sess & tested_sess)}"
       f"  ({100*len(code_sess & tested_sess)//max(1,len(code_sess))}%)")
-print(f"  the axis scores                    : 20.1/35 = {100*20.1/35:.0f}% of the axis")
+_v = _AXES.get("Verification")
+if _v:
+    _sc, _mx = _v.get("score"), _v.get("weight", _v.get("base_weight"))
+    print(f"  the axis scores                   : {_sc}/{_mx} = "
+          f"{100*float(_sc)/float(_mx):.0f}% of its range")
+else:
+    print("  the axis scores                   : not read (pass --stats)")

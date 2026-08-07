@@ -15,7 +15,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import parse, header  # noqa: E402
 
-args, CUT = parse(__doc__.strip().splitlines()[0])
+args, WINDOW = parse(__doc__.strip().splitlines()[0])
 REPO, ROOT = args.checkout, args.corpus
 
 from gnomon.cli.accumulator import Accumulator  # noqa: E402

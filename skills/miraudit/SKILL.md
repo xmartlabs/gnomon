@@ -36,12 +36,20 @@ is not evidence.
 
 1. Resolve the tool's installed version; compare to `references/known-state.md`. If it
    differs, mark every finding unvalidated against that version.
-2. Reproduce the published number on a **copy** of the checkout. For gnomon:
-   `--local --console --no-open --last=30d`; without the window flag the pillars are
-   blended and will not reproduce.
+2. Reproduce the published number on a **copy** of the checkout, over **the report's own
+   window**. A rolling window is not it: `--last=30d` ends *now*, drifts every day, and
+   includes the audit session itself. Use the report's boundaries instead, e.g.
+   `--since=2026-07-07 --until=2026-08-06`.
 3. **If the base run does not reproduce it, stop.** The method is wrong before any finding.
 4. Print the corpus fingerprint (files, lines, tool calls, sources, window) before any other
    number. Counts compared across machines mean nothing without it.
+5. Pass that same `--until` to every check in `scripts/`. Without it they measure days the
+   report does not, and their numbers will not line up with it.
+
+**Invoking gnomon:** `python3 xl_ai_insights.py` is an import shim with no `__main__`
+guard. It exits 0, prints nothing, writes nothing, and looks like success. Use the module
+entry point on the copy: `uv run --project <copy> -- python -m gnomon.cli.insights --local
+--console --no-open --since=... --until=... --output-dir=<dir>`.
 
 ## Phase 1 — Per-axis fidelity
 
@@ -97,7 +105,14 @@ Report only findings carrying a reproducible command and a control that passed. 
 - **Ship a fixture without a control**, a case that must come out non-zero. Otherwise a
   zero may just be a broken fixture.
 - **Invent a denominator.** Find their predicate.
-- **Recommend an action whose only purpose is moving the number.**
+- **Recommend an action whose only purpose is moving the number.** Connecting MCP servers
+  you will not use, running commands to widen a distinct-CLI count, splitting one edit into
+  five because the counter increments per call: all of these raise the score and change
+  nothing about the work. The score is a description. An audit that teaches people to
+  decorate it has destroyed the thing it was measuring. If a suggestion only makes sense
+  because someone is watching the number, it does not go in the report.
+- **Report a finding as an improvement opportunity.** A gap between the number and the
+  behaviour is a defect in the measurement, not a to-do list for the person measured.
 - **State a claim that could vary as a fact.** Mark it a hypothesis.
 - **Write "only", "never" or "always"** without running the enumeration that would falsify
   it. Too expensive? Weaken the claim.

@@ -4,7 +4,13 @@ Every check needs the same two things: a checkout of the scoring tool to import 
 predicates from, and a corpus of agent transcripts to measure. Neither is guessable, so
 both are explicit.
 
-    python3 <check>.py --checkout /path/to/gnomon [--corpus ~/.claude/projects] [--days 30]
+    python3 <check>.py --checkout /path/to/gnomon [--corpus ~/.claude/projects]
+                       [--days 30] [--until YYYY-MM-DD]
+
+`--until` matters more than it looks. Without it the window ends NOW, which is a rolling
+window: it drifts every day, and it includes the audit session itself, since the corpus is
+being appended to while the check runs. A published report ends on a fixed boundary. Pass
+the report's own end date so the checks and the report describe the same days.
 
 Importing the tool's own predicates (`bash_runs_tests`, `classify_change_target`,
 `classify_mcp_subcategory`) is deliberate: a denominator you invent yourself produces a
@@ -27,6 +33,9 @@ def parse(description, extra=None):
                    help=f"transcript corpus root (default: {DEFAULT_CORPUS})")
     p.add_argument("--days", type=int, default=30,
                    help="window size in days (default: 30, matching the published report)")
+    p.add_argument("--until", default=None, metavar="YYYY-MM-DD",
+                   help="exclusive end of the window (default: now). Pass the published "
+                        "report's end date so the window is fixed, not rolling.")
     for flag, kwargs in (extra or {}).items():
         p.add_argument(flag, **kwargs)
     args = p.parse_args()
@@ -41,9 +50,30 @@ def parse(description, extra=None):
         sys.exit(f"error: corpus not found at {args.corpus}. Pass --corpus.")
 
     sys.path.insert(0, args.checkout)
-    cutoff = (datetime.datetime.now(datetime.timezone.utc)
-              - datetime.timedelta(days=args.days))
-    return args, cutoff
+    if args.until:
+        try:
+            end = datetime.datetime.strptime(args.until, "%Y-%m-%d").replace(
+                tzinfo=datetime.timezone.utc)
+        except ValueError:
+            sys.exit(f"error: --until must be YYYY-MM-DD, got {args.until!r}")
+    else:
+        end = datetime.datetime.now(datetime.timezone.utc)
+    args.window_end = end
+    return args, Window(end - datetime.timedelta(days=args.days), end)
+
+
+class Window:
+    """A half-open [start, end) window. Scripts filter with `in`, not with `<`.
+
+    An earlier version exposed only the start, so every check silently measured up to the
+    present moment and could not be pinned to a published report's window.
+    """
+
+    def __init__(self, start, end):
+        self.start, self.end = start, end
+
+    def __contains__(self, dt):
+        return dt is not None and self.start <= dt < self.end
 
 
 def require(module_attrs, hint):
@@ -62,7 +92,9 @@ def require(module_attrs, hint):
     return out
 
 
-def header(args, cutoff):
+def header(args, window):
+    kind = "fixed" if args.until else "rolling, ends now"
     return (f"checkout: {args.checkout}\n"
             f"corpus:   {args.corpus}\n"
-            f"window:   last {args.days} days (since {cutoff.date()})\n")
+            f"window:   {window.start.date()} -> {window.end.date()} "
+            f"({args.days}d, {kind})\n")

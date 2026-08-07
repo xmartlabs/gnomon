@@ -18,7 +18,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import parse, header  # noqa: E402
 
-args, CUT = parse(__doc__.strip().splitlines()[0])
+args, WINDOW = parse(__doc__.strip().splitlines()[0])
 REPO, ROOT = args.checkout, args.corpus
 from gnomon.taxonomy import classify_change_target  # noqa: E402
 
@@ -52,7 +52,7 @@ for p in sorted(glob.glob(os.path.join(ROOT, "**", "*.jsonl"), recursive=True)):
                 dt = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
             except ValueError:
                 continue
-            if dt < CUT:
+            if dt not in WINDOW:
                 continue
             c = (e.get("message") or {}).get("content")
             if not isinstance(c, list):
@@ -73,7 +73,7 @@ for p in sorted(glob.glob(os.path.join(ROOT, "**", "*.jsonl"), recursive=True)):
                     if u:
                         by_sess[u[0]].append((u[1], u[2], not b.get("is_error")))
 
-print(header(args, CUT))
+print(header(args, WINDOW))
 
 # ---------- 1. scratchpad ----------
 print("=" * 80)
