@@ -543,6 +543,101 @@ class TestContractAwareHistory(unittest.TestCase):
             [("2025-12", "refresh"), ("2026-01", "current")],
         )
 
+    def test_legacy_entry_with_total_sessions_stays_current_only(self):
+        history = {"state": "valid", "months": [
+            {"monthKey": "2025-12", "uploadedAt": 1, "totalSessions": 50},
+        ]}
+        self.assertEqual(
+            plan_upload(
+                self.TODAY,
+                history,
+                active_contract=self.CONTRACT,
+                producible_coverage_for=lambda mk: (
+                    COVERAGE_RANK["complete"], 51
+                ),
+            ),
+            [("2026-01", "current")],
+        )
+
+    def test_repeated_legacy_entry_plan_is_idempotent(self):
+        history = {"state": "valid", "months": [
+            {"monthKey": "2025-12", "uploadedAt": 1, "totalSessions": 50},
+        ]}
+        producible = lambda mk: (COVERAGE_RANK["complete"], 51)  # noqa: E731
+
+        first_run = plan_upload(
+            self.TODAY,
+            history,
+            active_contract=self.CONTRACT,
+            producible_coverage_for=producible,
+        )
+        second_run = plan_upload(
+            self.TODAY,
+            history,
+            active_contract=self.CONTRACT,
+            producible_coverage_for=producible,
+        )
+
+        self.assertEqual(first_run, [("2026-01", "current")])
+        self.assertEqual(second_run, first_run)
+
+    def test_coverage_with_lower_rank_still_refreshes(self):
+        history = {"state": "valid", "months": [
+            {"monthKey": "2025-12", "uploadedAt": 1,
+             "coverage": {"flag": "partial", "indexed": 50, "transcripts": 50}},
+        ]}
+        self.assertEqual(
+            plan_upload(
+                self.TODAY,
+                history,
+                active_contract=self.CONTRACT,
+                producible_coverage_for=lambda mk: (
+                    COVERAGE_RANK["complete"], 50
+                ),
+            ),
+            [("2025-12", "refresh"), ("2026-01", "current")],
+        )
+
+    def test_coverage_with_same_rank_and_transcripts_stays_current_only(self):
+        history = {"state": "valid", "months": [
+            {"monthKey": "2025-12", "uploadedAt": 1,
+             "coverage": {"flag": "complete", "indexed": 50, "transcripts": 50}},
+        ]}
+        self.assertEqual(
+            plan_upload(
+                self.TODAY,
+                history,
+                active_contract=self.CONTRACT,
+                producible_coverage_for=lambda mk: (
+                    COVERAGE_RANK["complete"], 50
+                ),
+            ),
+            [("2026-01", "current")],
+        )
+
+    def test_same_coverage_rank_with_different_transcript_estimate_stays_current_only(self):
+        """The local pre-check count is mtime-based, not server session-based."""
+        history = {"state": "valid", "months": [
+            {"monthKey": "2025-12", "uploadedAt": 1,
+             "coverage": {"flag": "complete", "indexed": 24, "transcripts": 733}},
+        ]}
+        producible = lambda mk: (COVERAGE_RANK["complete"], 1809)  # noqa: E731
+        first_run = plan_upload(
+            self.TODAY,
+            history,
+            active_contract=self.CONTRACT,
+            producible_coverage_for=producible,
+        )
+        second_run = plan_upload(
+            self.TODAY,
+            history,
+            active_contract=self.CONTRACT,
+            producible_coverage_for=producible,
+        )
+
+        self.assertEqual(first_run, [("2026-01", "current")])
+        self.assertEqual(second_run, first_run)
+
     def test_force_preserves_explicit_backfill(self):
         history = {"state": "unavailable", "months": []}
         result = months_to_upload(
