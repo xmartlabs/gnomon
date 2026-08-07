@@ -44,11 +44,13 @@ Sí sirve como feedback a bajo costo, con tres condiciones:
   pagás, no qué tan bien trabajás. Sesgo directo contra cuentas de USD 20.
 - **Model mix** — mejoró (ahora ve GPT vía Codex), pero sigue premiando diversidad de
   modelos, que es función del presupuesto/acceso, no de skill.
-- **Token economy (ToolSearch)** — señal exclusiva de Claude Code. No lee 0 para el
-  resto: si ninguna fuente puede registrarla el término se descarta y se renormaliza.
-  Pero con Claude presente el término queda vivo para todo el corpus y su denominador
-  incluye las llamadas de fuentes que nunca podrían registrarla — sesgo conocido y
-  preexistente, ver "Rate denominators" abajo.
+- **Token economy** — desde v17 se puntúa solo por CLI-share. El término ToolSearch se
+  eliminó del scoring (era ~94% carga determinista de herramientas `select:` forzada por
+  el harness de deferred-tools, no una virtud del desarrollador, y su remanente deliberado
+  es demasiado escaso para calibrarlo como tasa). El conteo crudo `toolsearch_calls` se
+  sigue publicando como diagnóstico en el eje Tool command, pero ya no puntúa. Esto elimina
+  el sesgo conocido en el que, con Claude presente, el término quedaba vivo para todo el
+  corpus e incluía llamadas de fuentes que nunca podrían registrarlo.
 
 ## Sesgos conocidos (post-fixes de hoy)
 
@@ -99,7 +101,7 @@ como ranking — mitigado usando solo las métricas medidas.
 
 ## Rate denominators
 
-AQ's rate terms (test runs, review skills, ToolSearch, task planning, skills,
+AQ's rate terms (test runs, review skills, task planning, skills,
 compounding writes) are `count / volume.tool_calls_total`, per TOOL CALL, not per
 session. One session is not one unit of work across tools: on a measured corpus, Claude
 sessions averaged ~68 tool calls and ~37 active minutes while one-shot `codex exec`
@@ -121,8 +123,11 @@ collapse across six terms.
 **Known limitation.** The denominator is every tool call in the corpus, including calls
 from a source that could never emit the signal being scored, because `available_caps` is
 a union: one capable source keeps a term live for all of it. Adding an OpenCode corpus
-beside Claude lowers ToolSearch-based axes with zero behavior change (measured: Token
-economy 1.00 -> 0.63). This predates the per-tool-call change and is unchanged by it.
+beside Claude therefore dilutes any capability-gated rate term (e.g. the Skill fluency and
+Discipline skill/task-tool terms) with zero behavior change. This predates the per-tool-call
+change and is unchanged by it. ToolSearch used to be the sharpest example of this bias
+(Token economy 1.00 -> 0.63); v17 removed its rate term from scoring, so it no longer
+contributes to the limitation.
 
 ## Disponibilidad de Planning practice
 

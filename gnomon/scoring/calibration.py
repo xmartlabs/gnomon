@@ -13,9 +13,10 @@ from gnomon.scoring import aq
 CALIBRATION_CONSTANT_NAMES = (
     # scoring window: it determines the corpus all window-sensitive inputs score.
     "DEFAULT_SCORING_WINDOW_MONTHS",
-    # rate targets -- the six that share the tool_calls_total denominator
+    # rate targets -- the five that share the tool_calls_total denominator. (v17 removed
+    # TOOLSEARCH_PER_CALL_TARGET: its rate term left both scoring axes, so the constant left
+    # this set too -- the source of 17:17:17's genuinely new fingerprint.)
     "SKILLS_TOTAL_PER_CALL_TARGET",
-    "TOOLSEARCH_PER_CALL_TARGET",
     "TASK_CALLS_PER_CALL_TARGET",
     "TEST_RUNS_PER_CALL_TARGET",
     "REVIEW_SKILLS_PER_CALL_TARGET",
@@ -129,6 +130,12 @@ CALIBRATION_FINGERPRINTS = {
     # PER_CALL_TARGET (COMPOUNDING_WRITES_PER_CALL_TARGET stays 0.0018), weight, or
     # denominator moved -- so the digest is unchanged from 13:13:13/14:14:14/15:15:15.
     "16:16:16": "94f38d0963b1b195",
+    # v17 (drop toolsearch rate term from Tool command + Token economy): a REAL score delta
+    # (both axes renormalize) AND a REAL calibration delta -- TOOLSEARCH_PER_CALL_TARGET was
+    # removed from CALIBRATION_CONSTANT_NAMES, so a registered constant genuinely left the
+    # fingerprinted set. Unlike 14/15/16 the digest therefore CHANGES (a unique new value),
+    # and 17:17:17 is deliberately NOT in ZERO_CALIBRATION_DELTA_CONTRACT_IDS.
+    "17:17:17": "dc99dad882305bb6",
 }
 
 # Contract IDs whose fingerprint is a DOCUMENTED, deliberate duplicate of the contract

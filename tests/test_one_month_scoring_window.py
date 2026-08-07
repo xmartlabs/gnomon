@@ -357,8 +357,11 @@ class TestPartialScoringIsDisclosed(unittest.TestCase):
                      for axis in pillar["axes"] if "partial_terms" in axis}
         dropped = {name for pillar in profile["pillars"]
                    for name in pillar.get("not_applicable", [])}
-        wsum_axes = {"Skill fluency", "Tool command (MCP + CLI)", "Discipline",
-                     "Verification", "Compounding", "Token economy", "Orchestration"}
+        # Tool command and Token economy are intentionally absent: v17 dropped the only
+        # rate/cap term either axis carried (toolsearch), so both are now pure absolute-count
+        # wsum axes that can never lose a term and thus never disclose or drop.
+        wsum_axes = {"Skill fluency", "Discipline",
+                     "Verification", "Compounding", "Orchestration"}
         for name in wsum_axes:
             with self.subTest(axis=name):
                 self.assertTrue(

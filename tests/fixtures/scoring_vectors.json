@@ -7,7 +7,7 @@
           "pillars": [
             {
               "name": "Breadth",
-              "score": 77.6,
+              "score": 75.6,
               "weight": 30
             },
             {
@@ -26,7 +26,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "16:16:16",
+          "score_contract_id": "17:17:17",
           "tier": "Advanced"
         },
         "archetype": {
@@ -339,15 +339,13 @@
                   {
                     "base_weight": 28,
                     "name": "Tool command (MCP + CLI)",
-                    "normalized_score": 0.716666666666667,
-                    "score": 20.1,
+                    "normalized_score": 0.645833333333333,
+                    "score": 18.1,
                     "signals": {
                       "clis": 25,
                       "mcp_servers": 10,
                       "tool_calls": 4000,
-                      "toolsearch": 150,
-                      "toolsearch_per_call": 0.0375,
-                      "toolsearch_per_call_target": 0.0075
+                      "toolsearch_calls": 150
                     },
                     "weight": 28
                   },
@@ -374,7 +372,7 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 77.6,
+                "score": 75.6,
                 "weight": 30
               },
               {
@@ -488,10 +486,7 @@
                     "score": 50.0,
                     "signals": {
                       "cli_share": 0.79,
-                      "tool_calls": 4000,
-                      "toolsearch": 150,
-                      "toolsearch_per_call": 0.0375,
-                      "toolsearch_per_call_target": 0.0075
+                      "tool_calls": 4000
                     },
                     "weight": 50
                   }
@@ -501,7 +496,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "16:16:16",
+            "score_contract_id": "17:17:17",
             "steering_leverage": {
               "actions_per_prompt": 13.0,
               "state": "withheld_unvalidated_band"
@@ -911,7 +906,7 @@
         }
       }
     },
-    "scoring_inputs_version": 16
+    "scoring_inputs_version": 17
   },
   {
     "expected": {
@@ -940,7 +935,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "16:16:16",
+          "score_contract_id": "17:17:17",
           "tier": "Apprentice"
         },
         "archetype": {
@@ -1257,19 +1252,12 @@
                     "base_weight": 28,
                     "name": "Tool command (MCP + CLI)",
                     "normalized_score": 0.166666666666667,
-                    "partial_terms": {
-                      "scored": 2,
-                      "total": 3,
-                      "weight_scored": 0.8
-                    },
                     "score": 4.7,
                     "signals": {
                       "clis": 8,
                       "mcp_servers": 2,
                       "tool_calls": 500,
-                      "toolsearch": 0,
-                      "toolsearch_per_call": 0.0,
-                      "toolsearch_per_call_target": 0.0075
+                      "toolsearch_calls": 0
                     },
                     "weight": 28
                   },
@@ -1394,18 +1382,10 @@
                     "base_weight": 50,
                     "name": "Token economy",
                     "normalized_score": 0.952380952380952,
-                    "partial_terms": {
-                      "scored": 1,
-                      "total": 2,
-                      "weight_scored": 0.5
-                    },
                     "score": 95.2,
                     "signals": {
                       "cli_share": 0.67,
-                      "tool_calls": 500,
-                      "toolsearch": 0,
-                      "toolsearch_per_call": 0.0,
-                      "toolsearch_per_call_target": 0.0075
+                      "tool_calls": 500
                     },
                     "weight": 100
                   }
@@ -1418,7 +1398,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "16:16:16",
+            "score_contract_id": "17:17:17",
             "steering_leverage": {
               "actions_per_prompt": 6.0,
               "state": "withheld_unvalidated_band"
@@ -1746,7 +1726,7 @@
         }
       }
     },
-    "scoring_inputs_version": 16
+    "scoring_inputs_version": 17
   },
   {
     "expected": {
@@ -1756,7 +1736,7 @@
           "pillars": [
             {
               "name": "Breadth",
-              "score": 71.2,
+              "score": 69.4,
               "weight": 30
             },
             {
@@ -1775,7 +1755,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "16:16:16",
+          "score_contract_id": "17:17:17",
           "tier": "Advanced"
         },
         "archetype": {
@@ -2089,15 +2069,13 @@
                   {
                     "base_weight": 28,
                     "name": "Tool command (MCP + CLI)",
-                    "normalized_score": 0.716666666666667,
-                    "score": 20.1,
+                    "normalized_score": 0.645833333333333,
+                    "score": 18.1,
                     "signals": {
                       "clis": 25,
                       "mcp_servers": 10,
                       "tool_calls": 4000,
-                      "toolsearch": 150,
-                      "toolsearch_per_call": 0.0375,
-                      "toolsearch_per_call_target": 0.0075
+                      "toolsearch_calls": 150
                     },
                     "weight": 28
                   },
@@ -2124,7 +2102,7 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 77.6,
+                "score": 75.6,
                 "weight": 30
               },
               {
@@ -2238,10 +2216,7 @@
                     "score": 50.0,
                     "signals": {
                       "cli_share": 0.79,
-                      "tool_calls": 4000,
-                      "toolsearch": 150,
-                      "toolsearch_per_call": 0.0375,
-                      "toolsearch_per_call_target": 0.0075
+                      "tool_calls": 4000
                     },
                     "weight": 50
                   }
@@ -2251,7 +2226,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "16:16:16",
+            "score_contract_id": "17:17:17",
             "steering_leverage": {
               "actions_per_prompt": 13.0,
               "state": "withheld_unvalidated_band"
@@ -2561,19 +2536,12 @@
                     "base_weight": 28,
                     "name": "Tool command (MCP + CLI)",
                     "normalized_score": 0.166666666666667,
-                    "partial_terms": {
-                      "scored": 2,
-                      "total": 3,
-                      "weight_scored": 0.8
-                    },
                     "score": 4.7,
                     "signals": {
                       "clis": 8,
                       "mcp_servers": 2,
                       "tool_calls": 500,
-                      "toolsearch": 0,
-                      "toolsearch_per_call": 0.0,
-                      "toolsearch_per_call_target": 0.0075
+                      "toolsearch_calls": 0
                     },
                     "weight": 28
                   },
@@ -2698,18 +2666,10 @@
                     "base_weight": 50,
                     "name": "Token economy",
                     "normalized_score": 0.952380952380952,
-                    "partial_terms": {
-                      "scored": 1,
-                      "total": 2,
-                      "weight_scored": 0.5
-                    },
                     "score": 95.2,
                     "signals": {
                       "cli_share": 0.67,
-                      "tool_calls": 500,
-                      "toolsearch": 0,
-                      "toolsearch_per_call": 0.0,
-                      "toolsearch_per_call_target": 0.0075
+                      "tool_calls": 500
                     },
                     "weight": 100
                   }
@@ -2722,7 +2682,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "16:16:16",
+            "score_contract_id": "17:17:17",
             "steering_leverage": {
               "actions_per_prompt": 6.0,
               "state": "withheld_unvalidated_band"
@@ -3200,17 +3160,17 @@
         }
       }
     },
-    "scoring_inputs_version": 16
+    "scoring_inputs_version": 17
   },
   {
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 80,
+          "aq_0_100": 79,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 77.6,
+              "score": 75.6,
               "weight": 30
             },
             {
@@ -3229,11 +3189,11 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "16:16:16",
+          "score_contract_id": "17:17:17",
           "tier": "Advanced"
         },
         "archetype": {
-          "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is craft \u2014 that's where the next gain is.",
+          "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is breadth \u2014 that's where the next gain is.",
           "title": "Advanced"
         },
         "canonical_aq": "profile.aq",
@@ -3495,7 +3455,7 @@
       "by_source": {
         "claude-boundary": {
           "aq": {
-            "aq_0_100": 80,
+            "aq_0_100": 79,
             "mcp_vs_cli": {
               "cli_calls": 1500,
               "cli_distinct": 25,
@@ -3542,15 +3502,13 @@
                   {
                     "base_weight": 28,
                     "name": "Tool command (MCP + CLI)",
-                    "normalized_score": 0.716666666666667,
-                    "score": 20.1,
+                    "normalized_score": 0.645833333333333,
+                    "score": 18.1,
                     "signals": {
                       "clis": 25,
                       "mcp_servers": 10,
                       "tool_calls": 4000,
-                      "toolsearch": 150,
-                      "toolsearch_per_call": 0.0375,
-                      "toolsearch_per_call_target": 0.0075
+                      "toolsearch_calls": 150
                     },
                     "weight": 28
                   },
@@ -3577,7 +3535,7 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 77.6,
+                "score": 75.6,
                 "weight": 30
               },
               {
@@ -3691,10 +3649,7 @@
                     "score": 50.0,
                     "signals": {
                       "cli_share": 0.79,
-                      "tool_calls": 4000,
-                      "toolsearch": 150,
-                      "toolsearch_per_call": 0.0375,
-                      "toolsearch_per_call_target": 0.0075
+                      "tool_calls": 4000
                     },
                     "weight": 50
                   }
@@ -3704,7 +3659,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "16:16:16",
+            "score_contract_id": "17:17:17",
             "steering_leverage": {
               "actions_per_prompt": 13.0,
               "state": "withheld_unvalidated_band"
@@ -3716,7 +3671,7 @@
             }
           },
           "archetype": {
-            "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is craft \u2014 that's where the next gain is.",
+            "quote": "You operate at the top \u2014 broad machinery, well used. Your thinnest axis is breadth \u2014 that's where the next gain is.",
             "title": "Advanced"
           },
           "growth_edges": [
@@ -4099,7 +4054,7 @@
         }
       }
     },
-    "scoring_inputs_version": 16
+    "scoring_inputs_version": 17
   },
   {
     "expected": {
@@ -4128,7 +4083,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "16:16:16",
+          "score_contract_id": "17:17:17",
           "tier": "Novice"
         },
         "archetype": {
@@ -4446,9 +4401,7 @@
                       "clis": 0,
                       "mcp_servers": 0,
                       "tool_calls": 0,
-                      "toolsearch": 0,
-                      "toolsearch_per_call": null,
-                      "toolsearch_per_call_target": 0.0075
+                      "toolsearch_calls": 0
                     },
                     "weight": 28
                   },
@@ -4576,10 +4529,7 @@
                     "score": 0.0,
                     "signals": {
                       "cli_share": 0,
-                      "tool_calls": 0,
-                      "toolsearch": 0,
-                      "toolsearch_per_call": null,
-                      "toolsearch_per_call_target": 0.0075
+                      "tool_calls": 0
                     },
                     "weight": 50
                   }
@@ -4589,7 +4539,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "16:16:16",
+            "score_contract_id": "17:17:17",
             "steering_leverage": {
               "actions_per_prompt": 0,
               "state": "withheld_unvalidated_band"
@@ -4925,7 +4875,7 @@
         }
       }
     },
-    "scoring_inputs_version": 16
+    "scoring_inputs_version": 17
   },
   {
     "bucket_metadata": [
@@ -5086,11 +5036,11 @@
     "expected": {
       "aggregate": {
         "aq_diagnostic": {
-          "aq_0_100": 84,
+          "aq_0_100": 83,
           "pillars": [
             {
               "name": "Breadth",
-              "score": 77.6,
+              "score": 75.6,
               "weight": 30
             },
             {
@@ -5109,7 +5059,7 @@
               "weight": 15
             }
           ],
-          "score_contract_id": "16:16:16",
+          "score_contract_id": "17:17:17",
           "tier": "Advanced"
         },
         "archetype": {
@@ -5375,11 +5325,11 @@
       "by_source": {
         "claude": {
           "aq": {
-            "aq_0_100": 84,
+            "aq_0_100": 83,
             "blend": {
               "buckets": [
                 {
-                  "component_aq": 88,
+                  "component_aq": 87,
                   "configured_weight": 0.65,
                   "day_bounds": {
                     "lower": 0,
@@ -5389,14 +5339,14 @@
                   "id": "recent_30d"
                 },
                 {
-                  "component_aq": 77,
+                  "component_aq": 76,
                   "configured_weight": 0.35,
                   "day_bounds": null,
                   "effective_weight": 0.35,
                   "id": "full_window"
                 }
               ],
-              "full_aq": 77
+              "full_aq": 76
             },
             "mcp_vs_cli": {
               "cli_calls": 1500,
@@ -5517,44 +5467,38 @@
                       {
                         "effective_weight": 0.65,
                         "id": "recent_30d",
-                        "normalized_score": 0.716666666666667,
+                        "normalized_score": 0.645833333333333,
                         "partial_terms": null,
-                        "score": 20.1,
+                        "score": 18.1,
                         "signals": {
                           "clis": 25,
                           "mcp_servers": 10,
                           "tool_calls": 4000,
-                          "toolsearch": 150,
-                          "toolsearch_per_call": 0.0375,
-                          "toolsearch_per_call_target": 0.0075
+                          "toolsearch_calls": 150
                         }
                       },
                       {
                         "effective_weight": 0.35,
                         "id": "full_window",
-                        "normalized_score": 0.716666666666667,
+                        "normalized_score": 0.645833333333333,
                         "partial_terms": null,
-                        "score": 20.1,
+                        "score": 18.1,
                         "signals": {
                           "clis": 25,
                           "mcp_servers": 10,
                           "tool_calls": 4000,
-                          "toolsearch": 150,
-                          "toolsearch_per_call": 0.0375,
-                          "toolsearch_per_call_target": 0.0075
+                          "toolsearch_calls": 150
                         }
                       }
                     ],
                     "name": "Tool command (MCP + CLI)",
-                    "normalized_score": 0.716666666666667,
-                    "score": 20.1,
+                    "normalized_score": 0.645833333333333,
+                    "score": 18.1,
                     "signals": {
                       "clis": 25,
                       "mcp_servers": 10,
                       "tool_calls": 4000,
-                      "toolsearch": 150,
-                      "toolsearch_per_call": 0.0375,
-                      "toolsearch_per_call_target": 0.0075
+                      "toolsearch_calls": 150
                     },
                     "weight": 28
                   },
@@ -5623,7 +5567,7 @@
                   }
                 ],
                 "name": "Breadth",
-                "score": 77.6,
+                "score": 75.6,
                 "weight": 30
               },
               {
@@ -5923,10 +5867,7 @@
                         "score": 50.0,
                         "signals": {
                           "cli_share": 0.79,
-                          "tool_calls": 4000,
-                          "toolsearch": 150,
-                          "toolsearch_per_call": 0.0375,
-                          "toolsearch_per_call_target": 0.0075
+                          "tool_calls": 4000
                         }
                       },
                       {
@@ -5937,10 +5878,7 @@
                         "score": 50.0,
                         "signals": {
                           "cli_share": 0.79,
-                          "tool_calls": 4000,
-                          "toolsearch": 150,
-                          "toolsearch_per_call": 0.0375,
-                          "toolsearch_per_call_target": 0.0075
+                          "tool_calls": 4000
                         }
                       }
                     ],
@@ -5949,10 +5887,7 @@
                     "score": 50.0,
                     "signals": {
                       "cli_share": 0.79,
-                      "tool_calls": 4000,
-                      "toolsearch": 150,
-                      "toolsearch_per_call": 0.0375,
-                      "toolsearch_per_call_target": 0.0075
+                      "tool_calls": 4000
                     },
                     "weight": 50
                   }
@@ -5962,7 +5897,7 @@
                 "weight": 15
               }
             ],
-            "score_contract_id": "16:16:16",
+            "score_contract_id": "17:17:17",
             "steering_leverage": {
               "actions_per_prompt": 13.0,
               "state": "withheld_unvalidated_band"
@@ -6365,6 +6300,6 @@
         }
       }
     },
-    "scoring_inputs_version": 16
+    "scoring_inputs_version": 17
   }
 ]

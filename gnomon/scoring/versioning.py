@@ -1,4 +1,18 @@
-# Current scoring contract (16:16:16).
+# Current scoring contract (17:17:17).
+#
+# v17 removes the `toolsearch_calls` per-tool-call rate term from BOTH scoring axes it fed
+# -- Tool command (weight .20) and Token economy (weight .50). ToolSearch is a
+# Claude-Code-only signal that is ~94% `select:`-prefixed deterministic tool-loading the
+# deferred-tool harness forces (not a developer virtue), and its deliberate remainder is too
+# sparse to calibrate as a per-tool-call rate. The existing wsum renormalization absorbs the
+# dropped weight (Tool command -> mcp .5 / cli .5; Token economy -> cli_share at full weight),
+# exactly as it already does for non-Claude sources that cannot record ToolSearch. The raw
+# `toolsearch_calls` field stays emitted by the accumulator (unchanged) and is republished as
+# a non-scored diagnostic on the Tool command axis. This is a REAL score delta (Tool command
+# and Token economy renormalize -> AQ moves) AND -- unlike v14/v15/v16 -- a REAL calibration
+# delta: TOOLSEARCH_PER_CALL_TARGET leaves CALIBRATION_CONSTANT_NAMES, so the fingerprint
+# genuinely changes. 17:17:17 therefore carries a NEW fingerprint and is NOT in
+# ZERO_CALIBRATION_DELTA_CONTRACT_IDS -- see calibration.py's CALIBRATION_FINGERPRINTS.
 #
 # v16 credits the Compounding axis for MCP knowledge-write persistence calls
 # (mem0 add_memory/update_memory, engram mem_save/mem_update) that were
@@ -64,9 +78,9 @@
 #
 # Contract IDs are comparison boundaries. Calibration fingerprints are append-only:
 # a score-affecting change requires a new ID and fingerprint entry.
-SCORING_INPUTS_VERSION = 16
-AQ_VERSION = 16
-GSTACK_VERSION = 16
+SCORING_INPUTS_VERSION = 17
+AQ_VERSION = 17
+GSTACK_VERSION = 17
 # First input version with deduplicated per-session skill counters. Earlier
 # payloads use different persisted quantities and cannot be replayed against these targets.
 SKILL_DEDUP_INPUTS_VERSION = 8

@@ -1982,7 +1982,6 @@ class TestToolsDiagnostic(unittest.TestCase):
                 {"name": "Breadth", "axes": [
                     {"name": "Discipline", "signals": {"task_tool_calls": 50}},
                     {"name": "Orchestration", "signals": {"orchestratable_sessions": 200}},
-                    {"name": "Tool command", "signals": {"toolsearch": 30}},
                 ]},
                 {"name": "Craft", "axes": [
                     {"name": "Verification", "signals": {"test_runs": 150, "review_skills": 20,
@@ -1998,7 +1997,6 @@ class TestToolsDiagnostic(unittest.TestCase):
         self.assertEqual(rec["tool_calls"], 10000)
         self.assertEqual(rec["rates"]["task_tool_calls"], 0.005)   # 50/10000
         self.assertEqual(rec["counts"]["orchestratable"], 200)     # absolute, not a rate
-        self.assertEqual(rec["rates"]["toolsearch_calls"], 0.003)  # 30/10000
         self.assertEqual(rec["counts"]["review_skills"], 20)
         self.assertTrue(any("task_tool_calls" in l for l in lines))
 

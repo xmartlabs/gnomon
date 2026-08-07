@@ -24,7 +24,7 @@ from gnomon.scoring.gstack import compute_scores
 from gnomon.scoring.aq import (
     COMPOUNDING_WRITES_PER_CALL_TARGET, REVIEW_SKILLS_PER_CALL_TARGET,
     SKILLS_TOTAL_PER_CALL_TARGET, TASK_CALLS_PER_CALL_TARGET,
-    TEST_RUNS_PER_CALL_TARGET, TOOLSEARCH_PER_CALL_TARGET, compute_aq,
+    TEST_RUNS_PER_CALL_TARGET, compute_aq,
 )
 from gnomon.scoring.archetype import pick_archetype
 from gnomon.scoring.inputs import SCORING_INPUTS_VERSION, build_scoring_inputs
@@ -39,13 +39,13 @@ from gnomon.output.profile_html import write_profile_html
 # Tool metrics surfaced by --tools: (label, signal key in stats['agentic'], target, is_rate).
 # The rate-scored metrics import scoring/aq.py's PER-TOOL-CALL targets rather than restating
 # them, and are divided by the same tool-call denominator AQ divides by, so the % column is
-# the number AQ actually scored — not a parallel reading that can drift from it. The two
-# ToolSearch call sites in AQ share one target, hence one row here. knowledge_calls is a
-# self-check diagnostic only (it feeds the Research signature move, not an AQ axis) and
+# the number AQ actually scored — not a parallel reading that can drift from it. ToolSearch
+# is no longer listed here: v17 removed its rate term from AQ, so it has no scored %; the
+# raw count stays a published diagnostic on the Tool command axis instead. knowledge_calls is
+# a self-check diagnostic only (it feeds the Research signature move, not an AQ axis) and
 # orchestratable is a session count, so both are reported absolute (is_rate=False).
 _TOOLS_DIAG = [
     ("task_tool_calls", "task_tool_calls", TASK_CALLS_PER_CALL_TARGET, True),
-    ("toolsearch_calls", "toolsearch", TOOLSEARCH_PER_CALL_TARGET, True),
     ("skills_total", "skills_total", SKILLS_TOTAL_PER_CALL_TARGET, True),
     ("review_skills", "review_skills", REVIEW_SKILLS_PER_CALL_TARGET, True),
     ("shell_test_runs", "test_runs", TEST_RUNS_PER_CALL_TARGET, True),

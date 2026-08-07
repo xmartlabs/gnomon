@@ -115,8 +115,8 @@ refused instead of being pooled with genuine one-month scores.
 
 ## Scoring contract
 
-Current runtime contract: **scoring inputs version 16**, **AQ version 16**, and
-**GStack version 16** (`score_contract_id = 16:16:16`). Compare scores only when
+Current runtime contract: **scoring inputs version 17**, **AQ version 17**, and
+**GStack version 17** (`score_contract_id = 17:17:17`). Compare scores only when
 the contract IDs match.
 
 `Workflow` dispatch fan-out is sourced from the real dispatched-agent transcripts
@@ -161,7 +161,7 @@ multi-source replay reports its exactness and source-profile replay status. Uplo
 are checked before POST against the 900 KiB ingest limit and fail rather than being
 truncated.
 
-Rate terms (test runs, review skills, ToolSearch, task planning, skills,
+Rate terms (test runs, review skills, task planning, skills,
 compounding writes) are scored **per tool call**, not per session. One session is
 not one unit of work across tools: a batch of 2-minute one-shot CLI sessions
 otherwise acts as pure denominator and collapses the rate of a habit you actually
@@ -324,9 +324,9 @@ gnomon is multi-source, and metrics are provider-agnostic where possible:
 
 - **Provider-agnostic where telemetry allows:** git churn, MCP/CLI tool command, grounding, recovery, steering leverage, and compounding (matches `CLAUDE.md` / `AGENTS.md` / `GEMINI.md` / `memory/` / `docs/adr`). **Model mix** rewards diversity and observable lower-tier routing using explicit provider tier tables for Anthropic and OpenAI; unsupported or ambiguous linkage is N/A rather than guessed.
 - **Codex parity fixes:** the active model is read from Codex's `turn_context` (so GPT usage shows up in Model mix instead of reading as model-less), `update_plan` counts as planning (TodoWrite), and shell reads of `skills/<name>/SKILL.md` count as skill usage — Codex has no first-class Skill tool, so that's how skills are actually consumed there.
-- **Claude-Code-specific signals** (still under-read for Codex/Gemini): `attributionSkill` precision and **ToolSearch** (part of Token economy). These reflect Claude Code's ecosystem, not universal capability.
+- **Claude-Code-specific signals** (still under-read for Codex/Gemini): `attributionSkill` precision. **ToolSearch** is no longer scored — it is ~94% harness-forced `select:` tool-loading, so it is published as a raw diagnostic count on the Tool command axis but feeds neither Tool command nor Token economy. These reflect Claude Code's ecosystem, not universal capability.
 
-**Bottom line:** scores are most complete for Claude Code. Codex/Gemini profiles are valid but slightly under-read on ToolSearch-style sub-axes. We surface this rather than hide it.
+**Bottom line:** scores are most complete for Claude Code. Codex/Gemini profiles are valid; ToolSearch no longer moves any axis, so its Claude-only nature no longer under-reads other sources. We surface this rather than hide it.
 
 ---
 

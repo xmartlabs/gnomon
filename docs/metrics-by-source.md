@@ -53,8 +53,8 @@ directly — no external dependency). Both decode to the same normalized events.
 
 ## Uploaded summary contract
 
-Current runtime contract: **scoring inputs version 16**, **AQ version 16**, and
-**GStack version 16** (`score_contract_id = 16:16:16`). Compare scores only when
+Current runtime contract: **scoring inputs version 17**, **AQ version 17**, and
+**GStack version 17** (`score_contract_id = 17:17:17`). Compare scores only when
 contract IDs match.
 
 `Workflow` dispatch fan-out is sourced from the real dispatched-agent transcripts

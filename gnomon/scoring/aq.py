@@ -22,7 +22,6 @@ CONTEXT_INTELLIGENCE_TARGET = 0.60
 # are evaluated against observable source capabilities; unavailable signals drop
 # rather than scoring zero.
 SKILLS_TOTAL_PER_CALL_TARGET = 0.009
-TOOLSEARCH_PER_CALL_TARGET = 0.0075
 TASK_CALLS_PER_CALL_TARGET = 0.011
 TEST_RUNS_PER_CALL_TARGET = 0.025
 REVIEW_SKILLS_PER_CALL_TARGET = 0.004
@@ -156,14 +155,13 @@ def compute_aq(stats):
     Craft (how well), Efficiency (leverage per intervention), Savvy (smart choices).
     MCP-vs-CLI and tool diversity stay descriptive (not graded).
 
-    Capability-aware: a signal a source CANNOT record (skills/toolsearch on Cursor, etc.)
+    Capability-aware: a signal a source CANNOT record (skills on Cursor, etc.)
     is dropped and its weight renormalized away — not scored 0 — so non-Claude tools aren't
     penalized for what their backend never persists. With a full-capability corpus (Claude)
     every term stays and this is a no-op."""
     t, st, b = stats.get("tools", {}), stats.get("stack", {}), stats.get("behavior", {})
     caps = available_caps((stats.get("corpus", {}).get("sources") or {}).keys())
     has_skills = "skills" in caps
-    has_toolsearch = "toolsearch" in caps
 
     def sat(x, target):
         return min(1.0, x / target) if target else 0.0
@@ -316,13 +314,14 @@ def compute_aq(stats):
         (.30, 1.0 if has_skill(["subagent-driven", "brainstorm", "writing-plans",
                                 "cerberus", "systematic-debugging"]) else 0.6, None),
         axis="Skill fluency")
-    # mcp_servers/clis are distinct-counts (kept absolute); toolsearch -> per-tool-call rate.
-    # toolsearch term drops out (renormalized) when no present source can record it
+    # mcp_servers/clis are distinct-counts (kept absolute). The toolsearch rate term was
+    # removed (v17): it was ~94% select:-prefixed deterministic tool-loading the deferred-tool
+    # harness forces, and its deliberate remainder is too sparse to calibrate as a rate.
+    # wsum renormalizes the two surviving terms to .5/.5. toolsearch_calls stays a published
+    # diagnostic (see the Tool command facts dict below) but is no longer scored.
     tool_command = wsum((.40, sat(t.get("mcp_servers_distinct", 0),
                                   MCP_SERVERS_DISTINCT_CEILING), None),
                         (.40, sat(t.get("clis_distinct", 0), CLIS_DISTINCT_CEILING), None),
-                        (.20, rate(t.get("toolsearch_calls", 0), TOOLSEARCH_PER_CALL_TARGET),
-                         "toolsearch"),
                         axis="Tool command (MCP + CLI)")
     # task-tool -> per-tool-call rate; TaskCreate/Update + SDD sdd-tasks skill invocations
     # both count as structured task planning. plan-skill term needs the Skill capability.
@@ -381,8 +380,10 @@ def compute_aq(stats):
         ("Tool command (MCP + CLI)", 28, tool_command, {
             "mcp_servers": t.get("mcp_servers_distinct", 0),
             "clis": t.get("clis_distinct", 0), "tool_calls": tool_calls,
-            **rate_facts("toolsearch", t.get("toolsearch_calls", 0),
-                         TOOLSEARCH_PER_CALL_TARGET)}),
+            # Non-scored diagnostic: the raw ToolSearch count stays visible (the accumulator
+            # still emits it) without the *_per_call / *_per_call_target rate disclosure that
+            # would imply it is scored.
+            "toolsearch_calls": t.get("toolsearch_calls", 0)}),
         # Surface the planning inputs, not just the task-tool count: the axis now moves with
         # planning FREQUENCY, and a score with no visible driver is not actionable.
         ("Discipline", 17, discipline, {
@@ -502,10 +503,9 @@ def compute_aq(stats):
                  else .5 * sat(len(models), 3) + .5 * sat(offload_share, 0.30))
     cli_calls, mcp_calls = t.get("cli_calls", 0), t.get("mcp_calls", 0)
     cli_share = cli_calls / (cli_calls + mcp_calls) if (cli_calls + mcp_calls) else 0
-    # toolsearch term drops out (renormalized) when unsupported, leaving CLI-share
-    token_economy = wsum((.5, rate(t.get("toolsearch_calls", 0), TOOLSEARCH_PER_CALL_TARGET),
-                          "toolsearch"),
-                         (.5, sat(cli_share, 0.70), None),
+    # The toolsearch rate term was removed (v17, see Tool command above); wsum renormalizes
+    # the single surviving cli_share term to full weight, so Token economy is now CLI-share.
+    token_economy = wsum((.5, sat(cli_share, 0.70), None),
                          axis="Token economy")
     savvy_axes = [
         # Model mix needs a real per-turn model id; a source that masks it (Antigravity IDE)
@@ -514,9 +514,7 @@ def compute_aq(stats):
          "routing": routing},
          "model"),
         ("Token economy", 50, token_economy, {
-            "tool_calls": tool_calls, "cli_share": round(cli_share, 2),
-            **rate_facts("toolsearch", t.get("toolsearch_calls", 0),
-                         TOOLSEARCH_PER_CALL_TARGET)}),
+            "tool_calls": tool_calls, "cli_share": round(cli_share, 2)}),
     ]
 
     def build_pillar(name, weight, axes):

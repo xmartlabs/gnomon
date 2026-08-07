@@ -24,7 +24,7 @@ from gnomon.scoring.aq import (
     COMPOUNDING_WRITES_PER_CALL_TARGET, RATE_MIN_EXPECTED_AT_TARGET,
     REVIEW_SKILLS_PER_CALL_TARGET, SKILLS_TOTAL_PER_CALL_TARGET,
     TASK_CALLS_PER_CALL_TARGET, TEST_RUNS_PER_CALL_TARGET,
-    TOOLSEARCH_PER_CALL_TARGET, compute_aq,
+    compute_aq,
 )
 
 # Planning practice deliberately reports "unmeasured" in these fixtures (all six selector
@@ -188,9 +188,10 @@ class TestRatesAreScoredPerToolCall(unittest.TestCase):
         self.assertAlmostEqual(_norm(_corpus([LONG, TINY]), "Breadth", "Skill fluency"),
                                expected, places=9)
 
-    def test_tool_command_scores_toolsearch_over_tool_calls(self):
-        expected = (.40 * (3 / 15) + .40 * (4 / 40)
-                    + .20 * _sat(2 / CALLS, TOOLSEARCH_PER_CALL_TARGET))
+    def test_tool_command_scores_mcp_and_cli_renormalized(self):
+        # toolsearch dropped from scoring (published diagnostic only): the surviving
+        # mcp_servers (.40) and clis (.40) terms renormalize to .5/.5.
+        expected = .5 * (3 / 15) + .5 * (4 / 40)
         self.assertAlmostEqual(
             _norm(_corpus([LONG, TINY]), "Breadth", "Tool command (MCP + CLI)"),
             expected, places=9)
@@ -207,9 +208,11 @@ class TestRatesAreScoredPerToolCall(unittest.TestCase):
         self.assertAlmostEqual(_norm(_corpus([LONG, TINY]), "Craft", "Compounding"),
                                expected, places=9)
 
-    def test_token_economy_scores_toolsearch_over_tool_calls(self):
-        # cli_share = 780/1000 = 0.78 -> saturated against the 0.70 target.
-        expected = .5 * _sat(2 / CALLS, TOOLSEARCH_PER_CALL_TARGET) + .5 * 1.0
+    def test_token_economy_scores_cli_share_only(self):
+        # toolsearch dropped from scoring (published diagnostic only): the single
+        # surviving cli_share term renormalizes to full weight.
+        # cli_share = 780/1000 = 0.78 -> saturated against the 0.70 target -> 1.0.
+        expected = 1.0
         self.assertAlmostEqual(_norm(_corpus([LONG, TINY]), "Savvy", "Token economy"),
                                expected, places=9)
 
@@ -294,9 +297,6 @@ class TestFailClosedAndObservability(unittest.TestCase):
              COMPOUNDING_WRITES_PER_CALL_TARGET),
             ("Breadth", "Skill fluency", "skills_total", SKILLS_TOTAL_PER_CALL_TARGET),
             ("Breadth", "Discipline", "task_tool_calls", TASK_CALLS_PER_CALL_TARGET),
-            ("Breadth", "Tool command (MCP + CLI)", "toolsearch",
-             TOOLSEARCH_PER_CALL_TARGET),
-            ("Savvy", "Token economy", "toolsearch", TOOLSEARCH_PER_CALL_TARGET),
         ):
             with self.subTest(axis=axis, key=key):
                 sig = _signals(stats, pillar, axis)
@@ -323,7 +323,6 @@ class TestTargetsStayInsideTheirMeasuredBands(unittest.TestCase):
     # denominator (aq.py records that decision and the re-measured drift).
     BANDS = (
         ("skills_total", SKILLS_TOTAL_PER_CALL_TARGET, 0.00865, 0.00981, 16),
-        ("toolsearch", TOOLSEARCH_PER_CALL_TARGET, 0.00732, 0.00773, 15),
         ("task_calls", TASK_CALLS_PER_CALL_TARGET, 0.00817, 0.01475, 13),
         ("test_runs", TEST_RUNS_PER_CALL_TARGET, 0.02219, 0.02715, 16),
         ("review_skills", REVIEW_SKILLS_PER_CALL_TARGET, 0.00338, 0.00440, 13),
@@ -440,7 +439,7 @@ class TestRateEvidenceFloorIsCalibratedFromThePopulation(unittest.TestCase):
         implied = {name: RATE_MIN_EXPECTED_AT_TARGET / target
                    for name, target, _p40, _p50, _n in
                    TestTargetsStayInsideTheirMeasuredBands.BANDS}
-        for name, calls in (("skills_total", 111), ("toolsearch", 133),
+        for name, calls in (("skills_total", 111),
                             ("task_calls", 90), ("test_runs", 40),
                             ("review_skills", 250), ("compounding_writes", 555)):
             with self.subTest(target=name):
