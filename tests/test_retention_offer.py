@@ -70,13 +70,18 @@ class TestRetentionOfferSafety(unittest.TestCase):
             offer_retention_config(self.settings_path)
 
         self.assertIn(
-            "Transcript history is kept for 30 days by default.", output.getvalue())
-        self.assertIn(
-            "For broader scoring and longer-term analysis, we recommend keeping 180 days.",
+            "Claude Code keeps transcript history for only 30 days by default.",
             output.getvalue())
-        self.assertIn("This is optional.", output.getvalue())
         self.assertIn(
-            "Set transcript retention to 180 days? [y/N]", output.getvalue())
+            'Gnomon can optionally add "cleanupPeriodDays": 180 to',
+            output.getvalue())
+        self.assertIn(
+            "~/.claude/settings.json so Claude Code keeps your transcripts for 180 days.",
+            output.getvalue())
+        self.assertIn("Press y to add this setting automatically.", output.getvalue())
+        self.assertIn(
+            "Press n or Enter to leave your settings unchanged. [y/N]",
+            output.getvalue())
 
     def test_accept_backs_up_before_writing_and_records_undo(self):
         self._write({"otherKey": "kept"})
