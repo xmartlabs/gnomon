@@ -254,23 +254,34 @@ def _norm_path_seps(path):
     return str(path or "").replace("\\", "/")
 
 
-# Scratchpad files under ephemeral temp roots are discarded by construction, so they
-# must not count as real code changes for code-change eligibility regardless of file
-# extension. Location takes precedence over the filename extension.
-_EPHEMERAL_PATH_RX = re.compile(r'^(?:/private)?/tmp/|^/var/folders/')
+# The harness assigns a throwaway `scratchpad/` directory under an OS temp root; writes
+# there are discarded by construction and must not count as real code changes regardless
+# of file extension. We require BOTH a temp root AND the `scratchpad/` segment so a
+# legitimate checkout that merely lives under a temp dir (e.g. /tmp/repo/src/a.py) is not
+# misclassified as disposable. Temp roots, after `_norm_path_seps` rewrites backslashes:
+#   POSIX / macOS: /tmp/... , /private/tmp/... , /var/folders/... , /private/var/folders/...
+#                  (`/var` realpaths to `/private/var` on macOS, so both spellings appear)
+#   Windows:       C:/Users/<u>/AppData/Local/Temp/... , C:/Windows/Temp/...
+_EPHEMERAL_PATH_RX = re.compile(
+    r'(?:^(?:/private)?/tmp/'
+    r'|^(?:/private)?/var/folders/'
+    r'|/appdata/local/temp/'
+    r'|^[a-z]:/windows/temp/)'
+    r'.*/scratchpad/',
+    re.I)
 
 
 def classify_change_target(path):
     """Classify a write target into code/test/doc/config/lockfile/other for
-    change-session eligibility (C2) and file-type semantics (P1/P2 fixes).
+    change-session eligibility and file-type semantics.
     Order matters: lockfile and test checks run before the generic extension/
     name maps, since e.g. package-lock.json is a .json (config-looking) file
-    and foo.test.ts has a code extension. Ephemeral temp paths short-circuit to
-    "other" first: a scratchpad write is discardable, not a real code change."""
+    and foo.test.ts has a code extension. Harness scratchpad paths short-circuit
+    to "other" first: a scratchpad write is discardable, not a real code change."""
     if not path:
         return "other"
     path = _norm_path_seps(path)
-    if _EPHEMERAL_PATH_RX.match(path):
+    if _EPHEMERAL_PATH_RX.search(path):
         return "other"
     name = path.rsplit("/", 1)[-1]
     low = name.lower()

@@ -43,16 +43,26 @@ class TestClassifyChangeTarget(unittest.TestCase):
     def test_ephemeral_scratchpad_writes_are_not_code(self):
         # A scratchpad path is discardable by construction, so even a code extension there
         # must not make the input eligible for a code change. The location check must win
-        # over the extension check.
+        # over the extension check. Covers every temp-root spelling, including the macOS
+        # canonical /private/var/folders and Windows %TEMP% (backslashes normalized first).
         for path in (
             "/private/tmp/claude-12345/myproject/8f0c-uuid/scratchpad/foo.ts",
             "/tmp/claude-999/proj/abcd-uuid/scratchpad/bar.py",
             "/var/folders/xy/abcd/T/claude-1/proj/uuid/scratchpad/baz.go",
+            "/private/var/folders/xy/abcd/T/claude-1/proj/uuid/scratchpad/baz.go",
+            r"C:\Users\alice\AppData\Local\Temp\claude-123\proj\uuid\scratchpad\a.py",
+            r"C:\Windows\Temp\claude-1\proj\uuid\scratchpad\b.py",
         ):
             self.assertEqual(classify_change_target(path), "other", path)
 
     def test_real_project_code_still_classifies_as_code(self):
         self.assertEqual(classify_change_target("/Users/dev/repo/src/app.py"), "code")
+
+    def test_temp_root_without_scratchpad_is_not_excluded(self):
+        # A legitimate checkout that merely lives under a temp root (no scratchpad segment)
+        # must still count as code — excluding all of /tmp would hide real work.
+        for path in ("/tmp/repo/src/app.py", "/var/folders/xy/T/repo/lib/util.ts"):
+            self.assertEqual(classify_change_target(path), "code", path)
 
 
 class TestIsPlanFileTarget(unittest.TestCase):
