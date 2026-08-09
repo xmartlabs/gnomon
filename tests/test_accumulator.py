@@ -477,6 +477,59 @@ class TestWriteFactEnrichment(unittest.TestCase):
         self.assertFalse(fact["plan_skill"])
 
 
+class TestBashListValuedCommandSafety(unittest.TestCase):
+    """F2: some non-Claude adapters emit a Bash tool's `input.command` as an argv LIST
+    rather than a shell string. `observe()` must not crash on it (bash_runs_tests /
+    bash_runs_knowledge search a regex, which raises TypeError on a list), and a list
+    command must behave identically to the same command already joined into a string —
+    matching the join `elif name == "Bash":` accounting already applies later in the same
+    method."""
+
+    def test_list_valued_command_does_not_crash_observe(self):
+        acc = Accumulator()
+        acc.begin_file("codex", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "Bash", {
+            "command": ["python", "-m", "pytest"],
+        }), None, None)
+        fact = _facts_for(acc, "codex", "s1")[0]
+        self.assertTrue(fact["runs_tests"])
+        self.assertEqual(acc.shell_test_runs, 1)
+
+    def test_list_valued_command_matches_joined_string_equivalent(self):
+        joined = " && ".join(["python", "-m", "pytest"])
+
+        list_acc = Accumulator()
+        list_acc.begin_file("codex", "f.jsonl")
+        list_acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "Bash", {
+            "command": ["python", "-m", "pytest"],
+        }), None, None)
+
+        str_acc = Accumulator()
+        str_acc.begin_file("codex", "f.jsonl")
+        str_acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "Bash", {
+            "command": joined,
+        }), None, None)
+
+        list_fact = _facts_for(list_acc, "codex", "s1")[0]
+        str_fact = _facts_for(str_acc, "codex", "s1")[0]
+        self.assertEqual(list_fact["runs_tests"], str_fact["runs_tests"])
+        self.assertEqual(list_fact["knowledge"], str_fact["knowledge"])
+        self.assertEqual(list_acc.shell_test_runs, str_acc.shell_test_runs)
+
+    def test_list_valued_knowledge_command_does_not_crash(self):
+        """The `knowledge` field is computed BEFORE `runs_tests` in the same dict
+        literal, so it must be exercised on its own too. A single-token argv entry
+        ("graphify") survives the ' && '-join unchanged, so it still matches the
+        knowledge regex after normalization."""
+        acc = Accumulator()
+        acc.begin_file("codex", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "Bash", {
+            "command": ["graphify"],
+        }), None, None)
+        fact = _facts_for(acc, "codex", "s1")[0]
+        self.assertTrue(fact["knowledge"])
+
+
 class TestAggregateOrderedC4(unittest.TestCase):
     """C4: cross-session consume-once plan credit. `aggregate_ordered` takes
     the per-session fact lists directly (values of session_ordered_tools)."""

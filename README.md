@@ -161,13 +161,20 @@ multi-source replay reports its exactness and source-profile replay status. Uplo
 are checked before POST against the 900 KiB ingest limit and fail rather than being
 truncated.
 
-Rate terms (test runs, review skills, task planning, skills,
-compounding writes) are scored **per tool call**, not per session. One session is
-not one unit of work across tools: a batch of 2-minute one-shot CLI sessions
-otherwise acts as pure denominator and collapses the rate of a habit you actually
-practise. Only the unit changes — the targets were recalibrated to match, and
-absolute volume still does not raise AQ, because both sides of the ratio grow
-together.
+Rate terms (review skills, skills, compounding writes) are scored **per tool
+call**, not per session. One session is not one unit of work across tools: a
+batch of 2-minute one-shot CLI sessions otherwise acts as pure denominator and
+collapses the rate of a habit you actually practise. Only the unit changes — the
+targets were recalibrated to match, and absolute volume still does not raise AQ,
+because both sides of the ratio grow together.
+
+Verification's test half and Discipline's task-planning term are **not** per-call
+rates. Verification scores per-SESSION test **coverage** — the share of eligible
+change-sessions that also ran a recognized shell-test command — as a pure
+fraction with no fitted target, N/A (renormalized onto review skills) when
+ordered facts aren't measured. Discipline dropped its task-tool rate term
+entirely (it saturated for virtually everyone); `task_tool_calls` remains a
+published diagnostic, not a scored term.
 
 What happens when you run it (without `--local`):
 

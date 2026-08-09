@@ -392,7 +392,7 @@
                       "review_skills_per_call_target": 0.004,
                       "shell_test_runs": 120,
                       "test_coverage": null,
-                      "test_covered_change_sessions": 0,
+                      "test_covered_change_sessions": null,
                       "tool_calls": 4000
                     },
                     "weight": 35
@@ -1308,7 +1308,7 @@
                       "review_skills_per_call_target": 0.004,
                       "shell_test_runs": 5,
                       "test_coverage": null,
-                      "test_covered_change_sessions": 0,
+                      "test_covered_change_sessions": null,
                       "tool_calls": 500
                     },
                     "weight": 35
@@ -2130,7 +2130,7 @@
                       "review_skills_per_call_target": 0.004,
                       "shell_test_runs": 120,
                       "test_coverage": null,
-                      "test_covered_change_sessions": 0,
+                      "test_covered_change_sessions": null,
                       "tool_calls": 4000
                     },
                     "weight": 35
@@ -2600,7 +2600,7 @@
                       "review_skills_per_call_target": 0.004,
                       "shell_test_runs": 5,
                       "test_coverage": null,
-                      "test_covered_change_sessions": 0,
+                      "test_covered_change_sessions": null,
                       "tool_calls": 500
                     },
                     "weight": 35
@@ -3571,7 +3571,7 @@
                       "review_skills_per_call_target": 0.004,
                       "shell_test_runs": 120,
                       "test_coverage": null,
-                      "test_covered_change_sessions": 0,
+                      "test_covered_change_sessions": null,
                       "tool_calls": 4000
                     },
                     "weight": 35
@@ -4452,7 +4452,7 @@
                       "review_skills_per_call_target": 0.004,
                       "shell_test_runs": 0,
                       "test_coverage": null,
-                      "test_covered_change_sessions": 0,
+                      "test_covered_change_sessions": null,
                       "tool_calls": 0
                     },
                     "weight": 44
@@ -5594,7 +5594,7 @@
                           "review_skills_per_call_target": 0.004,
                           "shell_test_runs": 100,
                           "test_coverage": null,
-                          "test_covered_change_sessions": 0,
+                          "test_covered_change_sessions": null,
                           "tool_calls": 4000
                         }
                       },
@@ -5615,7 +5615,7 @@
                           "review_skills_per_call_target": 0.004,
                           "shell_test_runs": 30,
                           "test_coverage": null,
-                          "test_covered_change_sessions": 0,
+                          "test_covered_change_sessions": null,
                           "tool_calls": 4000
                         }
                       }
@@ -5635,7 +5635,7 @@
                       "review_skills_per_call_target": 0.004,
                       "shell_test_runs": 100,
                       "test_coverage": null,
-                      "test_covered_change_sessions": 0,
+                      "test_covered_change_sessions": null,
                       "tool_calls": 4000
                     },
                     "weight": 35

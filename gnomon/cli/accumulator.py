@@ -81,6 +81,21 @@ def _notification_tag(text, tag):
     return match.group(1).strip() if match else None
 
 
+def _normalize_bash_command(raw):
+    """Coerce a Bash tool's `command` input to the shell-string shape every regex-based
+    classifier here (`bash_runs_tests`, `bash_runs_knowledge`, `bash_writes_file`,
+    `_extract_clis`, `_SKILL_MD_RX`) expects. Some non-Claude adapters emit `command` as
+    an argv LIST rather than a joined string; searching a list with a compiled regex
+    raises `TypeError` and aborts the whole `observe()` call. Joining with ' && ' mirrors
+    the join this module already applied ad hoc in three separate places (the per-event
+    ordered-fact enrichment, `_fact_plan_skill`, and the Bash tool-name accounting
+    branch) -- centralized here so a list-valued command is normalized ONCE and scores
+    identically everywhere, instead of crashing wherever the join was missing."""
+    if isinstance(raw, list):
+        return " && ".join(str(c) for c in raw)
+    return raw or ""
+
+
 class Accumulator:
     """Per-event signal accumulator for one partition (the whole corpus, or one source).
 
@@ -469,9 +484,7 @@ class Accumulator:
         if ev.get("attributionSkill") and cls._is_plan_skill(ev["attributionSkill"]):
             return True
         if name == "Bash":
-            cmd = inp.get("command", "") or ""
-            if isinstance(cmd, list):
-                cmd = " && ".join(str(c) for c in cmd)
+            cmd = _normalize_bash_command(inp.get("command"))
             for m in _SKILL_MD_RX.finditer(cmd):
                 if cls._is_plan_skill(m.group(1)):
                     return True
@@ -1026,6 +1039,15 @@ class Accumulator:
                     elif bt == "tool_use":
                         name = b.get("name", "?")
                         inp = b.get("input", {}) if isinstance(b.get("input"), dict) else {}
+                        # Some non-Claude adapters emit a Bash tool's `command` as an argv
+                        # LIST rather than a shell string. Normalize ONCE, here, so every
+                        # regex-based Bash classifier below (the ordered-fact "knowledge"/
+                        # "runs_tests" enrichment AND the "elif name == 'Bash':" accounting
+                        # further down) reads the same string and a list-valued command
+                        # scores identically to its already-joined sibling instead of
+                        # raising TypeError wherever the join was missing.
+                        _bash_cmd = (_normalize_bash_command(inp.get("command"))
+                                    if name == "Bash" else "")
                         self.tool_use_total += 1
                         # Identity is an EVENT fact, so it is read here rather than derived
                         # from the session: a parent transcript and its subagent turns share
@@ -1077,7 +1099,7 @@ class Accumulator:
                                             name.split("__")[1] if len(name.split("__")) > 1 else "",
                                             name.split("__")[-1]) in CI_CONTEXT_SUBCATS
                                         and _cat == "explore")))
-                                if name.startswith("mcp__") else bool(name == "Bash" and bash_runs_knowledge(inp.get("command", "") or "")),
+                                if name.startswith("mcp__") else bool(name == "Bash" and bash_runs_knowledge(_bash_cmd)),
                                 # C1 — write-fact enrichment (ordered-planning redesign):
                                 # file_class/plan_file are computed from the target for
                                 # every fact (harmless no-op for non-file tools); loc is
@@ -1096,7 +1118,7 @@ class Accumulator:
                                 # cumulative shell_test_runs density that fed the dropped term.
                                 "runs_tests": bool(
                                     name == "Bash"
-                                    and bash_runs_tests(inp.get("command", "") or "")),
+                                    and bash_runs_tests(_bash_cmd)),
                             }
                             self.session_ordered_tools[_fact_sid].append(_ordered_fact)
                             if dt is None:
@@ -1339,9 +1361,7 @@ class Accumulator:
                                 if mkey:
                                     self.month_compounding[mkey] += 1
                         elif name == "Bash":
-                            cmd = inp.get("command", "") or ""
-                            if isinstance(cmd, list):
-                                cmd = " && ".join(str(c) for c in cmd)
+                            cmd = _bash_cmd
                             for _cli in _extract_clis(cmd):
                                 self.cli_counter[_cli] += 1
                                 if mkey:

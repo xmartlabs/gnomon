@@ -286,6 +286,11 @@ class TestPartialScoringIsDisclosed(unittest.TestCase):
         base_behavior = {
             "planning_ratio_explore_to_doing": 0.5, "actions_per_prompt": 8,
             "shell_test_runs": 20, "ordered_facts_state": "measured",
+            # v18 Verification coverage numerator: must be explicitly present (not just
+            # implied by ordered_facts_state) for the axis to be genuinely FULLY measured
+            # -- an absent key now scores as N/A (see gnomon/scoring/inputs.py's absence
+            # fix), not a fabricated 0.
+            "test_covered_change_sessions": 20,
             "eligible_change_sessions": 40, "planned_eligible_sessions": 20,
             "evidence_eligible_sessions": 18, "orchestratable_sessions": 10,
             "delegated_orchestratable_sessions": 8,

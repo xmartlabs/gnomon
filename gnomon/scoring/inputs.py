@@ -86,11 +86,19 @@ def build_scoring_inputs(stats):
             "plan_sessions": b.get("plan_sessions", 0),
             "planning_skill_sessions": b.get("planning_skill_sessions", 0),
             "eligible_change_sessions": b.get("eligible_change_sessions", 0),
-            # v18 — Verification coverage numerator. `.get(..., 0)` is load-bearing for
-            # REPLAY: a payload captured before v18 carries no such key and must project as
-            # a plain 0 (aq.py's coverage term stays N/A when ordered_facts_state is not
-            # measured, so a 0 here never fabricates coverage for a legacy row).
-            "test_covered_change_sessions": b.get("test_covered_change_sessions", 0),
+            # v18 — Verification coverage numerator. NO default here, deliberately: a
+            # payload captured before v18 (or a legacy row missing this key for any other
+            # reason) has genuinely NEVER MEASURED coverage, and that ABSENCE must stay
+            # distinguishable from a real MEASURED zero. `.get(..., 0)` used to coerce
+            # both to 0, which is indistinguishable from an idle-but-eligible corpus once
+            # it reaches aq.py — aq.py's coverage term fabricated a 0.0 for a legacy row
+            # that had `ordered_facts_state == "measured"` and `eligible_change_sessions >
+            # 0` (both pre-v18 fields), corrupting the score instead of staying N/A
+            # (renormalized onto review-skills). `b.get(...)` with NO default projects
+            # absence as None, and aq.py's `_test_covered_measured` flag reads that None
+            # to decide N/A vs a genuine measured zero -- same fail-closed rule Context
+            # Intelligence applies elsewhere in this module.
+            "test_covered_change_sessions": b.get("test_covered_change_sessions"),
             "planned_eligible_sessions": b.get("planned_eligible_sessions", 0),
             "evidence_eligible_sessions": b.get("evidence_eligible_sessions", 0),
             "ordered_facts_state": b.get("ordered_facts_state", "unmeasured"),

@@ -421,9 +421,20 @@ def compute_aq(stats):
     # renormalizes onto review_skills) when ordered facts are not measured -- the same
     # fail-closed guard Context Intelligence applies on ordered_facts_state and
     # eligible_change_sessions. review skills stays a per-tool-call rate.
-    _test_covered = b.get("test_covered_change_sessions", 0) or 0
-    _verif_coverage = (_test_covered / eligible) if eligible else None
-    verification_coverage = (None if ordered_state != "measured" or not eligible
+    #
+    # ABSENT vs MEASURED ZERO. `inputs.py` no longer defaults a missing key to 0 (it
+    # projects absence as None), so a legacy/foreign payload that never measured coverage
+    # reads None here -- distinct from a genuine measured zero (the field present, value
+    # 0). Coercing both to 0 (the old `.get(..., 0) or 0`) fabricated a 0.0 coverage for a
+    # v17 payload that had `ordered_facts_state == "measured"` and a real
+    # `eligible_change_sessions`, both of which predate the v18 coverage numerator. `is
+    # None`, not falsiness, is the test: a present 0 must still score 0.0 coverage.
+    _test_covered = b.get("test_covered_change_sessions")
+    _test_covered_measured = _test_covered is not None
+    _verif_coverage = (_test_covered / eligible
+                       if _test_covered_measured and eligible else None)
+    verification_coverage = (None if (ordered_state != "measured" or not eligible
+                                      or not _test_covered_measured)
                              else sat(_verif_coverage, 1.0))
     verification = wsum((.5, verification_coverage, None),
                         (.5, rate(review_n, REVIEW_SKILLS_PER_CALL_TARGET), "skill_reads"),
