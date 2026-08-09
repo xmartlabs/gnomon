@@ -20,7 +20,7 @@ Both code paths must preserve the None/absent vs 0/measured distinction:
 import copy
 import unittest
 
-from gnomon.scoring.aq import compute_aq
+from gnomon.scoring.aq import MIN_ELIGIBLE_SESSIONS, compute_aq
 from gnomon.scoring.inputs import build_scoring_inputs
 from gnomon.scoring.profiles import stats_from_scoring_block
 
@@ -140,6 +140,89 @@ class LegacyReplayCoverageAbsenceTests(unittest.TestCase):
         self.assertNotIn("partial_terms", verification)
         self.assertEqual(verification["signals"]["test_coverage"], 0.0)
         self.assertEqual(verification["signals"]["test_covered_change_sessions"], 0)
+
+
+class EvidenceFloorF8Tests(unittest.TestCase):
+    """F8 — Verification coverage and Context Intelligence both need
+    MIN_ELIGIBLE_SESSIONS eligible sessions before a per-session coverage
+    ratio is a defensible measurement. `eligible=4` here is a genuinely
+    MEASURED 100%/0% ratio (not an absent field, unlike the class above) but
+    still below the floor, so both terms must drop (None -> renormalized)
+    rather than publish a ratio computed from 4 or fewer sessions."""
+
+    def test_verification_coverage_dropped_below_floor_scores_review_only(self):
+        below = _v17_window_block(eligible=MIN_ELIGIBLE_SESSIONS - 1,
+                                  review_uses=6, test_covered=MIN_ELIGIBLE_SESSIONS - 1)
+        stats = stats_from_scoring_block(below)
+
+        agentic = compute_aq(stats)
+        verification = _verification_axis(agentic)
+
+        # Coverage dropped by the floor -> only the review-skill rate term is live,
+        # same shape as the absent-field case above (saturates at 1.0 for 6 uses/500
+        # tool calls, well above REVIEW_SKILLS_PER_CALL_TARGET).
+        self.assertEqual(verification["normalized_score"], 1.0)
+        self.assertIn("partial_terms", verification)
+        self.assertEqual(verification["partial_terms"]["scored"], 1)
+        self.assertIsNone(verification["signals"]["test_coverage"])
+        # The raw diagnostic still discloses the real (measured, not absent) counts.
+        self.assertEqual(
+            verification["signals"]["test_covered_change_sessions"],
+            MIN_ELIGIBLE_SESSIONS - 1)
+        self.assertEqual(verification["signals"]["eligible_change_sessions"],
+                         MIN_ELIGIBLE_SESSIONS - 1)
+
+    def test_verification_coverage_scored_at_floor(self):
+        at = _v17_window_block(eligible=MIN_ELIGIBLE_SESSIONS,
+                               review_uses=6, test_covered=MIN_ELIGIBLE_SESSIONS)
+        stats = stats_from_scoring_block(at)
+
+        agentic = compute_aq(stats)
+        verification = _verification_axis(agentic)
+
+        # AT the floor (not below it), a real 100% coverage is scored: both terms
+        # live at 1.0, so the 50/50 mean is 1.0 too (same number, different reason —
+        # confirmed by partial_terms being absent, i.e. fully measured).
+        self.assertEqual(verification["normalized_score"], 1.0)
+        self.assertNotIn("partial_terms", verification)
+        self.assertEqual(verification["signals"]["test_coverage"], 1.0)
+
+    def test_context_intelligence_na_below_floor(self):
+        below = _v17_window_block(eligible=MIN_ELIGIBLE_SESSIONS - 1, review_uses=6)
+        stats = stats_from_scoring_block(below)
+
+        agentic = compute_aq(stats)
+        craft = next(p for p in agentic["pillars"] if p["name"] == "Craft")
+        axis_names = [a["name"] for a in craft["axes"]]
+        self.assertNotIn("Context Intelligence", axis_names)
+        self.assertIn("Context Intelligence", craft.get("not_applicable", []))
+
+
+class ClampDiagnosticF9Tests(unittest.TestCase):
+    """F9 — the SCORED verification_coverage term was already clamped via
+    sat(_, 1.0), but the published `signals.test_coverage` diagnostic used
+    the raw ratio directly and could exceed 1.0 for a malformed/replayed
+    block where `test_covered_change_sessions` > `eligible_change_sessions`
+    (a shape the accumulator's own aggregate_ordered never produces, but a
+    replayed/foreign payload is not guaranteed to respect)."""
+
+    def test_covered_greater_than_eligible_clamps_diagnostic_and_score(self):
+        # eligible=5 (>= MIN_ELIGIBLE_SESSIONS, so F8's floor does not also
+        # drop the term and mask this), test_covered=8 -- malformed: covered
+        # > eligible, raw ratio would be 8/5 = 1.6.
+        block = _v17_window_block(
+            eligible=MIN_ELIGIBLE_SESSIONS, review_uses=6,
+            test_covered=MIN_ELIGIBLE_SESSIONS + 3)
+        stats = stats_from_scoring_block(block)
+
+        agentic = compute_aq(stats)
+        verification = _verification_axis(agentic)
+
+        self.assertLessEqual(verification["signals"]["test_coverage"], 1.0)
+        self.assertEqual(verification["signals"]["test_coverage"], 1.0)
+        # The scored term was already implicitly clamped by sat(_, 1.0); this
+        # pins that it stays clamped once the diagnostic is fixed too.
+        self.assertEqual(verification["normalized_score"], 1.0)
 
 
 class BuildScoringInputsAbsencePreservationTests(unittest.TestCase):

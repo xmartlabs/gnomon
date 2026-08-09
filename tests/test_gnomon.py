@@ -1998,7 +1998,9 @@ class TestToolsDiagnostic(unittest.TestCase):
                 {"name": "Craft", "axes": [
                     {"name": "Verification", "signals": {"shell_test_runs": 150,
                                                          "review_skills": 20,
-                                                         "knowledge_calls": 10}},
+                                                         "knowledge_calls": 10,
+                                                         "toolsearch_calls": 5,
+                                                         "task_tool_calls": 8}},
                 ]},
             ]},
         }
@@ -2018,6 +2020,23 @@ class TestToolsDiagnostic(unittest.TestCase):
         lines, rec = tools_diagnostic({"volume": {"total_sessions": 0}, "agentic": {"pillars": []}})
         self.assertEqual(rec["tool_calls"], 0)
         self.assertEqual(rec["rates"]["skills_total"], 0.0)
+
+    def test_toolsearch_and_task_tool_calls_are_diagnostic_rows(self):
+        """F10 — v17/v18 dropped the SCORED rate terms for toolsearch_calls and
+        task_tool_calls, but an operator auditing `--tools` must still see the raw
+        counts as non-scored diagnostic rows (no target, no per-call %), matching
+        what aq.py still republishes on Tool command / Discipline's `signals`."""
+        from gnomon.cli.local import tools_diagnostic
+        lines, rec = tools_diagnostic(self._stats(10000))
+        self.assertEqual(rec["counts"]["toolsearch_calls"], 5)
+        self.assertEqual(rec["counts"]["task_tool_calls"], 8)
+        self.assertTrue(any(l.startswith("toolsearch_calls") for l in lines))
+        self.assertTrue(any(l.startswith("task_tool_calls") for l in lines))
+        toolsearch_line = next(l for l in lines if l.startswith("toolsearch_calls"))
+        task_tool_line = next(l for l in lines if l.startswith("task_tool_calls"))
+        # Non-scored: no "%" rendered on either diagnostic row.
+        self.assertNotIn("%", toolsearch_line)
+        self.assertNotIn("%", task_tool_line)
 
     def test_percent_column_equals_what_aq_scored(self):
         """The header comment claims the % column matches AQ's scoring. Pin the claim: read

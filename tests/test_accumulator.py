@@ -6,14 +6,27 @@ from gnomon.cli.accumulator import (
 )
 
 
-def _fact_event(sid, timestamp, name, inp=None, attribution=None):
+def _fact_event(sid, timestamp, name, inp=None, attribution=None, tool_use_id=None):
+    block = {"type": "tool_use", "name": name, "input": inp or {}}
+    if tool_use_id is not None:
+        block["id"] = tool_use_id
     event = {"type": "assistant", "sessionId": sid, "timestamp": timestamp,
              "message": {"role": "assistant", "model": "claude-sonnet-4-6",
-                         "content": [{"type": "tool_use", "name": name,
-                                      "input": inp or {}}]}}
+                         "content": [block]}}
     if attribution:
         event["attributionSkill"] = attribution
     return event
+
+
+def _tool_result_event(sid, timestamp, tool_use_id, is_error=False):
+    """A `user`-turn event carrying the tool_result for an earlier tool_use
+    (F7: resolves that tool_use_id's success/error in Accumulator's
+    corpus-lifetime `_tool_result_is_error` map)."""
+    return {"type": "user", "sessionId": sid, "timestamp": timestamp,
+            "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": tool_use_id,
+                 "is_error": is_error, "content": "ok"},
+            ]}}
 
 
 def _workflow_agent_event(parent_sid, timestamp, agent_id):
@@ -528,6 +541,81 @@ class TestBashListValuedCommandSafety(unittest.TestCase):
         }), None, None)
         fact = _facts_for(acc, "codex", "s1")[0]
         self.assertTrue(fact["knowledge"])
+
+
+class TestVerificationCoverageF7(unittest.TestCase):
+    """F7: Verification coverage requires a `runs_tests` Bash fact that ran
+    AFTER the first CODE write AND whose tool_result resolved successfully.
+    Fail-closed: an errored result or a missing result never counts, even
+    though `bash_runs_tests("pytest")` is lexically True either way."""
+
+    def _two_code_writes(self, acc, sid):
+        # >=2 distinct code files -> eligible via C2 regardless of loc/churn.
+        acc.observe(_fact_event(sid, "2026-01-01T00:00:00Z", "Write", {
+            "file_path": "src/a.py", "content": "x = 1\n"}), None, None)
+        acc.observe(_fact_event(sid, "2026-01-01T00:00:01Z", "Write", {
+            "file_path": "src/b.py", "content": "y = 2\n"}), None, None)
+
+    def test_errored_test_after_code_write_not_covered(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        sid = "s1"
+        self._two_code_writes(acc, sid)
+        acc.observe(_fact_event(sid, "2026-01-01T00:00:02Z", "Bash", {
+            "command": "pytest"}, tool_use_id="tu1"), None, None)
+        acc.observe(_tool_result_event(
+            sid, "2026-01-01T00:00:03Z", "tu1", is_error=True), None, None)
+        facts = _facts_for(acc, "claude", sid)
+        result = derive_session_ordered_facts(facts, acc._tool_result_is_error)
+        self.assertFalse(result["ran_test"])
+        agg = aggregate_ordered([facts], acc._tool_result_is_error)
+        self.assertEqual(agg["test_covered"], 0)
+
+    def test_successful_test_before_first_code_write_not_covered(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        sid = "s1"
+        acc.observe(_fact_event(sid, "2026-01-01T00:00:00Z", "Bash", {
+            "command": "pytest"}, tool_use_id="tu1"), None, None)
+        acc.observe(_tool_result_event(
+            sid, "2026-01-01T00:00:01Z", "tu1", is_error=False), None, None)
+        self._two_code_writes(acc, sid)
+        facts = _facts_for(acc, "claude", sid)
+        result = derive_session_ordered_facts(facts, acc._tool_result_is_error)
+        self.assertFalse(result["ran_test"])
+        agg = aggregate_ordered([facts], acc._tool_result_is_error)
+        self.assertEqual(agg["test_covered"], 0)
+
+    def test_successful_test_after_first_code_write_covered(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        sid = "s1"
+        self._two_code_writes(acc, sid)
+        acc.observe(_fact_event(sid, "2026-01-01T00:00:02Z", "Bash", {
+            "command": "pytest"}, tool_use_id="tu1"), None, None)
+        acc.observe(_tool_result_event(
+            sid, "2026-01-01T00:00:03Z", "tu1", is_error=False), None, None)
+        facts = _facts_for(acc, "claude", sid)
+        result = derive_session_ordered_facts(facts, acc._tool_result_is_error)
+        self.assertTrue(result["ran_test"])
+        agg = aggregate_ordered([facts], acc._tool_result_is_error)
+        self.assertEqual(agg["eligible"], 1)
+        self.assertEqual(agg["test_covered"], 1)
+
+    def test_test_command_with_no_tool_result_not_covered(self):
+        """Fail-closed: a truncated transcript (tool_use with no matching
+        tool_result ever observed) must not count, even after a code write."""
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        sid = "s1"
+        self._two_code_writes(acc, sid)
+        acc.observe(_fact_event(sid, "2026-01-01T00:00:02Z", "Bash", {
+            "command": "pytest"}, tool_use_id="tu-missing"), None, None)
+        facts = _facts_for(acc, "claude", sid)
+        result = derive_session_ordered_facts(facts, acc._tool_result_is_error)
+        self.assertFalse(result["ran_test"])
+        agg = aggregate_ordered([facts], acc._tool_result_is_error)
+        self.assertEqual(agg["test_covered"], 0)
 
 
 class TestAggregateOrderedC4(unittest.TestCase):

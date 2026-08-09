@@ -319,6 +319,18 @@ class Accumulator:
         # payload main() consumes.
         self.gc = None
 
+        # F7 hardening — Verification coverage must fail-closed on a test whose
+        # result never resolves (truncated transcript) or that errored. Keyed
+        # by tool_use_id -> is_error, so a later `runs_tests` fact can be
+        # cross-referenced against its actual result at derive time.
+        # derive_session_ordered_facts/aggregate_ordered only run in
+        # to_corpus_stats/to_source_stats, AFTER every file in the corpus has
+        # been observed, so this must be corpus-lifetime like
+        # _fanout_credited_agents/_mcp_compounding_credited above -- NOT reset
+        # per file like _pending_error, or results from earlier files would be
+        # lost before derive time.
+        self._tool_result_is_error = {}
+
     # ---- file lifecycle ----------------------------------------------------
     def begin_file(self, cur_src, fp):
         self._cur_src = cur_src
@@ -973,6 +985,12 @@ class Accumulator:
                 for b in content:
                     if isinstance(b, dict) and b.get("type") == "tool_result":
                         self._record_claude_agent_result(ev, b, sid)
+                        _tuid = b.get("tool_use_id")
+                        if _tuid:
+                            # F7: last result wins if a tool_use_id somehow
+                            # repeats; corpus-lifetime, resolved at derive
+                            # time by derive_session_ordered_facts.
+                            self._tool_result_is_error[_tuid] = bool(b.get("is_error"))
                         if b.get("is_error"):
                             self.tool_errors += 1
                             if mkey:
@@ -1119,6 +1137,10 @@ class Accumulator:
                                 "runs_tests": bool(
                                     name == "Bash"
                                     and bash_runs_tests(_bash_cmd)),
+                                # F7 — needed to resolve this fact's actual
+                                # tool_result (success/error/absent) at derive
+                                # time; see self._tool_result_is_error.
+                                "tool_use_id": b.get("id"),
                             }
                             self.session_ordered_tools[_fact_sid].append(_ordered_fact)
                             if dt is None:
@@ -1411,7 +1433,8 @@ class Accumulator:
         # ---- derive ----------------------------------------------------------
         # C4: aggregate_ordered applies cross-session consume-once plan credit
         # across the WHOLE corpus (not per-session derive_ordered_behavior).
-        _agg = aggregate_ordered(self.session_ordered_tools.values())
+        _agg = aggregate_ordered(
+            self.session_ordered_tools.values(), self._tool_result_is_error)
         _eligible = _agg["eligible"]
         _planned = _agg["planned"]
         _evidence = _agg["evidence"]
@@ -1420,7 +1443,7 @@ class Accumulator:
         _orchestratable = _agg["orchestratable"]
         _orchestratable_sids = set()
         for (src, sid), facts in self.session_ordered_tools.items():
-            d = derive_session_ordered_facts(facts)
+            d = derive_session_ordered_facts(facts, self._tool_result_is_error)
             if d["orchestratable"]:
                 _orchestratable_sids.add(sid)
         _delegated_orchestratable = sum(
@@ -1859,13 +1882,14 @@ class Accumulator:
         self._flush_pending_skills()
         _s_tool_total = self.tool_use_total
         # C4: cross-session consume-once credit, scoped to this source's sessions.
-        _s_agg = aggregate_ordered(self.session_ordered_tools.values())
+        _s_agg = aggregate_ordered(
+            self.session_ordered_tools.values(), self._tool_result_is_error)
         _s_eligible = _s_agg["eligible"]
         _s_test_covered = _s_agg["test_covered"]
         _s_orchestratable = _s_agg["orchestratable"]
         _s_orchestratable_sids = set()
         for (src, sid), facts in self.session_ordered_tools.items():
-            d = derive_session_ordered_facts(facts)
+            d = derive_session_ordered_facts(facts, self._tool_result_is_error)
             if d["orchestratable"]:
                 _s_orchestratable_sids.add(sid)
         _s_delegated_orchestratable = sum(
@@ -2051,7 +2075,7 @@ def _normalized_ordered_target(event):
     return os.path.normpath(target)
 
 
-def derive_session_ordered_facts(events):
+def derive_session_ordered_facts(events, tool_result_is_error=None):
     """Rich per-session ordered-planning facts (ordered-planning redesign C2/C3/C6).
 
     Facts are expected to already carry the C1 enrichment (file_class/loc/
@@ -2072,10 +2096,21 @@ def derive_session_ordered_facts(events):
     counts (ceremony fallback); a short plan-file with no accompanying
     planning-skill does not.
 
+    F7 — `ran_test` (the Verification coverage numerator) requires a
+    `runs_tests` Bash fact that ran AFTER the first CODE write (verifying the
+    change just made, not a pre-existing/incidental test earlier in the
+    session) AND whose tool_result actually resolved successfully.
+    `tool_result_is_error` is the corpus-lifetime {tool_use_id: is_error} map
+    (see Accumulator._tool_result_is_error); a fact whose tool_use_id is
+    absent from it (truncated transcript, no result ever observed) or maps to
+    True (the test errored) does NOT count — fail-closed by construction, not
+    by a downstream floor.
+
     Returns eligible/planned_intra/evidence plus first_write_order/cwd and
     plan_artifacts — the latter two feed aggregate_ordered's cross-session
     consume-once credit (C4), which is NOT applied here (this function is
     single-session only)."""
+    tool_result_is_error = tool_result_is_error or {}
     events = sorted(
         enumerate(events or []),
         key=lambda item: (
@@ -2095,12 +2130,22 @@ def derive_session_ordered_facts(events):
     todo_threshold_hit = None       # (cwd, order) once >=PLAN_MIN_STEPS is first reached
     plan_file_events = []           # (cwd, order, loc) for plan-file writes before the cutoff
     saw_plan_skill = False
-    ran_test = False                # v18: any shell-test Bash fact in this session
+    # F7: a successful shell-test Bash fact that ran AFTER first_code_write
+    # (v18 counted ANY runs_tests fact, regardless of order or outcome).
+    ran_test = False
 
     for index, event in enumerate(events):
         name = str(event.get("name") or "")
-        if event.get("runs_tests"):
-            ran_test = True
+        if (event.get("runs_tests") and not ran_test
+                and first_code_write is not None and index > first_code_write):
+            # Reuse first_code_write (already resolved by the time we reach a
+            # later index, since events are time-sorted and code writes are
+            # processed below in this same ascending pass) instead of
+            # re-deriving order. Fail-closed: a tool_use_id absent from the
+            # map (no result observed) or True (errored) does not count.
+            tuid = event.get("tool_use_id")
+            if tuid is not None and tuid in tool_result_is_error and not tool_result_is_error[tuid]:
+                ran_test = True
         target = _normalized_ordered_target(event)
         is_write = name in _WRITE_TOOLS_V5
         file_class = event.get("file_class")
@@ -2202,7 +2247,7 @@ def derive_ordered_behavior(events):
     }
 
 
-def aggregate_ordered(sessions):
+def aggregate_ordered(sessions, tool_result_is_error=None):
     """C4 — cross-session consume-once plan credit. `sessions` is an iterable
     of per-session ordered-fact lists (values of session_ordered_tools, or a
     single month's bucket of the same shape). Each session is derived via
@@ -2210,8 +2255,13 @@ def aggregate_ordered(sessions):
     CODE write then consumes the earliest still-unconsumed plan artifact from
     the SAME cwd within [T - WINDOW, T]. Executions are matched in ascending
     first-code-write order so the earliest execution gets first claim on a
-    shared artifact (one plan credits exactly one execution)."""
-    derived = [derive_session_ordered_facts(facts) for facts in sessions]
+    shared artifact (one plan credits exactly one execution).
+
+    `tool_result_is_error` (F7) is forwarded to derive_session_ordered_facts
+    unchanged so `ran_test`/`test_covered` below can fail-closed on an
+    unresolved or errored test result."""
+    derived = [derive_session_ordered_facts(facts, tool_result_is_error)
+               for facts in sessions]
 
     artifacts = []
     for d in derived:

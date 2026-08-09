@@ -431,10 +431,24 @@ def compute_aq(stats):
     # None`, not falsiness, is the test: a present 0 must still score 0.0 coverage.
     _test_covered = b.get("test_covered_change_sessions")
     _test_covered_measured = _test_covered is not None
-    _verif_coverage = (_test_covered / eligible
+    # F9 — a malformed/replayed block can carry covered > eligible (the
+    # numerator and denominator are computed from different sources on a
+    # replay/legacy path, unlike the accumulator's own aggregate_ordered
+    # where covered <= eligible by construction). Clamp the numerator to the
+    # denominator BEFORE dividing so the published ratio can never exceed
+    # 1.0 for accepted input; sat(_, 1.0) below already clamps the SCORED
+    # term, this clamp is only about the raw diagnostic.
+    _test_covered_clamped = (min(_test_covered, eligible)
+                             if _test_covered_measured and eligible else _test_covered)
+    _verif_coverage = (_test_covered_clamped / eligible
                        if _test_covered_measured and eligible else None)
+    # F8 — same C7 significance floor as ordered_planning/planning_habit below:
+    # a coverage ratio over fewer than MIN_ELIGIBLE_SESSIONS eligible sessions
+    # is noise (e.g. 100% over 1 session), so drop the term (None ->
+    # renormalized onto review_skills) instead of scoring it.
     verification_coverage = (None if (ordered_state != "measured" or not eligible
-                                      or not _test_covered_measured)
+                                      or not _test_covered_measured
+                                      or eligible < MIN_ELIGIBLE_SESSIONS)
                              else sat(_verif_coverage, 1.0))
     verification = wsum((.5, verification_coverage, None),
                         (.5, rate(review_n, REVIEW_SKILLS_PER_CALL_TARGET), "skill_reads"),
@@ -445,20 +459,27 @@ def compute_aq(stats):
     # calls with zero relationship to authored output). A session is "grounded" when a
     # knowledge-MCP call (accumulator.py's per-session state machine) precedes a later
     # Edit/Write/MultiEdit/NotebookEdit in that SAME session. coverage = grounded/total.
-    # MONOTONIC per-session coverage score — NO floor. More grounding never lowers the
-    # axis, and a real measured zero (has tool activity, 0 grounded sessions) is scored 0,
-    # NOT dropped. TARGET is PROVISIONAL (recalibrate from prod p40-50). The axis is N/A
-    # ONLY when the source genuinely can't measure grounding: no_tool_activity (can't
-    # reconstruct ordered per-session tool sequences) OR the grounding field is absent
-    # (legacy/external block predating the accumulator, which always sets the field —
-    # a missing field means backward-compat, so stay N/A instead of scoring a phantom 0).
+    # F8 — per-session coverage score WITH an evidence floor (this deliberately reverses
+    # the earlier "MONOTONIC ... NO floor" design): more grounding never lowers the axis,
+    # and a real measured zero (has tool activity, 0 grounded sessions) is still scored 0,
+    # NOT dropped -- but a ratio over fewer than MIN_ELIGIBLE_SESSIONS eligible sessions
+    # (e.g. 1/1 = 100% grounded) is not a defensible coverage measurement, so it is dropped
+    # (None -> renormalized) instead, mirroring the same C7 floor Verification coverage
+    # and ordered_planning/planning_habit apply. TARGET is PROVISIONAL (recalibrate from
+    # prod p40-50). The axis is ALSO N/A when the source genuinely can't measure grounding:
+    # no_tool_activity (can't reconstruct ordered per-session tool sequences) OR the
+    # grounding field is absent (legacy/external block predating the accumulator, which
+    # always sets the field — a missing field means backward-compat, so stay N/A instead
+    # of scoring a phantom 0).
     _v5_ordered = "ordered_facts_state" in b
     grounded = (b.get("evidence_eligible_sessions") if _v5_ordered
                 else t.get("mcp_grounded_sessions"))
     ci_denom = (b.get("eligible_change_sessions") if _v5_ordered
                 else t.get("mcp_write_sessions", sessions))
     coverage = (grounded / ci_denom) if grounded is not None and ci_denom else None
-    context_intel = (None if ((_v5_ordered and ordered_state != "measured")
+    context_intel = (None if ((_v5_ordered and (
+                                  ordered_state != "measured"
+                                  or (ci_denom is not None and ci_denom < MIN_ELIGIBLE_SESSIONS)))
                               or b.get("no_tool_activity") or grounded is None or not ci_denom)
                      else sat(coverage, CONTEXT_INTELLIGENCE_TARGET))
     # compounding writes -> per-tool-call rate (rewards the habit, not raw volume)
@@ -479,7 +500,11 @@ def compute_aq(stats):
         "eligible_change_sessions": eligible,
         # None whenever the coverage term was NOT scored (ordered facts unmeasured or no
         # eligible change-sessions), so a consumer never reads a ratio off a refused term.
-        "test_coverage": (round(_verif_coverage, 4)
+        # F9 — min(_, 1.0) belt-and-suspenders clamp: the numerator is already clamped to
+        # the denominator above, but a malformed/replayed block (covered > eligible from a
+        # source other than the accumulator's own aggregate_ordered) must never publish a
+        # ratio the SCORED term (sat(_, 1.0)) already silently caps.
+        "test_coverage": (round(min(_verif_coverage, 1.0), 4)
                           if verification_coverage is not None else None),
     }
     if _review_skills_applicable:
