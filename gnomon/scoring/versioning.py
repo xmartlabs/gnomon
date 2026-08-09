@@ -1,8 +1,22 @@
-# Current scoring contract (18:18:18).
+# Current scoring contract (17:17:17).
 #
-# v18 makes TWO anti-gaming term redesigns, each dropping a term whose signal is confounded
-# or trivially saturated -- the same shape as v17's toolsearch removal (drop the term, let
-# wsum renormalize, remove its calibration constant).
+# v17 makes FOUR anti-gaming term redesigns in this single combined bump, each dropping or
+# reshaping a term whose signal is confounded, trivially saturated, or not a developer virtue:
+#  - Change-session eligibility: writes under a harness-assigned `scratchpad/` directory
+#    (under an OS temp root) are excluded from code-change classification regardless of file
+#    extension -- a scratchpad write is discardable by construction, not a real code change,
+#    so it must not make a session eligible (see taxonomy.py's `_EPHEMERAL_PATH_RX` and
+#    `classify_change_target`).
+#  - Tool command / Token economy: the `toolsearch_calls` per-tool-call rate term is removed
+#    from BOTH scoring axes it fed -- Tool command (weight .20) and Token economy (weight
+#    .50). ToolSearch is a Claude-Code-only signal that is ~94% `select:`-prefixed
+#    deterministic tool-loading the deferred-tool harness forces (not a developer virtue),
+#    and its deliberate remainder is too sparse to calibrate as a per-tool-call rate. The
+#    existing wsum renormalization absorbs the dropped weight (Tool command -> mcp .5 / cli
+#    .5; Token economy -> cli_share at full weight), exactly as it already does for
+#    non-Claude sources that cannot record ToolSearch. The raw `toolsearch_calls` field stays
+#    emitted by the accumulator (unchanged) and is republished as a non-scored diagnostic on
+#    the Tool command axis.
 #  - Verification: the test half switches from a per-CALL DENSITY (shell_test_runs /
 #    tool_calls) to a per-SESSION COVERAGE fraction = (eligible change-sessions that also ran
 #    a shell test) / eligible_change_sessions, scored as a PURE FRACTION with NO fitted target
@@ -16,22 +30,11 @@
 #    not discriminate and rewarded TaskUpdate spam. wsum renormalizes the survivors
 #    (planning_habit .40 + ordered_planning .20) to .667 / .333. TASK_CALLS_PER_CALL_TARGET
 #    is removed. task_tool_calls stays a published diagnostic, not scored.
-# BOTH remove a registered calibration constant, so 18:18:18 carries a NEW fingerprint and is
-# deliberately NOT in ZERO_CALIBRATION_DELTA_CONTRACT_IDS -- see calibration.py's
-# CALIBRATION_FINGERPRINTS.
-#
-# v17 removes the `toolsearch_calls` per-tool-call rate term from BOTH scoring axes it fed
-# -- Tool command (weight .20) and Token economy (weight .50). ToolSearch is a
-# Claude-Code-only signal that is ~94% `select:`-prefixed deterministic tool-loading the
-# deferred-tool harness forces (not a developer virtue), and its deliberate remainder is too
-# sparse to calibrate as a per-tool-call rate. The existing wsum renormalization absorbs the
-# dropped weight (Tool command -> mcp .5 / cli .5; Token economy -> cli_share at full weight),
-# exactly as it already does for non-Claude sources that cannot record ToolSearch. The raw
-# `toolsearch_calls` field stays emitted by the accumulator (unchanged) and is republished as
-# a non-scored diagnostic on the Tool command axis. This is a REAL score delta (Tool command
-# and Token economy renormalize -> AQ moves) AND -- unlike v14/v15/v16 -- a REAL calibration
-# delta: TOOLSEARCH_PER_CALL_TARGET leaves CALIBRATION_CONSTANT_NAMES, so the fingerprint
-# genuinely changes. 17:17:17 therefore carries a NEW fingerprint and is NOT in
+# This is a REAL score delta (Tool command, Token economy, Verification, and Discipline all
+# renormalize -> AQ moves) AND a REAL calibration delta: THREE registered calibration
+# constants -- TOOLSEARCH_PER_CALL_TARGET, TEST_RUNS_PER_CALL_TARGET, and
+# TASK_CALLS_PER_CALL_TARGET -- leave CALIBRATION_CONSTANT_NAMES, so the fingerprint
+# genuinely changes. 17:17:17 therefore carries a NEW fingerprint and is deliberately NOT in
 # ZERO_CALIBRATION_DELTA_CONTRACT_IDS -- see calibration.py's CALIBRATION_FINGERPRINTS.
 #
 # v16 credits the Compounding axis for MCP knowledge-write persistence calls
@@ -98,9 +101,9 @@
 #
 # Contract IDs are comparison boundaries. Calibration fingerprints are append-only:
 # a score-affecting change requires a new ID and fingerprint entry.
-SCORING_INPUTS_VERSION = 18
-AQ_VERSION = 18
-GSTACK_VERSION = 18
+SCORING_INPUTS_VERSION = 17
+AQ_VERSION = 17
+GSTACK_VERSION = 17
 # First input version with deduplicated per-session skill counters. Earlier
 # payloads use different persisted quantities and cannot be replayed against these targets.
 SKILL_DEDUP_INPUTS_VERSION = 8

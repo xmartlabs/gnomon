@@ -14,10 +14,10 @@ CALIBRATION_CONSTANT_NAMES = (
     # scoring window: it determines the corpus all window-sensitive inputs score.
     "DEFAULT_SCORING_WINDOW_MONTHS",
     # rate targets -- the three that share the tool_calls_total denominator. (v17 removed
-    # TOOLSEARCH_PER_CALL_TARGET; v18 removed TASK_CALLS_PER_CALL_TARGET, whose Discipline
-    # rate term was dropped as trivially saturated, and TEST_RUNS_PER_CALL_TARGET, whose
-    # Verification density term was replaced by a no-target per-session coverage fraction --
-    # both constants left this set, the source of 18:18:18's genuinely new fingerprint.)
+    # TOOLSEARCH_PER_CALL_TARGET, TASK_CALLS_PER_CALL_TARGET (whose Discipline rate term was
+    # dropped as trivially saturated), and TEST_RUNS_PER_CALL_TARGET (whose Verification
+    # density term was replaced by a no-target per-session coverage fraction) -- all three
+    # constants left this set, the source of 17:17:17's genuinely new fingerprint.)
     "SKILLS_TOTAL_PER_CALL_TARGET",
     "REVIEW_SKILLS_PER_CALL_TARGET",
     "COMPOUNDING_WRITES_PER_CALL_TARGET",
@@ -130,20 +130,17 @@ CALIBRATION_FINGERPRINTS = {
     # PER_CALL_TARGET (COMPOUNDING_WRITES_PER_CALL_TARGET stays 0.0018), weight, or
     # denominator moved -- so the digest is unchanged from 13:13:13/14:14:14/15:15:15.
     "16:16:16": "94f38d0963b1b195",
-    # v17 (drop toolsearch rate term from Tool command + Token economy): a REAL score delta
-    # (both axes renormalize) AND a REAL calibration delta -- TOOLSEARCH_PER_CALL_TARGET was
-    # removed from CALIBRATION_CONSTANT_NAMES, so a registered constant genuinely left the
-    # fingerprinted set. Unlike 14/15/16 the digest therefore CHANGES (a unique new value),
-    # and 17:17:17 is deliberately NOT in ZERO_CALIBRATION_DELTA_CONTRACT_IDS.
-    "17:17:17": "dc99dad882305bb6",
-    # v18 (Verification per-call density -> pure-fraction per-session coverage; Discipline
-    # task-tool rate term dropped as trivially saturated): a REAL score delta (Verification
-    # renormalizes when coverage is N/A and reads a fraction otherwise; Discipline renormalizes
-    # to .667/.333) AND a REAL calibration delta -- BOTH TEST_RUNS_PER_CALL_TARGET and
-    # TASK_CALLS_PER_CALL_TARGET were removed from CALIBRATION_CONSTANT_NAMES, so two
-    # registered constants genuinely left the fingerprinted set. The digest therefore CHANGES
-    # (a unique new value), and 18:18:18 is deliberately NOT in ZERO_CALIBRATION_DELTA_CONTRACT_IDS.
-    "18:18:18": "7fd9a230f7fb2264",
+    # v17 (scratchpad writes excluded from change-session eligibility; toolsearch rate term
+    # dropped from Tool command + Token economy; Verification per-call density -> pure-fraction
+    # per-session coverage; Discipline task-tool rate term dropped as trivially saturated): a
+    # REAL score delta (Tool command and Token economy renormalize; Verification renormalizes
+    # when coverage is N/A and reads a fraction otherwise; Discipline renormalizes to
+    # .667/.333) AND a REAL calibration delta -- TOOLSEARCH_PER_CALL_TARGET,
+    # TEST_RUNS_PER_CALL_TARGET, and TASK_CALLS_PER_CALL_TARGET were ALL removed from
+    # CALIBRATION_CONSTANT_NAMES, so three registered constants genuinely left the
+    # fingerprinted set. The digest therefore CHANGES (a unique new value), and 17:17:17 is
+    # deliberately NOT in ZERO_CALIBRATION_DELTA_CONTRACT_IDS.
+    "17:17:17": "7fd9a230f7fb2264",
 }
 
 # Contract IDs whose fingerprint is a DOCUMENTED, deliberate duplicate of the contract
