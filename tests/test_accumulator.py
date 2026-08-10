@@ -21,7 +21,7 @@ def _fact_event(sid, timestamp, name, inp=None, attribution=None, tool_use_id=No
 def _tool_result_event(sid, timestamp, tool_use_id, is_error=False):
     """A `user`-turn event carrying the tool_result for an earlier tool_use
     (F7: resolves that tool_use_id's success/error in Accumulator's
-    corpus-lifetime `_tool_result_is_error` map)."""
+    corpus-lifetime, source/session-scoped `_tool_result_is_error` map)."""
     return {"type": "user", "sessionId": sid, "timestamp": timestamp,
             "message": {"role": "user", "content": [
                 {"type": "tool_result", "tool_use_id": tool_use_id,
@@ -630,10 +630,46 @@ class TestVerificationCoverageF7(unittest.TestCase):
         result_event["message"]["content"][0].pop("is_error")
         acc.observe(result_event, None, None)
         facts = _facts_for(acc, "claude", sid)
-        self.assertNotIn("tu-unknown", acc._tool_result_is_error)
+        self.assertNotIn(("claude", sid, "tu-unknown"), acc._tool_result_is_error)
         agg = aggregate_ordered([facts], acc._tool_result_is_error)
         self.assertEqual(agg["eligible"], 1)
         self.assertEqual(agg["test_covered"], 0)
+
+    def test_reused_tool_use_id_is_scoped_to_each_session(self):
+        """A failed result in one session cannot be replaced by a later success."""
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+
+        self._two_code_writes(acc, "session-a")
+        acc.observe(_fact_event("session-a", "2026-01-01T00:00:02Z", "Bash", {
+            "command": "pytest"}, tool_use_id="reused-id"), None, None)
+        acc.observe(_tool_result_event(
+            "session-a", "2026-01-01T00:00:03Z", "reused-id", is_error=True), None, None)
+
+        self._two_code_writes(acc, "session-b")
+        acc.observe(_fact_event("session-b", "2026-01-01T00:00:02Z", "Bash", {
+            "command": "pytest"}, tool_use_id="reused-id"), None, None)
+        acc.observe(_tool_result_event(
+            "session-b", "2026-01-01T00:00:03Z", "reused-id", is_error=False), None, None)
+
+        facts_a = _facts_for(acc, "claude", "session-a")
+        facts_b = _facts_for(acc, "claude", "session-b")
+        result_a = derive_session_ordered_facts(facts_a, acc._tool_result_is_error)
+        result_b = derive_session_ordered_facts(facts_b, acc._tool_result_is_error)
+
+        self.assertFalse(result_a["ran_test"])
+        self.assertTrue(result_b["ran_test"])
+        aggregate = aggregate_ordered([facts_a, facts_b], acc._tool_result_is_error)
+        self.assertEqual(aggregate["eligible"], 2)
+        self.assertEqual(aggregate["test_covered"], 1)
+
+        corpus = acc.to_corpus_stats(None, None, False)
+        self.assertEqual(corpus["behavior"]["test_covered_change_sessions"], 1)
+        source = acc.to_source_stats("claude", None, None)
+        self.assertEqual(source["behavior"]["test_covered_change_sessions"], 1)
+        monthly = corpus["_scoring_monthly_full"]
+        self.assertEqual(monthly[0]["stats_full"]["behavior"][
+            "test_covered_change_sessions"], 1)
 
 
 class TestOrderedTargetClassification(unittest.TestCase):

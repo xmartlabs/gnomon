@@ -3,7 +3,9 @@ from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import paxel
-from gnomon.cli.accumulator import Accumulator
+from gnomon.cli.accumulator import (
+    Accumulator, aggregate_ordered, derive_session_ordered_facts,
+)
 from gnomon.sources import iter_events
 from gnomon.sources import discovery
 from gnomon.sources.codex import _codex_events
@@ -361,19 +363,20 @@ class TestCodexFanoutTimestamp(unittest.TestCase):
 
 # ---------------------------------------------------------------------------
 # BLOCKER 1 — Codex tool events must thread `call_id` as the correlation id
-# (`id` on tool_use, `tool_use_id` on tool_result) so F7's corpus-lifetime
-# success map (`Accumulator._tool_result_is_error`) can resolve a Codex shell
+# (`id` on tool_use, `tool_use_id` on tool_result) so F7's corpus-lifetime,
+# source/session-scoped success map (`Accumulator._tool_result_is_error`) can resolve a Codex shell
 # test's outcome, the same way it already does for Claude's `id`/`tool_use_id`.
 # ---------------------------------------------------------------------------
 
 class TestCodexVerificationCoverageBlocker1(unittest.TestCase):
-    def _session_rows(self, test_success, as_string=False, raw_output=None):
+    def _session_rows(self, test_success, as_string=False, raw_output=None,
+                      session_id="codex-s1", call_id="test-1"):
         _out = (raw_output if raw_output is not None
                 else (json.dumps({"success": test_success}) if as_string
                       else {"success": test_success}))
         return [
             {"type": "session_meta", "timestamp": "2026-01-01T00:00:00Z",
-             "payload": {"id": "codex-s1", "cwd": "/repo"}},
+             "payload": {"id": session_id, "cwd": "/repo"}},
             {"type": "turn_context", "timestamp": "2026-01-01T00:00:01Z",
              "payload": {"model": "gpt-5.4"}},
             {"type": "response_item", "timestamp": "2026-01-01T00:00:02Z",
@@ -387,10 +390,10 @@ class TestCodexVerificationCoverageBlocker1(unittest.TestCase):
                          "input": ("*** Begin Patch\n*** Update File: src/b.py\n"
                                    "@@\n-y = 1\n+y = 2\n*** End Patch")}},
             {"type": "response_item", "timestamp": "2026-01-01T00:00:04Z",
-             "payload": {"type": "function_call", "name": "shell", "call_id": "test-1",
+             "payload": {"type": "function_call", "name": "shell", "call_id": call_id,
                          "arguments": json.dumps({"command": "pytest"})}},
             {"type": "response_item", "timestamp": "2026-01-01T00:00:05Z",
-             "payload": {"type": "function_call_output", "call_id": "test-1",
+             "payload": {"type": "function_call_output", "call_id": call_id,
                          "output": _out}},
         ]
 
@@ -421,6 +424,30 @@ class TestCodexVerificationCoverageBlocker1(unittest.TestCase):
         agg = self._run(test_success=False)
         self.assertEqual(agg["eligible"], 1)
         self.assertEqual(agg["test_covered"], 0)
+
+    def test_reused_codex_call_id_is_scoped_within_the_corpus(self):
+        acc = Accumulator()
+        for session_id, test_success in (("codex-a", False), ("codex-b", True)):
+            path = _write_jsonl(self._session_rows(
+                test_success, session_id=session_id, call_id="reused-call-id"))
+            try:
+                events = list(_codex_events(path))
+                acc.begin_file("codex", path)
+                for ev in events:
+                    acc.observe(ev, None, None)
+            finally:
+                os.unlink(path)
+
+        facts_a = acc.session_ordered_tools[("codex", "codex-a")]
+        facts_b = acc.session_ordered_tools[("codex", "codex-b")]
+        aggregate = aggregate_ordered([facts_a, facts_b], acc._tool_result_is_error)
+
+        self.assertFalse(derive_session_ordered_facts(
+            facts_a, acc._tool_result_is_error)["ran_test"])
+        self.assertTrue(derive_session_ordered_facts(
+            facts_b, acc._tool_result_is_error)["ran_test"])
+        self.assertEqual(aggregate["eligible"], 2)
+        self.assertEqual(aggregate["test_covered"], 1)
 
     def test_json_string_output_success_is_covered(self):
         # Codex records function_call_output.output as a dict OR a JSON string.

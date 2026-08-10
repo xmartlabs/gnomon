@@ -267,8 +267,9 @@ def build_monthly_scoring_stats(
         # C4: cross-session consume-once credit, scoped to this month's sessions
         # (a plan artifact only credits an execution in the SAME calendar month
         # bucket — matching the existing monthly-progression scoping). BLOCKER 2 —
-        # `tool_result_is_error` (the corpus-lifetime {tool_use_id: is_error} map,
-        # see Accumulator._tool_result_is_error) must be threaded through here too,
+        # `tool_result_is_error` (the corpus-lifetime
+        # {(source, session_id, tool_use_id): is_error} map, see
+        # Accumulator._tool_result_is_error) must be threaded through here too,
         # exactly like the corpus (`to_corpus_stats`) and per-source
         # (`to_source_stats`) paths already do, or F7's fail-closed success check
         # never resolves and `test_covered_change_sessions` is always 0 even for a

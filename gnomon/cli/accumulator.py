@@ -321,8 +321,9 @@ class Accumulator:
 
         # F7 hardening — Verification coverage must fail-closed on a test whose
         # result never resolves (truncated transcript) or that errored. Keyed
-        # by tool_use_id -> is_error, so a later `runs_tests` fact can be
-        # cross-referenced against its actual result at derive time.
+        # by (source, session_id, tool_use_id) -> is_error, so a later
+        # `runs_tests` fact can be cross-referenced against its own result at
+        # derive time without cross-session/source contamination.
         # derive_session_ordered_facts/aggregate_ordered only run in
         # to_corpus_stats/to_source_stats, AFTER every file in the corpus has
         # been observed, so this must be corpus-lifetime like
@@ -989,9 +990,11 @@ class Accumulator:
                         _is_error = b.get("is_error")
                         if _tuid and isinstance(_is_error, bool):
                             # F7: last result wins if a tool_use_id somehow
-                            # repeats; corpus-lifetime, resolved at derive
-                            # time by derive_session_ordered_facts.
-                            self._tool_result_is_error[_tuid] = _is_error
+                            # repeats within the same source/session; the map
+                            # remains corpus-lifetime so derive runs after all
+                            # files have been observed.
+                            self._tool_result_is_error[
+                                (self._cur_src, sid, _tuid)] = _is_error
                         if b.get("is_error"):
                             self.tool_errors += 1
                             if mkey:
@@ -1134,7 +1137,7 @@ class Accumulator:
                                 "loc": self._write_loc(name, inp),
                                 "plan_file": is_plan_file_target(_target),
                                 "plan_skill": self._fact_plan_skill(name, inp, ev),
-                                # v18 — per-session Verification COVERAGE numerator: mark a
+                                # v17 — per-session Verification COVERAGE numerator: mark a
                                 # Bash fact that ran a shell test (bash_runs_tests), so
                                 # derive_session_ordered_facts/aggregate_ordered can count the
                                 # eligible change-sessions that verified, next to the raw
@@ -1144,8 +1147,12 @@ class Accumulator:
                                     and bash_runs_tests(_bash_cmd)),
                                 # F7 — needed to resolve this fact's actual
                                 # tool_result (success/error/absent) at derive
-                                # time; see self._tool_result_is_error.
+                                # time; see self._tool_result_is_error. Carry
+                                # the source/session identity because tool ids
+                                # are not corpus-global (Codex call_ids may be
+                                # reused across sessions).
                                 "tool_use_id": b.get("id"),
+                                "_session_key": _fact_sid,
                             }
                             self.session_ordered_tools[_fact_sid].append(_ordered_fact)
                             if dt is None:
@@ -1873,7 +1880,7 @@ class Accumulator:
             cwds=self._git_cwds(),
             gap_cap_s=GAP_CAP_S, burst_gap_s=BURST_GAP_S,
             no_tool_activity=no_tool_activity, all_sources_no_agent=all_sources_no_agent,
-            # BLOCKER 2: thread the corpus-lifetime success map through the monthly
+            # BLOCKER 2: thread the corpus-lifetime, session-scoped result map through the monthly
             # slice too, matching to_corpus_stats/to_source_stats above.
             tool_result_is_error=self._tool_result_is_error,
         )
@@ -2108,11 +2115,12 @@ def derive_session_ordered_facts(events, tool_result_is_error=None):
     `runs_tests` Bash fact that ran AFTER the first CODE write (verifying the
     change just made, not a pre-existing/incidental test earlier in the
     session) AND whose tool_result actually resolved successfully.
-    `tool_result_is_error` is the corpus-lifetime {tool_use_id: is_error} map
-    (see Accumulator._tool_result_is_error); a fact whose tool_use_id is
-    absent from it (truncated transcript, no result ever observed) or maps to
-    True (the test errored) does NOT count — fail-closed by construction, not
-    by a downstream floor.
+    `tool_result_is_error` is the corpus-lifetime
+    {(source, session_id, tool_use_id): is_error} map (see
+    Accumulator._tool_result_is_error); each fact carries its own source/session
+    key. A fact whose scoped key is absent from the map (truncated transcript,
+    no result ever observed) or maps to True (the test errored) does NOT count —
+    fail-closed by construction, not by a downstream floor.
 
     Returns eligible/planned_intra/evidence plus first_write_order/cwd and
     plan_artifacts — the latter two feed aggregate_ordered's cross-session
@@ -2152,8 +2160,13 @@ def derive_session_ordered_facts(events, tool_result_is_error=None):
             # re-deriving order. Fail-closed: a tool_use_id absent from the
             # map (no result observed) or True (errored) does not count.
             tuid = event.get("tool_use_id")
-            if tuid is not None and tuid in tool_result_is_error and not tool_result_is_error[tuid]:
-                ran_test = True
+            session_key = event.get("_session_key")
+            if (tuid is not None and isinstance(session_key, tuple)
+                    and len(session_key) == 2):
+                result_key = (*session_key, tuid)
+                if (result_key in tool_result_is_error
+                        and not tool_result_is_error[result_key]):
+                    ran_test = True
         target = _normalized_ordered_target(event)
         is_write = name in _WRITE_TOOLS_V5
         file_class = event.get("file_class")
@@ -2266,7 +2279,8 @@ def aggregate_ordered(sessions, tool_result_is_error=None):
     shared artifact (one plan credits exactly one execution).
 
     `tool_result_is_error` (F7) is forwarded to derive_session_ordered_facts
-    unchanged so `ran_test`/`test_covered` below can fail-closed on an
+    unchanged so each fact resolves its own `(source, session_id,
+    tool_use_id)` key and `ran_test`/`test_covered` can fail-closed on an
     unresolved or errored test result."""
     derived = [derive_session_ordered_facts(facts, tool_result_is_error)
                for facts in sessions]
