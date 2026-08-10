@@ -38,11 +38,6 @@ import gnomon.scoring.aq as AQ  # noqa: E402
 # threshold must put that term at full marks.
 RATE_SIGNALS = {
     "skills_total": "SKILLS_TOTAL_PER_CALL_TARGET",
-    "toolsearch_calls": "TOOLSEARCH_PER_CALL_TARGET",
-    # `task_calls` in aq.py is a local: task_tool_calls + skill uses that count as tasks.
-    # Cutting the stats key cuts the first half only, so this arm understates that axis.
-    "task_tool_calls": "TASK_CALLS_PER_CALL_TARGET",
-    "shell_test_runs": "TEST_RUNS_PER_CALL_TARGET",
     "compounding_writes": "COMPOUNDING_WRITES_PER_CALL_TARGET",
 }
 COUNT_SIGNALS = {
@@ -50,10 +45,36 @@ COUNT_SIGNALS = {
     "skills_distinct": "SKILLS_DISTINCT_CEILING",
     "mcp_servers_distinct": "MCP_SERVERS_DISTINCT_CEILING",
     "clis_distinct": "CLIS_DISTINCT_CEILING",
+    "fanout_median": "FANOUT_CEILING",
 }
+# numerator -> (denominator, threshold NAME). Terms scored as a share of a population
+# rather than per tool call. Cutting one means cutting its numerator to the share the
+# threshold still pays full marks for, so the denominator has to be read per arm.
+SHARE_SIGNALS = {
+    "delegated_orchestratable_sessions": ("orchestratable_sessions",
+                                          "ORCHESTRATION_FREQUENCY_TARGET"),
+    "evidence_eligible_sessions": ("eligible_change_sessions",
+                                   "CONTEXT_INTELLIGENCE_TARGET"),
+    "planned_eligible_sessions": ("eligible_change_sessions", "PLANNING_TARGET"),
+    "planning_skill_sessions": ("planning_skill_eligible_sessions",
+                                "PLANNING_PRACTICE_TARGET"),
+}
+# Saturated terms this arm CANNOT cut, and why. Printed with the coverage floor rather
+# than left silent: an axis missing from the arm makes the result look better covered
+# than it is. Everything here fails the same rule — there is no importable threshold to
+# cut to, and restating the literal would make this check disagree with the tool the
+# moment anyone recalibrates. That is the mistake this script exists to find.
+NOT_CUTTABLE = [
+    ("cli_share", "Token economy", "sat(_, 0.70) is an inline literal, not a constant"),
+    ("offload_share", "Model mix", "inline literal, and its input is a turn-count list"),
+    ("distinct_models", "Model mix", "sat(len(models), 3): cutting means truncating a list"),
+    ("planning_ratio_explore_to_doing", "Grounding", "sat(_, 1.0) is an inline literal"),
+    ("test_coverage", "Verification", "scored as the raw ratio; no threshold to cut to"),
+    ("review_skills", "Verification", "derived from the skills list, not a scalar in the payload"),
+]
 
 missing = [n for n in list(RATE_SIGNALS.values()) + list(COUNT_SIGNALS.values())
-           if not hasattr(AQ, n)]
+           + [t for _, t in SHARE_SIGNALS.values()] if not hasattr(AQ, n)]
 if missing:
     sys.exit(f"error: this checkout has no {', '.join(missing)}. The thresholds were renamed "
              "or removed; re-pair them before trusting this check.")
@@ -105,9 +126,26 @@ def arm(fraction, absent=None):
     if not calls:
         sys.exit("error: could not read the tool-call denominator from stats.json.")
     changes = []
-    for key, name in list(RATE_SIGNALS.items()) + list(COUNT_SIGNALS.items()):
+    pairs = (list(RATE_SIGNALS.items()) + list(COUNT_SIGNALS.items())
+             + [(k, t) for k, (_, t) in SHARE_SIGNALS.items()])
+    for key, name in pairs:
         threshold = getattr(AQ, name)
-        want = threshold * calls * fraction if key in RATE_SIGNALS else threshold * fraction
+        if key in RATE_SIGNALS:
+            want = threshold * calls * fraction
+        elif key in COUNT_SIGNALS:
+            want = threshold * fraction
+        else:
+            # A share's ceiling is threshold * its own population, not a fixed count. Read
+            # the denominator from the payload: hardcoding it would silently misscale the
+            # cut on any other corpus, which is the whole point of this arm.
+            denom_key = SHARE_SIGNALS[key][0]
+            denom = next((v for _, v in find_all(mutated, denom_key)
+                          if isinstance(v, (int, float)) and v), None)
+            if denom is None:
+                if absent is not None:
+                    absent.append(f"{key} (no {denom_key})")
+                continue
+            want = threshold * denom * fraction
         current = next((v for _, v in find_all(mutated, key) if isinstance(v, (int, float))),
                        None)
         if current is None:
@@ -163,16 +201,18 @@ else:
     print("  there is no saturation finding to report.")
 
 print("\n  COVERAGE — this is a floor, not the whole score:")
+examined = len(RATE_SIGNALS) + len(COUNT_SIGNALS) + len(SHARE_SIGNALS)
 print(f"    signals cut          : {len(changed)}")
-print(f"    examined, not saturated: "
-      f"{len(RATE_SIGNALS) + len(COUNT_SIGNALS) - len(changed) - len(absent)}")
+print(f"    examined, not saturated: {examined - len(changed) - len(absent)}")
 if absent:
     print(f"    LOOKED FOR, NOT FOUND: {', '.join(absent)}")
     print("      Either renamed upstream or absent from this payload. Each one is a signal")
     print("      this arm did NOT cut, so the real plateau is at least as wide as shown.")
-print("    Signals with no entry above — fan-out, orchestration frequency, planning ratios,")
-print("    model diversity, CLI share — are not cut at all. A wider arm can only make the")
-print("    at-threshold delta more damning, never less.")
+print("\n    SATURATED BUT NOT CUT — no importable threshold to cut to. Restating the")
+print("    literal would drift from the tool the moment anyone recalibrates:")
+for sig, axis, why in NOT_CUTTABLE:
+    print(f"      {sig:<32}{axis:<22}{why}")
+print("    A wider arm can only make the at-threshold delta more damning, never less.")
 
 print("\n  NOT CHECKED: whether the thresholds are calibrated against a real population.")
 print("  A pinned axis is only a defect if the graded population has mass above it, and")
