@@ -98,12 +98,19 @@ The checks in `scripts/` also run standalone. Start with the anchor, which does 
 one command and writes the `stats.json` the other checks read:
 
 ```bash
-scripts/anchor.sh --checkout /path/to/gnomon --since 2026-07-07 --until 2026-08-06
+scripts/anchor.sh --checkout /path/to/gnomon --since 2026-07-07 --until 2026-08-06 \
+    --published 92 --expect-contract 17:17:17
 ```
 
 It copies the checkout, reproduces the published number on the copy, prints the corpus
-fingerprint, and tells you where `stats.json` landed. It fails loudly if the run produces
-nothing, because a number that did not reproduce makes every later finding unsafe to read.
+fingerprint, and tells you where `stats.json` landed.
+
+**Pass `--published`.** With it the anchor compares and exits non-zero when the two numbers
+disagree, saying which is which. Without it the script prints the number and asks you to
+compare it yourself, which is what it used to do, and a gate nobody is forced through is not
+a gate. `--expect-contract` does the same for the contract string in
+`references/known-state.md`. A number that did not reproduce makes every later finding
+unsafe to read, so this is the one place worth failing loudly.
 
 Then the individual checks. **Point them at the copy the anchor made, not at the original.**
 They import the tool's own predicates, and importing writes `__pycache__` directories into
@@ -151,10 +158,12 @@ the file you edited against the cached one before you trust any test of your cha
 has burned real money more than once.
 
 **Knowing when the skill has gone stale.** `references/known-state.md` pins the commit and
-contract string it was validated against. Phase 0 compares your installed version to it and
-says so when they differ. When they do, the fixtures in `scripts/` have to be re-run before
-anyone quotes a finding: a check written against one contract and silently measuring
-another is worse than no check.
+contract string it was validated against. Pass that string as `--expect-contract` and the
+anchor stops the run when the checkout has moved. When it does, the fixtures in `scripts/`
+have to be re-run before anyone quotes a finding: a check written against one contract and
+silently measuring another is worse than no check. Nothing reads `known-state.md` for you,
+so an operator who omits the flag gets no comparison — this paragraph used to claim
+otherwise.
 
 ## Scope
 

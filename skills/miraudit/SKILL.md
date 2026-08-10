@@ -39,6 +39,9 @@ is not evidence.
 2. Reproduce the published number on a **copy** of the checkout, over **the report's own
    window**. A window ending *now* drifts daily and includes the audit session itself.
 3. **If the base run does not reproduce it, stop.** The method is wrong before any finding.
+   Give `scripts/anchor.sh` the `--published` and `--expect-contract` values so it stops on
+   its own. Omit them and it prints the number and asks you to compare, which is where the
+   gate leaks: this step read as enforced for a long time while nothing enforced it.
 4. Print the corpus fingerprint — files, lines, tool calls, sources, window — before any
    other number. Counts compared across machines mean nothing without it.
 5. Pass that same end date to every check in `scripts/`, or they measure days the report

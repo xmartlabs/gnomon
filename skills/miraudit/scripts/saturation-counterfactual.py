@@ -338,3 +338,9 @@ print("    A wider arm can only make the at-threshold delta more damning, never 
 print("\n  NOT CHECKED: whether the thresholds are calibrated against a real population.")
 print("  A pinned axis is only a defect if the graded population has mass above it, and")
 print("  one corpus cannot tell 'the axis saturates' from 'this person clears every bar'.")
+
+# Two ways this run's headline is not trustworthy, and both were prose-only until now: a
+# control that did not move, and a bisection that could not recover a threshold it could
+# have read. Anyone running the checks in a batch reads exit codes, not paragraphs.
+if not ok or not _method_ok:
+    raise SystemExit(1)

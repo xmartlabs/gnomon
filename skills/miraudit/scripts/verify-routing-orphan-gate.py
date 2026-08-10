@@ -113,3 +113,8 @@ else:
 print("\n  NOT CHECKED: whether a real corpus with neither fan-out nor background dispatch")
 print("  reaches `measured`. This is a synthetic fixture; it shows the gate's behaviour,")
 print("  not how often the condition arises in anyone's actual transcripts.")
+
+# Prose on stdout is not a channel a batch run reads. Exit non-zero so the return code
+# stops agreeing with a broken fixture.
+if not ok:
+    raise SystemExit(1)

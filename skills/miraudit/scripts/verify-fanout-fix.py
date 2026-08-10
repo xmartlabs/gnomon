@@ -71,11 +71,16 @@ def feed(files):
     return a
 
 
+FAILED = []
+
+
 def show(label, a, expect_parent, expect_total=None):
     got = a.agents_per_session.get(expect_parent, 0)
     total = sum(a.agents_per_session.values())
-    mark = "ok" if (expect_total is None or total == expect_total) else "??"
-    print(f"  [{mark}] {label:<52} parent={got:<3} total={total:<3} "
+    good = expect_total is None or total == expect_total
+    if not good:
+        FAILED.append(label)
+    print(f"  [{'ok' if good else '??'}] {label:<52} parent={got:<3} total={total:<3} "
           f"keys={sorted(a.agents_per_session)}")
     return got, total
 
@@ -124,3 +129,11 @@ print("\n7. delegation preserved: Workflow-only still counts as delegating")
 a = feed([(f"{FAKE_ROOT}/{PARENT}.jsonl", [ev("Workflow", PARENT, 0)]),
           (wf_path(PARENT, "abc", "a1"), [ev("Bash", PARENT, 1, agent_id="a1")])])
 show("Workflow + its dispatched transcript", a, PARENT, 1)
+
+# Exit non-zero when a case misbehaves. Printing "[??]" and returning 0 means anyone running
+# these in a batch reads the exit codes and concludes everything passed.
+if FAILED:
+    print(f"\n  {len(FAILED)} case(s) did not behave as written; the first is {FAILED[0]!r}.")
+    print("  Every conclusion above is unsafe: the fixture is describing something other")
+    print("  than what its labels claim.")
+    raise SystemExit(1)

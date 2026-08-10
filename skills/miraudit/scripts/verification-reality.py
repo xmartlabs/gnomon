@@ -184,13 +184,43 @@ print("worktrees that may since have been deleted, and those read as 'no test'."
 
 # repo-relative path, tolerating worktree suffixes like <repo>-TICKET-123
 STRIP = re.compile(r'.*/' + re.escape(name) + r'[^/]*/(.+)$')
-CODE_EXT = re.compile(r'\.(ts|tsx|js|jsx|py|go|rb)$')
+
+# What counts as code, and what counts as a test, is THEIRS: classify_change_target reads
+# _CODE_EXTS (37 extensions) and _TEST_NAME_RX, which also recognises __tests__/, tests/,
+# a test_ prefix and _test/_spec suffixes. An earlier version of this block asked only for
+# "<base>.test.<ext>" beside the file over a 7-extension list of its own, so a repo laying
+# tests out any other way read as untested. That is the `stale-paths` scar with a new
+# mechanism, and this file is where it was committed.
+# The MATCHING is still ours -- see the note printed below.
+MARKERS = re.compile(r'(^test_|[._-](test|spec)$|^(test|spec)$)', re.I)
+
+
+def stem(path):
+    """Basename with its extension and any test/spec marker removed: the subject a test
+    is a test OF. `foo.test.ts` -> `foo`, `test_foo.py` -> `foo`, `foo_spec.rb` -> `foo`."""
+    base = path.rsplit("/", 1)[-1]
+    base = base.rsplit(".", 1)[0] if "." in base else base
+    prev = None
+    while prev != base:
+        prev = base
+        base = MARKERS.sub("", base).strip("._-")
+    return base
+
+
+def parent(p):
+    return p.rsplit("/", 1)[0] if "/" in p else ""
+
+
+tests_anywhere = collections.defaultdict(set)   # stem -> {path of the test file}
+for p in tree:
+    if classify_change_target(p) == "test":
+        tests_anywhere[stem(p)].add(p)
 
 touched = set()
 for s in coding.values():
     for fp in s["codefiles"]:
         m = STRIP.match(fp)
-        if m and CODE_EXT.search(fp):
+        if m and classify_change_target(fp) == "code":
             touched.add(m.group(1))
 
 if not touched:
@@ -198,10 +228,17 @@ if not touched:
 
 by_area = collections.Counter()
 without = []
+n_elsewhere = 0
 for rel in sorted(touched):
-    base = CODE_EXT.sub("", rel)
-    ext = rel.rsplit(".", 1)[-1]
-    has = f"{base}.test.{ext}" in tree or f"{base}.spec.{ext}" in tree
+    where = tests_anywhere.get(stem(rel), set())
+    d = parent(rel)
+    # Strict: the test sits in the file's own directory, or in a test directory directly
+    # under it. Matching by stem across the whole repo is NOT enough -- on the corpus this
+    # was written against it paired src/controllers/v2/invoice.ts with
+    # src/services/v2/invoice.test.ts, a different module that happens to share a name.
+    has = any(parent(t) == d or parent(parent(t)) == d for t in where)
+    if not has and where:
+        n_elsewhere += 1
     parts = rel.split("/")
     area = "/".join(parts[:2]) if len(parts) > 2 else (parts[0] if parts else "root")
     by_area[(area, has)] += 1
@@ -211,8 +248,10 @@ for rel in sorted(touched):
 n = len(touched)
 with_test = n - len(without)
 print(f"\n  {n} distinct code files touched")
-print(f"    with a co-located test : {with_test:>4}  ({100 * with_test // max(1, n)}%)")
-print(f"    without                : {len(without):>4}")
+print(f"    with a test beside it or under it : {with_test:>4}  ({100 * with_test // max(1, n)}%)")
+print(f"    without                           : {len(without):>4}")
+print(f"    (of those, {n_elsewhere} have a same-named test somewhere else in the repo,")
+print("     which is a name collision as often as it is a real test -- not counted)")
 print(f"\n  {'area':<34}{'with':>6}{'without':>9}{'%':>6}")
 for area in sorted({a for a, _ in by_area}):
     y, no = by_area[(area, True)], by_area[(area, False)]
@@ -222,3 +261,10 @@ for rel in without[:12]:
     print(f"    {rel}")
 if len(without) > 12:
     print(f"    ... and {len(without) - 12} more")
+
+print("\n  NOT CHECKED: whether the test that matches a name actually exercises that file.")
+print("  `classify_change_target` decides what is code and what is a test -- that half is")
+print("  theirs, and it recognises __tests__/, tests/, test_ and _spec, not just one layout.")
+print("  Pairing a test to its subject is OURS and deliberately strict, so a repo that keeps")
+print("  tests in a top-level tests/ tree mirroring src/ reads LOW here. Read this as a")
+print("  lower bound, and check the layout before quoting it.")

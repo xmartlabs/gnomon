@@ -129,11 +129,11 @@ print("  which tool set it up:")
 for n, c in first_tool.most_common(5):
     print(f"    {c:>3}  {n}")
 
-# ============ B. Recovery: owned by tmp-and-recovery.py ============
+# ============ B. Recovery: owned by recovery-reality.py ============
 # Deliberately NOT measured here. An earlier version of this section counted only the
 # tool call IMMEDIATELY after an error and reported a 0.465 "real recovery" ratio. That
 # was a bad operationalization, not a finding: after an error you usually read a file
-# before retrying. tmp-and-recovery.py pairs tool_use with its tool_result and looks for
+# before retrying. recovery-reality.py pairs tool_use with its tool_result and looks for
 # a later SUCCESSFUL retry of the same tool, which gives 0.90 against the 0.967 reported.
 # One question, one owner. See references/refutation.md, example flattering-operationalization.
 

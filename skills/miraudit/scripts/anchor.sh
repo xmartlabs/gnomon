@@ -7,11 +7,16 @@
 # copy, an entry point that is not the documented one, and a window that must not roll.
 #
 #   ./anchor.sh --checkout <path> --since YYYY-MM-DD --until YYYY-MM-DD [--corpus <path>]
+#               [--published <N>] [--expect-contract <X>]
+#
+# --published and --expect-contract turn Phase 0 into an actual gate: without them the
+# script prints the number and trusts you to compare it, which is what it used to do.
 #
 # Never runs against the original checkout. Everything happens on a copy under --work.
 set -euo pipefail
 
 CHECKOUT=""; SINCE=""; UNTIL=""; CORPUS="$HOME/.claude/projects"
+PUBLISHED=""; EXPECT=""
 WORK="${TMPDIR:-/tmp}/miraudit-anchor.$$"
 
 while [ $# -gt 0 ]; do
@@ -21,6 +26,8 @@ while [ $# -gt 0 ]; do
     --until)    UNTIL="$2";    shift 2 ;;
     --corpus)   CORPUS="$2";   shift 2 ;;
     --work)     WORK="$2";     shift 2 ;;
+    --published)       PUBLISHED="$2"; shift 2 ;;
+    --expect-contract) EXPECT="$2";    shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -69,12 +76,13 @@ fi
 # says "Elite", which is a different scoring system and has been misread as satisfying this
 # gate. Nothing else here prints the AQ, so a run could not check what it was told to check.
 echo
-python3 - "$HERE" "$STATS" <<'PY'
+python3 - "$HERE" "$STATS" "$PUBLISHED" "$EXPECT" <<'PY'
 import sys
 sys.path.insert(0, sys.argv[1])
 from _common import load_stats, find_key
 
 stats = load_stats(sys.argv[2])
+published, expect = sys.argv[3], sys.argv[4]
 aq = find_key(stats, "aq_0_100")
 tier = find_key(stats, "tier")
 contract = find_key(stats, "score_contract_id")
@@ -89,6 +97,28 @@ if aq is None:
 print(f"  AQ        {aq}")
 print(f"  tier      {tier}")
 print(f"  contract  {contract}")
+
+# Phase 0 is described as a gate that stops the run. Until these two flags existed it only
+# printed a number and asked the operator to compare it, which is not a gate.
+failed = []
+if published:
+    same = str(aq).strip() == published.strip()
+    print(f"\n  published {published}   ->  {'reproduced' if same else 'DOES NOT MATCH'}")
+    if not same:
+        failed.append(f"the run gives {aq}, the published number is {published}")
+if expect:
+    same = str(contract).strip() == expect.strip()
+    print(f"  expected contract {expect}   ->  {'match' if same else 'DOES NOT MATCH'}")
+    if not same:
+        failed.append(f"the checkout is on {contract}, not {expect}")
+if failed:
+    print("\n  GATE FAILED: " + "; ".join(failed) + ".")
+    print("  The method is wrong before any finding is. Do not run the checks.")
+    raise SystemExit(1)
+if not published and not expect:
+    print("\n  No gate ran. Pass --published <N> to have this script check the number")
+    print("  instead of asking you to, and --expect-contract <X> for the contract string")
+    print("  in references/known-state.md.")
 PY
 
 echo
@@ -100,8 +130,12 @@ echo "==> anchored"
 echo "    stats.json : $STATS"
 echo "    copy       : $COPY"
 echo
-echo "Compare that AQ against the published one BEFORE measuring anything. If they differ,"
-echo "the method is wrong before any finding is. Then pass the same window, and the COPY —"
+if [ -n "$PUBLISHED" ]; then
+  echo "The gate passed: this run reproduced $PUBLISHED. Pass the same window, and the COPY —"
+else
+  echo "Compare that AQ against the published one BEFORE measuring anything. If they differ,"
+  echo "the method is wrong before any finding is. Then pass the same window, and the COPY —"
+fi
 echo "never the original, which the checks would write __pycache__ into:"
 echo
 echo "    python3 $HERE/<check>.py --checkout $COPY \\"

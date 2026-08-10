@@ -29,9 +29,13 @@ notices the drift does this, in order:
 3. For each entry below, decide one of three things and write it down: still true, now
    fixed (move it to "Confirmed and fixed" with how it was verified), or **obsolete because
    the axis it describes no longer exists**.
-4. Delete the fixtures whose subject is gone. A fixture that demonstrates pre-fix behaviour
-   prints a confident conclusion its own numbers contradict once the fix lands. This has
-   already happened once, to `verify-compounding-mcp.py`, which is deleted on purpose.
+4. Delete the fixtures whose subject is gone — and **a section of a fixture counts as a
+   fixture**. One that demonstrates pre-fix behaviour prints a confident conclusion its own
+   numbers contradict once the fix lands. Three have gone this way on purpose:
+   `verify-compounding-mcp.py`, `verify-verification-axis.py`, and
+   `measure-verification-corpus.py`. Deleting a *section* is the one that gets skipped,
+   because the file still runs and still looks maintained: the scratchpad half of what is
+   now `recovery-reality.py` outlived its subject that way.
 5. Update the pin and the date at the top.
 
 ## Running the tool (Phase 0 operations)
@@ -97,7 +101,7 @@ checkout, not from reading the PR description.
 
 | Gone in v17 | Consequence here |
 |---|---|
-| `TEST_RUNS_PER_CALL_TARGET` | `verify-verification-axis.py` **deleted** — it demonstrated a fixed bug. `measure-verification-corpus.py` exits loudly through `require()`, as designed |
+| `TEST_RUNS_PER_CALL_TARGET` | `verify-verification-axis.py` and `measure-verification-corpus.py` both **deleted** — each demonstrated a fixed bug. The second was kept for a while "exiting loudly through `require()`, as designed", which sounds principled and is not: an `rc=1` in a batch is indistinguishable from a break, and the script had also stopped filtering by its own window |
 | `TOOLSEARCH_PER_CALL_TARGET` | Section D of `fidelity-audit.py` **deleted**. `toolsearch_calls` survives as a published diagnostic no term reads, so the `signal-reused` shape it showed is gone |
 | `TASK_CALLS_PER_CALL_TARGET` | Dropped from the saturation arm's pairings |
 
@@ -192,12 +196,19 @@ Each has the fact that killed it. Full write-ups in `refutation.md`.
 runner name inside a quoted argument, so `grep -iE "tsc|npm run|vitest"` counts as running
 tests. Real and verified, twice in the whole corpus. Not worth a report.
 
-## Denominator note
+## Denominator note — closed, and the closing is the interesting part
 
-`eligible_change_sessions` counts writes to the harness-assigned ephemeral scratchpad
-(`/private/tmp/claude-<pid>/<project>/<session-uuid>/scratchpad/`). Four of 50 code-editing
-sessions qualify only through that, and C2 eligibility moves from 34 to 40.
+It used to say `eligible_change_sessions` counts writes to the harness-assigned ephemeral
+scratchpad, sizing the effect at four of 50 sessions. **That is no longer true**, and the
+entry survived in the present tense for a while after the fix it mentions in its own last
+line, which is the `_blend_aq` shape: a real number attached to a mechanism that is gone.
 
-It costs nothing today — both consumers are saturated with margin — but it biases any
-diagnostic built on that counter by about 15%. Reported as context; the eligibility fix
-merged in `c6401cc`.
+At `c6401cc`, verified by running it: `classify_change_target` short-circuits any path
+matching `_EPHEMERAL_PATH_RX` to `"other"`, and eligibility only admits `file_class ==
+"code"`, so a scratchpad write cannot reach the denominator at all. The predicate demands
+a temp root **and** a `scratchpad/` segment, so `/tmp/whatever/src/a.ts` is still real code,
+deliberately.
+
+The check that measured this is deleted. It had loosened the second half of that predicate
+into its own regex and was therefore counting `/tmp` and `/var/folders` paths that are *not*
+scratchpads, under a label saying they should not count. See the fixture note below.
