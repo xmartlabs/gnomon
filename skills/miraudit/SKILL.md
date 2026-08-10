@@ -84,6 +84,7 @@ it; the protocol and its decision rule are in `references/second-corpus.md`.
 | Do the paths and refs you checked still exist? | "13% have tests" — it was reading deleted worktrees |
 | Without the control, does the zero prove anything? | base rule for every synthetic fixture |
 | Did your own tooling reshape the evidence first? | "it counts a bare `cd` as a test run" — the display had truncated the command |
+| Several conditions can cause this. Does neutralizing **one** leave it unchanged? | "the routing term is dropped by Workflow children" — removing them alone did not restore it |
 
 Survivors become findings. The rest go to `dismissed` with the fact that killed them, so
 nobody reopens them. Worked examples: `references/refutation.md`.
@@ -100,7 +101,11 @@ but already sent goes to `reported`; what the audit itself cost you goes to
 
 ## Never
 
-- **Write inside the audited repository.** Patch a throwaway copy.
+- **Write inside the audited repository.** Patch a throwaway copy. The specific way this
+  happens: running the entry point without `--output-dir` writes `stats.json`, `report.md`,
+  `summary.json`, `narrative_input.md` and `profile.html` into the project directory. All
+  five are gitignored there, so `git status` stays clean and the write is invisible. **Check
+  with `ls`.** A rule you can follow in good faith and break anyway needs its case named.
 - **Ship a fixture without a control**, a case that must come out non-zero. Otherwise a
   zero may just be a broken fixture.
 - **Rewrite a predicate or a constant you could import.** Yours drifts from theirs, and then

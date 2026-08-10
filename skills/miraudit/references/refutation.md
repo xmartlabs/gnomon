@@ -1,8 +1,9 @@
-# Refutation: five findings that did not survive
+# Refutation: the findings that did not survive as written
 
 Every row of the Phase 3 gate exists because a real finding died there. These are those
-findings, written up so the shape is recognisable when a new one has it. All five were
-about to be sent to the team that owns the scoring tool.
+findings, written up so the shape is recognisable when a new one has it. Each was about to
+be sent to the team that owns the scoring tool. The title carries no count on purpose: the
+list grows, and a number in a heading goes stale without anyone noticing.
 
 Read this when you have a candidate finding and are deciding whether it ships.
 
@@ -134,12 +135,42 @@ and it is why the gate grows only from real deaths.
 </generalisation>
 </example>
 
+<example id="multi-cause-flip">
+<claim>
+"The routing term is discarded because Workflow-dispatched children have no parent. Name it
+`routing-term-dropped-by-workflow-children`."
+</claim>
+<what_made_it_look_real>
+The counterfactual was clean and the arithmetic was overwhelming. 2273 of 2693 child
+transcripts are unreferenced, 97.3% of them dispatched by Workflow, and neutralizing the
+orphan rule together with everything else flipped the state from `unmeasured` to `measured`,
+scoring the term at 0.542. Their predicate, their corpus, no invented denominator.
+</what_made_it_look_real>
+<what_killed_it>
+An arm that neutralized the orphan rule ALONE. It stayed `unmeasured`, because 197
+non-joinable attempts trip the same corpus-wide flag independently: 76 of them are background
+dispatches whose `async_launched` status makes the lifecycle unknown, and that has nothing to
+do with Workflow. Removing every Workflow child would not have restored the measured state,
+so the name asserted a cause that was not sufficient.
+</what_killed_it>
+<verdict>
+Corrected before sending. The finding is real and shipped, under a name that describes the
+undeclared drop rather than a single cause it does not have.
+</verdict>
+<generalisation>
+When a counterfactual neutralizes several conditions at once and the result flips, the flip
+does not tell you which condition mattered. Add a negative arm that neutralizes exactly one
+and must NOT flip. Without it, a positive result is indistinguishable from a patch that
+disabled more than it meant to, and any single-cause name you attach is a guess.
+</generalisation>
+</example>
+
 </examples>
 
-## The pattern across all six
+## The pattern across them
 
-Five of the six were killed by re-running a measurement a slightly different way. One was
-killed by reading our own earlier words. **None needed a second opinion from another
+All but one were killed by re-running a measurement a slightly different way. The remaining
+one was killed by reading our own earlier words. **None needed a second opinion from another
 agent** — which is why the Phase 3 gate is a fixed checklist and not a review panel. An
 agent asked to check an agent's finding shares its blind spot; a deterministic re-measure
 does not. The reasoning behind that choice, and the one condition under which a row gets
