@@ -47,7 +47,7 @@ anecdote; the same gap in five corpora is a defect in the axis.
   "reported": [
     { "id": "verification-measures-density",
       "confirmed_by": "Counterfactual on the real corpus plus a synthetic case with a control.",
-      "state": "accepted upstream, PR #65" }
+      "state": "accepted upstream, carried by PR #66" }
   ],
   "dismissed": [
     { "id": "recovery-tautological",

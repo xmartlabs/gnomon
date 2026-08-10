@@ -67,6 +67,10 @@ Formula-independent. Each is a `shape` key in the output; see
 | `signal-not-attributable-to-person` | Counters driven by the harness or a config rule |
 | `signal-reused` | One counter feeding two axes or two pillars |
 
+`saturated` is the one shape a single corpus cannot settle — it cannot separate a pinned axis
+from a person who clears every bar. Report it as a hypothesis until a second corpus confirms
+it; the protocol and its decision rule are in `references/second-corpus.md`.
+
 ## Phase 3 — Refute. Gate.
 
 **Nothing is reported until it survives every row.** Each one killed a real finding.

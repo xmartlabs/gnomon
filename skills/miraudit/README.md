@@ -127,6 +127,14 @@ They import the scoring tool's own predicates on purpose. A denominator you defi
 produces a number that is true and means nothing. That mistake is documented in
 `references/refutation.md`.
 
+### Running it on a second corpus
+
+The `saturated` shape is the one finding a single corpus cannot settle: it cannot tell "the
+axis saturates" from "this person clears every bar." `references/second-corpus.md` is the
+handout for whoever runs it next — prerequisites, what comes back, what is deliberately not
+compared, and the decision rule written down **before** the second run, including the result
+that withdraws the finding.
+
 ## Updating
 
 **If you installed it as a plugin, editing the source does not change what runs.** Plugins
