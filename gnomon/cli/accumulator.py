@@ -65,6 +65,22 @@ _KNOWLEDGE_NATIVE_TOOLS = frozenset({"WebFetch", "WebSearch"})
 ENABLE_WEB_CONTEXT_GROUNDING = False
 
 
+def event_in_window(ev, since_dt, until_dt):
+    """Return ``(admitted, timestamp)`` using the accumulator's window rules.
+
+    An open-ended run admits undated events for backwards compatibility. Once a
+    window is active, only timestamped events inside the inclusive ``since`` /
+    exclusive ``until`` interval are admitted.
+    """
+    dt = parse_ts(ev.get("timestamp"))
+    if (since_dt is not None or until_dt is not None) and (
+            dt is None
+            or (since_dt is not None and dt < since_dt)
+            or (until_dt is not None and dt >= until_dt)):
+        return False, dt
+    return True, dt
+
+
 def _is_local_url(url):
     if not url:
         return False
@@ -785,11 +801,8 @@ class Accumulator:
         etype = ev.get("type")
         sid = ev.get("sessionId")
         cwd = ev.get("cwd")
-        dt = parse_ts(ev.get("timestamp"))
-        if (since_dt is not None or until_dt is not None) and (
-                dt is None                                   # undatable: can't
-                or (since_dt is not None and dt < since_dt)  # honor "this period
-                or (until_dt is not None and dt >= until_dt)):  # only" — drop
+        admitted, dt = event_in_window(ev, since_dt, until_dt)
+        if not admitted:                                      # honor the active window
             return None
         mkey = dt.strftime("%Y-%m") if dt is not None else None
 

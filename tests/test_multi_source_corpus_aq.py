@@ -135,7 +135,7 @@ class TestMultiSourceCorpusAq(unittest.TestCase):
         )
         # The window is pinned in the past so the rolling recent-30d bucket is empty and the
         # published AQ is the raw full-window compute_aq, not a 65/35 blend of two of them.
-        argv = ["paxel.py", "--no-open", "--summary",
+        argv = ["paxel.py", "--include-low-volume", "--no-open", "--summary",
                 "--since=2026-03-01", "--until=2026-03-31"]
         with mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
                 mock.patch.object(sys, "argv", argv), \

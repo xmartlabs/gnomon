@@ -104,7 +104,7 @@ def _run_with_events(testcase, events, extra_src_dirs=None):
     if extra_src_dirs:
         src_overrides.update(extra_src_dirs)
 
-    argv = ["paxel.py", "--no-open"]
+    argv = ["paxel.py", "--include-low-volume", "--no-open"]
     buf = io.StringIO()
     with mock.patch.multiple(paxel, OUT_DIR=out, **src_overrides), \
             mock.patch.object(sys, "argv", argv), \
@@ -545,7 +545,7 @@ class TestGeminiTokenMapping(unittest.TestCase):
         out = tempfile.mkdtemp(prefix="paxel-gemini-tok-")
         gemini_dir = os.path.join(FIX, "gemini")
         self.addCleanup(shutil.rmtree, out, ignore_errors=True)
-        argv = ["paxel.py", "--no-open"]
+        argv = ["paxel.py", "--include-low-volume", "--no-open"]
         buf = io.StringIO()
         empty = tempfile.mkdtemp(prefix="paxel-gemini-empty-")
         self.addCleanup(shutil.rmtree, empty, ignore_errors=True)
@@ -637,7 +637,7 @@ class TestCodexTokenMapping(unittest.TestCase):
             CURSOR_DIR=empty,
             CURSOR_DB=os.path.join(empty, "nope.vscdb"),
         )
-        argv = ["paxel.py", "--no-open"]
+        argv = ["paxel.py", "--include-low-volume", "--no-open"]
         buf = io.StringIO()
         with mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
                 mock.patch.object(sys, "argv", argv), \
@@ -734,7 +734,7 @@ class TestCursorTokenExtraction(unittest.TestCase):
             CURSOR_DIR=cursor_dir,
             CURSOR_DB=temp_db.name,
         )
-        argv = ["paxel.py", "--no-open"]
+        argv = ["paxel.py", "--include-low-volume", "--no-open"]
         buf = io.StringIO()
         with mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
                 mock.patch.object(sys, "argv", argv), \
@@ -767,7 +767,7 @@ class TestCursorTokenExtraction(unittest.TestCase):
             CURSOR_DIR=cursor_dir,
             CURSOR_DB=cursor_db,
         )
-        argv = ["paxel.py", "--no-open"]
+        argv = ["paxel.py", "--include-low-volume", "--no-open"]
         buf = io.StringIO()
         with mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
                 mock.patch.object(sys, "argv", argv), \
@@ -859,7 +859,7 @@ class TestCodexMonthlyTokenAttribution(unittest.TestCase):
             CURSOR_DIR=empty,
             CURSOR_DB=os.path.join(empty, "nope.vscdb"),
         )
-        argv = ["paxel.py", "--no-open"]
+        argv = ["paxel.py", "--include-low-volume", "--no-open"]
         buf = io.StringIO()
         with mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
                 mock.patch.object(sys, "argv", argv), \

@@ -44,7 +44,7 @@ def _run(testcase, args):
     """Run paxel.main() over the 3-month window fixture; return (stdout, stats_dict)."""
     out = tempfile.mkdtemp(prefix="paxel-win-test-")
     testcase.addCleanup(shutil.rmtree, out, ignore_errors=True)
-    argv = ["paxel.py"] + list(args) + ["--no-open"]
+    argv = ["paxel.py"] + list(args) + ["--include-low-volume", "--no-open"]
     buf = io.StringIO()
     with mock.patch.multiple(paxel, OUT_DIR=out, **WIN_SRC_DIRS), \
             mock.patch.object(sys, "argv", argv), \
@@ -204,7 +204,7 @@ class TestWindowedGitChurnBounds(unittest.TestCase):
 
         out = tempfile.mkdtemp(prefix="paxel-churn-")
         self.addCleanup(shutil.rmtree, out, ignore_errors=True)
-        argv = ["paxel.py"] + list(args) + ["--no-open"]
+        argv = ["paxel.py"] + list(args) + ["--include-low-volume", "--no-open"]
         with mock.patch.multiple(paxel, OUT_DIR=out, **WIN_SRC_DIRS), \
                 mock.patch.object(paxel, "git_churn", fake_git_churn), \
                 mock.patch.object(sys, "argv", argv), \
@@ -319,7 +319,7 @@ class TestNoWindowIdentity(unittest.TestCase):
     def _run_stats(self, args):
         out = tempfile.mkdtemp(prefix="paxel-ident-")
         self.addCleanup(shutil.rmtree, out, ignore_errors=True)
-        argv = ["paxel.py"] + list(args) + ["--no-open"]
+        argv = ["paxel.py"] + list(args) + ["--include-low-volume", "--no-open"]
         with mock.patch.multiple(paxel, OUT_DIR=out, **WIN_SRC_DIRS), \
                 mock.patch.object(sys, "argv", argv), \
                 __import__("contextlib").redirect_stdout(io.StringIO()):
@@ -379,7 +379,7 @@ class TestWindowedCursorJsonlNotDropped(unittest.TestCase):
         )
         out = tempfile.mkdtemp(prefix="paxel-curout-")
         self.addCleanup(shutil.rmtree, out, ignore_errors=True)
-        argv = ["paxel.py"] + list(args) + ["--no-open"]
+        argv = ["paxel.py"] + list(args) + ["--include-low-volume", "--no-open"]
         with mock.patch.multiple(paxel, OUT_DIR=out, **src_dirs), \
                 mock.patch.object(sys, "argv", argv), \
                 __import__("contextlib").redirect_stdout(io.StringIO()):
