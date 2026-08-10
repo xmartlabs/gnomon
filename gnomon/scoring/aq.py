@@ -438,7 +438,12 @@ def compute_aq(stats):
     # denominator BEFORE dividing so the published ratio can never exceed
     # 1.0 for accepted input; sat(_, 1.0) below already clamps the SCORED
     # term, this clamp is only about the raw diagnostic.
-    _test_covered_clamped = (min(_test_covered, eligible)
+    # OBS 2 — a malformed/replayed block can ALSO carry a NEGATIVE covered
+    # count. `min(_, eligible)` alone only bounds the numerator from above, so
+    # also floor it at 0 here — otherwise the ratio (and, since sat(x, 1.0) =
+    # min(1.0, x/target) does not bound from below either, the SCORED term
+    # too) goes negative and unfairly lowers Verification.
+    _test_covered_clamped = (max(0, min(_test_covered, eligible))
                              if _test_covered_measured and eligible else _test_covered)
     _verif_coverage = (_test_covered_clamped / eligible
                        if _test_covered_measured and eligible else None)
@@ -449,7 +454,11 @@ def compute_aq(stats):
     verification_coverage = (None if (ordered_state != "measured" or not eligible
                                       or not _test_covered_measured
                                       or eligible < MIN_ELIGIBLE_SESSIONS)
-                             else sat(_verif_coverage, 1.0))
+                             # OBS 2 — belt-and-suspenders: the numerator clamp above
+                             # already guarantees _verif_coverage is in [0, 1] here, but
+                             # clamp both bounds explicitly so the SCORED term can never
+                             # go negative even if the numerator clamp is bypassed.
+                             else max(0.0, min(1.0, _verif_coverage)))
     verification = wsum((.5, verification_coverage, None),
                         (.5, rate(review_n, REVIEW_SKILLS_PER_CALL_TARGET), "skill_reads"),
                         axis="Verification")
@@ -500,11 +509,12 @@ def compute_aq(stats):
         "eligible_change_sessions": eligible,
         # None whenever the coverage term was NOT scored (ordered facts unmeasured or no
         # eligible change-sessions), so a consumer never reads a ratio off a refused term.
-        # F9 — min(_, 1.0) belt-and-suspenders clamp: the numerator is already clamped to
-        # the denominator above, but a malformed/replayed block (covered > eligible from a
-        # source other than the accumulator's own aggregate_ordered) must never publish a
-        # ratio the SCORED term (sat(_, 1.0)) already silently caps.
-        "test_coverage": (round(min(_verif_coverage, 1.0), 4)
+        # F9/OBS2 — max(0.0, min(_, 1.0)) belt-and-suspenders clamp on BOTH bounds: the
+        # numerator is already clamped to [0, eligible] above, but a malformed/replayed
+        # block (covered outside [0, eligible] from a source other than the
+        # accumulator's own aggregate_ordered) must never publish a ratio outside [0, 1]
+        # — the SCORED term already clamps the same way.
+        "test_coverage": (round(max(0.0, min(_verif_coverage, 1.0)), 4)
                           if verification_coverage is not None else None),
     }
     if _review_skills_applicable:

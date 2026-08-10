@@ -262,12 +262,21 @@ def _norm_path_seps(path):
 #   POSIX / macOS: /tmp/... , /private/tmp/... , /var/folders/... , /private/var/folders/...
 #                  (`/var` realpaths to `/private/var` on macOS, so both spellings appear)
 #   Windows:       C:/Users/<u>/AppData/Local/Temp/... , C:/Windows/Temp/...
+# OBS 3 — two edge cases fixed here:
+#   (a) `(?:.*/)?scratchpad/` (not `.*/scratchpad/`) so a scratchpad directly under the
+#       temp root with NO intermediate segment (e.g. /tmp/scratchpad/foo.py) still
+#       matches — the old suffix required an extra `/` before `scratchpad/`.
+#   (b) the AppData/Local/Temp alternative is now anchored to a real drive-rooted path
+#       (`^[a-z]:/...`) instead of matching that substring unanchored anywhere in the
+#       path, so a legitimate (non-Windows, non-drive-rooted) path that merely CONTAINS
+#       "appdata/local/temp" (e.g. a project subfolder literally named that) is not
+#       misclassified as disposable.
 _EPHEMERAL_PATH_RX = re.compile(
     r'(?:^(?:/private)?/tmp/'
     r'|^(?:/private)?/var/folders/'
-    r'|/appdata/local/temp/'
+    r'|^[a-z]:/.*/appdata/local/temp/'
     r'|^[a-z]:/windows/temp/)'
-    r'.*/scratchpad/',
+    r'(?:.*/)?scratchpad/',
     re.I)
 
 

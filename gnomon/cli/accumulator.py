@@ -1868,6 +1868,9 @@ class Accumulator:
             cwds=self._git_cwds(),
             gap_cap_s=GAP_CAP_S, burst_gap_s=BURST_GAP_S,
             no_tool_activity=no_tool_activity, all_sources_no_agent=all_sources_no_agent,
+            # BLOCKER 2: thread the corpus-lifetime success map through the monthly
+            # slice too, matching to_corpus_stats/to_source_stats above.
+            tool_result_is_error=self._tool_result_is_error,
         )
 
     # ---- shaping: per-source stats (reduced shape for build_scoring_inputs) -----

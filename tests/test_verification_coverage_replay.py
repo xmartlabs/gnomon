@@ -225,6 +225,30 @@ class ClampDiagnosticF9Tests(unittest.TestCase):
         self.assertEqual(verification["normalized_score"], 1.0)
 
 
+class ClampLowerBoundOBS2Tests(unittest.TestCase):
+    """OBS 2 — a malformed/replayed block can carry a NEGATIVE
+    `test_covered_change_sessions` (e.g. -3), which F9's `min(_, eligible)` clamp
+    does not catch (it only bounds the numerator from ABOVE). The raw ratio then
+    goes negative and `sat(x, 1.0) = min(1.0, x/target)` does not bound it from
+    BELOW either, so the SCORED verification_coverage term — and the published
+    `test_coverage` diagnostic — could go negative and unfairly lower the
+    Verification axis. Both must clamp to [0, 1], not just <= 1."""
+
+    def test_negative_test_covered_clamps_to_zero_not_negative(self):
+        block = _v17_window_block(
+            eligible=MIN_ELIGIBLE_SESSIONS, review_uses=6, test_covered=-3)
+        stats = stats_from_scoring_block(block)
+
+        agentic = compute_aq(stats)
+        verification = _verification_axis(agentic)
+
+        self.assertGreaterEqual(verification["signals"]["test_coverage"], 0.0)
+        self.assertEqual(verification["signals"]["test_coverage"], 0.0)
+        # Both terms live (coverage measured at 0.0, review at 1.0): 50/50 mean
+        # is 0.5. A negative coverage half would instead drag this below 0.5.
+        self.assertEqual(verification["normalized_score"], 0.5)
+
+
 class BuildScoringInputsAbsencePreservationTests(unittest.TestCase):
     """`build_scoring_inputs` itself must not coerce an absent numerator to 0."""
 

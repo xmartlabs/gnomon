@@ -64,6 +64,20 @@ class TestClassifyChangeTarget(unittest.TestCase):
         for path in ("/tmp/repo/src/app.py", "/var/folders/xy/T/repo/lib/util.ts"):
             self.assertEqual(classify_change_target(path), "code", path)
 
+    def test_scratchpad_directly_under_temp_root_is_excluded(self):
+        # OBS 3(a) — a scratchpad with NO intermediate path segment (directly under
+        # the temp root) must still be excluded; the old `.*/scratchpad/` suffix
+        # required an intermediate `/`, so this fell through to "code".
+        self.assertEqual(classify_change_target("/tmp/scratchpad/foo.py"), "other")
+
+    def test_windows_appdata_temp_requires_a_real_drive_rooted_path(self):
+        # OBS 3(b) — the Windows AppData/Local/Temp alternative must not match a
+        # legitimate (non-drive-rooted) path that merely CONTAINS that substring,
+        # e.g. a project subfolder incidentally named appdata/local/temp.
+        self.assertEqual(
+            classify_change_target("/repo/vendor/appdata/local/temp/scratchpad/foo.py"),
+            "code")
+
 
 class TestIsPlanFileTarget(unittest.TestCase):
     def test_matches_claude_plans_markdown(self):

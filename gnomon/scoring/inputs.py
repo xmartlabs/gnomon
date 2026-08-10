@@ -204,6 +204,7 @@ def build_monthly_scoring_stats(
     month_grounded_sessions=None, month_write_sessions=None,
     month_session_ordered_tools=None, month_planning_dispatch_calls=None,
     month_sidechain_tools=None, month_command_only=None,
+    tool_result_is_error=None,
 ):
     out = []
     for mk in months:
@@ -265,17 +266,26 @@ def build_monthly_scoring_stats(
         planning_ratio = (explore / doing) if doing else 0
         # C4: cross-session consume-once credit, scoped to this month's sessions
         # (a plan artifact only credits an execution in the SAME calendar month
-        # bucket — matching the existing monthly-progression scoping).
+        # bucket — matching the existing monthly-progression scoping). BLOCKER 2 —
+        # `tool_result_is_error` (the corpus-lifetime {tool_use_id: is_error} map,
+        # see Accumulator._tool_result_is_error) must be threaded through here too,
+        # exactly like the corpus (`to_corpus_stats`) and per-source
+        # (`to_source_stats`) paths already do, or F7's fail-closed success check
+        # never resolves and `test_covered_change_sessions` is always 0 even for a
+        # genuinely successful post-write test. `None` on a caller with no live map
+        # (e.g. a hypothetical pure-replay path) is a safe fail-closed default —
+        # `aggregate_ordered`/`derive_session_ordered_facts` treat it as an empty map.
         from gnomon.cli.accumulator import aggregate_ordered
         _month_agg = aggregate_ordered(
-            (month_session_ordered_tools or {}).get(mk, {}).values())
+            (month_session_ordered_tools or {}).get(mk, {}).values(),
+            tool_result_is_error)
         eligible = _month_agg["eligible"]
         _month_orchestratable = _month_agg["orchestratable"]
 
         _month_delegated_orch_sids = set()
         for (src, sid), facts in (month_session_ordered_tools or {}).get(mk, {}).items():
             from gnomon.cli.accumulator import derive_session_ordered_facts
-            d = derive_session_ordered_facts(facts)
+            d = derive_session_ordered_facts(facts, tool_result_is_error)
             if d["orchestratable"] and month_fanouts.get(mk, {}).get(sid, 0) > 0:
                 _month_delegated_orch_sids.add(sid)
         _month_delegated_orchestratable = len(_month_delegated_orch_sids)

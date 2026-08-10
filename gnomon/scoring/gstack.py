@@ -55,9 +55,11 @@ AQ_AXIS_NOTES = {
     "Skill fluency": "Range and volume of skills you invoke, plus whether process skills "
                      "(planning, debugging, brainstorming) are in the rotation.",
     "Tool command (MCP + CLI)": "External reach: distinct MCP servers and distinct CLIs.",
-    "Discipline": "Structured work: task-tool usage, how often you plan before building, "
-                  "and whether the plan came before the first edit.",
-    "Verification": "Whether work gets checked: shell test runs and review-type skill invocations.",
+    "Discipline": "Structured work: planning practice (how often you lay out a plan before "
+                  "building) and ordered planning (whether that plan came before your first edit).",
+    "Verification": "Whether work gets checked: per-session test coverage (the share of "
+                    "eligible change-sessions with a successful test run after the change) "
+                    "and review-type skill invocations.",
     "Grounding": "Reading before writing — how much the agent explores relative to how much it edits.",
     "Context Intelligence": "Consulting external context before you write. We count the share of "
                             "eligible change sessions where a knowledge-MCP call or an explore-class "

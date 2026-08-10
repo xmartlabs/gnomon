@@ -360,6 +360,67 @@ class TestCodexFanoutTimestamp(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# BLOCKER 1 — Codex tool events must thread `call_id` as the correlation id
+# (`id` on tool_use, `tool_use_id` on tool_result) so F7's corpus-lifetime
+# success map (`Accumulator._tool_result_is_error`) can resolve a Codex shell
+# test's outcome, the same way it already does for Claude's `id`/`tool_use_id`.
+# ---------------------------------------------------------------------------
+
+class TestCodexVerificationCoverageBlocker1(unittest.TestCase):
+    def _session_rows(self, test_success):
+        return [
+            {"type": "session_meta", "timestamp": "2026-01-01T00:00:00Z",
+             "payload": {"id": "codex-s1", "cwd": "/repo"}},
+            {"type": "turn_context", "timestamp": "2026-01-01T00:00:01Z",
+             "payload": {"model": "gpt-5.4"}},
+            {"type": "response_item", "timestamp": "2026-01-01T00:00:02Z",
+             "payload": {"type": "custom_tool_call", "name": "apply_patch",
+                         "call_id": "patch-1",
+                         "input": ("*** Begin Patch\n*** Update File: src/a.py\n"
+                                   "@@\n-x = 1\n+x = 2\n*** End Patch")}},
+            {"type": "response_item", "timestamp": "2026-01-01T00:00:03Z",
+             "payload": {"type": "custom_tool_call", "name": "apply_patch",
+                         "call_id": "patch-2",
+                         "input": ("*** Begin Patch\n*** Update File: src/b.py\n"
+                                   "@@\n-y = 1\n+y = 2\n*** End Patch")}},
+            {"type": "response_item", "timestamp": "2026-01-01T00:00:04Z",
+             "payload": {"type": "function_call", "name": "shell", "call_id": "test-1",
+                         "arguments": json.dumps({"command": "pytest"})}},
+            {"type": "response_item", "timestamp": "2026-01-01T00:00:05Z",
+             "payload": {"type": "function_call_output", "call_id": "test-1",
+                         "output": {"success": test_success}}},
+        ]
+
+    def _run(self, test_success):
+        path = _write_jsonl(self._session_rows(test_success))
+        try:
+            events = list(_codex_events(path))
+        finally:
+            os.unlink(path)
+        acc = Accumulator()
+        acc.begin_file("codex", path)
+        for ev in events:
+            acc.observe(ev, None, None)
+        from gnomon.cli.accumulator import aggregate_ordered
+        facts = None
+        for (src, sid), f in acc.session_ordered_tools.items():
+            if src == "codex" and sid == "codex-s1":
+                facts = f
+        self.assertIsNotNone(facts, "codex session facts not recorded")
+        return aggregate_ordered([facts], acc._tool_result_is_error)
+
+    def test_successful_codex_shell_test_is_covered(self):
+        agg = self._run(test_success=True)
+        self.assertEqual(agg["eligible"], 1)
+        self.assertEqual(agg["test_covered"], 1)
+
+    def test_failing_codex_shell_test_is_not_covered(self):
+        agg = self._run(test_success=False)
+        self.assertEqual(agg["eligible"], 1)
+        self.assertEqual(agg["test_covered"], 0)
+
+
+# ---------------------------------------------------------------------------
 # FIX 2 — synthetic Codex usage events must NOT count as assistant turns or
 # inflate the model mix, but MUST still contribute their tokens.
 # ---------------------------------------------------------------------------

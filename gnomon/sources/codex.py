@@ -631,13 +631,19 @@ def _codex_events(fp):
                     yield {**base, "type": "assistant", "timestamp": ts,
                            "message": {"role": "assistant", "model": model,
                                        "content": [{"type": "tool_use", "name": name,
-                                                    "input": inp}]}}
+                                                    "input": inp, "id": p.get("call_id")}]}}
         elif pt == "function_call_output":
             out = p.get("output")
             is_err = isinstance(out, dict) and out.get("success") is False
+            # F7 correlation id: thread the same `call_id` that links this output
+            # back to its originating tool_use (see call_outputs above), so the
+            # accumulator's corpus-lifetime success map can resolve a Codex shell
+            # test's outcome exactly like it already does for Claude's tool_use_id.
             yield {**base, "type": "user", "timestamp": ts,
                    "message": {"role": "user",
-                               "content": [{"type": "tool_result", "is_error": bool(is_err)}]}}
+                               "content": [{"type": "tool_result",
+                                            "tool_use_id": p.get("call_id"),
+                                            "is_error": bool(is_err)}]}}
 
     # Close out final model delta, then emit one synthetic usage event per
     # (model, month) so mixed-model sessions split correctly in model mix AND

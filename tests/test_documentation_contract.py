@@ -152,6 +152,26 @@ class TestPublicDocumentationContract(unittest.TestCase):
         self.assertIn(f"coverage / {CONTEXT_INTELLIGENCE_TARGET:.2f}", note)
         self.assertNotIn("write-sessions", note)
 
+    def test_discipline_note_matches_executable_contract(self):
+        """OBS 1 — Discipline's scored formula (gstack.py's aq.py `discipline = wsum(
+        planning_habit .40, ordered_planning .20)`) dropped the task-tool rate term
+        in v18; the tooltip must no longer describe it, and must instead describe
+        the two terms that are actually scored: planning practice and ordered
+        planning."""
+        note = AQ_AXIS_NOTES["Discipline"]
+        self.assertNotIn("task-tool", note.lower())
+        self.assertIn("planning practice", note.lower())
+        self.assertIn("ordered planning", note.lower())
+
+    def test_verification_note_matches_executable_contract(self):
+        """OBS 1 — Verification's scored formula is per-session test COVERAGE
+        (eligible change-sessions with a successful post-write test), not raw
+        shell-test-run density; the tooltip must describe coverage, not runs."""
+        note = AQ_AXIS_NOTES["Verification"]
+        self.assertNotIn("shell test runs", note.lower())
+        self.assertIn("coverage", note.lower())
+        self.assertIn("review", note.lower())
+
     def test_philosophy_describes_ordered_planning_redesign(self):
         normalized = " ".join(self.philosophy.split())
         self.assertIn("doc, config, lockfile, and test-only sessions are excluded", normalized)

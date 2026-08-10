@@ -618,6 +618,33 @@ class TestVerificationCoverageF7(unittest.TestCase):
         self.assertEqual(agg["test_covered"], 0)
 
 
+class TestMonthlyVerificationCoverageBlocker2(unittest.TestCase):
+    """BLOCKER 2 — `build_monthly_scoring_stats` (via `Accumulator.to_monthly`) must
+    thread the corpus-lifetime `tool_result_is_error` success map into its monthly
+    `aggregate_ordered`/`derive_session_ordered_facts` calls, exactly like the corpus
+    and per-source paths already do. Without it, a monthly bucket's
+    `test_covered_change_sessions` is always 0 even for a genuinely successful
+    post-write test."""
+
+    def test_successful_post_write_test_covers_the_month(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        sid = "s1"
+        acc.observe(_fact_event(sid, "2026-02-15T12:00:00Z", "Write", {
+            "file_path": "src/a.py", "content": "x = 1\n"}), None, None)
+        acc.observe(_fact_event(sid, "2026-02-15T12:00:01Z", "Write", {
+            "file_path": "src/b.py", "content": "y = 2\n"}), None, None)
+        acc.observe(_fact_event(sid, "2026-02-15T12:00:02Z", "Bash", {
+            "command": "pytest"}, tool_use_id="tu1"), None, None)
+        acc.observe(_tool_result_event(
+            sid, "2026-02-15T12:00:03Z", "tu1", is_error=False), None, None)
+
+        monthly = acc.to_corpus_stats(None, None, False)["_scoring_monthly_full"]
+        by_month = {row["month"]: row["stats_full"]["behavior"] for row in monthly}
+        self.assertEqual(by_month["2026-02"]["eligible_change_sessions"], 1)
+        self.assertEqual(by_month["2026-02"]["test_covered_change_sessions"], 1)
+
+
 class TestAggregateOrderedC4(unittest.TestCase):
     """C4: cross-session consume-once plan credit. `aggregate_ordered` takes
     the per-session fact lists directly (values of session_ordered_tools)."""
