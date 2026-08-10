@@ -155,8 +155,8 @@ The counter feeds both a Breadth axis and a Savvy axis. Removing the forced call
 5.03 AQ, which is an upper bound. **Reported, accepted upstream, and MERGED in `c6401cc`:** `toolsearch_calls` is now a
 published diagnostic that no term scores. Fixed; do not re-send.
 
-**Two more, found by cold runs and not yet reported.** Both are named here with their
-magnitude only. **Do not paste their diagnosis into this file.** A later cold run reported
+**Two more, found by cold runs. One is now reported, one is not.** Both are named here with
+their magnitude only. **Do not paste their diagnosis into this file.** A later cold run reported
 that reading it during Phase 0 anchored its investigation before a single measurement — in a
 skill whose `design-rationale.md` argues at length that one agent checking another shares its
 blind spot. Keep the count and the size; leave the mechanism to be re-derived.
@@ -166,7 +166,7 @@ diagnosis stays out of this file on purpose.
 
 | id | magnitude | status |
 |---|---|---|
-| `model-mix-drops-routing-outside-wsum` | ~1 AQ, worst case 2 | measured twice, with controls |
+| `model-mix-drops-routing-outside-wsum` | 1 AQ (92 -> 91), axis 50.0 -> 43.1 | **reported: issue #68, 2026-08-10** |
 | `aq-is-mostly-ceiling` | 52% of the total sits on saturated axes | measured, with controls |
 
 **A previous version of this file called the first one
