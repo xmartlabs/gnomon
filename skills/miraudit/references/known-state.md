@@ -4,9 +4,9 @@
 version against it; if they differ, every finding below is a hypothesis again and the
 fixtures in `scripts/` have to be re-run before anyone quotes them.
 
-- **Validated against:** `3148a96` on `main` (contract `16:16:16`), 2026-08-07.
-- **Known to be moving:** contract `17:17:17` is in one open upstream PR, #66. See "Incoming"
-  below before trusting anything here.
+- **Validated against:** `c6401cc` on `main` (contract `17:17:17`), 2026-08-10.
+- **Known to be moving:** nothing pending upstream. #66 and #67 merged on 2026-08-10; see
+  "What v17 changed" below for what that invalidated here.
 
 ## How to refresh this file
 
@@ -49,33 +49,72 @@ uv run --project <copy> -- python -m gnomon.cli.insights \
 `--output-dir` warns "unknown flag" and then honours it. That is an upstream quirk, not a
 sign the command is wrong.
 
-Pass the report's own boundaries, never `--last=30d`: a rolling window ends now, drifts
-daily, and includes the audit session itself. The published reports this file was built
-against ran `--since=2026-07-07 --until=2026-08-06`.
+Pass the report's own boundaries. `--last=30d` is a valid flag — an earlier draft of this
+file was about to claim it had been removed — but it is a rolling window that ends now,
+drifts daily, and includes the audit session itself. **Passing no window flag at all is
+worse than a rolling one:** it scores the entire corpus, and on a corpus wide enough,
+`ordered_facts_state` flips to `unmeasured`, which drops the coverage terms and deletes
+Context Intelligence from the report. Measured on one corpus, same code, same day:
 
-## Incoming — one PR, #66
+| window | AQ | Context Intelligence |
+|---|---:|---|
+| `--since=2026-07-07 --until=2026-08-06` | 92 | 20.0 |
+| `--last=30d` | 91 | 20.0 |
+| no flag (314 sessions) | 88 | **absent** |
 
-**Verified 2026-08-10 with `gh`, not carried from conversation.** An earlier version of this
-section listed three open PRs (#62, #63, #65) as the upstream response. All three were
-**closed unmerged on 2026-08-09**, seconds apart, superseded by **#66**, which consolidates
-the work into a single contract bump instead of two.
+Verification reads *higher* in the last row — 28.8 against 23.2 — because its coverage term
+was dropped and the weight renormalized, not because anything was tested more. Reading an
+axis that went up as an axis that improved is the exact mistake this skill exists to catch.
 
+**Never omit `--output-dir`.** Without it this entry point writes `stats.json`, `report.md`,
+`summary.json`, `narrative_input.md` and `profile.html` into the project directory — which,
+run against a checkout, means writing inside the audited repo. All five are in gnomon's
+`.gitignore`, so `git status` stays clean and the write is invisible to the check most
+people would use to catch it. Verify with `ls`, not `git status`. This happened during a
+run of this skill.
+
+**What the dashboard shows is not what this code computes.** Without `--local`, the CLI
+uploads and opens the mirdash deployment, which is a separate service that lags the
+contract: a run whose local output was AQ 91 on `17:17:17` displayed 97, in an older
+layout, with fewer Craft axes. Numbers from the web page are not comparable to numbers
+from the CLI, and gnomon's own `COMPARISON_POLICY = "same_score_contract_id_only"` is the
+reason. Audit the local output.
+
+## What v17 changed — #66 and #67, both merged 2026-08-10
+
+**Verified with `gh` and by running the merged code, not carried from conversation.**
+#62, #63 and #65 were closed unmerged on 2026-08-09 and superseded by **#66**
+(`c6401cc`), which merged on 2026-08-10 alongside **#67** (`23aeb4b`).
+
+An earlier version of this section listed those three PRs as open, a day after they closed.
 That error is the one this file exists to prevent, and it was avoidable: the run that wrote
 it had already flagged "did not verify whether those PRs are still open" as a gap and the
 claim went in anyway. Hence the first step of the refresh procedure above.
 
-| PR | State | What it does |
-|---|---|---|
-| #66 `feat-antigaming-scoring` | **OPEN**, +2144/−587 across 34 files | Anti-gaming pass, contract `17:17:17`. Removes **both** `TOOLSEARCH_PER_CALL_TARGET` and `TEST_RUNS_PER_CALL_TARGET`, folds in the eligibility fix, and carries judge / 4R review changes |
-| #62, #63, #65 | CLOSED unmerged 2026-08-09 | Superseded by #66. Do not cite them as pending |
+**#66 removed three targets, not two.** This file said "both" and named two;
+`TASK_CALLS_PER_CALL_TARGET` went with them. The count came from grepping the merged
+checkout, not from reading the PR description.
 
-**What expires when #66 merges.** Both removed targets are load-bearing here:
-`verify-verification-axis.py` demonstrates the density term in full, section D of
-`fidelity-audit.py` measures the ToolSearch term, and `measure-verification-corpus.py`
-imports the density target through `require()` — that last one will exit loudly rather than
-print against a constant that no longer exists, which is the designed behaviour. Delete the
-first two rather than repairing them; they demonstrate pre-fix behaviour and have nothing to
-say about a checkout without those terms.
+| Gone in v17 | Consequence here |
+|---|---|
+| `TEST_RUNS_PER_CALL_TARGET` | `verify-verification-axis.py` **deleted** — it demonstrated a fixed bug. `measure-verification-corpus.py` exits loudly through `require()`, as designed |
+| `TOOLSEARCH_PER_CALL_TARGET` | Section D of `fidelity-audit.py` **deleted**. `toolsearch_calls` survives as a published diagnostic no term reads, so the `signal-reused` shape it showed is gone |
+| `TASK_CALLS_PER_CALL_TARGET` | Dropped from the saturation arm's pairings |
+
+**#67 filters low-volume sources** (`LOW_VOLUME_SESSION_THRESHOLD = 10` sessions, in
+`cli/local.py`). It drops whole sources from scoring — on the corpus here, codex, cursor
+and opencode — and `--include-low-volume` restores them. It sounds decisive and is not:
+measured as an A/B on the same window, it moves AQ by **0**, and the only axis that moves
+at all is Discipline, by −0.1, because the restored source adds 25 tool calls to a
+denominator. Do not attribute a score change to it without running that A/B.
+
+**The Verification finding was implemented.** `accumulator.py` now emits
+`test_covered_change_sessions` as C2 eligibility crossed with per-session test runs, and
+`aq.py` scores `0.5 · coverage + 0.5 · rate(review_skills)`. Upstream went further than the
+proposal, which kept density as a third term at 1/3 weight: they deleted density outright
+and scored coverage against the raw ratio. On this corpus the axis went 20.1 → 23.2 —
+**up**, not down as the proposal predicted, because the coverage ratio (0.3673) beats the
+density term it replaced (0.170).
 
 ## Confirmed and fixed
 
@@ -106,19 +145,24 @@ session contains. Two proofs, both holding the numerator fixed:
   applying it to the delegating group still leaves the delegating group 4.3× lower.
 - Synthetic, with a control: 100% coverage scores 0.198, 20% coverage scores 0.714.
 
-Reported, corrected once (see `refutation.md`, `invented-denominator`), **accepted upstream —
-now carried by PR #66**, which removes the density target outright.
+Reported, corrected once (see `refutation.md`, `invented-denominator`), **accepted upstream and
+MERGED in `c6401cc`**, which removes the density target outright and replaces it with the
+coverage term. Fixed; do not re-send.
 
 **ToolSearch credits mandatory tool loading, in two pillars.** 577 of 603 calls are
 `select:` — loading tools by exact name — and 419 of those loads are core built-in tools.
 The counter feeds both a Breadth axis and a Savvy axis. Removing the forced calls costs
-5.03 AQ, which is an upper bound. **Reported and accepted upstream — now carried by PR #66.**
+5.03 AQ, which is an upper bound. **Reported, accepted upstream, and MERGED in `c6401cc`:** `toolsearch_calls` is now a
+published diagnostic that no term scores. Fixed; do not re-send.
 
 **Two more, found by cold runs and not yet reported.** Both are named here with their
 magnitude only. **Do not paste their diagnosis into this file.** A later cold run reported
 that reading it during Phase 0 anchored its investigation before a single measurement — in a
 skill whose `design-rationale.md` argues at length that one agent checking another shares its
 blind spot. Keep the count and the size; leave the mechanism to be re-derived.
+
+Both were re-checked against `c6401cc` and both survive v17 unchanged. State only — the
+diagnosis stays out of this file on purpose.
 
 | id | magnitude | status |
 |---|---|---|
@@ -155,5 +199,5 @@ tests. Real and verified, twice in the whole corpus. Not worth a report.
 sessions qualify only through that, and C2 eligibility moves from 34 to 40.
 
 It costs nothing today — both consumers are saturated with margin — but it biases any
-diagnostic built on that counter by about 15%. Reported as context; the eligibility fix is
-folded into **PR #66**.
+diagnostic built on that counter by about 15%. Reported as context; the eligibility fix
+merged in `c6401cc`.

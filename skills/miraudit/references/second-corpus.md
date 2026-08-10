@@ -33,6 +33,12 @@ Conditions for B to count at all:
   the comparison to the signals present in both, and say which.
 - **The window is each runner's own report window**, not a shared one. The anchor gate is
   per-person; forcing a common window breaks reproduction on at least one side.
+- **Both runs must come from the local CLI, never from the dashboard.** The mirdash
+  deployment lags the contract: one run whose local output was AQ 91 on `17:17:17` showed
+  97 on the web, in an older layout with fewer Craft axes. A runner who reports the number
+  they *see* rather than the number their CLI *computed* is contributing a different
+  contract, which fails the gate above without anyone noticing. Ask for the JSON, not a
+  screenshot.
 
 ## What the runner needs
 

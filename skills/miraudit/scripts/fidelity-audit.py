@@ -150,21 +150,14 @@ for sid, evs in events.items():
 for n, c in task_names.most_common():
     print(f"    {c:>5}  {n}")
 
-# ============ D. ToolSearch: choice or harness requirement? ============
-print()
-print("=" * 78)
-print("D. ToolSearch - one counter, two pillars: "
-      + axis("Tool command (MCP + CLI)") + " and " + axis("Token economy"))
-print("=" * 78)
-ts_kind = collections.Counter()
-for sid, evs in events.items():
-    for _, n, i, _ in evs:
-        if n == "ToolSearch":
-            q = str(i.get("query", ""))
-            ts_kind["select: (forced load of a deferred tool)"
-                    if q.startswith("select:") else "keyword search"] += 1
-for k, c in ts_kind.most_common():
-    print(f"    {c:>5}  {k}")
+# ============ D. ToolSearch: removed, because its target was ============
+# This section split ToolSearch calls into forced `select:` loads and real keyword
+# searches, to show one harness-driven counter feeding two pillars. Upstream v17
+# (contract 17:17:17) removed TOOLSEARCH_PER_CALL_TARGET from both: `toolsearch_calls`
+# is now a published diagnostic that no term reads, and wsum renormalizes the survivors
+# (aq.py: "The toolsearch rate term was removed (v17)"). The counter feeds zero pillars,
+# so there is no `signal-reused` shape left to report. Deleted rather than repaired: a
+# check that keeps printing confidently about a term nobody scores is worse than no check.
 
 # ============ E. Compounding: what it is made of ============
 print()
@@ -190,10 +183,16 @@ print("  most written files:")
 for k, c in paths.most_common(6):
     print(f"    {c:>5}  {k}")
 
-# ============ F. Verification: verdict right even if the mechanism is not? ============
+# ============ F. Verification: independent read of the coverage the axis now scores ====
+# Reframed for v17. The axis used to score test-run DENSITY per tool call, and this
+# section existed to show the verdict was roughly right even though the mechanism was
+# not. Upstream replaced the density term with session coverage, so the mechanism is no
+# longer the finding -- what is left is worth keeping for a different reason: this counts
+# coverage straight off the transcripts, so it is ground truth NOT derived from the
+# tool's own aggregate. A gap against the published test_coverage is the finding now.
 print()
 print("=" * 78)
-print("F. " + axis("Verification", "- the mechanism is wrong, but the verdict?"))
+print("F. " + axis("Verification", "- coverage measured from transcripts, not from stats"))
 print("=" * 78)
 code_sess, tested_sess = set(), set()
 for sid, evs in events.items():
@@ -210,5 +209,14 @@ if _v:
     _sc, _mx = _v.get("score"), _v.get("weight", _v.get("base_weight"))
     print(f"  the axis scores                   : {_sc}/{_mx} = "
           f"{100*float(_sc)/float(_mx):.0f}% of its range")
+    # Their number beside ours. The two populations are NOT the same -- theirs is C2
+    # eligibility (`eligible_change_sessions`), ours is "wrote one code file" -- so a gap
+    # is a lead to chase, never a finding on its own. Printed together precisely so
+    # nobody quotes one of them as if it were the other.
+    _sig = _v.get("signals") or {}
+    if _sig.get("test_coverage") is not None:
+        print(f"  their coverage (C2 eligibility)   : "
+              f"{_sig.get('test_covered_change_sessions')}/"
+              f"{_sig.get('eligible_change_sessions')} = {_sig['test_coverage']}")
 else:
     print("  the axis scores                   : not read (pass --stats)")
