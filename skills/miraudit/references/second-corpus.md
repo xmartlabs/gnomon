@@ -108,9 +108,10 @@ corpus.
   defect if the graded population has mass above it, and even several volunteer corpora are
   not that population — they are people who agreed to run an audit, which is not a random
   sample of the graded one.
-- The counterfactual cuts nine signals. Fan-out, orchestration frequency, planning ratios,
-  model diversity and CLI share are not cut at all, on either corpus. The declared coverage
-  is a floor, and the script prints which signals it looked for and could not find.
+- The counterfactual examines thirteen signals and cut ten on the corpus it was written
+  against. Three are still not cut on any corpus, because their input is a list rather than
+  a scalar: model diversity, offload share, and the review-skill count. The declared
+  coverage is a floor, and the script prints what it looked for and could not find.
 - Corpora produced on the same team, on similar work, are not independent in the way this
   argument needs. If every runner is a backend engineer on one codebase, say so in the write-up
   rather than presenting the corpora as varied.

@@ -34,6 +34,13 @@ threshold must move, or the headline is a broken fixture rather than a finding. 
 prints which signals it looked for and could not find, because a silently skipped signal
 makes the result look better covered than it is.
 
+Where a threshold is a named constant it is imported. Where it is an inline literal there is
+nothing to import, and restating it would be the very mistake this skill reports, so the
+saturation point is **discovered by bisection** instead: lower the signal until the axis
+scores move, using the tool's own scoring function as the oracle. The run validates that
+method before trusting it, by bisecting a threshold it could have imported and checking the
+two agree.
+
 **A refutation gate.** Nothing is reported until it survives seven attempts to kill it. Each
 attempt exists because it killed a real finding that was about to be sent; the write-ups
 are in `references/refutation.md`. Findings that die are recorded in `dismissed` with the

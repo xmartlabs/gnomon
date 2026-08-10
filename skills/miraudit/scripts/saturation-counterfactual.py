@@ -9,6 +9,13 @@ its own target or ceiling — the least the tool will still award full marks for
 with the tool's own `compute_aq`, and see what the total does. If it does not move, every
 point of headroom above those thresholds bought nothing.
 
+Thresholds are IMPORTED where they are named constants. Where the threshold is an inline
+literal there is nothing to import, and restating it would make this check disagree with the
+tool the moment anyone recalibrates — the exact defect this script reports. Those saturation
+points are DISCOVERED by bisection instead: lower the signal until the axis scores move, with
+the tool's own scoring as the oracle. The run validates that method before trusting it, by
+bisecting a threshold it could have imported and checking the two agree.
+
     python3 saturation-counterfactual.py --checkout <copy> --since ... --until ... --stats ...
 
 Needs `--stats` from an anchored run: it re-scores that payload rather than the corpus.
@@ -59,18 +66,24 @@ SHARE_SIGNALS = {
     "planning_skill_sessions": ("planning_skill_eligible_sessions",
                                 "PLANNING_PRACTICE_TARGET"),
 }
-# Saturated terms this arm CANNOT cut, and why. Printed with the coverage floor rather
-# than left silent: an axis missing from the arm makes the result look better covered
-# than it is. Everything here fails the same rule — there is no importable threshold to
-# cut to, and restating the literal would make this check disagree with the tool the
-# moment anyone recalibrates. That is the mistake this script exists to find.
+# Terms whose threshold is an inline literal in aq.py rather than a named constant, so there
+# is nothing to import. Restating the literal here is out of the question: that is exactly
+# the mistake this script exists to find. Instead the saturation point is DISCOVERED by
+# bisection against the tool's own scoring function -- lower the signal until the axis
+# scores move. Nothing is restated, and the discovered point tracks any recalibration for
+# free. `payload key -> (axis, the derived signal it drives)`.
+BISECT_SIGNALS = {
+    "cli_calls": ("Token economy", "cli_share"),
+    "planning_ratio_explore_to_doing": ("Grounding", "planning_ratio"),
+    "test_covered_change_sessions": ("Verification", "test_coverage"),
+}
+# Still uncuttable, for a different reason: their input is a LIST, so there is no scalar to
+# bisect. Printed with the coverage floor rather than left silent, because an axis missing
+# from the arm makes the result look better covered than it is.
 NOT_CUTTABLE = [
-    ("cli_share", "Token economy", "sat(_, 0.70) is an inline literal, not a constant"),
-    ("offload_share", "Model mix", "inline literal, and its input is a turn-count list"),
+    ("offload_share", "Model mix", "derived from a per-model turn-count list"),
     ("distinct_models", "Model mix", "sat(len(models), 3): cutting means truncating a list"),
-    ("planning_ratio_explore_to_doing", "Grounding", "sat(_, 1.0) is an inline literal"),
-    ("test_coverage", "Verification", "scored as the raw ratio; no threshold to cut to"),
-    ("review_skills", "Verification", "derived from the skills list, not a scalar in the payload"),
+    ("review_skills", "Verification", "derived from the skills list by _review_skill_uses"),
 ]
 
 missing = [n for n in list(RATE_SIGNALS.values()) + list(COUNT_SIGNALS.values())
@@ -114,6 +127,49 @@ def calls_in(payload):
     return seen.pop() if len(seen) == 1 else None
 
 
+def fingerprint(scored):
+    """Every axis score, rounded. The bisection's objective.
+
+    NOT the AQ: that is an integer, so a term can lose a third of its value without the
+    headline moving, and a bisection against it would report a saturation point far below
+    the real one. The axis vector moves as soon as any term does.
+    """
+    return tuple(round(float(a.get("score") or 0), 6)
+                 for p in scored.get("pillars") or []
+                 for a in p.get("axes") or [])
+
+
+BASE_FP = fingerprint(base)
+
+
+def score_at(key, value):
+    mutated = copy.deepcopy(stats)
+    if not set_everywhere(mutated, key, value):
+        return None
+    return fingerprint(compute_aq(mutated))
+
+
+def discover_saturation(key, current):
+    """The lowest value of `key` that still scores exactly what the real payload scores.
+
+    Bisection, not arithmetic: the threshold is never restated here, it is found by asking
+    the tool's own scoring function where the axis starts to move. Assumes the term is
+    monotonic in the signal, which every sat()/rate() term is, and checks the assumption
+    before trusting the search -- if setting the signal to zero changes nothing, the signal
+    does not drive any scored term and there is nothing to discover.
+    """
+    if score_at(key, 0) == BASE_FP:
+        return None
+    lo, hi = 0.0, float(current)          # fp(lo) != BASE_FP, fp(hi) == BASE_FP
+    for _ in range(48):
+        mid = (lo + hi) / 2
+        if score_at(key, mid) == BASE_FP:
+            hi = mid
+        else:
+            lo = mid
+    return hi
+
+
 def arm(fraction, absent=None):
     """Score a copy with every saturated signal set to `fraction` of its threshold.
 
@@ -127,8 +183,25 @@ def arm(fraction, absent=None):
         sys.exit("error: could not read the tool-call denominator from stats.json.")
     changes = []
     pairs = (list(RATE_SIGNALS.items()) + list(COUNT_SIGNALS.items())
-             + [(k, t) for k, (_, t) in SHARE_SIGNALS.items()])
+             + [(k, t) for k, (_, t) in SHARE_SIGNALS.items()]
+             + [(k, None) for k in BISECT_SIGNALS])
     for key, name in pairs:
+        if name is None:
+            # Discovered by bisection, not imported. `DISCOVERED` is filled in once, before
+            # any arm runs, so every arm cuts to the same point.
+            want = DISCOVERED.get(key)
+            if want is None:
+                if absent is not None:
+                    absent.append(f"{key} (no scored effect)")
+                continue
+            want = want * fraction
+            current = next((v for _, v in find_all(mutated, key)
+                            if isinstance(v, (int, float))), None)
+            if current is None or current <= want:
+                continue
+            if set_everywhere(mutated, key, want):
+                changes.append((key, current, round(want, 1)))
+            continue
         threshold = getattr(AQ, name)
         if key in RATE_SIGNALS:
             want = threshold * calls * fraction
@@ -165,6 +238,40 @@ print("SATURATION COUNTERFACTUAL")
 print("=" * 78)
 print(f"  baseline AQ {base_aq}  ({base.get('tier')}, contract {base.get('score_contract_id')})")
 
+# ---- discover the thresholds that cannot be imported, and validate the method first ----
+_calls = calls_in(stats)
+print("\n  METHOD CHECK — bisection against a threshold that CAN be imported. If the two")
+print("  columns disagree, the discovered points below are not trustworthy either:")
+_method_ok = True
+for _key, _name in RATE_SIGNALS.items():
+    _known = getattr(AQ, _name) * _calls
+    _cur = next((v for _, v in find_all(stats, _key) if isinstance(v, (int, float))), None)
+    if _cur is None or _cur <= _known:
+        print(f"    {_key:<28}not saturated, nothing to discover")
+        continue
+    _found = discover_saturation(_key, _cur)
+    _agree = _found is not None and abs(_found - _known) <= max(1.0, _known * 0.02)
+    _method_ok = _method_ok and _agree
+    print(f"    {_key:<28}imported {_known:>10.1f}   discovered {_found:>10.1f}"
+          f"   {'agree' if _agree else 'DISAGREE'}")
+
+DISCOVERED = {}
+for _key in BISECT_SIGNALS:
+    _cur = next((v for _, v in find_all(stats, _key) if isinstance(v, (int, float))), None)
+    DISCOVERED[_key] = discover_saturation(_key, _cur) if _cur is not None else None
+
+print("\n  DISCOVERED saturation points (no importable threshold; found by bisection):")
+for _key, (_axis, _derived) in BISECT_SIGNALS.items():
+    _cur = next((v for _, v in find_all(stats, _key) if isinstance(v, (int, float))), None)
+    _pt = DISCOVERED.get(_key)
+    if _cur is None:
+        print(f"    {_key:<32}{_axis:<18}absent from this payload")
+    elif _pt is None:
+        print(f"    {_key:<32}{_axis:<18}no scored effect, not cut")
+    else:
+        print(f"    {_key:<32}{_axis:<18}you did {_cur:<10.1f}same score at {_pt:.1f}"
+              f"   (drives {_derived})")
+
 absent = []
 at_target, changed = arm(1.0, absent)
 print(f"\n  every saturated signal cut to EXACTLY its threshold -> AQ {at_target}"
@@ -174,9 +281,18 @@ print(f"\n  every saturated signal cut to EXACTLY its threshold -> AQ {at_target
 # work the score cannot see -- not work destroyed.
 print("\n  Real work the score does not see. Nothing is modified on disk: each arm")
 print("  re-scores a throwaway copy of the payload.")
-print(f"    {'signal':<28}{'you did':>10}{'same score at':>15}{'unseen':>10}")
+def num(v):
+    """Counts read as counts, ratios keep their decimals, neither goes scientific.
+
+    `.0f` printed a headroom of 0.13 as "0", which reads as "not saturated" -- the opposite
+    of what the row says. `.4g` fixed that and turned 38558 into 3.856e+04.
+    """
+    return f"{v:,.0f}" if abs(v) >= 1000 else f"{v:.4g}"
+
+
+print(f"    {'signal':<34}{'you did':>12}{'same score at':>15}{'unseen':>12}")
 for key, was, now in changed:
-    print(f"    {key:<28}{was:>10}{now:>15}{was - now:>10.0f}")
+    print(f"    {key:<34}{num(was):>12}{num(now):>15}{num(was - now):>12}")
 
 print("\n  CONTROLS — these must move, or the mutation is not landing:")
 ok = True
@@ -200,8 +316,13 @@ else:
     print("  The at-threshold arm moved. The headroom is doing work on this corpus, and")
     print("  there is no saturation finding to report.")
 
+if not _method_ok:
+    print("\n  THE METHOD CHECK FAILED. Bisection did not recover a threshold the script")
+    print("  could read directly, so treat every discovered point above as unverified.")
+
 print("\n  COVERAGE — this is a floor, not the whole score:")
-examined = len(RATE_SIGNALS) + len(COUNT_SIGNALS) + len(SHARE_SIGNALS)
+examined = (len(RATE_SIGNALS) + len(COUNT_SIGNALS) + len(SHARE_SIGNALS)
+            + len(BISECT_SIGNALS))
 print(f"    signals cut          : {len(changed)}")
 print(f"    examined, not saturated: {examined - len(changed) - len(absent)}")
 if absent:
