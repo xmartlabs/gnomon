@@ -986,11 +986,12 @@ class Accumulator:
                     if isinstance(b, dict) and b.get("type") == "tool_result":
                         self._record_claude_agent_result(ev, b, sid)
                         _tuid = b.get("tool_use_id")
-                        if _tuid:
+                        _is_error = b.get("is_error")
+                        if _tuid and isinstance(_is_error, bool):
                             # F7: last result wins if a tool_use_id somehow
                             # repeats; corpus-lifetime, resolved at derive
                             # time by derive_session_ordered_facts.
-                            self._tool_result_is_error[_tuid] = bool(b.get("is_error"))
+                            self._tool_result_is_error[_tuid] = _is_error
                         if b.get("is_error"):
                             self.tool_errors += 1
                             if mkey:
@@ -1095,6 +1096,10 @@ class Accumulator:
                             _target = _norm_path_seps(
                                 inp.get("file_path") or inp.get("notebook_path")
                                 or inp.get("path") or inp.get("pattern") or inp.get("query") or "")
+                            _classify_target = (
+                                os.path.join(cwd, _target)
+                                if cwd and _target and not os.path.isabs(_target)
+                                else _target)
                             _items = (inp.get("todos") or inp.get("items") or inp.get("tasks")
                                       or inp.get("plan") or [])
                             if isinstance(_items, list):
@@ -1125,7 +1130,7 @@ class Accumulator:
                                 # otherwise — a missing loc never flips
                                 # ordered_facts_complete (see the `dt is None` check below,
                                 # which is the ONLY thing that flips it).
-                                "file_class": classify_change_target(_target),
+                                "file_class": classify_change_target(_classify_target),
                                 "loc": self._write_loc(name, inp),
                                 "plan_file": is_plan_file_target(_target),
                                 "plan_skill": self._fact_plan_skill(name, inp, ev),

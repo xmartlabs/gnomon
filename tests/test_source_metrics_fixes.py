@@ -367,8 +367,10 @@ class TestCodexFanoutTimestamp(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestCodexVerificationCoverageBlocker1(unittest.TestCase):
-    def _session_rows(self, test_success, as_string=False):
-        _out = json.dumps({"success": test_success}) if as_string else {"success": test_success}
+    def _session_rows(self, test_success, as_string=False, raw_output=None):
+        _out = (raw_output if raw_output is not None
+                else (json.dumps({"success": test_success}) if as_string
+                      else {"success": test_success}))
         return [
             {"type": "session_meta", "timestamp": "2026-01-01T00:00:00Z",
              "payload": {"id": "codex-s1", "cwd": "/repo"}},
@@ -392,8 +394,8 @@ class TestCodexVerificationCoverageBlocker1(unittest.TestCase):
                          "output": _out}},
         ]
 
-    def _run(self, test_success, as_string=False):
-        path = _write_jsonl(self._session_rows(test_success, as_string))
+    def _run(self, test_success, as_string=False, raw_output=None):
+        path = _write_jsonl(self._session_rows(test_success, as_string, raw_output))
         try:
             events = list(_codex_events(path))
         finally:
@@ -430,6 +432,12 @@ class TestCodexVerificationCoverageBlocker1(unittest.TestCase):
         # Regression: a string `{"success": false}` must be parsed as a failure,
         # not read as no-error, or a FAILED Codex test would inflate coverage.
         agg = self._run(test_success=False, as_string=True)
+        self.assertEqual(agg["eligible"], 1)
+        self.assertEqual(agg["test_covered"], 0)
+
+    def test_not_json_output_is_not_covered(self):
+        """Malformed Codex output has no determinate success state."""
+        agg = self._run(test_success=True, raw_output="not-json")
         self.assertEqual(agg["eligible"], 1)
         self.assertEqual(agg["test_covered"], 0)
 

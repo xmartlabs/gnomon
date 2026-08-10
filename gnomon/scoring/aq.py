@@ -22,7 +22,7 @@ CONTEXT_INTELLIGENCE_TARGET = 0.60
 # are evaluated against observable source capabilities; unavailable signals drop
 # rather than scoring zero.
 #
-# v18 removed TWO of these targets. TEST_RUNS_PER_CALL_TARGET left because the
+# v17 removed TWO of these targets. TEST_RUNS_PER_CALL_TARGET left because the
 # Verification test-run half switched from a per-call DENSITY (shell_test_runs /
 # tool_calls, confounded by delegation inflating the denominator) to a per-SESSION
 # COVERAGE fraction scored with NO fitted target (sat(coverage, 1.0)). TASK_CALLS_
@@ -328,7 +328,7 @@ def compute_aq(stats):
                                   MCP_SERVERS_DISTINCT_CEILING), None),
                         (.40, sat(t.get("clis_distinct", 0), CLIS_DISTINCT_CEILING), None),
                         axis="Tool command (MCP + CLI)")
-    # plan-skill term needs the Skill capability. (v18 dropped the task-tool rate term:
+    # plan-skill term needs the Skill capability. (v17 dropped the task-tool rate term:
     # TaskCreate/Update + task-skill uses ran at ~3.2x target, so rate()'s sat() pinned it
     # at 1.0 for virtually everyone -- todo-tool ceremony that did not discriminate and
     # rewarded TaskUpdate spam. task_tool_calls stays a published diagnostic, not scored.)
@@ -354,7 +354,7 @@ def compute_aq(stats):
     planning_habit = (
         None if _plan_practice["share"] is None or _plan_eligible < MIN_ELIGIBLE_SESSIONS
         else sat(_plan_practice["share"], PLANNING_PRACTICE_TARGET))
-    # v18 dropped the (.40, task-tool rate) term; wsum renormalizes the two survivors
+    # v17 dropped the (.40, task-tool rate) term; wsum renormalizes the two survivors
     # (planning_habit .40 + ordered_planning .20) to .667 / .333.
     discipline = wsum(  # The legacy path derives the share from plan_sessions over ALL
                       # sessions, which only a Skill-capable source populates. The qualified
@@ -393,7 +393,7 @@ def compute_aq(stats):
             "toolsearch_calls": t.get("toolsearch_calls", 0)}),
         # Surface the planning inputs: the axis now moves with planning FREQUENCY and
         # ordered planning only, and a score with no visible driver is not actionable. The
-        # raw task_tool_calls count stays a published diagnostic (v18 dropped its scored
+        # raw task_tool_calls count stays a published diagnostic (v17 dropped its scored
         # rate term) without the *_per_call / *_per_call_target disclosure that implies it
         # is scored -- mirroring how toolsearch_calls is republished on Tool command.
         ("Discipline", 17, discipline, {
@@ -412,7 +412,7 @@ def compute_aq(stats):
     # review-skill term needs observable skill data (first-class Skill tool OR SKILL.md reads /
     # injected skills on Cursor). Skill fluency / Discipline still require `skills` only.
     #
-    # v18 — the test half is per-SESSION COVERAGE, not per-call density. The old
+    # v17 — the test half is per-SESSION COVERAGE, not per-call density. The old
     # shell_test_runs / tool_calls density was confounded by delegation (sidechain tool calls
     # inflate the denominator), so it did not measure whether the developer verified their
     # changes. coverage = (eligible change-sessions that also ran a shell test) /
@@ -427,7 +427,7 @@ def compute_aq(stats):
     # reads None here -- distinct from a genuine measured zero (the field present, value
     # 0). Coercing both to 0 (the old `.get(..., 0) or 0`) fabricated a 0.0 coverage for a
     # v17 payload that had `ordered_facts_state == "measured"` and a real
-    # `eligible_change_sessions`, both of which predate the v18 coverage numerator. `is
+    # `eligible_change_sessions`, both of which predate the v17 coverage numerator. `is
     # None`, not falsiness, is the test: a present 0 must still score 0.0 coverage.
     _test_covered = b.get("test_covered_change_sessions")
     _test_covered_measured = _test_covered is not None
@@ -497,7 +497,7 @@ def compute_aq(stats):
                        (.4, (1.0 if has_skill(["retro", "writing-plans", "brainstorm"]) else 0.6), "skill_reads"),
                        axis="Compounding")
     _review_skills_applicable = "skill_reads" in caps
-    # v18 — disclose per-session COVERAGE (numerator / denominator / ratio) in place of the
+    # v17 — disclose per-session COVERAGE (numerator / denominator / ratio) in place of the
     # dropped test-run density rate_facts. coverage is None whenever the term was NOT scored
     # (ordered facts unmeasured or no eligible change-sessions), so a consumer never reads a
     # ratio off a term the scorer refused. The raw shell_test_runs count stays a published

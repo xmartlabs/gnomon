@@ -617,6 +617,51 @@ class TestVerificationCoverageF7(unittest.TestCase):
         agg = aggregate_ordered([facts], acc._tool_result_is_error)
         self.assertEqual(agg["test_covered"], 0)
 
+    def test_tool_result_without_boolean_error_status_not_covered(self):
+        """Fail closed when a Claude result omits its error status."""
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        sid = "s1"
+        self._two_code_writes(acc, sid)
+        acc.observe(_fact_event(sid, "2026-01-01T00:00:02Z", "Bash", {
+            "command": "pytest"}, tool_use_id="tu-unknown"), None, None)
+        result_event = _tool_result_event(
+            sid, "2026-01-01T00:00:03Z", "tu-unknown")
+        result_event["message"]["content"][0].pop("is_error")
+        acc.observe(result_event, None, None)
+        facts = _facts_for(acc, "claude", sid)
+        self.assertNotIn("tu-unknown", acc._tool_result_is_error)
+        agg = aggregate_ordered([facts], acc._tool_result_is_error)
+        self.assertEqual(agg["eligible"], 1)
+        self.assertEqual(agg["test_covered"], 0)
+
+
+class TestOrderedTargetClassification(unittest.TestCase):
+    def test_relative_scratchpad_under_temp_cwd_is_other_and_not_eligible(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        event = _fact_event("s1", "2026-01-01T00:00:00Z", "Write", {
+            "file_path": "scratchpad/foo.py", "content": "x = 1\n"})
+        event["cwd"] = "/tmp/gnomon-run"
+        acc.observe(event, None, None)
+
+        facts = _facts_for(acc, "claude", "s1")
+        self.assertEqual(facts[0]["target"], "scratchpad/foo.py")
+        self.assertEqual(facts[0]["file_class"], "other")
+        self.assertFalse(derive_session_ordered_facts(facts)["eligible"])
+
+    def test_relative_code_target_under_temp_cwd_remains_code(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        event = _fact_event("s1", "2026-01-01T00:00:00Z", "Write", {
+            "file_path": "src/a.py", "content": "x = 1\n"})
+        event["cwd"] = "/tmp/gnomon-run"
+        acc.observe(event, None, None)
+
+        facts = _facts_for(acc, "claude", "s1")
+        self.assertEqual(facts[0]["target"], "src/a.py")
+        self.assertEqual(facts[0]["file_class"], "code")
+
 
 class TestMonthlyVerificationCoverageBlocker2(unittest.TestCase):
     """BLOCKER 2 — `build_monthly_scoring_stats` (via `Accumulator.to_monthly`) must
