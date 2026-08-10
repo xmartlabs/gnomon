@@ -367,7 +367,8 @@ class TestCodexFanoutTimestamp(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestCodexVerificationCoverageBlocker1(unittest.TestCase):
-    def _session_rows(self, test_success):
+    def _session_rows(self, test_success, as_string=False):
+        _out = json.dumps({"success": test_success}) if as_string else {"success": test_success}
         return [
             {"type": "session_meta", "timestamp": "2026-01-01T00:00:00Z",
              "payload": {"id": "codex-s1", "cwd": "/repo"}},
@@ -388,11 +389,11 @@ class TestCodexVerificationCoverageBlocker1(unittest.TestCase):
                          "arguments": json.dumps({"command": "pytest"})}},
             {"type": "response_item", "timestamp": "2026-01-01T00:00:05Z",
              "payload": {"type": "function_call_output", "call_id": "test-1",
-                         "output": {"success": test_success}}},
+                         "output": _out}},
         ]
 
-    def _run(self, test_success):
-        path = _write_jsonl(self._session_rows(test_success))
+    def _run(self, test_success, as_string=False):
+        path = _write_jsonl(self._session_rows(test_success, as_string))
         try:
             events = list(_codex_events(path))
         finally:
@@ -416,6 +417,19 @@ class TestCodexVerificationCoverageBlocker1(unittest.TestCase):
 
     def test_failing_codex_shell_test_is_not_covered(self):
         agg = self._run(test_success=False)
+        self.assertEqual(agg["eligible"], 1)
+        self.assertEqual(agg["test_covered"], 0)
+
+    def test_json_string_output_success_is_covered(self):
+        # Codex records function_call_output.output as a dict OR a JSON string.
+        agg = self._run(test_success=True, as_string=True)
+        self.assertEqual(agg["eligible"], 1)
+        self.assertEqual(agg["test_covered"], 1)
+
+    def test_json_string_output_failure_is_not_covered(self):
+        # Regression: a string `{"success": false}` must be parsed as a failure,
+        # not read as no-error, or a FAILED Codex test would inflate coverage.
+        agg = self._run(test_success=False, as_string=True)
         self.assertEqual(agg["eligible"], 1)
         self.assertEqual(agg["test_covered"], 0)
 
