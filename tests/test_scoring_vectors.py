@@ -11,7 +11,8 @@ parser's expectations honest with what Python actually produces. These tests:
      the committed snapshot can never silently drift from the code (regenerate with
      `python3 tests/gen_scoring_vectors.py` when an intended scoring change lands).
   2. Assert the structural contract the vectors are meant to PROVE:
-     - cursor-only drops the skills / toolsearch / tasktool terms (capability-aware).
+     - cursor-only drops the skills / tasktool terms (capability-aware). (toolsearch is no
+       longer scored as of v17, so it is not among the dropped terms.)
      - the aggregate is the tool-volume WEIGHTED MEAN of per-source scores, NOT the
        pooled-union number.
 """
@@ -40,8 +41,8 @@ def _roundtrip(obj):
 
 
 class TestScoringVectorsFile(unittest.TestCase):
-    def test_scoring_contract_is_version_sixteen(self):
-        self.assertEqual(SCORING_INPUTS_VERSION, 16)
+    def test_scoring_contract_is_version_seventeen(self):
+        self.assertEqual(SCORING_INPUTS_VERSION, 17)
 
     def test_file_exists_and_has_cases(self):
         data = _load()

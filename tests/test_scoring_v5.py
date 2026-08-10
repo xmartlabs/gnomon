@@ -654,27 +654,32 @@ class TestDisciplinePlanningHabit(unittest.TestCase):
                          self._discipline(without)["score"])
 
     def test_unavailable_share_drops_the_term_and_renormalizes(self):
-        """Unmeasured planning scope must not be scored as zero planning discipline."""
+        """Unmeasured planning scope must not be scored as zero planning discipline. v18
+        dropped the task-tool rate term that used to keep Discipline alive on its own, so
+        with BOTH surviving terms (planning habit, ordered planning) unmeasured there is no
+        term left at all -- wsum returns None and the whole axis drops (renormalized away
+        from the pillar), never falling back to some other proxy or scoring zero."""
         unmeasured = self._stats(share=None)
         unmeasured["behavior"]["ordered_facts_state"] = "unmeasured"
-        axis = self._discipline(unmeasured)
-        expected = axis["weight"] * min(
-            (unmeasured["tools"]["task_tool_calls"]
-             + 0) / max(unmeasured["volume"]["total_sessions"], 1) / 1.0, 1.0)
-        self.assertAlmostEqual(axis["score"], expected, places=6)
         breadth = next(p for p in compute_aq(unmeasured)["pillars"]
                        if p["name"] == "Breadth")
-        self.assertNotIn("Discipline", set(breadth.get("not_applicable") or []))
+        self.assertIn("Discipline", set(breadth.get("not_applicable") or []))
+        self.assertNotIn("Discipline", {a["name"] for a in breadth["axes"]})
 
     def test_below_eligible_floor_drops_the_planning_habit_term(self):
         """A 1-of-2 corpus is 0.5 share and would max the term on noise. The floor that
-        already guards ordered planning must guard this one too."""
+        already guards ordered planning must guard this one too: below the floor, a thin
+        corpus with SOME raw share and a corpus with no signal at all must be treated
+        identically -- both drop the whole Discipline axis (no term survives) rather than
+        the thin corpus scoring on its floored-out share as if it were significant."""
         thin = self._stats(share=0.5, eligible=MIN_ELIGIBLE_SESSIONS - 1)
         thin["behavior"]["ordered_facts_state"] = "unmeasured"
         unavailable = self._stats(share=None)
         unavailable["behavior"]["ordered_facts_state"] = "unmeasured"
-        self.assertAlmostEqual(self._discipline(thin)["score"],
-                               self._discipline(unavailable)["score"], places=6)
+        for stats in (thin, unavailable):
+            breadth = next(p for p in compute_aq(stats)["pillars"]
+                           if p["name"] == "Breadth")
+            self.assertIn("Discipline", set(breadth.get("not_applicable") or []))
 
     def test_source_that_cannot_emit_any_planning_signal_drops_the_term(self):
         """opencode is a MEASURED planning scope, so its eligible denominator accrues, but
@@ -1523,7 +1528,7 @@ class TestV5Contract(unittest.TestCase):
     def test_compute_aq_emits_exact_contract(self):
         stats = {"corpus": {"sources": {}}, "volume": {"total_sessions": 0},
                  "tools": {}, "stack": {}, "behavior": {}}
-        self.assertEqual(SCORE_CONTRACT_ID, "16:16:16")
+        self.assertEqual(SCORE_CONTRACT_ID, "17:17:17")
         self.assertEqual(compute_aq(stats)["score_contract_id"], SCORE_CONTRACT_ID)
 
     def test_blend_rejects_missing_or_mismatched_contract(self):

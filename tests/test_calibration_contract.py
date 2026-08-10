@@ -109,9 +109,6 @@ class TestV16McpCompoundingContract(unittest.TestCase):
     """v16 (MCP knowledge-write compounding numerator): real score delta, zero
     calibration delta -- same template as v15's Workflow fan-out fix."""
 
-    def test_contract_is_sixteen(self):
-        self.assertEqual(SCORE_CONTRACT_ID, "16:16:16")
-
     def test_digest_is_byte_identical_to_thirteen_fourteen_fifteen(self):
         self.assertEqual(CALIBRATION_FINGERPRINTS["16:16:16"], "94f38d0963b1b195")
         self.assertEqual(
@@ -122,8 +119,44 @@ class TestV16McpCompoundingContract(unittest.TestCase):
     def test_sixteen_is_registered_as_zero_calibration_delta(self):
         self.assertIn("16:16:16", ZERO_CALIBRATION_DELTA_CONTRACT_IDS)
 
-    def test_live_fingerprint_matches_registered_entry(self):
-        self.assertEqual(calibration_fingerprint(), CALIBRATION_FINGERPRINTS["16:16:16"])
+
+class TestV17DropToolsearchContract(unittest.TestCase):
+    """v17 (scratchpad writes excluded from change-session eligibility; toolsearch rate term
+    dropped from Tool command + Token economy; Verification per-call density -> pure-fraction
+    per-session coverage; Discipline task-tool rate term dropped as trivially saturated): a
+    REAL score delta AND -- unlike v14/v15/v16 -- a REAL calibration delta. Removing
+    TOOLSEARCH_PER_CALL_TARGET, TEST_RUNS_PER_CALL_TARGET, and TASK_CALLS_PER_CALL_TARGET from
+    CALIBRATION_CONSTANT_NAMES genuinely moves the fingerprint, so 17:17:17 carries a NEW
+    digest and is NOT a zero-calibration-delta contract."""
+
+    def test_seventeen_is_registered(self):
+        self.assertIn("17:17:17", CALIBRATION_FINGERPRINTS)
+
+    def test_seventeen_fingerprint_is_pinned(self):
+        self.assertEqual(CALIBRATION_FINGERPRINTS["17:17:17"], "7fd9a230f7fb2264")
+
+    def test_seventeen_digest_is_a_new_unique_value(self):
+        # Three constants left the fingerprinted set, so the digest MUST differ from every
+        # prior contract -- this is the calibration delta the bump records.
+        self.assertNotEqual(
+            CALIBRATION_FINGERPRINTS["17:17:17"], CALIBRATION_FINGERPRINTS["16:16:16"])
+        others = [fp for cid, fp in CALIBRATION_FINGERPRINTS.items() if cid != "17:17:17"]
+        self.assertNotIn(CALIBRATION_FINGERPRINTS["17:17:17"], others)
+
+    def test_seventeen_is_not_a_zero_calibration_delta_contract(self):
+        self.assertNotIn("17:17:17", ZERO_CALIBRATION_DELTA_CONTRACT_IDS)
+
+    def test_toolsearch_target_is_no_longer_registered_or_present(self):
+        self.assertNotIn("TOOLSEARCH_PER_CALL_TARGET", CALIBRATION_CONSTANT_NAMES)
+        self.assertFalse(hasattr(aq, "TOOLSEARCH_PER_CALL_TARGET"))
+
+    def test_test_runs_target_is_no_longer_registered_or_present(self):
+        self.assertNotIn("TEST_RUNS_PER_CALL_TARGET", CALIBRATION_CONSTANT_NAMES)
+        self.assertFalse(hasattr(aq, "TEST_RUNS_PER_CALL_TARGET"))
+
+    def test_task_calls_target_is_no_longer_registered_or_present(self):
+        self.assertNotIn("TASK_CALLS_PER_CALL_TARGET", CALIBRATION_CONSTANT_NAMES)
+        self.assertFalse(hasattr(aq, "TASK_CALLS_PER_CALL_TARGET"))
 
 
 if __name__ == "__main__":

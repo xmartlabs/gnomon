@@ -13,14 +13,15 @@ from gnomon.scoring import aq
 CALIBRATION_CONSTANT_NAMES = (
     # scoring window: it determines the corpus all window-sensitive inputs score.
     "DEFAULT_SCORING_WINDOW_MONTHS",
-    # rate targets -- the six that share the tool_calls_total denominator
+    # rate targets -- the three that share the tool_calls_total denominator. (v17 removed
+    # TOOLSEARCH_PER_CALL_TARGET, TASK_CALLS_PER_CALL_TARGET (whose Discipline rate term was
+    # dropped as trivially saturated), and TEST_RUNS_PER_CALL_TARGET (whose Verification
+    # density term was replaced by a no-target per-session coverage fraction) -- all three
+    # constants left this set, the source of 17:17:17's genuinely new fingerprint.)
     "SKILLS_TOTAL_PER_CALL_TARGET",
-    "TOOLSEARCH_PER_CALL_TARGET",
-    "TASK_CALLS_PER_CALL_TARGET",
-    "TEST_RUNS_PER_CALL_TARGET",
     "REVIEW_SKILLS_PER_CALL_TARGET",
     "COMPOUNDING_WRITES_PER_CALL_TARGET",
-    # the evidence floor those six are scored through (occurrences implied by the target)
+    # the evidence floor those rate terms are scored through (occurrences implied by target)
     "RATE_MIN_EXPECTED_AT_TARGET",
     # absolute count ceilings -- the window-sensitive ones
     "SUBAGENT_TYPES_DISTINCT_CEILING",
@@ -129,6 +130,17 @@ CALIBRATION_FINGERPRINTS = {
     # PER_CALL_TARGET (COMPOUNDING_WRITES_PER_CALL_TARGET stays 0.0018), weight, or
     # denominator moved -- so the digest is unchanged from 13:13:13/14:14:14/15:15:15.
     "16:16:16": "94f38d0963b1b195",
+    # v17 (scratchpad writes excluded from change-session eligibility; toolsearch rate term
+    # dropped from Tool command + Token economy; Verification per-call density -> pure-fraction
+    # per-session coverage; Discipline task-tool rate term dropped as trivially saturated): a
+    # REAL score delta (Tool command and Token economy renormalize; Verification renormalizes
+    # when coverage is N/A and reads a fraction otherwise; Discipline renormalizes to
+    # .667/.333) AND a REAL calibration delta -- TOOLSEARCH_PER_CALL_TARGET,
+    # TEST_RUNS_PER_CALL_TARGET, and TASK_CALLS_PER_CALL_TARGET were ALL removed from
+    # CALIBRATION_CONSTANT_NAMES, so three registered constants genuinely left the
+    # fingerprinted set. The digest therefore CHANGES (a unique new value), and 17:17:17 is
+    # deliberately NOT in ZERO_CALIBRATION_DELTA_CONTRACT_IDS.
+    "17:17:17": "7fd9a230f7fb2264",
 }
 
 # Contract IDs whose fingerprint is a DOCUMENTED, deliberate duplicate of the contract

@@ -38,17 +38,17 @@ class TestPublicDocumentationContract(unittest.TestCase):
 
     def test_public_docs_publish_current_contract_only(self):
         expected = (
-            "scoring inputs version 16",
-            "AQ version 16",
-            "GStack version 16",
+            "scoring inputs version 17",
+            "AQ version 17",
+            "GStack version 17",
             SCORE_CONTRACT_ID,
         )
         for document in (self.readme, self.metrics):
             for phrase in expected:
                 with self.subTest(phrase=phrase):
                     self.assertIn(phrase, document)
-            self.assertNotIn("scoring inputs version 15", document)
-            self.assertNotIn("15:15:15", document)
+            self.assertNotIn("scoring inputs version 16", document)
+            self.assertNotIn("16:16:16", document)
             self.assertNotIn("96.8%", document)
 
     def test_public_docs_explain_actions_per_prompt_inputs(self):
@@ -102,7 +102,7 @@ class TestPublicDocumentationContract(unittest.TestCase):
             encoding="utf-8")
         calibration = (ROOT / "gnomon" / "scoring" / "calibration.py").read_text(
             encoding="utf-8")
-        self.assertEqual(SCORE_CONTRACT_ID, "16:16:16")
+        self.assertEqual(SCORE_CONTRACT_ID, "17:17:17")
         self.assertEqual(HARNESS_TEAM_SESSION_TYPES, 3)
         self.assertEqual(HARNESS_BELOW_TEAM_CREDIT, 0.6)
         self.assertIn("unmeasured delegation", source)
@@ -151,6 +151,26 @@ class TestPublicDocumentationContract(unittest.TestCase):
         self.assertIn("eligible change sessions", note)
         self.assertIn(f"coverage / {CONTEXT_INTELLIGENCE_TARGET:.2f}", note)
         self.assertNotIn("write-sessions", note)
+
+    def test_discipline_note_matches_executable_contract(self):
+        """OBS 1 — Discipline's scored formula (gstack.py's aq.py `discipline = wsum(
+        planning_habit .40, ordered_planning .20)`) dropped the task-tool rate term
+        in v18; the tooltip must no longer describe it, and must instead describe
+        the two terms that are actually scored: planning practice and ordered
+        planning."""
+        note = AQ_AXIS_NOTES["Discipline"]
+        self.assertNotIn("task-tool", note.lower())
+        self.assertIn("planning practice", note.lower())
+        self.assertIn("ordered planning", note.lower())
+
+    def test_verification_note_matches_executable_contract(self):
+        """OBS 1 — Verification's scored formula is per-session test COVERAGE
+        (eligible change-sessions with a successful post-write test), not raw
+        shell-test-run density; the tooltip must describe coverage, not runs."""
+        note = AQ_AXIS_NOTES["Verification"]
+        self.assertNotIn("shell test runs", note.lower())
+        self.assertIn("coverage", note.lower())
+        self.assertIn("review", note.lower())
 
     def test_philosophy_describes_ordered_planning_redesign(self):
         normalized = " ".join(self.philosophy.split())

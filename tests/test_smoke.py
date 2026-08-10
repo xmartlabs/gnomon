@@ -602,8 +602,10 @@ class TestCursorStatsFixes(unittest.TestCase):
 
 
 class TestCapabilityAwareScoring(unittest.TestCase):
-    """Fase 4: a signal a source CANNOT record (skills/toolsearch/tasktool on Cursor) is
-    dropped + renormalized, not scored 0. Full-capability corpora (Claude) are a no-op."""
+    """Fase 4: a signal a source CANNOT record (skills/tasktool on Cursor) is
+    dropped + renormalized, not scored 0. Full-capability corpora (Claude) are a no-op.
+    (toolsearch is no longer scored as of v17, so it is not among the capability-gated
+    terms.)"""
 
     def _stats(self, sources, **over):
         base = {
@@ -645,14 +647,15 @@ class TestCapabilityAwareScoring(unittest.TestCase):
                          {"Orchestration", "Skill fluency", "Tool command (MCP + CLI)", "Discipline"})
 
     def test_mixed_sources_union_keeps_skills(self):
-        # claude in the mix supports skills/toolsearch/tasktool -> nothing dropped
+        # claude in the mix supports skills/tasktool -> nothing dropped
         aq = paxel.compute_aq(self._stats(["claude", "cursor"]))
         breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
         self.assertNotIn("not_applicable", breadth)
 
     def test_cursor_not_penalized_below_claude_on_unmeasurable(self):
         # identical underlying behavior: cursor must not score LOWER than claude on the
-        # Savvy Token-economy axis just because it lacks ToolSearch (it gets renormalized).
+        # Savvy Token-economy axis. Since v17 Token economy is CLI-share only (toolsearch is
+        # no longer scored), so both sources are graded on the same single term.
         cur = paxel.compute_aq(self._stats(["cursor"]))
         cla = paxel.compute_aq(self._stats(["claude"]))
         def tok(aq):

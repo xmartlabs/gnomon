@@ -1,4 +1,4 @@
-from gnomon.analysis.metrics import _review_skill_uses, _task_skill_uses
+from gnomon.analysis.metrics import _review_skill_uses
 from gnomon.config import available_caps
 # The planning-evidence helper lives in its own module precisely so BOTH scoring systems
 # can share it: gstack imports from this module, so a gstack import here would cycle.
@@ -21,10 +21,14 @@ CONTEXT_INTELLIGENCE_TARGET = 0.60
 # Rate terms use `count / tool_calls_total`. Targets are calibration inputs and
 # are evaluated against observable source capabilities; unavailable signals drop
 # rather than scoring zero.
+#
+# v17 removed TWO of these targets. TEST_RUNS_PER_CALL_TARGET was removed because the
+# Verification test-run half switched from a per-call DENSITY (shell_test_runs /
+# tool_calls, confounded by delegation inflating the denominator) to a per-SESSION
+# COVERAGE fraction scored with NO fitted target (sat(coverage, 1.0)). TASK_CALLS_
+# PER_CALL_TARGET was removed because the Discipline task-tool term saturated for virtually
+# everyone (~3.2x target) and was dropped as non-discriminating todo-tool ceremony.
 SKILLS_TOTAL_PER_CALL_TARGET = 0.009
-TOOLSEARCH_PER_CALL_TARGET = 0.0075
-TASK_CALLS_PER_CALL_TARGET = 0.011
-TEST_RUNS_PER_CALL_TARGET = 0.025
 REVIEW_SKILLS_PER_CALL_TARGET = 0.004
 COMPOUNDING_WRITES_PER_CALL_TARGET = 0.0018
 
@@ -156,14 +160,13 @@ def compute_aq(stats):
     Craft (how well), Efficiency (leverage per intervention), Savvy (smart choices).
     MCP-vs-CLI and tool diversity stay descriptive (not graded).
 
-    Capability-aware: a signal a source CANNOT record (skills/toolsearch on Cursor, etc.)
+    Capability-aware: a signal a source CANNOT record (skills on Cursor, etc.)
     is dropped and its weight renormalized away — not scored 0 — so non-Claude tools aren't
     penalized for what their backend never persists. With a full-capability corpus (Claude)
     every term stays and this is a no-op."""
     t, st, b = stats.get("tools", {}), stats.get("stack", {}), stats.get("behavior", {})
     caps = available_caps((stats.get("corpus", {}).get("sources") or {}).keys())
     has_skills = "skills" in caps
-    has_toolsearch = "toolsearch" in caps
 
     def sat(x, target):
         return min(1.0, x / target) if target else 0.0
@@ -316,17 +319,19 @@ def compute_aq(stats):
         (.30, 1.0 if has_skill(["subagent-driven", "brainstorm", "writing-plans",
                                 "cerberus", "systematic-debugging"]) else 0.6, None),
         axis="Skill fluency")
-    # mcp_servers/clis are distinct-counts (kept absolute); toolsearch -> per-tool-call rate.
-    # toolsearch term drops out (renormalized) when no present source can record it
+    # mcp_servers/clis are distinct-counts (kept absolute). The toolsearch rate term was
+    # removed (v17): it was ~94% select:-prefixed deterministic tool-loading the deferred-tool
+    # harness forces, and its deliberate remainder is too sparse to calibrate as a rate.
+    # wsum renormalizes the two surviving terms to .5/.5. toolsearch_calls stays a published
+    # diagnostic (see the Tool command facts dict below) but is no longer scored.
     tool_command = wsum((.40, sat(t.get("mcp_servers_distinct", 0),
                                   MCP_SERVERS_DISTINCT_CEILING), None),
                         (.40, sat(t.get("clis_distinct", 0), CLIS_DISTINCT_CEILING), None),
-                        (.20, rate(t.get("toolsearch_calls", 0), TOOLSEARCH_PER_CALL_TARGET),
-                         "toolsearch"),
                         axis="Tool command (MCP + CLI)")
-    # task-tool -> per-tool-call rate; TaskCreate/Update + SDD sdd-tasks skill invocations
-    # both count as structured task planning. plan-skill term needs the Skill capability.
-    task_calls = t.get("task_tool_calls", 0) + _task_skill_uses(skills)
+    # plan-skill term needs the Skill capability. (v17 dropped the task-tool rate term:
+    # TaskCreate/Update + task-skill uses ran at ~3.2x target, so rate()'s sat() pinned it
+    # at 1.0 for virtually everyone -- todo-tool ceremony that did not discriminate and
+    # rewarded TaskUpdate spam. task_tool_calls stays a published diagnostic, not scored.)
     ordered_state = b.get("ordered_facts_state")
     eligible = b.get("eligible_change_sessions", 0) or 0
     # C7 — significance floor: below MIN_ELIGIBLE_SESSIONS the ratio is noise
@@ -349,8 +354,9 @@ def compute_aq(stats):
     planning_habit = (
         None if _plan_practice["share"] is None or _plan_eligible < MIN_ELIGIBLE_SESSIONS
         else sat(_plan_practice["share"], PLANNING_PRACTICE_TARGET))
-    discipline = wsum((.40, rate(task_calls, TASK_CALLS_PER_CALL_TARGET), "tasktool"),
-                      # The legacy path derives the share from plan_sessions over ALL
+    # v17 dropped the (.40, task-tool rate) term; wsum renormalizes the two survivors
+    # (planning_habit .40 + ordered_planning .20) to .667 / .333.
+    discipline = wsum(  # The legacy path derives the share from plan_sessions over ALL
                       # sessions, which only a Skill-capable source populates. The qualified
                       # path is earnable by plan mode OR a skill signal, hence the broader
                       # planning_signal cap — which a measured planning scope does NOT imply
@@ -381,13 +387,18 @@ def compute_aq(stats):
         ("Tool command (MCP + CLI)", 28, tool_command, {
             "mcp_servers": t.get("mcp_servers_distinct", 0),
             "clis": t.get("clis_distinct", 0), "tool_calls": tool_calls,
-            **rate_facts("toolsearch", t.get("toolsearch_calls", 0),
-                         TOOLSEARCH_PER_CALL_TARGET)}),
-        # Surface the planning inputs, not just the task-tool count: the axis now moves with
-        # planning FREQUENCY, and a score with no visible driver is not actionable.
+            # Non-scored diagnostic: the raw ToolSearch count stays visible (the accumulator
+            # still emits it) without the *_per_call / *_per_call_target rate disclosure that
+            # would imply it is scored.
+            "toolsearch_calls": t.get("toolsearch_calls", 0)}),
+        # Surface the planning inputs: the axis now moves with planning FREQUENCY and
+        # ordered planning only, and a score with no visible driver is not actionable. The
+        # raw task_tool_calls count stays a published diagnostic (v17 dropped its scored
+        # rate term) without the *_per_call / *_per_call_target disclosure that implies it
+        # is scored -- mirroring how toolsearch_calls is republished on Tool command.
         ("Discipline", 17, discipline, {
             "tool_calls": tool_calls,
-            **rate_facts("task_tool_calls", task_calls, TASK_CALLS_PER_CALL_TARGET),
+            "task_tool_calls": t.get("task_tool_calls", 0),
             "planning_practice_share": (
                 round(_plan_practice["share"], 4)
                 if _plan_practice["share"] is not None else None),
@@ -400,8 +411,55 @@ def compute_aq(stats):
     review_n = _review_skill_uses(skills)
     # review-skill term needs observable skill data (first-class Skill tool OR SKILL.md reads /
     # injected skills on Cursor). Skill fluency / Discipline still require `skills` only.
-    # test runs + review skills -> per-tool-call rates
-    verification = wsum((.5, rate(b.get("shell_test_runs", 0), TEST_RUNS_PER_CALL_TARGET), None),
+    #
+    # v17 — the test half is per-SESSION COVERAGE, not per-call density. The old
+    # shell_test_runs / tool_calls density was confounded by delegation (sidechain tool calls
+    # inflate the denominator), so it did not measure whether the developer verified their
+    # changes. coverage = (eligible change-sessions that also ran a shell test) /
+    # eligible_change_sessions, scored as a PURE FRACTION with NO fitted target (sat(_, 1.0),
+    # exactly like Grounding) so it needs no calibration band. It is N/A (None -> wsum
+    # renormalizes onto review_skills) when ordered facts are not measured -- the same
+    # fail-closed guard Context Intelligence applies on ordered_facts_state and
+    # eligible_change_sessions. review skills stays a per-tool-call rate.
+    #
+    # ABSENT vs MEASURED ZERO. `inputs.py` no longer defaults a missing key to 0 (it
+    # projects absence as None), so a legacy/foreign payload that never measured coverage
+    # reads None here -- distinct from a genuine measured zero (the field present, value
+    # 0). Coercing both to 0 (the old `.get(..., 0) or 0`) fabricated a 0.0 coverage for a
+    # v17 payload that had `ordered_facts_state == "measured"` and a real
+    # `eligible_change_sessions`, both of which predate the v17 coverage numerator. `is
+    # None`, not falsiness, is the test: a present 0 must still score 0.0 coverage.
+    _test_covered = b.get("test_covered_change_sessions")
+    _test_covered_measured = _test_covered is not None
+    # F9 — a malformed/replayed block can carry covered > eligible (the
+    # numerator and denominator are computed from different sources on a
+    # replay/legacy path, unlike the accumulator's own aggregate_ordered
+    # where covered <= eligible by construction). Clamp the numerator to the
+    # denominator BEFORE dividing so the published ratio can never exceed
+    # 1.0 for accepted input; sat(_, 1.0) below already clamps the SCORED
+    # term, this clamp is only about the raw diagnostic.
+    # OBS 2 — a malformed/replayed block can ALSO carry a NEGATIVE covered
+    # count. `min(_, eligible)` alone only bounds the numerator from above, so
+    # also floor it at 0 here — otherwise the ratio (and, since sat(x, 1.0) =
+    # min(1.0, x/target) does not bound from below either, the SCORED term
+    # too) goes negative and unfairly lowers Verification.
+    _test_covered_clamped = (max(0, min(_test_covered, eligible))
+                             if _test_covered_measured and eligible else _test_covered)
+    _verif_coverage = (_test_covered_clamped / eligible
+                       if _test_covered_measured and eligible else None)
+    # F8 — same C7 significance floor as ordered_planning/planning_habit below:
+    # a coverage ratio over fewer than MIN_ELIGIBLE_SESSIONS eligible sessions
+    # is noise (e.g. 100% over 1 session), so drop the term (None ->
+    # renormalized onto review_skills) instead of scoring it.
+    verification_coverage = (None if (ordered_state != "measured" or not eligible
+                                      or not _test_covered_measured
+                                      or eligible < MIN_ELIGIBLE_SESSIONS)
+                             # OBS 2 — belt-and-suspenders: the numerator clamp above
+                             # already guarantees _verif_coverage is in [0, 1] here, but
+                             # clamp both bounds explicitly so the SCORED term can never
+                             # go negative even if the numerator clamp is bypassed.
+                             else max(0.0, min(1.0, _verif_coverage)))
+    verification = wsum((.5, verification_coverage, None),
                         (.5, rate(review_n, REVIEW_SKILLS_PER_CALL_TARGET), "skill_reads"),
                         axis="Verification")
     grounding = sat(b.get("planning_ratio_explore_to_doing", 0), 1.0)
@@ -410,20 +468,27 @@ def compute_aq(stats):
     # calls with zero relationship to authored output). A session is "grounded" when a
     # knowledge-MCP call (accumulator.py's per-session state machine) precedes a later
     # Edit/Write/MultiEdit/NotebookEdit in that SAME session. coverage = grounded/total.
-    # MONOTONIC per-session coverage score — NO floor. More grounding never lowers the
-    # axis, and a real measured zero (has tool activity, 0 grounded sessions) is scored 0,
-    # NOT dropped. TARGET is PROVISIONAL (recalibrate from prod p40-50). The axis is N/A
-    # ONLY when the source genuinely can't measure grounding: no_tool_activity (can't
-    # reconstruct ordered per-session tool sequences) OR the grounding field is absent
-    # (legacy/external block predating the accumulator, which always sets the field —
-    # a missing field means backward-compat, so stay N/A instead of scoring a phantom 0).
+    # F8 — per-session coverage score WITH an evidence floor (this deliberately reverses
+    # the earlier "MONOTONIC ... NO floor" design): more grounding never lowers the axis,
+    # and a real measured zero (has tool activity, 0 grounded sessions) is still scored 0,
+    # NOT dropped -- but a ratio over fewer than MIN_ELIGIBLE_SESSIONS eligible sessions
+    # (e.g. 1/1 = 100% grounded) is not a defensible coverage measurement, so it is dropped
+    # (None -> renormalized) instead, mirroring the same C7 floor Verification coverage
+    # and ordered_planning/planning_habit apply. TARGET is PROVISIONAL (recalibrate from
+    # prod p40-50). The axis is ALSO N/A when the source genuinely can't measure grounding:
+    # no_tool_activity (can't reconstruct ordered per-session tool sequences) OR the
+    # grounding field is absent (legacy/external block predating the accumulator, which
+    # always sets the field — a missing field means backward-compat, so stay N/A instead
+    # of scoring a phantom 0).
     _v5_ordered = "ordered_facts_state" in b
     grounded = (b.get("evidence_eligible_sessions") if _v5_ordered
                 else t.get("mcp_grounded_sessions"))
     ci_denom = (b.get("eligible_change_sessions") if _v5_ordered
                 else t.get("mcp_write_sessions", sessions))
     coverage = (grounded / ci_denom) if grounded is not None and ci_denom else None
-    context_intel = (None if ((_v5_ordered and ordered_state != "measured")
+    context_intel = (None if ((_v5_ordered and (
+                                  ordered_state != "measured"
+                                  or (ci_denom is not None and ci_denom < MIN_ELIGIBLE_SESSIONS)))
                               or b.get("no_tool_activity") or grounded is None or not ci_denom)
                      else sat(coverage, CONTEXT_INTELLIGENCE_TARGET))
     # compounding writes -> per-tool-call rate (rewards the habit, not raw volume)
@@ -432,9 +497,26 @@ def compute_aq(stats):
                        (.4, (1.0 if has_skill(["retro", "writing-plans", "brainstorm"]) else 0.6), "skill_reads"),
                        axis="Compounding")
     _review_skills_applicable = "skill_reads" in caps
+    # v17 — disclose per-session COVERAGE (numerator / denominator / ratio) in place of the
+    # dropped test-run density rate_facts. coverage is None whenever the term was NOT scored
+    # (ordered facts unmeasured or no eligible change-sessions), so a consumer never reads a
+    # ratio off a term the scorer refused. The raw shell_test_runs count stays a published
+    # diagnostic (still emitted, still fed to gstack/insights) without the *_per_call rate.
     verification_signals = {
         "tool_calls": tool_calls,
-        **rate_facts("test_runs", b.get("shell_test_runs", 0), TEST_RUNS_PER_CALL_TARGET)}
+        "shell_test_runs": b.get("shell_test_runs", 0),
+        "test_covered_change_sessions": _test_covered,
+        "eligible_change_sessions": eligible,
+        # None whenever the coverage term was NOT scored (ordered facts unmeasured or no
+        # eligible change-sessions), so a consumer never reads a ratio off a refused term.
+        # F9/OBS2 — max(0.0, min(_, 1.0)) belt-and-suspenders clamp on BOTH bounds: the
+        # numerator is already clamped to [0, eligible] above, but a malformed/replayed
+        # block (covered outside [0, eligible] from a source other than the
+        # accumulator's own aggregate_ordered) must never publish a ratio outside [0, 1]
+        # — the SCORED term already clamps the same way.
+        "test_coverage": (round(max(0.0, min(_verif_coverage, 1.0)), 4)
+                          if verification_coverage is not None else None),
+    }
     if _review_skills_applicable:
         verification_signals.update(
             rate_facts("review_skills", review_n, REVIEW_SKILLS_PER_CALL_TARGET))
@@ -502,10 +584,9 @@ def compute_aq(stats):
                  else .5 * sat(len(models), 3) + .5 * sat(offload_share, 0.30))
     cli_calls, mcp_calls = t.get("cli_calls", 0), t.get("mcp_calls", 0)
     cli_share = cli_calls / (cli_calls + mcp_calls) if (cli_calls + mcp_calls) else 0
-    # toolsearch term drops out (renormalized) when unsupported, leaving CLI-share
-    token_economy = wsum((.5, rate(t.get("toolsearch_calls", 0), TOOLSEARCH_PER_CALL_TARGET),
-                          "toolsearch"),
-                         (.5, sat(cli_share, 0.70), None),
+    # The toolsearch rate term was removed (v17, see Tool command above); wsum renormalizes
+    # the single surviving cli_share term to full weight, so Token economy is now CLI-share.
+    token_economy = wsum((.5, sat(cli_share, 0.70), None),
                          axis="Token economy")
     savvy_axes = [
         # Model mix needs a real per-turn model id; a source that masks it (Antigravity IDE)
@@ -514,9 +595,7 @@ def compute_aq(stats):
          "routing": routing},
          "model"),
         ("Token economy", 50, token_economy, {
-            "tool_calls": tool_calls, "cli_share": round(cli_share, 2),
-            **rate_facts("toolsearch", t.get("toolsearch_calls", 0),
-                         TOOLSEARCH_PER_CALL_TARGET)}),
+            "tool_calls": tool_calls, "cli_share": round(cli_share, 2)}),
     ]
 
     def build_pillar(name, weight, axes):

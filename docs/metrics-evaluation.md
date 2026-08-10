@@ -44,11 +44,13 @@ Sí sirve como feedback a bajo costo, con tres condiciones:
   pagás, no qué tan bien trabajás. Sesgo directo contra cuentas de USD 20.
 - **Model mix** — mejoró (ahora ve GPT vía Codex), pero sigue premiando diversidad de
   modelos, que es función del presupuesto/acceso, no de skill.
-- **Token economy (ToolSearch)** — señal exclusiva de Claude Code. No lee 0 para el
-  resto: si ninguna fuente puede registrarla el término se descarta y se renormaliza.
-  Pero con Claude presente el término queda vivo para todo el corpus y su denominador
-  incluye las llamadas de fuentes que nunca podrían registrarla — sesgo conocido y
-  preexistente, ver "Rate denominators" abajo.
+- **Token economy** — desde v17 se puntúa solo por CLI-share. El término ToolSearch se
+  eliminó del scoring (era ~94% carga determinista de herramientas `select:` forzada por
+  el harness de deferred-tools, no una virtud del desarrollador, y su remanente deliberado
+  es demasiado escaso para calibrarlo como tasa). El conteo crudo `toolsearch_calls` se
+  sigue publicando como diagnóstico en el eje Tool command, pero ya no puntúa. Esto elimina
+  el sesgo conocido en el que, con Claude presente, el término quedaba vivo para todo el
+  corpus e incluía llamadas de fuentes que nunca podrían registrarlo.
 
 ## Sesgos conocidos (post-fixes de hoy)
 
@@ -99,13 +101,13 @@ como ranking — mitigado usando solo las métricas medidas.
 
 ## Rate denominators
 
-AQ's rate terms (test runs, review skills, ToolSearch, task planning, skills,
-compounding writes) are `count / volume.tool_calls_total`, per TOOL CALL, not per
-session. One session is not one unit of work across tools: on a measured corpus, Claude
-sessions averaged ~68 tool calls and ~37 active minutes while one-shot `codex exec`
-sessions averaged ~18 calls and ~2.7 minutes. A per-session denominator made the short
-ones act as pure denominator — Verification read 34.4/35 on the Claude slice alone and
-22.9/35 merged, for identical behavior.
+AQ's remaining per-call rate terms (review skills, skills, compounding writes) are
+`count / volume.tool_calls_total`, per TOOL CALL, not per session. One session is not one
+unit of work across tools: on a measured corpus, Claude sessions averaged ~68 tool calls
+and ~37 active minutes while one-shot `codex exec` sessions averaged ~18 calls and ~2.7
+minutes. A per-session denominator made the short ones act as pure denominator —
+Verification read 34.4/35 on the Claude slice alone and 22.9/35 merged, for identical
+behavior.
 
 The targets were recalibrated into per-tool-call units (see the constants at the top of
 `gnomon/scoring/aq.py`, each with its p40/p50 band and sample size). There is no
@@ -116,13 +118,27 @@ because both sides of the ratio grow together.
 
 A payload that omits `volume.tool_calls_total` scores those terms N/A — dropped and
 renormalized — rather than 0, so a legacy or foreign block does not publish a phantom
-collapse across six terms.
+collapse across the surviving rate terms.
+
+v18 removed TWO terms that used to live here. Verification's test half is no longer a
+per-call rate at all: it is now a per-SESSION COVERAGE fraction — `(eligible
+change-sessions that also ran a recognized shell-test command) / eligible_change_sessions`
+— scored as a pure fraction with no fitted target, and N/A (renormalized onto review
+skills) whenever ordered facts are not measured or there are no eligible change-sessions.
+Discipline's task-tool rate term (TaskCreate/TaskUpdate calls per tool call) was dropped
+entirely — it saturated at ~3.2x its target for virtually everyone, so it did not
+discriminate. `task_tool_calls` stays a published diagnostic on the Discipline axis, but
+it is no longer scored, and Discipline's two survivors (planning habit, ordered planning)
+renormalize to `.667`/`.333` of the axis weight.
 
 **Known limitation.** The denominator is every tool call in the corpus, including calls
 from a source that could never emit the signal being scored, because `available_caps` is
 a union: one capable source keeps a term live for all of it. Adding an OpenCode corpus
-beside Claude lowers ToolSearch-based axes with zero behavior change (measured: Token
-economy 1.00 -> 0.63). This predates the per-tool-call change and is unchanged by it.
+beside Claude therefore dilutes any capability-gated rate term (e.g. Skill fluency's
+skills-per-call term) with zero behavior change. This predates the per-tool-call change
+and is unchanged by it. ToolSearch used to be the sharpest example of this bias (Token
+economy 1.00 -> 0.63); v17 removed its rate term from scoring, so it no longer
+contributes to the limitation.
 
 ## Disponibilidad de Planning practice
 

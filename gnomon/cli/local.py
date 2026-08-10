@@ -23,8 +23,7 @@ from gnomon.analysis.quotes import _safe_quote, _cryptic_score, _crashout_score,
 from gnomon.scoring.gstack import compute_scores
 from gnomon.scoring.aq import (
     COMPOUNDING_WRITES_PER_CALL_TARGET, REVIEW_SKILLS_PER_CALL_TARGET,
-    SKILLS_TOTAL_PER_CALL_TARGET, TASK_CALLS_PER_CALL_TARGET,
-    TEST_RUNS_PER_CALL_TARGET, TOOLSEARCH_PER_CALL_TARGET, compute_aq,
+    SKILLS_TOTAL_PER_CALL_TARGET, compute_aq,
 )
 from gnomon.scoring.archetype import pick_archetype
 from gnomon.scoring.inputs import SCORING_INPUTS_VERSION, build_scoring_inputs
@@ -39,19 +38,25 @@ from gnomon.output.profile_html import write_profile_html
 # Tool metrics surfaced by --tools: (label, signal key in stats['agentic'], target, is_rate).
 # The rate-scored metrics import scoring/aq.py's PER-TOOL-CALL targets rather than restating
 # them, and are divided by the same tool-call denominator AQ divides by, so the % column is
-# the number AQ actually scored — not a parallel reading that can drift from it. The two
-# ToolSearch call sites in AQ share one target, hence one row here. knowledge_calls is a
-# self-check diagnostic only (it feeds the Research signature move, not an AQ axis) and
+# the number AQ actually scored — not a parallel reading that can drift from it. ToolSearch
+# is no longer scored: v17 removed its rate term from AQ. task_tool_calls and shell_test_runs
+# are likewise no longer scored: v18 dropped the Discipline task-tool rate term and replaced
+# the Verification test-run density with a per-session coverage fraction. knowledge_calls is
+# a self-check diagnostic only (it feeds the Research signature move, not an AQ axis) and
 # orchestratable is a session count, so both are reported absolute (is_rate=False).
+#
+# F10 — target=None marks a NON-SCORED diagnostic row: the count is still published (the
+# accumulator still emits it, and aq.py still republishes it on an axis's `signals`, see
+# Tool command / Discipline), but the row renders a plain count with no target/% column
+# instead of implying a scored rate that no longer exists.
 _TOOLS_DIAG = [
-    ("task_tool_calls", "task_tool_calls", TASK_CALLS_PER_CALL_TARGET, True),
-    ("toolsearch_calls", "toolsearch", TOOLSEARCH_PER_CALL_TARGET, True),
     ("skills_total", "skills_total", SKILLS_TOTAL_PER_CALL_TARGET, True),
     ("review_skills", "review_skills", REVIEW_SKILLS_PER_CALL_TARGET, True),
-    ("shell_test_runs", "test_runs", TEST_RUNS_PER_CALL_TARGET, True),
     ("compounding_writes", "compounding_writes", COMPOUNDING_WRITES_PER_CALL_TARGET, True),
     ("orchestratable", "orchestratable_sessions", 1.0, False),
     ("knowledge_calls", "knowledge_calls", 200, False),  # gated, absolute (not a rate)
+    ("toolsearch_calls", "toolsearch_calls", None, False),  # F10: diagnostic only, not scored
+    ("task_tool_calls", "task_tool_calls", None, False),    # F10: diagnostic only, not scored
 ]
 
 
@@ -221,6 +226,10 @@ def tools_diagnostic(stats):
         per_call = (c / tool_calls) if tool_calls else 0.0
         rates[label] = round(per_call, 6)
         counts[label] = c
+        if target is None:
+            # F10: non-scored diagnostic -- plain count, no target/% column.
+            lines.append(f"{label:<20}{c:>8}{'':>10}{'n/a':>10}{'n/a':>6}")
+            continue
         # % against the SAME basis AQ uses: per-tool-call rate for rate metrics, absolute otherwise
         scored = per_call if is_rate else c
         pct = min(100, round(100 * scored / target)) if target else 0
