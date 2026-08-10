@@ -110,12 +110,37 @@ a ref, or verify the container still exists before reading a negative result as 
 </generalisation>
 </example>
 
+<example id="truncated-evidence">
+<claim>
+"Their test-detection predicate counts a bare `cd` as a test run — nine times in this
+corpus. The Verification numerator is inflated."
+</claim>
+<what_made_it_look_real>
+The comparison output showed the two predicates disagreeing on
+`cd /Users/…/5S_clientportal_BE`, with their predicate returning true. Their predicate,
+their corpus, no invented denominator: it passed every other row of the gate.
+</what_made_it_look_real>
+<what_killed_it>
+Running the predicate on that exact string returns `False`. The comparison script printed
+`cmd[:70]`, and the path is 69 characters long, so what looked like a whole command was the
+head of a longer one. The evidence had been reshaped by the tool that gathered it.
+</what_killed_it>
+<verdict>Dismissed. The bug was in the audit's display, not in the audited code.</verdict>
+<generalisation>
+Before believing what a comparison shows you, check what it did to the data on the way:
+truncation, sampling, `head`, deduplication, formatting. Re-run the predicate on the raw
+value, not on the rendered one. This is the row none of the five above would have caught,
+and it is why the gate grows only from real deaths.
+</generalisation>
+</example>
+
 </examples>
 
-## The pattern across all five
+## The pattern across all six
 
-Four of the five were killed by re-running a measurement a slightly different way. One was
+Five of the six were killed by re-running a measurement a slightly different way. One was
 killed by reading our own earlier words. **None needed a second opinion from another
 agent** — which is why the Phase 3 gate is a fixed checklist and not a review panel. An
 agent asked to check an agent's finding shares its blind spot; a deterministic re-measure
-does not.
+does not. The reasoning behind that choice, and the one condition under which a row gets
+added, is in `design-rationale.md`.

@@ -5,8 +5,10 @@
 Feeds the REAL Accumulator with synthetic transcripts. Every case carries a control:
 a case that MUST come out non-zero, so that a 0 means something.
 
-REQUIRES a checkout at `90a2d85` or later (branch fix/workflow-fanout-undercredit).
-The `../gnomon` clone tracks `main`, which does NOT have the fix.
+Needs a checkout that has the fix. That is enforced at runtime by an import guard, not by
+the reader: if the symbol is missing the script exits and says so. Do not restate here which
+branches or clones carry it — the fix has since landed on `main`, an earlier version of this
+docstring said it had not, and a cold run nearly skipped this fixture on that basis.
 """
 import datetime
 import os
@@ -16,7 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import parse, header  # noqa: E402
 
 args, WINDOW = parse(__doc__.strip().splitlines()[0])
-REPO, ROOT = args.checkout, args.corpus
+REPO = args.checkout
 
 from gnomon.cli.accumulator import Accumulator  # noqa: E402
 
@@ -26,21 +28,26 @@ except ImportError:
     sys.exit(f"{REPO} does not have the fan-out fix (missing "
              "parse_workflow_agent_dispatch). Pass a checkout >= 90a2d85.")
 
-IN = "2026-07-15T12:00:00.000Z"
-OUT = "2025-01-15T12:00:00.000Z"
-SINCE = datetime.datetime(2026, 7, 1, tzinfo=datetime.timezone.utc)
-UNTIL = datetime.datetime(2026, 8, 7, tzinfo=datetime.timezone.utc)
+# The events are synthetic, but the window fed to the Accumulator is the one from --days /
+# --until, and the in/out timestamps are derived from it. An earlier version parsed those
+# flags and then ignored them, using its own fixed SINCE/UNTIL: the script announced it
+# honoured the report's window and did not.
+SINCE, UNTIL = WINDOW.start, WINDOW.end
+IN = (SINCE + (UNTIL - SINCE) / 2).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+OUT = (SINCE - datetime.timedelta(days=365)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
-PARENT = "46eb9eed-1238-4825-9f6d-c2bbd54ffe3a"
-ROOT = "/Users/x/.claude/projects/-proj"
+# Synthetic identifiers. This fixture never reads the real corpus, so nothing here should
+# resemble anyone's actual session id or path.
+PARENT = "00000000-0000-4000-8000-000000000001"
+FAKE_ROOT = "/synthetic/projects/-proj"
 
 
 def wf_path(parent, run, agent):
-    return f"{ROOT}/{parent}/subagents/workflows/wf_{run}/agent-{agent}.jsonl"
+    return f"{FAKE_ROOT}/{parent}/subagents/workflows/wf_{run}/agent-{agent}.jsonl"
 
 
 def sub_path(parent, agent):
-    return f"{ROOT}/{parent}/subagents/agent-{agent}.jsonl"
+    return f"{FAKE_ROOT}/{parent}/subagents/agent-{agent}.jsonl"
 
 
 def ev(name, sid, i, ts=IN, agent_id=None):
@@ -73,7 +80,7 @@ def show(label, a, expect_parent, expect_total=None):
     return got, total
 
 
-print(f"repo: {REPO}\n")
+print(header(args, WINDOW))
 
 print("1. attribution: credit goes to the parent SESSION, not the project")
 a = feed([(wf_path(PARENT, "abc", "a1"),
@@ -108,12 +115,12 @@ show("CONTROL: same run with one event inside window", a, PARENT, 1)
 print("\n6. no double counting with Agent/Task")
 a = feed([(sub_path(PARENT, "a1"), [ev("Bash", PARENT, 0, agent_id="a1")])])
 show("Agent sidechain (no /workflows/wf_*/)", a, PARENT, 0)
-a = feed([(f"{ROOT}/{PARENT}.jsonl", [ev("Agent", PARENT, 0)])])
+a = feed([(f"{FAKE_ROOT}/{PARENT}.jsonl", [ev("Agent", PARENT, 0)])])
 show("CONTROL: one top-level Agent call", a, PARENT, 1)
-a = feed([(f"{ROOT}/{PARENT}.jsonl", [ev("Workflow", PARENT, 0)])])
+a = feed([(f"{FAKE_ROOT}/{PARENT}.jsonl", [ev("Workflow", PARENT, 0)])])
 show("CONTROL: top-level Workflow call (no longer credits)", a, PARENT, 0)
 
 print("\n7. delegation preserved: Workflow-only still counts as delegating")
-a = feed([(f"{ROOT}/{PARENT}.jsonl", [ev("Workflow", PARENT, 0)]),
+a = feed([(f"{FAKE_ROOT}/{PARENT}.jsonl", [ev("Workflow", PARENT, 0)]),
           (wf_path(PARENT, "abc", "a1"), [ev("Bash", PARENT, 1, agent_id="a1")])])
 show("Workflow + its dispatched transcript", a, PARENT, 1)

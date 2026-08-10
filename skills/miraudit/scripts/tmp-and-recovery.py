@@ -16,13 +16,11 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _common import parse, header  # noqa: E402
+from _common import parse, header, load_stats, dig  # noqa: E402
 
 args, WINDOW = parse(__doc__.strip().splitlines()[0])
 REPO, ROOT = args.checkout, args.corpus
-from gnomon.taxonomy import classify_change_target  # noqa: E402
-
-WRITES = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
+from gnomon.taxonomy import WRITE_TOOLS as WRITES, classify_change_target  # noqa: E402
 SCRATCH = re.compile(r'^/private/tmp/claude-\d+/[^/]+/[0-9a-f-]{36}/scratchpad/')
 TMP_ANY = re.compile(r'^(/private)?/tmp/|^/var/folders/')
 
@@ -91,12 +89,31 @@ print(f"    real code only                        : {len(only_real):>3}")
 nfiles_s = sum(len(v["scratch"]) for v in coding.values())
 nfiles_r = sum(len(v["real"]) for v in coding.values())
 print(f"  distinct code files: {nfiles_s} in scratchpad, {nfiles_r} real")
-# C2 approx: >=2 distinct code files
-c2_con = sum(1 for v in coding.values() if len(v["scratch"] | v["real"]) >= 2)
-c2_sin = sum(1 for v in coding.values() if len(v["real"]) >= 2)
-print(f"\n  C2-eligible (>=2 distinct code files):")
-print(f"    counting scratchpad : {c2_con}")
-print(f"    excluding it        : {c2_sin}   (difference: {c2_con - c2_sin})")
+# The tool decides eligibility inside its Accumulator, so there is no predicate to import --
+# but it emits the result. Read theirs; use ours only for the DIFFERENCE the scratchpad makes,
+# and label it a proxy. An earlier version printed the proxy under the name "C2-eligible",
+# which is the invented-denominator mistake wearing their label.
+PROXY_MIN_FILES = 2
+proxy_with = sum(1 for v in coding.values()
+                 if len(v["scratch"] | v["real"]) >= PROXY_MIN_FILES)
+proxy_without = sum(1 for v in coding.values() if len(v["real"]) >= PROXY_MIN_FILES)
+print(f"\n  OUR PROXY (>={PROXY_MIN_FILES} distinct code files), not their predicate:")
+print(f"    counting scratchpad : {proxy_with}")
+print(f"    excluding it        : {proxy_without}"
+      f"   (difference: {proxy_with - proxy_without})")
+
+# Ambiguous by name: the payload carries this per source and per month as well as for the
+# window, with four different values. The window figure is the one the axes are scored on.
+eligible = dig(load_stats(args.stats), "behavior", "eligible_change_sessions")
+if eligible is None:
+    print("    their eligible_change_sessions : not read (pass --stats)")
+    print("    -> the difference above sizes the effect; the absolute number is ours, not"
+          " theirs, so do not quote it against their axis.")
+else:
+    print(f"    their eligible_change_sessions : {eligible}")
+    if eligible != proxy_with:
+        print(f"    -> the proxy is off by {proxy_with - eligible}. Quote theirs; the proxy"
+              " only sizes the scratchpad effect.")
 
 # ---------- 2. recovery ----------
 print()

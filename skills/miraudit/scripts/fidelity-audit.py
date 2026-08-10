@@ -8,32 +8,33 @@ import datetime
 import glob
 import json
 import os
-import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _common import parse, header  # noqa: E402
+from _common import parse, header, require, load_stats  # noqa: E402
 
-args, WINDOW = parse(__doc__.strip().splitlines()[0], extra={
-    "--stats": dict(help="stats.json from the anchored Phase 0 run. Without it the axis "
-                         "headers state no scores, because this script measures behaviour "
-                         "and must not assert numbers it did not read."),
-})
+args, WINDOW = parse(__doc__.strip().splitlines()[0])
 REPO, ROOT = args.checkout, args.corpus
-from gnomon.taxonomy import (classify_mcp_subcategory, _is_compounding_path,  # noqa: E402
-                             classify_change_target)
 
-WRITES = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
+# Every predicate comes from the tool being audited. An earlier version hand-rolled three of
+# them -- a test-command regex, the MCP knowledge-write hints, and the write-tool set -- which
+# is the invented-denominator mistake this skill exists to catch, committed inside the audit.
+from gnomon.taxonomy import (WRITE_TOOLS as WRITES, bash_runs_tests,  # noqa: E402
+                             classify_change_target, classify_mcp_subcategory,
+                             is_mcp_knowledge_write)
+
+# Private upstream, so it can be renamed without deprecation.
+(_is_compounding_path,) = require(
+    [("gnomon.taxonomy", "_is_compounding_path")],
+    "It is private upstream; check whether it was renamed or made public.")
 
 # Axis scores are READ from the report, never baked in. An earlier version hardcoded one
 # person's values into the section headers, so the script asserted numbers it had not read
 # and went stale the moment an axis moved.
 _AXES = {}
-if args.stats:
-    with open(os.path.expanduser(args.stats)) as _f:
-        for _pillar in (json.load(_f).get("agentic") or {}).get("pillars") or []:
-            for _ax in _pillar.get("axes") or []:
-                _AXES[_ax.get("name")] = _ax
+for _pillar in (load_stats(args.stats).get("agentic") or {}).get("pillars") or []:
+    for _ax in _pillar.get("axes") or []:
+        _AXES[_ax.get("name")] = _ax
 
 
 def axis(name, note=""):
@@ -179,9 +180,9 @@ for sid, evs in events.items():
             if fp and _is_compounding_path(fp):
                 comp["file write"] += 1
                 paths[fp.rsplit("/", 1)[-1]] += 1
-        elif n.startswith("mcp__") and is_knowledge_mcp(n):
-            leaf = n.split("__", 2)[-1].lower()
-            if any(h in leaf for h in ("add", "update", "create", "save", "store")):
+        elif n.startswith("mcp__"):
+            parts = n.split("__")
+            if len(parts) >= 3 and is_mcp_knowledge_write(parts[1], "__".join(parts[2:])):
                 comp["memory MCP call"] += 1
 for k, c in comp.most_common():
     print(f"    {c:>5}  {k}")
@@ -199,9 +200,7 @@ for sid, evs in events.items():
     for _, n, i, _ in evs:
         if n in WRITES and classify_change_target(str(i.get("file_path") or "")) == "code":
             code_sess.add(sid)
-        if n == "Bash" and re.search(
-                r'\b(npm (run )?test|npx vitest|yarn test|pytest|vitest run)',
-                str(i.get("command", ""))):
+        if n == "Bash" and bash_runs_tests(str(i.get("command", ""))):
             tested_sess.add(sid)
 print(f"  sessions that edited code         : {len(code_sess)}")
 print(f"  of those, ran tests               : {len(code_sess & tested_sess)}"

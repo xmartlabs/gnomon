@@ -10,13 +10,18 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _common import parse, header  # noqa: E402
+from _common import parse, header, require  # noqa: E402
 
 args, WINDOW = parse(__doc__.strip().splitlines()[0])
 REPO, ROOT = args.checkout, args.corpus
 
 from gnomon.cli.accumulator import Accumulator  # noqa: E402
-from gnomon.scoring.aq import TEST_RUNS_PER_CALL_TARGET as TARGET  # noqa: E402
+
+(TARGET,) = require(
+    [("gnomon.scoring.aq", "TEST_RUNS_PER_CALL_TARGET")],
+    "This fixture demonstrates the DENSITY term. A checkout without it has replaced that "
+    "term, and the fixture has nothing to say about it -- refusing to run beats printing a "
+    "conclusion about an axis that no longer works this way.")
 
 TS = "2026-07-15T12:00:00.000Z"
 
@@ -52,10 +57,22 @@ def run(changes, tested, other_work):
 print(f"repo: {REPO}\n")
 print(f"{'user':<18}{'coverage':>11}{'tests':>7}{'tool_calls':>12}{'rate':>8}")
 print("-" * 56)
+rates = {}
 for label, changes, tested, other in [("A  tests 10/10", 10, 10, 200),
                                       ("B  tests  2/10", 10, 2, 10)]:
     st, tc, r = run(changes, tested, other)
+    rates[label[0]] = (100 * tested // changes, r)
     print(f"{label:<18}{100 * tested // changes:>10}%{st:>7}{tc:>12}{r:>8.3f}")
 
-print("\nA verifies 100% of its changes and scores 0.198")
-print("B verifies  20% of its changes and scores 0.714")
+# Printed from the computed rates, and the verdict is conditional on them. An earlier version
+# asserted "scores 0.198" / "scores 0.714" as literals, so a checkout that fixed the axis would
+# still have printed the finding as though it held.
+print()
+for who in ("A", "B"):
+    cov, r = rates[who]
+    print(f"{who} verifies {cov:>3}% of its changes and scores {r:.3f}")
+
+if rates["B"][1] > rates["A"][1]:
+    print("\nThe axis scores B above A: verifying MORE lowers the score.")
+else:
+    print("\nThis checkout does NOT reproduce the inversion. The finding does not hold here.")

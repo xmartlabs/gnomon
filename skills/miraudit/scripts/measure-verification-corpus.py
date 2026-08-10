@@ -14,11 +14,18 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _common import parse, header  # noqa: E402
+from _common import parse, header, require  # noqa: E402
 
 args, WINDOW = parse(__doc__.strip().splitlines()[0])
 REPO, ROOT = args.checkout, args.corpus
-from gnomon.taxonomy import bash_runs_tests  # noqa: E402
+from gnomon.taxonomy import WRITE_TOOLS, bash_runs_tests  # noqa: E402
+
+# Read from the checkout, never restated. An earlier version pinned TARGET = 0.025 by hand and
+# would have kept printing rates against a constant the tool no longer had.
+(TARGET,) = require(
+    [("gnomon.scoring.aq", "TEST_RUNS_PER_CALL_TARGET")],
+    "The density term may have been replaced by a coverage term; this check measures the "
+    "density one and has nothing to say about a checkout that dropped it.")
 
 WF_RX = re.compile(r'(?:^|/)([^/]+)/subagents/workflows/wf_[^/]+/agent-([^/]+)\.jsonl$')
 SUB_RX = re.compile(r'(?:^|/)([^/]+)/subagents/agent-([^/]+)\.jsonl$')
@@ -68,11 +75,10 @@ for p in glob.glob(os.path.join(ROOT, "**", "*.jsonl"), recursive=True):
                 if name == "Bash" and bash_runs_tests(str(inp.get("command", ""))):
                     (top_tests if kind == "top" else
                      wf_tests if kind == "wf" else sub_tests)[sid] += 1
-                if name in ("Edit", "Write", "MultiEdit") and CODE_RX.search(
+                if name in WRITE_TOOLS and CODE_RX.search(
                         str(inp.get("file_path", ""))):
                     edits[sid] += 1
 
-TARGET = 0.025
 sessions = set(top_calls) | set(wf_calls) | set(sub_calls)
 coding = [s for s in sessions if edits[s] > 0]
 

@@ -31,9 +31,8 @@ args, WINDOW = parse(__doc__.strip().splitlines()[0], extra={
                   help="git ref to resolve file existence against (default: HEAD)"),
 })
 REPO, ROOT = args.checkout, args.corpus
-from gnomon.taxonomy import bash_runs_tests, classify_change_target  # noqa: E402
-
-WRITES = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
+from gnomon.taxonomy import (WRITE_TOOLS as WRITES, bash_runs_tests,  # noqa: E402
+                             classify_change_target)
 
 HOME = os.path.expanduser("~")
 

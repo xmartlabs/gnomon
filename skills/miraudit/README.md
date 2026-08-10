@@ -27,10 +27,18 @@ lack of evidence, saturated axes that no longer discriminate, denominators conta
 the person did not do, counters driven by the harness rather than by anyone's judgement,
 and one counter feeding two pillars.
 
-**A refutation gate.** Nothing is reported until it survives six attempts to kill it. Each
+`scripts/saturation-counterfactual.py` covers the second of those. It cuts every saturated
+signal down to exactly the threshold the tool still awards full marks for, re-scores with
+the tool's own function, and reports what the total does. Controls at a fraction of each
+threshold must move, or the headline is a broken fixture rather than a finding. It also
+prints which signals it looked for and could not find, because a silently skipped signal
+makes the result look better covered than it is.
+
+**A refutation gate.** Nothing is reported until it survives seven attempts to kill it. Each
 attempt exists because it killed a real finding that was about to be sent; the write-ups
 are in `references/refutation.md`. Findings that die are recorded in `dismissed` with the
-fact that killed them, so nobody reopens them.
+fact that killed them, so nobody reopens them. The gate is deterministic on purpose, and
+`references/design-rationale.md` explains why it is not a panel of reviewers.
 
 ## Install
 
@@ -74,15 +82,39 @@ for whoever owns that repository.
 Or describe the symptom and let the agent pick it up: "my score dropped four points and I
 did not change how I work."
 
-The checks in `scripts/` also run standalone. Each one takes a read-only checkout of the
-scoring tool and reads your transcript corpus:
+**Give it room to run.** Phase 0 copies a checkout and reproduces the published number, and
+the counterfactual checks read the whole transcript corpus. That is minutes, not seconds. A
+subagent with a watchdog will kill it partway and report nothing useful, so run it in the
+background or in a session that can wait.
+
+The checks in `scripts/` also run standalone. Start with the anchor, which does Phase 0 in
+one command and writes the `stats.json` the other checks read:
 
 ```bash
-python3 scripts/fidelity-audit.py --checkout /path/to/gnomon \
-        --until 2026-08-06 --stats /path/to/anchored-run/stats.json
-python3 scripts/verification-reality.py --checkout /path/to/gnomon \
-        --until 2026-08-06 --repo /path/to/your/repo --ref main
+scripts/anchor.sh --checkout /path/to/gnomon --since 2026-07-07 --until 2026-08-06
 ```
+
+It copies the checkout, reproduces the published number on the copy, prints the corpus
+fingerprint, and tells you where `stats.json` landed. It fails loudly if the run produces
+nothing, because a number that did not reproduce makes every later finding unsafe to read.
+
+Then the individual checks. **Point them at the copy the anchor made, not at the original.**
+They import the tool's own predicates, and importing writes `__pycache__` directories into
+the package — so aiming a check at the real checkout modifies the thing being audited. The
+anchor prints the copy's path for this reason.
+
+```bash
+COPY=/path/printed/by/anchor/checkout
+STATS=/path/printed/by/anchor/stats.json
+W="--since 2026-07-07 --until 2026-08-06 --stats $STATS"
+
+python3 scripts/fidelity-audit.py       --checkout "$COPY" $W
+python3 scripts/verification-reality.py --checkout "$COPY" $W --repo /your/repo --ref main
+```
+
+Every check takes the same window and stats arguments, including the ones that ignore them,
+so you never have to remember which script accepts what. Passing `--since` and `--days`
+together is an error when they disagree rather than a silent choice between them.
 
 `--until` is the report's own end date. Leave it out and the window ends now, which drifts
 every day and includes the audit session itself, so the checks describe different days than

@@ -3,8 +3,13 @@ memory via MCP ONCE PER SESSION. Measures the asymmetry with the real Accumulato
 
     python3 verify-compounding-symmetry.py <path-to-a-checkout-with-the-fix>
 
-REQUIRES a checkout at `e7f85bc` or later (branch fix/workflow-fanout-undercredit).
-The `../gnomon` clone tracks `main`, which does NOT have the fix.
+Needs a checkout that has the fix. That is enforced at runtime by an import guard, not by
+the reader: if the symbol is missing the script exits and says so. Do not restate here which
+branches or clones carry it — the fix has since landed on `main`, an earlier version of this
+docstring said it had not, and a cold run nearly skipped this fixture on that basis.
+
+Note that "credits the right calls" is not "counts them correctly": this measures symmetry
+between backends, and the filesystem/MCP counters undercount independently of it.
 """
 import datetime
 import os
@@ -14,7 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import parse, header  # noqa: E402
 
 args, WINDOW = parse(__doc__.strip().splitlines()[0])
-REPO, ROOT = args.checkout, args.corpus
+REPO = args.checkout
 
 from gnomon.cli.accumulator import Accumulator  # noqa: E402
 
@@ -24,9 +29,10 @@ except ImportError:
     sys.exit(f"{REPO} does not have the compounding fix (missing "
              "is_mcp_knowledge_write). Pass a checkout >= e7f85bc.")
 
-TS = "2026-07-15T12:00:00.000Z"
-SINCE = datetime.datetime(2026, 7, 1, tzinfo=datetime.timezone.utc)
-UNTIL = datetime.datetime(2026, 8, 7, tzinfo=datetime.timezone.utc)
+# The events are synthetic, but the window comes from --days / --until and the timestamp is
+# derived from it. An earlier version parsed those flags and then ignored them.
+SINCE, UNTIL = WINDOW.start, WINDOW.end
+TS = (SINCE + (UNTIL - SINCE) / 2).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 SID = "s1"
 
 
@@ -56,7 +62,7 @@ cases = [
       for i in range(N)]),
     ("N mem0 add_memory (DISTINCT learnings)",
      [("mcp__mem0__add_memory",
-       {"messages": f"aprendizaje distinto numero {i}", "user_id": "fede"})
+       {"messages": f"distinct learning number {i}", "user_id": "u1"})
       for i in range(N)]),
     ("N mem0 update_memory (distinct memory_id)",
      [("mcp__mem0__update_memory", {"memory_id": f"m{i}", "text": "x"})
@@ -70,7 +76,8 @@ cases = [
      [("mcp__mem0__delete_memory", {"memory_id": f"m{i}"}) for i in range(N)]),
 ]
 
-print(f"repo: {REPO}\nN = {N} calls per case, all in ONE session\n")
+print(header(args, WINDOW))
+print(f"N = {N} calls per case, all in ONE session, timestamped inside that window\n")
 print(f"{'case':<52}{'credits':>9}")
 print("-" * 61)
 for label, events in cases:
