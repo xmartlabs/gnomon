@@ -148,7 +148,8 @@ class _RealRun(unittest.TestCase):
             CURSOR_DIR=os.path.join(empty, "cursor", "projects"),
             CURSOR_DB=os.path.join(empty, "cursor", "state.vscdb"),
         )
-        argv = ["paxel.py", "--summary", "--no-open", "--tools", *_MONTH_ARGS]
+        argv = ["paxel.py", "--include-low-volume", "--summary", "--no-open",
+                "--tools", *_MONTH_ARGS]
         captured = io.StringIO()
         with mock.patch.multiple(paxel, OUT_DIR=out, **src_dirs), \
                 mock.patch("gnomon.coverage.HISTORY_PATH",

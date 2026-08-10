@@ -399,7 +399,7 @@ def ide_window_overlaps(summary, since_dt, until_dt):
     Used to skip launching the IDE when no IDE history can fall in --since/--until. Unknown
     bounds are treated as open (don't skip on missing data). `summary` is antigravity_summary()."""
     from gnomon.config import parse_ts
-    if not summary:
+    if not summary or summary.get("conversations") == 0:
         return False
     if not since_dt and not until_dt:
         return True
@@ -671,29 +671,60 @@ _ANTIGRAVITY_SUMMARY_KEYS = (
 )
 
 
-def _antigravity_summary_from_buf(buf):
+def _antigravity_summary_from_buf(buf, since_dt=None, until_dt=None):
     tmin = tmax = None
 
     def _scan_ts(b, depth=0):
-        nonlocal tmin, tmax
         if depth > 6:
-            return
+            return None, None
+        local_min = local_max = None
         for _f, w, v in _pb_fields(b):
             if w == 0 and 1.3e9 < v < 2.2e9:        # plausible unix seconds
                 ts = datetime.fromtimestamp(v).astimezone()
-                tmin = ts if tmin is None or ts < tmin else tmin
-                tmax = ts if tmax is None or ts > tmax else tmax
+                local_min = ts if local_min is None or ts < local_min else local_min
+                local_max = ts if local_max is None or ts > local_max else local_max
             elif w == 2:
                 try:
-                    _scan_ts(v, depth + 1)
+                    nested_min, nested_max = _scan_ts(v, depth + 1)
+                    if nested_min is not None:
+                        local_min = (nested_min if local_min is None or nested_min < local_min
+                                     else local_min)
+                    if nested_max is not None:
+                        local_max = (nested_max if local_max is None or nested_max > local_max
+                                     else local_max)
                 except Exception:
                     pass
+        return local_min, local_max
 
-    convs = 0
+    def _record_in_window(first, last):
+        if since_dt is None and until_dt is None:
+            return True
+        # With an active window, metadata without timestamps cannot prove activity.
+        if first is None or last is None:
+            return False
+        if until_dt is not None and first >= until_dt:
+            return False
+        if since_dt is not None and last < since_dt:
+            return False
+        return True
 
-    def _has_uuid(fields):
-        return any(g == 1 and gw == 2 and _UUID_RX.match(gv)
-                   for g, gw, gv in fields)
+    record_ranges = {}
+
+    def _record_uuid(fields):
+        for g, gw, gv in fields:
+            if (g == 1 and gw == 2 and isinstance(gv, (bytes, bytearray))
+                    and _UUID_RX.match(gv)):
+                return bytes(gv)
+        return None
+
+    def _remember_record(record_uuid, record_buf):
+        record_min, record_max = _scan_ts(record_buf)
+        old_min, old_max = record_ranges.get(record_uuid, (None, None))
+        if old_min is None or (record_min is not None and record_min < old_min):
+            old_min = record_min
+        if old_max is None or (record_max is not None and record_max > old_max):
+            old_max = record_max
+        record_ranges[record_uuid] = (old_min, old_max)
 
     for f, w, root in _pb_fields(buf):
         if f != 1 or w != 2:
@@ -703,9 +734,9 @@ def _antigravity_summary_from_buf(buf):
         except Exception:
             continue
         # Newer Antigravity IDE stores conversation records directly as repeated field 1.
-        if _has_uuid(children):
-            convs += 1
-            _scan_ts(root)
+        record_uuid = _record_uuid(children)
+        if record_uuid is not None:
+            _remember_record(record_uuid, root)
             continue
         # Older storage wrapped conversation records one level deeper.
         for cf, cw, cv in children:
@@ -716,9 +747,17 @@ def _antigravity_summary_from_buf(buf):
             except Exception:
                 continue
             # a conversation record leads with its uuid as field 1
-            if _has_uuid(inner):
-                convs += 1
-                _scan_ts(cv)
+            record_uuid = _record_uuid(inner)
+            if record_uuid is not None:
+                _remember_record(record_uuid, cv)
+    convs = 0
+    for record_min, record_max in record_ranges.values():
+        if _record_in_window(record_min, record_max):
+            convs += 1
+            if record_min is not None:
+                tmin = record_min if tmin is None or record_min < tmin else tmin
+            if record_max is not None:
+                tmax = record_max if tmax is None or record_max > tmax else tmax
     if not convs:
         return None
     return {"conversations": convs,
@@ -726,28 +765,34 @@ def _antigravity_summary_from_buf(buf):
             "last": tmax.isoformat() if tmax else None}
 
 
-def antigravity_summary():
+def antigravity_summary(since_dt=None, until_dt=None):
     """Best-effort read of Antigravity IDE conversation metadata from the unencrypted
     trajectory index in state.vscdb. Returns {"conversations": n, "first": iso,
-    "last": iso} or None. Fully local, read-only. The full per-step IDE transcripts live
-    in encrypted *.pb files and are not decoded here."""
+    "last": iso} or None. When bounds are supplied, only conversations whose metadata
+    overlaps the inclusive-since/exclusive-until window are counted. Fully local,
+    read-only. The full per-step IDE transcripts live in encrypted *.pb files and are
+    not decoded here."""
     if not os.path.exists(ANTIGRAVITY_DB):
         return None
     try:
         import base64
         con = sqlite3.connect(f"file:{ANTIGRAVITY_DB}?mode=ro&immutable=1", uri=True)
+        metadata_found = False
         try:
             for key in _ANTIGRAVITY_SUMMARY_KEYS:
                 row = con.execute("SELECT value FROM ItemTable WHERE key=?", (key,)).fetchone()
                 if not row or not row[0]:
                     continue
+                metadata_found = True
                 raw = row[0]
                 buf = base64.b64decode(raw if isinstance(raw, (bytes, bytearray)) else str(raw))
-                summary = _antigravity_summary_from_buf(buf)
+                summary = _antigravity_summary_from_buf(buf, since_dt, until_dt)
                 if summary:
                     return summary
         finally:
             con.close()
+        if metadata_found and (since_dt is not None or until_dt is not None):
+            return {"conversations": 0, "first": None, "last": None}
         return None
     except Exception:
         return None

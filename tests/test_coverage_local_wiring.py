@@ -69,7 +69,8 @@ class TestMainComposesCoverage(unittest.TestCase):
         with mock.patch.multiple(paxel, OUT_DIR=out, **src_dirs), \
                 mock.patch("gnomon.coverage.HISTORY_PATH",
                             os.path.join(tmp, "no-history.jsonl")), \
-                mock.patch.object(sys, "argv", ["paxel.py", "--summary", "--no-open"]), \
+                mock.patch.object(sys, "argv", ["paxel.py", "--summary",
+                                                  "--include-low-volume", "--no-open"]), \
                 redirect_stdout(io.StringIO()):
             paxel.main()
         with open(os.path.join(out, "summary.json"), encoding="utf-8") as fh:

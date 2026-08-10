@@ -70,7 +70,8 @@ class TestPerSourceChurnIsolation(unittest.TestCase):
         with mock.patch.multiple(paxel, OUT_DIR=out, **dirs), \
                 mock.patch.object(paxel, "git_churn", spy), \
                 mock.patch.object(sys, "argv",
-                                  ["paxel.py", "claude", "gemini", "--no-open"]), \
+                                  ["paxel.py", "claude", "gemini", "--include-low-volume",
+                                   "--no-open"]), \
                 contextlib.redirect_stdout(io.StringIO()):
             paxel.main()
 
@@ -273,7 +274,8 @@ class TestPerSourceParityRegressions(unittest.TestCase):
                     CURSOR_DB=os.path.join(empty, "no.vscdb"))
         with mock.patch.multiple(paxel, OUT_DIR=out, **dirs), \
                 mock.patch.object(sys, "argv",
-                                  ["paxel.py", "claude", "gemini", "--no-open", "--since=2026-01-01"]), \
+                                  ["paxel.py", "claude", "gemini", "--include-low-volume",
+                                   "--no-open", "--since=2026-01-01"]), \
                 contextlib.redirect_stdout(io.StringIO()):
             paxel.main()  # must not raise
 

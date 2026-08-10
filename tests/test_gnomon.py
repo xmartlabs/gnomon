@@ -1177,7 +1177,8 @@ class TestBuildSummaryPayloadFields(unittest.TestCase):
             CURSOR_DB=os.path.join(empty, "nope.vscdb"),
         )
         with mock.patch.multiple(paxel, **overrides), \
-                mock.patch.object(sys, "argv", ["paxel.py", "claude", "--no-open"]), \
+                mock.patch.object(sys, "argv", ["paxel.py", "claude",
+                                                  "--include-low-volume", "--no-open"]), \
                 contextlib.redirect_stdout(io.StringIO()):
             paxel.main()
 
