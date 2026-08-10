@@ -2,7 +2,8 @@ import unittest
 from datetime import datetime, timedelta
 
 from gnomon.cli.accumulator import (
-    Accumulator, derive_session_ordered_facts, aggregate_ordered,
+    Accumulator, _normalized_ordered_target, derive_session_ordered_facts,
+    aggregate_ordered,
 )
 
 
@@ -602,6 +603,40 @@ class TestVerificationCoverageF7(unittest.TestCase):
         self.assertEqual(agg["eligible"], 1)
         self.assertEqual(agg["test_covered"], 1)
 
+    def test_error_then_success_for_same_result_remains_not_covered(self):
+        """A duplicate result cannot turn a known error into test coverage."""
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        sid = "s1"
+        self._two_code_writes(acc, sid)
+        acc.observe(_fact_event(sid, "2026-01-01T00:00:02Z", "Bash", {
+            "command": "pytest"}, tool_use_id="tu1"), None, None)
+        acc.observe(_tool_result_event(
+            sid, "2026-01-01T00:00:03Z", "tu1", is_error=True), None, None)
+        acc.observe(_tool_result_event(
+            sid, "2026-01-01T00:00:04Z", "tu1", is_error=False), None, None)
+
+        facts = _facts_for(acc, "claude", sid)
+        self.assertFalse(derive_session_ordered_facts(
+            facts, acc._tool_result_is_error)["ran_test"])
+
+    def test_success_then_success_for_same_result_remains_covered(self):
+        """Repeated success remains valid coverage for the scoped result."""
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        sid = "s1"
+        self._two_code_writes(acc, sid)
+        acc.observe(_fact_event(sid, "2026-01-01T00:00:02Z", "Bash", {
+            "command": "pytest"}, tool_use_id="tu1"), None, None)
+        acc.observe(_tool_result_event(
+            sid, "2026-01-01T00:00:03Z", "tu1", is_error=False), None, None)
+        acc.observe(_tool_result_event(
+            sid, "2026-01-01T00:00:04Z", "tu1", is_error=False), None, None)
+
+        facts = _facts_for(acc, "claude", sid)
+        self.assertTrue(derive_session_ordered_facts(
+            facts, acc._tool_result_is_error)["ran_test"])
+
     def test_test_command_with_no_tool_result_not_covered(self):
         """Fail-closed: a truncated transcript (tool_use with no matching
         tool_result ever observed) must not count, even after a code write."""
@@ -673,6 +708,20 @@ class TestVerificationCoverageF7(unittest.TestCase):
 
 
 class TestOrderedTargetClassification(unittest.TestCase):
+    def test_windows_absolute_scratchpad_is_other_on_posix(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        event = _fact_event("s1", "2026-01-01T00:00:00Z", "Write", {
+            "file_path": "C:/Users/u/AppData/Local/Temp/run/scratchpad/foo.py",
+            "content": "x = 1\n"})
+        event["cwd"] = "/repo"
+        acc.observe(event, None, None)
+
+        fact = _facts_for(acc, "claude", "s1")[0]
+        self.assertEqual(fact["file_class"], "other")
+        self.assertEqual(_normalized_ordered_target(fact),
+                         "C:/Users/u/AppData/Local/Temp/run/scratchpad/foo.py")
+
     def test_relative_scratchpad_under_temp_cwd_is_other_and_not_eligible(self):
         acc = Accumulator()
         acc.begin_file("claude", "f.jsonl")
@@ -684,7 +733,13 @@ class TestOrderedTargetClassification(unittest.TestCase):
         facts = _facts_for(acc, "claude", "s1")
         self.assertEqual(facts[0]["target"], "scratchpad/foo.py")
         self.assertEqual(facts[0]["file_class"], "other")
+        self.assertEqual(_normalized_ordered_target(facts[0]),
+                         "/tmp/gnomon-run/scratchpad/foo.py")
         self.assertFalse(derive_session_ordered_facts(facts)["eligible"])
+
+    def test_posix_absolute_target_remains_unchanged(self):
+        event = {"target": "/repo/src/a.py", "cwd": "/other"}
+        self.assertEqual(_normalized_ordered_target(event), "/repo/src/a.py")
 
     def test_relative_code_target_under_temp_cwd_remains_code(self):
         acc = Accumulator()
@@ -697,6 +752,30 @@ class TestOrderedTargetClassification(unittest.TestCase):
         facts = _facts_for(acc, "claude", "s1")
         self.assertEqual(facts[0]["target"], "src/a.py")
         self.assertEqual(facts[0]["file_class"], "code")
+
+    def test_scratchpad_plan_file_has_no_plan_credit(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        event = _fact_event("s1", "2026-01-01T00:00:00Z", "Write", {
+            "file_path": ".claude/plans/feature.md", "content": "a\nb\nc\nd\ne\nf\ng\nh\ni\nj",
+        })
+        event["cwd"] = "/tmp/run/scratchpad"
+        acc.observe(event, None, None)
+
+        facts = _facts_for(acc, "claude", "s1")
+        self.assertFalse(facts[0]["plan_file"])
+        self.assertFalse(derive_session_ordered_facts(facts)["planned_intra"])
+
+    def test_real_claude_plan_file_still_has_plan_credit(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "Write", {
+            "file_path": ".claude/plans/feature.md", "content": "a\nb\nc\nd\ne\nf\ng\nh\ni\nj",
+        }), None, None)
+
+        facts = _facts_for(acc, "claude", "s1")
+        self.assertTrue(facts[0]["plan_file"])
+        self.assertTrue(derive_session_ordered_facts(facts)["planned_intra"])
 
 
 class TestMonthlyVerificationCoverageBlocker2(unittest.TestCase):

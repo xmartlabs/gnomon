@@ -22,11 +22,11 @@ CONTEXT_INTELLIGENCE_TARGET = 0.60
 # are evaluated against observable source capabilities; unavailable signals drop
 # rather than scoring zero.
 #
-# v17 removed TWO of these targets. TEST_RUNS_PER_CALL_TARGET left because the
+# v17 removed TWO of these targets. TEST_RUNS_PER_CALL_TARGET was removed because the
 # Verification test-run half switched from a per-call DENSITY (shell_test_runs /
 # tool_calls, confounded by delegation inflating the denominator) to a per-SESSION
 # COVERAGE fraction scored with NO fitted target (sat(coverage, 1.0)). TASK_CALLS_
-# PER_CALL_TARGET left because the Discipline task-tool term saturated for virtually
+# PER_CALL_TARGET was removed because the Discipline task-tool term saturated for virtually
 # everyone (~3.2x target) and was dropped as non-discriminating todo-tool ceremony.
 SKILLS_TOTAL_PER_CALL_TARGET = 0.009
 REVIEW_SKILLS_PER_CALL_TARGET = 0.004

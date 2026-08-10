@@ -1002,12 +1002,13 @@ class Accumulator:
                         _tuid = b.get("tool_use_id")
                         _is_error = b.get("is_error")
                         if _tuid and isinstance(_is_error, bool):
-                            # F7: last result wins if a tool_use_id somehow
+                            # F7: errors are sticky if a tool_use_id somehow
                             # repeats within the same source/session; the map
                             # remains corpus-lifetime so derive runs after all
                             # files have been observed.
-                            self._tool_result_is_error[
-                                (self._cur_src, sid, _tuid)] = _is_error
+                            _result_key = (self._cur_src, sid, _tuid)
+                            if self._tool_result_is_error.get(_result_key) is not True:
+                                self._tool_result_is_error[_result_key] = _is_error
                         if b.get("is_error"):
                             self.tool_errors += 1
                             if mkey:
@@ -1114,8 +1115,9 @@ class Accumulator:
                                 or inp.get("path") or inp.get("pattern") or inp.get("query") or "")
                             _classify_target = (
                                 os.path.join(cwd, _target)
-                                if cwd and _target and not os.path.isabs(_target)
+                                if cwd and _target and not _is_abs_path(_target)
                                 else _target)
+                            _file_class = classify_change_target(_classify_target)
                             _items = (inp.get("todos") or inp.get("items") or inp.get("tasks")
                                       or inp.get("plan") or [])
                             if isinstance(_items, list):
@@ -1146,9 +1148,11 @@ class Accumulator:
                                 # otherwise — a missing loc never flips
                                 # ordered_facts_complete (see the `dt is None` check below,
                                 # which is the ONLY thing that flips it).
-                                "file_class": classify_change_target(_classify_target),
+                                "file_class": _file_class,
                                 "loc": self._write_loc(name, inp),
-                                "plan_file": is_plan_file_target(_target),
+                                "plan_file": (
+                                    _file_class != "other"
+                                    and is_plan_file_target(_classify_target)),
                                 "plan_skill": self._fact_plan_skill(name, inp, ev),
                                 # v17 — per-session Verification COVERAGE numerator: mark a
                                 # Bash fact that ran a shell test (bash_runs_tests), so
@@ -2093,12 +2097,22 @@ _WRITE_TOOLS_V5 = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 _EVIDENCE_TOOLS_V5 = {"Read", "Grep", "Glob", "NotebookRead"}
 
 
+def _is_abs_path(path):
+    """Classify POSIX, normalized Windows-drive, and normalized UNC paths."""
+    normalized = _norm_path_seps(path)
+    return bool(
+        os.path.isabs(normalized)
+        or re.match(r"^[A-Za-z]:/", normalized)
+        or normalized.startswith("//")
+    )
+
+
 def _normalized_ordered_target(event):
     target = str(event.get("target") or "")
     if not target:
         return ""
     cwd = str(event.get("cwd") or "")
-    if cwd and not os.path.isabs(target):
+    if cwd and not _is_abs_path(target):
         target = os.path.join(cwd, target)
     return os.path.normpath(target)
 
