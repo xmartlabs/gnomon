@@ -67,7 +67,7 @@ def _run_summary(testcase, sources, extra_argv=None):
     visible in the payload."""
     out = tempfile.mkdtemp(prefix="paxel-replay-")
     testcase.addClassCleanup(shutil.rmtree, out, ignore_errors=True)
-    argv = (["paxel.py"] + list(sources) + ["--summary", "--no-open"]
+    argv = (["paxel.py"] + list(sources) + ["--include-low-volume", "--summary", "--no-open"]
             + list(extra_argv or []))
     buf = io.StringIO()
     with (
@@ -127,7 +127,7 @@ def _run_claude_summary(testcase, rows, extra_argv=None):
     )
     out = tempfile.mkdtemp(prefix="paxel-replay-out-")
     testcase.addClassCleanup(shutil.rmtree, out, ignore_errors=True)
-    argv = ["paxel.py", "claude", "--summary", "--no-open"] + (extra_argv or [])
+    argv = ["paxel.py", "claude", "--include-low-volume", "--summary", "--no-open"] + (extra_argv or [])
     buf = io.StringIO()
     with (
         mock.patch.multiple(paxel, OUT_DIR=out, **dirs),
@@ -200,7 +200,8 @@ def _run_blended_multisource_summary(testcase):
     def _once(extra_argv):
         out = tempfile.mkdtemp(prefix="paxel-replay-blend-")
         testcase.addClassCleanup(shutil.rmtree, out, ignore_errors=True)
-        argv = ["paxel.py", "claude", "codex", "--summary", "--no-open"] + extra_argv
+        argv = ["paxel.py", "claude", "codex", "--include-low-volume",
+                "--summary", "--no-open"] + extra_argv
         buf = io.StringIO()
         with (
             mock.patch.multiple(paxel, OUT_DIR=out, **dirs),
@@ -1155,7 +1156,8 @@ class RecomputeGradeFieldsExcludedFromStatsAndNarrative(unittest.TestCase):
         cls._out = tempfile.mkdtemp(prefix="paxel-fix6-")
         testcase = cls
         testcase.addClassCleanup(shutil.rmtree, cls._out, ignore_errors=True)
-        argv = ["paxel.py", "claude", "codex", "gemini", "--summary", "--no-open"]
+        argv = ["paxel.py", "claude", "codex", "gemini", "--include-low-volume",
+                "--summary", "--no-open"]
         buf = io.StringIO()
         with (
             mock.patch.multiple(paxel, OUT_DIR=cls._out, **SRC_DIRS),

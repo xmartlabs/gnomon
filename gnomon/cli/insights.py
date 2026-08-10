@@ -32,7 +32,7 @@ from gnomon.upload.mirdash import (
 
 
 _HELP_TEXT = """Usage:
-    xl-ai-insights [source ...] [--local] [--allow-stale-cli] [--mirdash-base=URL] [--window=N] [--no-open] [--quiet] [--verbose] [--console] [--output-dir=PATH]
+    xl-ai-insights [source ...] [--local] [--include-low-volume] [--allow-stale-cli] [--mirdash-base=URL] [--window=N] [--no-open] [--quiet] [--verbose] [--console] [--output-dir=PATH]
     xl-ai-insights --force
     xl-ai-insights --dry-run
     xl-ai-insights --help
@@ -40,6 +40,8 @@ _HELP_TEXT = """Usage:
 
     source        e.g. claude, codex, gemini -- same as paxel.py (default: all)
     --local       run local analysis only (no login, no upload)
+    --include-low-volume
+                  include sources with fewer than 10 in-window sessions
     --allow-stale-cli
                   continue network/upload flows after a confirmed stale CLI warning
     --force       re-upload all months (ignores what has already been uploaded)

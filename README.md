@@ -43,6 +43,7 @@ xl-ai-insights --local claude            # Claude Code only
 xl-ai-insights --local claude codex      # Claude Code + Codex
 xl-ai-insights --local --no-open         # don't auto-open profile.html
 xl-ai-insights --local --summary         # also write summary.json
+xl-ai-insights --local --include-low-volume  # include sources with fewer than 10 sessions
 xl-ai-insights --local --output-dir=.    # write outputs to current directory
 ```
 
@@ -94,6 +95,9 @@ months** (default 1) ending at its anchor month, so a month is scored on that
 month. Raise it with `--window=N` if you want a point smoothed over the N months
 ending at its anchor. The window applies to normal monthly runs and to
 `--backfill`/`--force`.
+
+By default, a source contributes only when it has at least 10 unique sessions in
+the scored window. Pass `--include-low-volume` to include smaller active sources.
 
 The **per-calendar-month evidence** block (`noticed_stats_monthly`) is
 deliberately wider than the scoring window: it is shaped over a trailing

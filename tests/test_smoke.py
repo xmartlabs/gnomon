@@ -58,7 +58,9 @@ def _run(testcase, args):
     if os.path.exists(tern):
         shutil.copy(tern, os.path.join(out, "tern.png"))
     # --no-open prevents browser windows in CI.
-    argv = ["paxel.py"] + args + ["--no-open"]
+    # These fixtures intentionally stay tiny; opt out of the production source-volume
+    # policy so the parser/metric assertions continue to exercise their data.
+    argv = ["paxel.py"] + args + ["--include-low-volume", "--no-open"]
     buf = io.StringIO()
     with mock.patch.multiple(paxel, OUT_DIR=out, **SRC_DIRS), \
             mock.patch.object(sys, "argv", argv), \
@@ -1219,7 +1221,7 @@ def _run_single_source(testcase, source_name, gemini_dir=None, claude_dir=None):
     out = tempfile.mkdtemp(prefix="paxel-test-null-")
     testcase.addCleanup(shutil.rmtree, out, ignore_errors=True)
     buf = io.StringIO()
-    argv = ["paxel.py", source_name, "--no-open"]
+    argv = ["paxel.py", source_name, "--include-low-volume", "--no-open"]
     with mock.patch.multiple(paxel, OUT_DIR=out, **dirs), \
             mock.patch.object(sys, "argv", argv), \
             contextlib.redirect_stdout(buf):
@@ -1329,7 +1331,7 @@ def _run_claude_transcript(testcase, rows, extra_argv=None, spy_git_churn=None):
     )
     out = tempfile.mkdtemp(prefix="paxel-ga1-out-")
     testcase.addCleanup(shutil.rmtree, out, ignore_errors=True)
-    argv = ["paxel.py", "claude", "--no-open"] + (extra_argv or [])
+    argv = ["paxel.py", "claude", "--include-low-volume", "--no-open"] + (extra_argv or [])
     buf = io.StringIO()
     patches = [
         mock.patch.multiple(paxel, OUT_DIR=out, **dirs),

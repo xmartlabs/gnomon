@@ -247,7 +247,7 @@ class TestSummaryPublishesTheSelfHealSeries(unittest.TestCase):
             CURSOR_DIR=os.path.join(empty, "cursor", "projects"),
             CURSOR_DB=os.path.join(empty, "cursor", "state.vscdb"),
         )
-        argv = ["paxel.py", "--summary", "--no-open",
+        argv = ["paxel.py", "--summary", "--include-low-volume", "--no-open",
                 "--since=2026-07-01", "--until=2026-07-31"]
         with mock.patch.multiple(paxel, OUT_DIR=out, **src_dirs), \
                 mock.patch("gnomon.coverage.HISTORY_PATH",

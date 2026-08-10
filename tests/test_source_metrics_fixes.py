@@ -347,7 +347,8 @@ class TestCodexFanoutTimestamp(unittest.TestCase):
             OPENCODE_DIR=empty, CURSOR_DIR=empty,
             CURSOR_DB=os.path.join(empty, "nope.vscdb"),
         )
-        argv = ["paxel.py", "--no-open", "--since=2026-03-01", "--until=2026-03-31"]
+        argv = ["paxel.py", "--include-low-volume", "--no-open",
+                "--since=2026-03-01", "--until=2026-03-31"]
         buf = io.StringIO()
         with mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
                 mock.patch.object(sys, "argv", argv), \
@@ -405,7 +406,7 @@ class TestCodexUsageNotAssistantTurn(unittest.TestCase):
             OPENCODE_DIR=empty, CURSOR_DIR=empty,
             CURSOR_DB=os.path.join(empty, "nope.vscdb"),
         )
-        argv = ["paxel.py", "--no-open"]
+        argv = ["paxel.py", "--include-low-volume", "--no-open"]
         buf = io.StringIO()
         with mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
                 mock.patch.object(sys, "argv", argv), \
