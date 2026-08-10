@@ -5,14 +5,18 @@ version against it; if they differ, every finding below is a hypothesis again an
 fixtures in `scripts/` have to be re-run before anyone quotes them.
 
 - **Validated against:** `3148a96` on `main` (contract `16:16:16`), 2026-08-07.
-- **Known to be moving:** contracts `17:17:17` and `18:18:18` are in open upstream PRs. See
-  "Incoming" below before trusting anything here.
+- **Known to be moving:** contract `17:17:17` is in one open upstream PR, #66. See "Incoming"
+  below before trusting anything here.
 
 ## How to refresh this file
 
 The pin going stale is expected. The file going stale *silently* is the failure. Whoever
 notices the drift does this, in order:
 
+0. **Re-check the upstream PR states with `gh`, every time.** Never carry them from a
+   conversation, a plan, or an earlier version of this file. On 2026-08-10 this section
+   named three PRs as open that had been closed the day before. It costs one command:
+   `gh pr list --repo <upstream> --state all --limit 10`.
 1. Resolve the installed ref and the contract string in the scoring output. **The contract
    is the gate, the ref is a hint.** A different contract means the calibration or the axis
    set moved and everything below is a hypothesis again. A different ref with the same
@@ -49,16 +53,29 @@ Pass the report's own boundaries, never `--last=30d`: a rolling window ends now,
 daily, and includes the audit session itself. The published reports this file was built
 against ran `--since=2026-07-07 --until=2026-08-06`.
 
-## Incoming — three PRs, all responses to findings below
+## Incoming — one PR, #66
 
-Reported by us, accepted upstream, open at the time of writing. When they merge, the two
-"Open" entries move to "Confirmed and fixed" and the fixtures that demonstrate them expire.
+**Verified 2026-08-10 with `gh`, not carried from conversation.** An earlier version of this
+section listed three open PRs (#62, #63, #65) as the upstream response. All three were
+**closed unmerged on 2026-08-09**, seconds apart, superseded by **#66**, which consolidates
+the work into a single contract bump instead of two.
 
-| PR | What it does | What it invalidates here |
+That error is the one this file exists to prevent, and it was avoidable: the run that wrote
+it had already flagged "did not verify whether those PRs are still open" as a gap and the
+claim went in anyway. Hence the first step of the refresh procedure above.
+
+| PR | State | What it does |
 |---|---|---|
-| #62 | Stops crediting harness-imposed activity in eligibility and ToolSearch: scratchpad writes (`/private/tmp`, `/tmp`, `/var/folders`) no longer count as code changes | The denominator note below |
-| #63 | Drops the ToolSearch rate term from both axes entirely. Contract `17:17:17` | The ToolSearch entry, and section D of `fidelity-audit.py` |
-| #65 | Replaces Verification's density term with per-session coverage, drops the task-tool term. Contract `18:18:18`. Stacked on #63 | The Verification entry, and `verify-verification-axis.py` in full |
+| #66 `feat-antigaming-scoring` | **OPEN**, +2144/−587 across 34 files | Anti-gaming pass, contract `17:17:17`. Removes **both** `TOOLSEARCH_PER_CALL_TARGET` and `TEST_RUNS_PER_CALL_TARGET`, folds in the eligibility fix, and carries judge / 4R review changes |
+| #62, #63, #65 | CLOSED unmerged 2026-08-09 | Superseded by #66. Do not cite them as pending |
+
+**What expires when #66 merges.** Both removed targets are load-bearing here:
+`verify-verification-axis.py` demonstrates the density term in full, section D of
+`fidelity-audit.py` measures the ToolSearch term, and `measure-verification-corpus.py`
+imports the density target through `require()` — that last one will exit loudly rather than
+print against a constant that no longer exists, which is the designed behaviour. Delete the
+first two rather than repairing them; they demonstrate pre-fix behaviour and have nothing to
+say about a checkout without those terms.
 
 ## Confirmed and fixed
 
@@ -89,12 +106,13 @@ session contains. Two proofs, both holding the numerator fixed:
   applying it to the delegating group still leaves the delegating group 4.3× lower.
 - Synthetic, with a control: 100% coverage scores 0.198, 20% coverage scores 0.714.
 
-Reported, corrected once (see `refutation.md`, `invented-denominator`), **accepted — PR #65**.
+Reported, corrected once (see `refutation.md`, `invented-denominator`), **accepted upstream —
+now carried by PR #66**, which removes the density target outright.
 
 **ToolSearch credits mandatory tool loading, in two pillars.** 577 of 603 calls are
 `select:` — loading tools by exact name — and 419 of those loads are core built-in tools.
 The counter feeds both a Breadth axis and a Savvy axis. Removing the forced calls costs
-5.03 AQ, which is an upper bound. **Reported and accepted — PRs #62 and #63.**
+5.03 AQ, which is an upper bound. **Reported and accepted upstream — now carried by PR #66.**
 
 **Two more, found by cold runs and not yet reported.** Both are named here with their
 magnitude only. **Do not paste their diagnosis into this file.** A later cold run reported
@@ -137,4 +155,5 @@ tests. Real and verified, twice in the whole corpus. Not worth a report.
 sessions qualify only through that, and C2 eligibility moves from 34 to 40.
 
 It costs nothing today — both consumers are saturated with margin — but it biases any
-diagnostic built on that counter by about 15%. Reported as context; **PR #62 addresses it.**
+diagnostic built on that counter by about 15%. Reported as context; the eligibility fix is
+folded into **PR #66**.
