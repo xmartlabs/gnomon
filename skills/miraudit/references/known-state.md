@@ -180,6 +180,24 @@ the name plausible, but 197 invalid `Agent`/`Task` attempts trip the same gate i
 removing the Workflow children would not restore the measured state. A run that trusted the
 name would have shipped a mis-attributed finding to the tool's authors.
 
+## Ad-hoc checks seen once
+
+The graduation counter for `ad-hoc-checks.md`: a measurement moves into `scripts/` when a
+**second** independent run needs it. Add a row when you write one; move it out when someone
+writes it again. An empty table is the healthy state, not a gap.
+
+| Measurement | Axis | First seen | Where |
+|---|---|---|---|
+| `actions_per_prompt` re-measured from transcripts, against the imported band | Steering leverage | 2026-08-10 | `references/example-adhoc-check.py`, kept as the worked example |
+
+**Steering leverage is withheld at this pin.** `STEERING_LEVERAGE_BAND_VALIDATED = False`,
+so `wsum` renormalizes and the Efficiency pillar is Recovery alone — a live `dropped-term`
+on 50 points of weight that no run had looked at, because nothing looked at that axis. The
+input itself is faithful: re-measured independently it reads 6.4 against their 6.4, and the
+axis would score 1.000 if the band went live. Measured, not reported: the withholding is
+deliberate and documented in their own code, and it costs about 1.5 points of the pillar
+here, which is under the bar.
+
 ## Reviewed and dismissed — do not re-open
 
 Each has the fact that killed it. Full write-ups in `refutation.md`.

@@ -54,8 +54,15 @@ is not evidence.
    the tool's own aggregates; a comparison against itself proves nothing.
 3. Report the gap **and its direction**: faithful, overestimates, underestimates.
 
-Use `scripts/` where a check exists. Where none does, reason from the declared signals:
-that is the case scripts cannot cover.
+Use `scripts/` where a check exists. **Most of the score has none** — at the pin, five axes
+worth 175 points have no dedicated check — so the unscripted path is the normal path, not
+the exception. Its procedure is `references/ad-hoc-checks.md`, with a worked example beside
+it; the short version is that you write a runnable script into the run's output directory,
+import the tool's own primitives, print both numbers with a direction, and carry a control.
+
+An agent conceives that measurement; the machine runs it; the number decides. What leaves
+the run is a file anyone can re-run, never a verdict. `references/design-rationale.md`
+argues why that division is the only place an agent belongs in this skill.
 
 ## Phase 2 — Structural shapes
 

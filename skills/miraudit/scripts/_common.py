@@ -103,6 +103,92 @@ class Window:
         return dt is not None and self.start <= dt < self.end
 
 
+class Use:
+    """One tool_use block, with the event it came from. Attribute access, not a tuple, so
+    a check that wants only `name` does not have to unpack six positions correctly."""
+
+    __slots__ = ("path", "sid", "when", "order", "name", "input", "block", "event")
+
+    def __init__(self, path, sid, when, order, name, inp, block, event):
+        self.path, self.sid, self.when, self.order = path, sid, when, order
+        self.name, self.input, self.block, self.event = name, inp, block, event
+
+    @property
+    def sidechain(self):
+        return bool(self.event.get("isSidechain"))
+
+    @property
+    def file_path(self):
+        """The write target, under any of the keys the harness uses for it."""
+        return str(self.input.get("file_path") or self.input.get("notebook_path") or "")
+
+
+def iter_tool_uses(corpus, window):
+    """Yield a `Use` for every tool_use block in the corpus that falls inside the window.
+
+    Every check needs this loop and each one used to write it again: open the .jsonl, skip
+    lines without "tool_use", parse, read the timestamp, filter, walk message.content. Four
+    live checks still carry their own copy. The fifth copy is why this exists -- it dropped
+    the `if when not in window` line, so the check measured the entire corpus while printing
+    a windowed header, and nothing in its output said so. That script is deleted; the way to
+    write it again is not.
+
+    So the window is not a parameter you may omit. There is no guard to forget here because
+    there is no guard to write.
+
+    Counts identically to fingerprint.py, deliberately: an ad-hoc check whose denominator
+    disagrees with the run's own fingerprint is reporting a number nobody can place.
+    """
+    order = 0
+    for path, event, when in iter_events(corpus, window, contains='"tool_use"'):
+        content = (event.get("message") or {}).get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict) or block.get("type") != "tool_use":
+                continue
+            order += 1
+            yield Use(path, event.get("sessionId"), when, order,
+                      block.get("name", ""), block.get("input") or {}, block, event)
+
+
+def iter_events(corpus, window, contains=None):
+    """Yield (path, event, when) for every transcript event inside the window.
+
+    The lower half of `iter_tool_uses`, separate because not every measurement is about a
+    tool call: `actions_per_prompt`, for one, needs the user's messages for its denominator.
+
+    `contains` is a plain substring pre-filter applied to the raw line before parsing it.
+    It is an optimisation over a corpus of a few hundred thousand lines and nothing else --
+    pass it only when the substring is genuinely implied by what you are looking for, since
+    a wrong one silently shrinks the population.
+    """
+    import glob
+    for path in sorted(glob.glob(os.path.join(corpus, "**", "*.jsonl"), recursive=True)):
+        try:
+            fh = open(path, encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        with fh:
+            for line in fh:
+                if contains is not None and contains not in line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                timestamp = event.get("timestamp")
+                if not timestamp:
+                    continue
+                try:
+                    when = datetime.datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+                if when not in window:
+                    continue
+                yield path, event, when
+
+
 def require(module_attrs, hint):
     """Import names from the checkout, failing loudly if the version lacks them.
 
