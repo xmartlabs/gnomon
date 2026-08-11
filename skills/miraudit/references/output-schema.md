@@ -4,6 +4,14 @@ One run writes `miraudit-<date>.json`, then renders `miraudit-<date>.md` **from 
 write the two by hand: they drift, and a report that has drifted from its evidence is the
 defect this skill exists to catch.
 
+**A real one is in `example-run/miraudit-2026-08-10.json`** — a full run against `c6401cc`
+on contract `17:17:17`, with two file paths from a private repository redacted and nothing
+else changed. Read that for the current shape. The sketch below illustrates the field rules
+one at a time and is **older than the contract**: it shows `3148a96` / `16:16:16`, a signal
+(`test_runs_per_call`) the tool no longer computes, and a `findings[]` entry that has since
+been accepted upstream and belongs in `reported`. Kept because each field is annotated;
+not kept as an example of a current payload.
+
 **Where.** Into a directory you name at the start of the run and state in the report, never
 the working directory. Two runs on one day otherwise overwrite each other silently, and the
 second one looks like the only one there ever was. If a name collides, do not overwrite:

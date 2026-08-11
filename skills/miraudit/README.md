@@ -11,6 +11,71 @@ A run produces two files: `miraudit-<date>.json` and a human-readable
 `miraudit-<date>.md` rendered from it. The JSON is what makes runs comparable. One person's
 corpus is an anecdote; the same gap measured on five machines is a defect in the axis.
 
+## How a run flows
+
+Two phases are gates that stop the run rather than annotate it, and they are drawn as
+diamonds. Everything the audited tool owns is read-only: its checkout is copied before
+anything imports from it, and the transcripts are never written to at all.
+
+```mermaid
+flowchart TD
+    CO[/"checkout of the scoring tool<br/>read-only"/]
+    CORP[/"transcript corpus<br/>read-only"/]
+    PUB[/"the published number<br/>and its window"/]
+
+    CO --> COPY["copy the checkout<br/>everything below runs on the copy"]
+
+    subgraph P0["Phase 0 — Anchor"]
+        COPY --> PROBE{{"contract-probe.py<br/>do the predicates still BEHAVE the same?"}}
+        PROBE -->|"a behaviour moved"| STOP1["STOP<br/>names the check that leans on it"]
+        PROBE -->|"18/18"| RUN["reproduce the number on the copy<br/>over the report's own window"]
+        RUN --> FP["print the corpus fingerprint<br/>files · lines · tool calls · sessions"]
+        FP --> GATE{{"does it reproduce the published number,<br/>on the expected contract?"}}
+        GATE -->|"no"| STOP2["STOP<br/>the method is wrong before any finding is"]
+    end
+
+    subgraph P1["Phase 1 — Per-axis fidelity"]
+        HAS{{"is there a script for this axis?"}}
+        HAS -->|"yes"| SCR["run it: import their predicates,<br/>re-measure from the corpus"]
+        HAS -->|"no"| ADHOC["write one into the run's output dir<br/>see ad-hoc-checks.md"]
+        SCR --> DIR["report the gap AND its direction<br/>faithful · overestimates · underestimates"]
+        ADHOC --> DIR
+    end
+
+    subgraph P2["Phase 2 — Structural shapes"]
+        SHAPES["dropped-term · saturated · contaminated-denominator<br/>signal-not-attributable-to-person · signal-reused"]
+    end
+
+    subgraph P3["Phase 3 — Refutation"]
+        CAND["candidate finding"] --> ROWS{{"eight rows, each written after a<br/>real finding died on it"}}
+        ROWS -->|"survives all eight"| KEEP["finding"]
+        ROWS -->|"any row kills it"| DEAD["dismissed<br/>with the fact that killed it"]
+    end
+
+    GATE -->|"yes"| HAS
+    DIR --> SHAPES
+    SHAPES --> CAND
+
+    KEEP --> JSON["miraudit-DATE.json"]
+    DEAD --> JSON
+    JSON --> MD["miraudit-DATE.md<br/>rendered FROM the json, never written beside it"]
+
+    CORP -.->|"read"| RUN
+    CORP -.->|"read"| SCR
+    CORP -.->|"read"| ADHOC
+    PUB -.-> GATE
+```
+
+An empty `findings` list with a populated `dismissed` list is a normal, useful result: it
+says the run worked and that what it looked at went through a filter.
+
+`references/example-run/miraudit-2026-08-10.json` is one, in full: a real run against
+`c6401cc`, two private file paths redacted and nothing else touched. Its `process_friction`
+is the part worth reading — that is where a run records what the audit cost that the audited
+tool did not cause, and this one records that the anchor had been importing the scoring tool
+from the working directory, so every previous run had measured the original checkout instead
+of the copy and reported the right number by coincidence.
+
 ## What it checks
 
 **Anchor.** Reproduces the published number locally before measuring anything. If the base

@@ -117,9 +117,9 @@ a ref, or verify the container still exists before reading a negative result as 
 corpus. The Verification numerator is inflated."
 </claim>
 <what_made_it_look_real>
-The comparison output showed the two predicates disagreeing on
-`cd /Users/…/5S_clientportal_BE`, with their predicate returning true. Their predicate,
-their corpus, no invented denominator: it passed every other row of the gate.
+The comparison output showed the two predicates disagreeing on `cd <a path into a work
+repository>`, with their predicate returning true. Their predicate, their corpus, no
+invented denominator: it passed every other row of the gate.
 </what_made_it_look_real>
 <what_killed_it>
 Running the predicate on that exact string returns `False`. The comparison script printed
