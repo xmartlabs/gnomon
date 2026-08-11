@@ -81,20 +81,32 @@ Conditions for B to count at all:
 
 ## What the runner needs
 
-- `python3` and `git`. The tool itself is cloned by the script, pinned, into a temp directory.
+- `python3`, `git`, and **`uv`** — the scoring tool's entry point runs under `uv run`, so a
+  machine without it fails at the anchor. An earlier version of this list said "python3 and
+  git", which would have sent someone into a failure two minutes into their first run.
 - Their own transcript corpus at `~/.claude/projects` (the default; `--corpus` overrides it).
+- A copy of `scripts/` on disk. **Installing this as a Claude skill is not required**: no
+  agent is involved in producing the comparison file, so the directory is enough.
 
 That is the whole list. There is no published report to find and no path to supply.
+
+It costs about 16 MB in a temp directory and under two minutes, measured. Nothing is
+uploaded: the entry point runs with `--local`.
 
 ## What to run
 
 ```bash
-scripts/second-corpus.sh
+bash ~/.claude/skills/miraudit/scripts/second-corpus.sh
 ```
 
 No arguments. It clones the scoring tool at the pinned commit, scores the last 30 complete
-days, and writes one file. Every default is printed at the top of the run and recorded in
-the file, so nothing about it is implicit.
+days, and writes one file **into the directory you ran it from**. Every default is printed
+at the top of the run and recorded in the file, so nothing about it is implicit.
+
+The path above is spelled out on purpose. An earlier version of this line said
+`scripts/second-corpus.sh`, which is relative to the skill directory and fails from anywhere
+else — the first thing someone hits, before they have any reason to trust the rest.
+Substitute wherever the directory actually lives if it is not installed as a skill.
 
 It takes minutes, not seconds: it reproduces a score and the counterfactual re-scores the
 payload many times over. Run it where it can finish; a watchdog that kills it partway

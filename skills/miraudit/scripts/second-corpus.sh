@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # One command, one file. This is the entire ask for someone contributing a second corpus:
 #
-#   ./second-corpus.sh
+#   bash ~/.claude/skills/miraudit/scripts/second-corpus.sh
+#
+# Spelled out, because `scripts/second-corpus.sh` is relative to this directory and is the
+# first thing a new runner trips over, before they have any reason to trust the rest.
 #
 # No arguments. It clones the scoring tool at a pinned commit, scores the last 30 complete
 # days of your local transcripts, and writes ONE file to send back.
@@ -13,6 +16,11 @@
 #   --published <N>     the number that report shows, to make the anchor check itself
 #   --checkout <path>   an existing checkout instead of cloning
 #   --ref <commit>      a different commit to pin to
+#   --out-dir <path>    where the result file goes (default: the working directory)
+#   --keep              do not delete the scratch directory on success
+#
+# It uses about 16 MB of scratch and under two minutes. The scratch is deleted when the run
+# succeeds and kept when it does not.
 #
 # Nothing is written inside the checkout, and nothing leaves except that one file, which
 # carries counts and shares. Read it before sending it.
@@ -27,7 +35,7 @@ REF="c6401cc"
 REPO_URL="https://github.com/xmartlabs/gnomon.git"
 
 CHECKOUT=""; SINCE=""; UNTIL=""; PUBLISHED=""; CORPUS="$HOME/.claude/projects"
-WORK="${TMPDIR:-/tmp}/miraudit-second-corpus.$$"
+WORK=""; OUTDIR="$PWD"; KEEP=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -37,10 +45,38 @@ while [ $# -gt 0 ]; do
     --until)     UNTIL="$2";     shift 2 ;;
     --published) PUBLISHED="$2"; shift 2 ;;
     --corpus)    CORPUS="$2";    shift 2 ;;
+    --out-dir)   OUTDIR="$2";    shift 2 ;;
     --work)      WORK="$2";      shift 2 ;;
+    --keep)      KEEP="yes";     shift 1 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+
+# The scratch directory holds a clone, a copy of it, and the copy's virtualenv: about 16 MB
+# per run. Nothing used to delete it, and the file worth keeping lived inside it, so every
+# run left the whole thing behind. The result file now goes to --out-dir (the working
+# directory by default) and the scratch is removed on success.
+#
+# On FAILURE it is kept, and the path is printed. A run that broke is the one where the
+# intermediate files are worth having, and deleting the evidence at exactly that moment is
+# how a failure becomes unexplainable. --keep forces it either way; an explicit --work is
+# treated as the caller's directory and never removed.
+AUTO_WORK=""
+if [ -z "$WORK" ]; then
+  WORK="${TMPDIR:-/tmp}"; WORK="${WORK%/}/miraudit-second-corpus.$$"
+  AUTO_WORK="yes"
+fi
+
+cleanup() {
+  status=$?
+  if [ "$status" -eq 0 ] && [ -n "$AUTO_WORK" ] && [ -z "$KEEP" ]; then
+    rm -rf "$WORK"
+  elif [ -d "$WORK" ]; then
+    echo
+    echo "scratch kept at $WORK  ($(du -sh "$WORK" 2>/dev/null | cut -f1)) -- delete it when done."
+  fi
+}
+trap cleanup EXIT
 
 # The window ends YESTERDAY, not today. A window ending now includes the session running the
 # audit, which is then measuring itself while it is still being written. python3 rather than
@@ -92,7 +128,9 @@ fi
 
 STATS="$(find "$WORK/anchor" -name 'stats.json' -print -quit)"
 COPY="$WORK/anchor/checkout"
-OUT="$WORK/miraudit-comparison-$UNTIL.json"
+# Outside the scratch, so cleaning up cannot take the deliverable with it.
+mkdir -p "$OUTDIR"
+OUT="$(cd "$OUTDIR" && pwd)/miraudit-comparison-$UNTIL.json"
 
 echo
 echo "==> saturation counterfactual"
