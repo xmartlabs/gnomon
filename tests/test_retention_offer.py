@@ -84,8 +84,9 @@ class TestRetentionOfferSafety(unittest.TestCase):
             offer_retention_config(self.settings_path)
 
         self.assertIn(
-            "Claude Code history detected in the selected range.",
+            "We detected that you use Claude Code as an AI tool.",
             output.getvalue())
+        self.assertNotIn("selected range", output.getvalue())
         self.assertNotIn("Claude Code detected.", output.getvalue())
         self.assertIn(
             'Gnomon can optionally add "cleanupPeriodDays": 180 to',
@@ -335,6 +336,8 @@ class TestRetentionOfferWiring(unittest.TestCase):
         _, out = self._run_main([], isatty=True, stub_offer=False, answer="y")
         with open(self.settings_path, encoding="utf-8") as fh:
             self.assertEqual(json.load(fh), {"cleanupPeriodDays": 180})
+        self.assertIn("We detected that you use Claude Code as an AI tool.", out)
+        self.assertNotIn("selected range", out)
         self.assertIn("Set cleanupPeriodDays=180", out)
         self.assertIn('Undo: remove "cleanupPeriodDays"', out)
 

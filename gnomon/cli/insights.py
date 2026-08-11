@@ -111,8 +111,8 @@ def offer_retention_config(settings_path=None):
         return {"action": "skipped", "reason": "already_set"}
 
     print(
-        "\n  Claude Code history detected in the selected range. "
-        "Claude Code keeps transcript history for only 30 days by default.\n"
+        "\n  We detected that you use Claude Code as an AI tool.\n"
+        "  Claude Code keeps transcript history for only 30 days by default.\n"
         '  Gnomon can optionally add "cleanupPeriodDays": 180 to\n'
         "  ~/.claude/settings.json so Claude Code keeps your transcripts for 180 days.\n"
         "  This controls transcript retention only; it does not change Gnomon's scoring window.\n"
