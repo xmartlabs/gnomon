@@ -57,12 +57,27 @@ mkdir -p "$WORK" "$OUT"
 echo "==> copying the checkout (the original is never written to)"
 cp -R "$CHECKOUT" "$COPY"
 
+# Before the pipeline, not after: this takes a second and the pipeline takes minutes, and a
+# checkout whose predicates have moved makes every later number unsafe to read anyway.
+echo "==> probing the predicates the checks are built on"
+python3 "$HERE/contract-probe.py" --checkout "$COPY" --corpus "$CORPUS" \
+    --since "$SINCE" --until "$UNTIL" | tail -n +5
+
+echo
 echo "==> reproducing the published number: $SINCE -> $UNTIL"
 # NOT `python3 xl_ai_insights.py`: that is an import shim with no __main__ guard. It exits 0,
 # prints nothing, writes nothing, and looks exactly like success.
-uv run --project "$COPY" -- python -m gnomon.cli.insights \
+# `cd "$COPY"` is load-bearing, not tidiness. `uv run --project X -- python -m gnomon...`
+# does NOT import gnomon from X: python puts the CURRENT DIRECTORY on sys.path first, so the
+# module comes from whatever ./gnomon/ the caller happened to be standing in. Measured: from
+# a directory holding a v16 fork the pipeline scored 16:16:16 while --project pointed at a
+# v17 copy. Every earlier run of this script was launched from the directory that holds the
+# read-only clone, so it measured the CLONE and reported the right number by coincidence --
+# the isolation this whole file is built on was not real. Run in a subshell so the caller's
+# directory is untouched.
+(cd "$COPY" && uv run --project "$COPY" -- python -m gnomon.cli.insights \
     --local --console --no-open \
-    --since="$SINCE" --until="$UNTIL" --output-dir="$OUT"
+    --since="$SINCE" --until="$UNTIL" --output-dir="$OUT")
 
 STATS="$(find "$OUT" -name 'stats.json' -print -quit)"
 if [ -z "$STATS" ]; then

@@ -18,6 +18,16 @@ run does not reproduce it, the method is wrong before any finding is, and the ru
 Prints a corpus fingerprint first, because counts compared across machines mean nothing
 without one.
 
+It also probes the audited tool's predicates for *behaviour* before spending minutes on the
+pipeline. Checking that a symbol still exists is easy and catches the cheap failure; the
+expensive one is a definition that tightens while the name stays, after which every check
+keeps running and quietly stops meaning what its labels say. That happened here: a section
+reported scratchpad contamination for a long time after the tool began excluding scratchpad
+writes itself, and it was found by reading a diff, not by any run. `contract-probe.py`
+asserts eighteen behaviours and names the check that leans on each one. Every assertion was
+verified by breaking it: neutralize a predicate in a throwaway copy and exactly the lines
+that depend on it go red, no others.
+
 **Per-axis fidelity.** Takes each axis's declared signals, re-measures the underlying
 behaviour from the transcript corpus, and reports the gap and its direction: faithful,
 overestimates, or underestimates. Ground truth never comes from the tool's own aggregates.

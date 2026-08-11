@@ -36,6 +36,9 @@ is not evidence.
    it. A different commit with the same contract needs one look at the diff: if it misses
    scoring, taxonomy and the accumulator, say so and carry on. Invocation and traps live
    there too, because they expire and this file should not.
+   A matching contract is not enough on its own: `scripts/contract-probe.py` asserts that
+   the predicates still *behave* the same, which is the failure a version string cannot
+   express. `anchor.sh` runs it before the pipeline.
 2. Reproduce the published number on a **copy** of the checkout, over **the report's own
    window**. A window ending *now* drifts daily and includes the audit session itself.
 3. **If the base run does not reproduce it, stop.** The method is wrong before any finding.
@@ -116,6 +119,10 @@ but already sent goes to `reported`; what the audit itself cost you goes to
   `summary.json`, `narrative_input.md` and `profile.html` into the project directory. All
   five are gitignored there, so `git status` stays clean and the write is invisible. **Check
   with `ls`.** A rule you can follow in good faith and break anyway needs its case named.
+- **Assume you are running the copy because you pointed a flag at it.** `uv run --project`
+  supplies the environment, not the code: python takes the module from the working
+  directory. Runs of this skill measured the read-only clone for a long time and reported
+  the right number, because the clone is the pinned commit. `cd` into the copy.
 - **Ship a fixture without a control**, a case that must come out non-zero. Otherwise a
   zero may just be a broken fixture.
 - **Rewrite a predicate or a constant you could import.** Yours drifts from theirs, and then

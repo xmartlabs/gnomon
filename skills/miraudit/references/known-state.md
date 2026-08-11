@@ -24,8 +24,12 @@ notices the drift does this, in order:
    `scoring/`, `taxonomy.py` or `cli/accumulator.py`, record that and treat the pin as
    holding. Say which of the two you checked — a run once had to invent this rule because
    the file only said "if they differ".
-2. Re-run every fixture in `scripts/` against the new checkout. A fixture that dies on an
-   `ImportError` is doing its job: it depended on a symbol that no longer exists.
+2. **Run `scripts/contract-probe.py` first.** It asserts *behaviour*, not names: whether the
+   predicates the checks are built on still do the same thing. `require()` only catches a
+   symbol that vanished; the expensive failure is the one where the name survives and the
+   meaning moves, and every check keeps printing confident output past it. A red line names
+   the check that leans on it. Then re-run every fixture: one that dies on an `ImportError`
+   is doing its job, it depended on a symbol that no longer exists.
 3. For each entry below, decide one of three things and write it down: still true, now
    fixed (move it to "Confirmed and fixed" with how it was verified), or **obsolete because
    the axis it describes no longer exists**.
@@ -52,6 +56,19 @@ uv run --project <copy> -- python -m gnomon.cli.insights \
 
 `--output-dir` warns "unknown flag" and then honours it. That is an upstream quirk, not a
 sign the command is wrong.
+
+**`--project` does not decide which gnomon runs. The current directory does.** `uv run
+--project X -- python -m gnomon.cli.insights` lets python put the working directory on
+`sys.path` first, so the module comes from whatever `./gnomon/` you happen to be standing
+in, and `--project` only supplies the environment. Measured: launched from a directory
+holding a v16 fork, the pipeline scored `16:16:16` and AQ 91 while `--project` pointed at a
+v17 copy. `cd` into the copy first — `anchor.sh` now does, in a subshell.
+
+This is worse than a wrong number, because for a long time it produced the *right* one:
+every earlier run was launched from the directory that holds the read-only clone, so it
+measured the clone. The number matched because the clone is the pinned commit. The
+throwaway-copy isolation the method rests on was decorative, and nothing said so until the
+anchor was given a contract to check against.
 
 Pass the report's own boundaries. `--last=30d` is a valid flag — an earlier draft of this
 file was about to claim it had been removed — but it is a rolling window that ends now,
