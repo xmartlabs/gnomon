@@ -31,6 +31,11 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Pinned, not `main`. Two people cloning `main` a week apart can land on different scoring
 # contracts, and comparing across contracts is not a comparison: v17 removed three targets
 # outright, so signals the counterfactual cuts simply stop existing.
+#
+# SECOND HOME OF THE PIN. The other is references/known-state.md, and its refresh procedure
+# names this line for a reason: re-pinning the skill and forgetting this one does not fail
+# loudly. The runner's run succeeds, on the contract nobody uses any more, and the
+# comparison quietly stops being one. Keep them equal, and `--ref` overrides both.
 REF="c6401cc"
 REPO_URL="https://github.com/xmartlabs/gnomon.git"
 

@@ -40,7 +40,11 @@ notices the drift does this, in order:
    `measure-verification-corpus.py`. Deleting a *section* is the one that gets skipped,
    because the file still runs and still looks maintained: the scratchpad half of what is
    now `recovery-reality.py` outlived its subject that way.
-5. Update the pin and the date at the top.
+5. Update the pin and the date at the top — **and `REF` in `scripts/second-corpus.sh`**, which
+   is the second place the commit is written down. It is what a second-corpus runner clones,
+   so leaving it behind does not fail loudly: their run succeeds, on the old contract, and
+   the comparison quietly stops being one. Grep for the old hash before you finish and check
+   every hit is either history ("merged in X") or updated.
 
 ## Running the tool (Phase 0 operations)
 
