@@ -42,7 +42,7 @@ class TestCoverageComparisonGate(unittest.TestCase):
 
     def test_refresh_when_producible_strictly_exceeds_stored(self):
         history = _history([
-            {"monthKey": "2025-12", "uploadedAt": 1,
+            {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": "8:8:8",
              "coverage": {"flag": "insufficient", "indexed": 50, "transcripts": 0}},
         ])
         result = plan_upload(
@@ -53,7 +53,7 @@ class TestCoverageComparisonGate(unittest.TestCase):
 
     def test_no_refresh_when_producible_equal_to_stored(self):
         history = _history([
-            {"monthKey": "2025-12", "uploadedAt": 1,
+            {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": "8:8:8",
              "coverage": {"flag": "complete", "indexed": 50, "transcripts": 50}},
         ])
         result = plan_upload(
@@ -66,7 +66,7 @@ class TestCoverageComparisonGate(unittest.TestCase):
         """Mirdash preserves the newest timestamp/contract but aggregates the
         guard-protected complete coverage from an older surviving duplicate."""
         history = _history([
-            {"monthKey": "2025-12", "uploadedAt": 2, "scoreContractId": "new-contract",
+            {"monthKey": "2025-12", "uploadedAt": 2, "scoreContractId": "8:8:8",
              "coverage": {"flag": "complete", "indexed": 50, "transcripts": 50}},
         ])
 
@@ -79,7 +79,7 @@ class TestCoverageComparisonGate(unittest.TestCase):
 
     def test_no_refresh_when_producible_worse_than_stored(self):
         history = _history([
-            {"monthKey": "2025-12", "uploadedAt": 1,
+            {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": "8:8:8",
              "coverage": {"flag": "complete", "indexed": 50, "transcripts": 50}},
         ])
         result = plan_upload(
@@ -90,7 +90,7 @@ class TestCoverageComparisonGate(unittest.TestCase):
 
     def test_unknown_producible_coverage_skips_scoring_no_refresh(self):
         history = _history([
-            {"monthKey": "2025-12", "uploadedAt": 1,
+            {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": "8:8:8",
              "coverage": {"flag": "insufficient", "indexed": 50, "transcripts": 0}},
         ])
         result = plan_upload(
@@ -114,11 +114,98 @@ class TestCoverageComparisonGate(unittest.TestCase):
 
     def test_no_producible_coverage_fn_supplied_is_the_safe_no_refresh_default(self):
         history = _history([
-            {"monthKey": "2025-12", "uploadedAt": 1,
+            {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": "8:8:8",
              "coverage": {"flag": "insufficient", "indexed": 50, "transcripts": 0}},
         ])
         result = plan_upload(TODAY, history, active_contract="8:8:8")
         self.assertEqual(result, [("2026-01", "current")])
+
+
+class TestContractUpgrade(unittest.TestCase):
+    @staticmethod
+    def _producible(rank_label, transcripts=50):
+        rank = COVERAGE_RANK.get(rank_label)
+        return lambda month_key: (rank, transcripts)
+
+    def test_different_contract_with_local_data_schedules_contract_upgrade(self):
+        history = _history([
+            {"monthKey": "2025-12", "uploadedAt": 1,
+             "scoreContractId": "8:8:8",
+             "coverage": {"flag": "insufficient", "indexed": 50, "transcripts": 0}},
+        ])
+
+        result = plan_upload(
+            TODAY, history, active_contract="9:9:9",
+            producible_coverage_for=self._producible("complete"),
+        )
+
+        self.assertEqual(result, [("2025-12", "contract-upgrade"), ("2026-01", "current")])
+
+    def test_missing_or_null_contract_with_local_data_schedules_contract_upgrade(self):
+        for previous_entry in (
+            {"monthKey": "2025-12", "uploadedAt": 1,
+             "coverage": {"flag": "insufficient", "indexed": 50, "transcripts": 0}},
+            {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": None,
+             "coverage": {"flag": "insufficient", "indexed": 50, "transcripts": 0}},
+        ):
+            with self.subTest(previous_entry=previous_entry):
+                result = plan_upload(
+                    TODAY, _history([previous_entry]), active_contract="9:9:9",
+                    producible_coverage_for=self._producible("complete"),
+                )
+
+                self.assertEqual(
+                    result,
+                    [("2025-12", "contract-upgrade"), ("2026-01", "current")],
+                )
+
+    def test_different_contract_without_producible_function_only_uploads_current(self):
+        history = _history([
+            {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": "8:8:8"},
+        ])
+
+        result = plan_upload(TODAY, history, active_contract="9:9:9")
+
+        self.assertEqual(result, [("2026-01", "current")])
+
+    def test_different_contract_with_unknown_local_coverage_only_uploads_current(self):
+        history = _history([
+            {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": "8:8:8",
+             "coverage": {"flag": "insufficient", "indexed": 50, "transcripts": 0}},
+        ])
+
+        result = plan_upload(
+            TODAY, history, active_contract="9:9:9",
+            producible_coverage_for=lambda month_key: (None, 0),
+        )
+
+        self.assertEqual(result, [("2026-01", "current")])
+
+    def test_same_contract_uses_existing_coverage_comparison(self):
+        history = _history([
+            {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": "9:9:9",
+             "coverage": {"flag": "insufficient", "indexed": 50, "transcripts": 0}},
+        ])
+
+        result = plan_upload(
+            TODAY, history, active_contract="9:9:9",
+            producible_coverage_for=self._producible("complete"),
+        )
+
+        self.assertEqual(result, [("2025-12", "refresh"), ("2026-01", "current")])
+
+    def test_contract_upgrade_takes_precedence_over_coverage_refresh(self):
+        history = _history([
+            {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": "8:8:8",
+             "coverage": {"flag": "partial", "indexed": 50, "transcripts": 20}},
+        ])
+
+        result = plan_upload(
+            TODAY, history, active_contract="9:9:9",
+            producible_coverage_for=self._producible("complete"),
+        )
+
+        self.assertEqual(result, [("2025-12", "contract-upgrade"), ("2026-01", "current")])
 
 
 class TestLegacyCoverageIncomparable(unittest.TestCase):
@@ -131,7 +218,8 @@ class TestLegacyCoverageIncomparable(unittest.TestCase):
 
     def test_more_local_transcripts_still_skips_refresh(self):
         history = _history([
-            {"monthKey": "2025-12", "uploadedAt": 1, "totalSessions": 100},
+            {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": "8:8:8",
+             "totalSessions": 100},
         ])
         result = plan_upload(
             TODAY, history, active_contract="8:8:8",
@@ -141,7 +229,8 @@ class TestLegacyCoverageIncomparable(unittest.TestCase):
 
     def test_equal_transcripts_skips_refresh(self):
         history = _history([
-            {"monthKey": "2025-12", "uploadedAt": 1, "totalSessions": 200},
+            {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": "8:8:8",
+             "totalSessions": 200},
         ])
         result = plan_upload(
             TODAY, history, active_contract="8:8:8",
@@ -151,7 +240,8 @@ class TestLegacyCoverageIncomparable(unittest.TestCase):
 
     def test_fewer_local_transcripts_skips_refresh(self):
         history = _history([
-            {"monthKey": "2025-12", "uploadedAt": 1, "totalSessions": 300},
+            {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": "8:8:8",
+             "totalSessions": 300},
         ])
         result = plan_upload(
             TODAY, history, active_contract="8:8:8",
@@ -162,7 +252,7 @@ class TestLegacyCoverageIncomparable(unittest.TestCase):
     def test_no_total_sessions_and_producible_skips_refresh(self):
         """Legacy row without totalSessions is incomparable — skip refresh."""
         history = _history([
-            {"monthKey": "2025-12", "uploadedAt": 1},
+            {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": "8:8:8"},
         ])
         result = plan_upload(
             TODAY, history, active_contract="8:8:8",
@@ -173,7 +263,7 @@ class TestLegacyCoverageIncomparable(unittest.TestCase):
     def test_no_total_sessions_zero_producible_skips_refresh(self):
         """Legacy row without totalSessions and zero local data — no refresh."""
         history = _history([
-            {"monthKey": "2025-12", "uploadedAt": 1},
+            {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": "8:8:8"},
         ])
         result = plan_upload(
             TODAY, history, active_contract="8:8:8",

@@ -169,6 +169,7 @@ _REASON_LABELS = {
     "current": "current month",
     "gap":     "missing on server",
     "refresh": "refresh (server snapshot predates month end)",
+    "contract-upgrade": "contract-upgrade",
     "backfill": "backfill",
 }
 

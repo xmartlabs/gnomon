@@ -530,20 +530,23 @@ def plan_upload(
     force:         bool — when True, behave as if server were empty (full backfill).
     max_months:    hard cap; never return more than this many anchors.
     producible_coverage_for: optional `month_key -> (rank, transcripts)` callable
-                   (see gnomon.coverage.COVERAGE_RANK) used ONLY to decide whether
+                   (see gnomon.coverage.COVERAGE_RANK) used to detect locally
+                   producible data for a contract upgrade and to decide whether
                    the previous month is worth a coverage-gated refresh. The
                    transcript value is a local estimate and is used to derive the
                    rank, but is not compared numerically with the server value:
                    the local pre-check counts files by mtime while the server
                    stores unique transcript sessions. Omitting it (the default)
-                   is the SAFE choice: no refresh is ever triggered, so a caller
-                   that has not wired a real cheap pre-check
+                   is the SAFE choice: no previous-month reprocessing is triggered,
+                   so a caller that has not wired a real cheap pre-check
                    (gnomon.coverage.probe_month over discover_sources) never
-                   spends an upload on a refresh it cannot justify.
+                   spends an upload on a decision it cannot justify.
 
-    reason ∈ {'force', 'initial', 'current', 'gap', 'refresh'}
+    reason ∈ {'force', 'initial', 'current', 'gap', 'refresh', 'contract-upgrade'}
       explicit valid history:
         previous entry missing                        → gap, then current
+        contract differs and producible rank is known → contract-upgrade, then current
+          (takes precedence over coverage comparison)
         previous or producible coverage rank is None   → current only (incomparable; no refresh)
         producible rank > stored rank                   → refresh, then current
         equal ranks                                     → current only
@@ -551,11 +554,13 @@ def plan_upload(
       unavailable/legacy/malformed/valid-empty → current only
       force=True → full explicit backfill
 
-    `contract-bridge` (scoreContractId-based comparison) is REMOVED: coverage
-    is the only comparison basis for whether the previous month is worth
-    re-scoring (see design.md decision B; a coverage-gated refresh is safe
-    across a contract change too, since the anti-degradation guard on the
-    server never lets a worse payload replace a better stored row).
+    `contract-bridge` (scoreContractId-based replacement comparison) remains
+    REMOVED: `contract-upgrade` is a related but distinct detection path that
+    only applies when a contract mismatch has locally producible coverage;
+    coverage remains the comparison basis otherwise (see design.md decision B).
+    A coverage-gated refresh is safe across a contract change too, since the
+    anti-degradation guard on the server never lets a worse payload replace a
+    better stored row.
     Legacy list compatibility:
       force=True                      → each anchor gets reason 'force'
       server empty (no valid entries) → each anchor gets reason 'initial'
@@ -590,9 +595,14 @@ def plan_upload(
         if previous_entry is None:
             return [(previous, "gap"), (current, "current")]
 
-        stored_rank, _ = _stored_coverage_rank_and_transcripts(previous_entry)
+        prev_contract = previous_entry.get("scoreContractId")
         producible = producible_coverage_for(previous) if producible_coverage_for else (None, 0)
         producible_rank, _ = producible if producible else (None, 0)
+        if prev_contract != active_contract and producible_coverage_for:
+            if producible_rank is not None:
+                return [(previous, "contract-upgrade"), (current, "current")]
+
+        stored_rank, _ = _stored_coverage_rank_and_transcripts(previous_entry)
 
         if stored_rank is not None and producible_rank is not None:
             if producible_rank > stored_rank:
