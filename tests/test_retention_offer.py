@@ -86,6 +86,10 @@ class TestRetentionOfferSafety(unittest.TestCase):
         self.assertIn(
             "We detected that you use Claude Code as an AI tool.",
             output.getvalue())
+        self.assertIn(
+            "Gnomon uses Claude Code transcripts to calculate your AI usage. "
+            "By default, it can only use Claude Code's last 30 days of transcript history.",
+            output.getvalue())
         self.assertNotIn("selected range", output.getvalue())
         self.assertNotIn("Claude Code detected.", output.getvalue())
         self.assertIn(
