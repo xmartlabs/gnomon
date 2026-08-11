@@ -49,26 +49,45 @@ nothing, writes nothing, and looks like success. Use the module entry point on t
 throwaway copy instead:
 
 ```bash
-uv run --project <copy> -- python -m gnomon.cli.insights \
+uv run --project <copy> xl-ai-insights \
     --local --console --no-open \
     --since=YYYY-MM-DD --until=YYYY-MM-DD --output-dir=<dir>
 ```
 
+**Use the console script, not `python -m gnomon.cli.insights`.** Both reach the same
+`main()` with the same `argv` — `pyproject.toml` maps the script to
+`gnomon.cli.insights:main` and the module's `__main__` block calls it too — but `-m` puts
+the working directory on `sys.path` first, so it imports whatever `./gnomon/` you are
+standing in. See the trap below. `--help` does not list `--since`/`--until`; they are
+documented in `sources/discovery.py` and parsed from the same `argv`, verified by running
+both forms over the same window and getting identical fingerprints.
+
 `--output-dir` warns "unknown flag" and then honours it. That is an upstream quirk, not a
 sign the command is wrong.
 
-**`--project` does not decide which gnomon runs. The current directory does.** `uv run
---project X -- python -m gnomon.cli.insights` lets python put the working directory on
-`sys.path` first, so the module comes from whatever `./gnomon/` you happen to be standing
-in, and `--project` only supplies the environment. Measured: launched from a directory
-holding a v16 fork, the pipeline scored `16:16:16` and AQ 91 while `--project` pointed at a
-v17 copy. `cd` into the copy first — `anchor.sh` now does, in a subshell.
+**`--project` does not decide which gnomon runs. With `-m`, the current directory does.**
+`uv run --project X -- python -m gnomon.cli.insights` lets python put the working directory
+on `sys.path` first, so the module comes from whatever `./gnomon/` you happen to be standing
+in; `--project` only supplies the environment. Measured: launched from a directory holding a
+v16 fork, the pipeline scored `16:16:16` and AQ 91 while `--project` pointed at a v17 copy.
 
 This is worse than a wrong number, because for a long time it produced the *right* one:
 every earlier run was launched from the directory that holds the read-only clone, so it
 measured the clone. The number matched because the clone is the pinned commit. The
 throwaway-copy isolation the method rests on was decorative, and nothing said so until the
-anchor was given a contract to check against.
+anchor was given a published number and a contract to check against.
+
+The fix is the invocation, not a habit. A console script is a **file**, so `sys.path` starts
+at its own directory and the caller's location cannot shadow the package. Verified with the
+`cd` removed, launched from that same v16 directory: `xl-ai-insights` reads 92 and
+`17:17:17` where `-m` read 91 and `16:16:16`. `anchor.sh` also `cd`s into the copy, which is
+now redundant and kept as insurance against anyone restoring the `-m` form.
+
+Worth naming the path that led here: this file used to say *"`python3 xl_ai_insights.py` is
+an import shim with no `__main__` guard, use the module entry point instead"*, which is
+true. The lesson taken from it was "run the module, not the file", and the correct answer
+was the packaged console script the whole time. A rule learned from one silent failure
+walked straight into another.
 
 Pass the report's own boundaries. `--last=30d` is a valid flag — an earlier draft of this
 file was about to claim it had been removed — but it is a rolling window that ends now,

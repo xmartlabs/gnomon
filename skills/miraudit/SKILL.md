@@ -120,9 +120,10 @@ but already sent goes to `reported`; what the audit itself cost you goes to
   five are gitignored there, so `git status` stays clean and the write is invisible. **Check
   with `ls`.** A rule you can follow in good faith and break anyway needs its case named.
 - **Assume you are running the copy because you pointed a flag at it.** `uv run --project`
-  supplies the environment, not the code: python takes the module from the working
-  directory. Runs of this skill measured the read-only clone for a long time and reported
-  the right number, because the clone is the pinned commit. `cd` into the copy.
+  supplies the environment, not the code: with `python -m`, the module comes from the
+  working directory. Runs of this skill measured the read-only clone for a long time and
+  reported the right number, because the clone is the pinned commit. Use the packaged
+  console script, which cannot be shadowed that way.
 - **Ship a fixture without a control**, a case that must come out non-zero. Otherwise a
   zero may just be a broken fixture.
 - **Rewrite a predicate or a constant you could import.** Yours drifts from theirs, and then

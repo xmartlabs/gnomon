@@ -67,15 +67,23 @@ echo
 echo "==> reproducing the published number: $SINCE -> $UNTIL"
 # NOT `python3 xl_ai_insights.py`: that is an import shim with no __main__ guard. It exits 0,
 # prints nothing, writes nothing, and looks exactly like success.
-# `cd "$COPY"` is load-bearing, not tidiness. `uv run --project X -- python -m gnomon...`
-# does NOT import gnomon from X: python puts the CURRENT DIRECTORY on sys.path first, so the
-# module comes from whatever ./gnomon/ the caller happened to be standing in. Measured: from
-# a directory holding a v16 fork the pipeline scored 16:16:16 while --project pointed at a
-# v17 copy. Every earlier run of this script was launched from the directory that holds the
-# read-only clone, so it measured the CLONE and reported the right number by coincidence --
-# the isolation this whole file is built on was not real. Run in a subshell so the caller's
-# directory is untouched.
-(cd "$COPY" && uv run --project "$COPY" -- python -m gnomon.cli.insights \
+# `xl-ai-insights`, the packaged console script -- NOT `python -m gnomon.cli.insights`.
+# `-m` puts the CURRENT DIRECTORY on sys.path first, so it imports whatever ./gnomon/ the
+# caller happened to be standing in and `--project` only supplies the environment. Measured:
+# from a directory holding a v16 fork the pipeline scored 16:16:16 while --project pointed at
+# a v17 copy. Every earlier run of this script was launched from the directory that holds the
+# read-only clone, so it measured the CLONE and reported the right number by coincidence.
+#
+# A console script is a FILE, so sys.path starts at its own directory and the caller's
+# location cannot shadow the package. Same entry point either way -- pyproject maps it to
+# gnomon.cli.insights:main and the module's __main__ block calls the same main() with the
+# same argv -- so --since/--until behave identically, though `--help` documents them in
+# discovery.py rather than in its own usage block.
+#
+# The `cd` is belt and braces: redundant with the console script, and cheap insurance
+# against anyone restoring the `-m` form. In a subshell, so the caller's directory is
+# untouched.
+(cd "$COPY" && uv run --project "$COPY" xl-ai-insights \
     --local --console --no-open \
     --since="$SINCE" --until="$UNTIL" --output-dir="$OUT")
 
