@@ -111,9 +111,12 @@ def offer_retention_config(settings_path=None):
         return {"action": "skipped", "reason": "already_set"}
 
     print(
-        "\n  Claude Code detected. Claude Code keeps transcript history for only 30 days by default.\n"
+        "\n  We detected that you use Claude Code as an AI tool.\n"
+        "  Gnomon uses Claude Code transcripts to calculate your AI usage. "
+        "By default, it can only use Claude Code's last 30 days of transcript history.\n"
         '  Gnomon can optionally add "cleanupPeriodDays": 180 to\n'
         "  ~/.claude/settings.json so Claude Code keeps your transcripts for 180 days.\n"
+        "  This controls transcript retention only; it does not change Gnomon's scoring window.\n"
         "\n  Press y to add this setting automatically.\n"
         "  Press n or Enter to leave your settings unchanged. [y/N] "
     )
@@ -148,7 +151,7 @@ def offer_retention_config(settings_path=None):
             "backup_path": backup_path}
 
 
-def _maybe_offer_retention(dry_run, quiet):
+def _maybe_offer_retention(dry_run, quiet, argv=None, default_window=None):
     """Offer the retention config on a real, talkative run (design decision F).
 
     A 30-day `cleanupPeriodDays` silently truncates the transcript history every
@@ -156,9 +159,14 @@ def _maybe_offer_retention(dry_run, quiet):
     appropriate. `--dry-run` promises zero side effects, and `--quiet` promises only
     errors and the report URL, while the offer prints a prompt and an undo hint.
     `offer_retention_config()` owns the tty and already-set guards, so this decides
-    the flag policy only, and both call sites (upload and `--local`) share it.
+    the flag policy and history eligibility only, and both call sites (upload and
+    `--local`) share it.
     """
     if dry_run or quiet:
+        return
+    from gnomon.cli.local import _claude_history_preflight
+
+    if not _claude_history_preflight(argv or [], default_window=default_window):
         return
     offer_retention_config()
 
@@ -670,7 +678,7 @@ def main(argv=None):
         if "--summary" not in local_argv:
             local_argv.append("--summary")
         output_dir = _resolve_output_dir(argv)
-        _maybe_offer_retention(dry_run, quiet)
+        _maybe_offer_retention(dry_run, quiet, local_argv)
         local_main(argv=local_argv, output_dir=output_dir)
         return
 
@@ -726,7 +734,14 @@ def main(argv=None):
     if mirdash_base == _DEFAULT_MIRDASH_BASE:
         _enforce_cli_freshness(allow_stale=allow_stale_cli)
 
-    _maybe_offer_retention(dry_run, quiet)
+    today = datetime.date.today()
+    current_window = month_windows(token_count, today, window_months=window_months)[-1]
+    current_window = tuple(
+        datetime.datetime.fromisoformat(bound).astimezone()
+        for bound in current_window[:2]
+    )
+    _maybe_offer_retention(
+        dry_run, quiet, argv, default_window=current_window)
 
     if console:
         _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,

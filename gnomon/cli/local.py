@@ -193,6 +193,53 @@ def _filter_low_volume_sources(sources, since_dt, until_dt, cursor_twins,
     return [entry for entry in sources if entry[0] in eligible]
 
 
+def _claude_history_preflight(argv, default_window=None):
+    """Return whether admitted Claude history exists for the requested window.
+
+    This deliberately uses the same source discovery and admission helpers as the
+    local scorer.  It is only a preflight for the parent retention offer: the real
+    local/upload analysis still performs its normal discovery and accumulation.
+    """
+    selected = [a.lower() for a in argv if not a.startswith("-")] or list(ALL_SOURCES)
+    if "claude" not in selected:
+        return False
+
+    include_low_volume = "--include-low-volume" in argv
+    since_dt, until_dt = parse_window(argv)
+    if since_dt is None and until_dt is None and default_window is not None:
+        since_dt, until_dt = default_window
+
+    import gnomon.config as _cfg
+    import gnomon.sources.discovery as _disc
+
+    previous_discovery_base = _disc.BASE
+    previous_config_base = _cfg.BASE
+    try:
+        for arg in argv:
+            match = re.match(r"--([a-z]+(?:-[a-z]+)*)-dir=(.+)$", arg)
+            if not match or match.group(1) != "claude":
+                continue
+            gname, inner = _DIR_FLAGS["claude"]
+            resolved = _resolve_source_dir(match.group(2), inner)
+            setattr(_disc, gname, resolved)
+            if gname == "BASE":
+                setattr(_cfg, "BASE", resolved)
+
+        sources = discover_sources(selected)
+    except Exception:
+        return False
+    finally:
+        _disc.BASE = previous_discovery_base
+        _cfg.BASE = previous_config_base
+
+    sources, cursor_twins = _cursor_dedup(sources)
+    claude_sources = [entry for entry in sources if entry[0] == "claude"]
+    admitted = _filter_low_volume_sources(
+        claude_sources, since_dt, until_dt, cursor_twins,
+        include_low_volume=include_low_volume)
+    return bool(admitted)
+
+
 def tools_diagnostic(stats):
     """Return (table_lines, json_record) reporting per-TOOL-CALL tool usage. The % column
     matches AQ's scoring because it uses AQ's own denominator and targets: rate metrics score
