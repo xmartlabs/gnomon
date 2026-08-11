@@ -31,7 +31,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import parse, header, load_stats, require, find_all  # noqa: E402
 
-args, WINDOW = parse(__doc__.strip().splitlines()[0])
+args, WINDOW = parse(__doc__.strip().splitlines()[0],
+                     {"--emit": {"metavar": "PATH", "default": None,
+                                 "help": "also write the result as JSON, for a caller that "
+                                         "needs the numbers rather than the reading"}})
 
 # Every threshold is imported. Restating one here would make this check disagree with the
 # tool it is auditing the moment anyone recalibrates, which is the mistake it exists to find.
@@ -342,5 +345,27 @@ print("  one corpus cannot tell 'the axis saturates' from 'this person clears ev
 # Two ways this run's headline is not trustworthy, and both were prose-only until now: a
 # control that did not move, and a bisection that could not recover a threshold it could
 # have read. Anyone running the checks in a batch reads exit codes, not paragraphs.
+# A machine-readable copy of what the prose above says, for callers that need the result
+# rather than the reading. Parsing the printed tables would be the `truncated-evidence`
+# mistake with extra steps: a display exists to be read by people and reshapes data on the
+# way. Written before the exit below so a broken arm still leaves its evidence behind.
+if args.emit:
+    import json
+    with open(os.path.expanduser(args.emit), "w") as _fh:
+        json.dump({
+            "base_aq": base_aq,
+            "at_threshold_aq": at_target,
+            "delta": at_target - base_aq,
+            "signals_cut": [{"signal": k, "you_did": w, "same_score_at": n}
+                            for k, w, n in changed],
+            "examined": examined,
+            "looked_for_not_found": absent,
+            "not_cuttable": [s for s, _a, _w in NOT_CUTTABLE],
+            "controls": {f"{int(f * 100)}pct": arm(f)[0] for f in (0.50, 0.25)},
+            "controls_moved": ok,
+            "method_check_passed": _method_ok,
+        }, _fh, indent=2)
+    print(f"\n  wrote {args.emit}")
+
 if not ok or not _method_ok:
     raise SystemExit(1)
