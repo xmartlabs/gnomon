@@ -26,6 +26,7 @@ from gnomon.upload.mirdash import (
     months_to_upload,
     month_windows,
 )
+from gnomon.scoring.versioning import SCORE_CONTRACT_ID
 
 
 # ---------------------------------------------------------------------------
@@ -331,15 +332,15 @@ class TestMainConsoleDryRun(unittest.TestCase):
         self.assertEqual(code, 0)
 
     def test_coverage_gated_refresh_dry_run_reports_only_previous_and_current(self):
-        """contract-bridge is REMOVED: the previous month is only re-planned
-        when its STORED coverage is worse than what is producible now (design
-        decision B), never merely because scoreContractId differs."""
+        """The previous month is re-planned when its stored coverage is worse
+        than what is producible now (design decision B)."""
         history = {
             "state": "valid",
             "months": [
                 {
                     "monthKey": "2025-06",
                     "uploadedAt": 1,
+                    "scoreContractId": SCORE_CONTRACT_ID,
                     "coverage": {"flag": "insufficient", "indexed": 50, "transcripts": 0},
                 }
             ],
@@ -361,11 +362,13 @@ class TestMainConsoleDryRun(unittest.TestCase):
                 {
                     "monthKey": "2025-06",
                     "uploadedAt": 1,
+                    "scoreContractId": SCORE_CONTRACT_ID,
                     "coverage": {"flag": "complete", "indexed": 24, "transcripts": 733},
                 },
                 {
                     "monthKey": "2025-07",
                     "uploadedAt": 2,
+                    "scoreContractId": SCORE_CONTRACT_ID,
                     "coverage": {"flag": "complete", "indexed": 3, "transcripts": 193},
                 },
             ],
@@ -378,12 +381,10 @@ class TestMainConsoleDryRun(unittest.TestCase):
         mock_upload.assert_not_called()
         self.assertEqual(code, 0)
 
-    def test_contract_mismatch_alone_never_triggers_a_bridge(self):
-        """A pure scoreContractId mismatch with no coverage data at all must
-        plan current-only -- contract is no longer a comparison basis.
-        The mock producible_coverage_for returns (2, 999), but the legacy
-        row has no comparable coverage, so the planner must not use either
-        transcript count or scoreContractId to trigger a refresh."""
+    def test_contract_mismatch_with_producible_data_triggers_contract_upgrade(self):
+        """A scoreContractId mismatch with producible local data triggers
+        contract-upgrade so both months are scored under the same contract,
+        enabling meaningful Most Improved comparisons."""
         history = {
             "state": "valid",
             "months": [
@@ -396,9 +397,9 @@ class TestMainConsoleDryRun(unittest.TestCase):
             ],
         }
         out, mock_paxel, mock_upload, _, code = self._run_dry_run_console(uploaded=history)
-        self.assertIn("1 month(s)", out)
+        self.assertIn("2 month(s)", out)
+        self.assertIn("2025-06  contract-upgrade", out)
         self.assertIn("2025-07  current month", out)
-        self.assertNotIn("2025-06", out)
         mock_paxel.assert_not_called()
         mock_upload.assert_not_called()
         self.assertEqual(code, 0)
