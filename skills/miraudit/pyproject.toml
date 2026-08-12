@@ -29,3 +29,12 @@ packages = ["miraudit_cli"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "scripts" = "miraudit_cli/scripts"
+# references/ is not documentation as far as the PACKAGE is concerned. known-state.md holds
+# the ```pin block, pin-consistency.py reads it to answer `--field ref`, and that is how
+# second-corpus.sh learns which commit to clone. Shipping only scripts/ produced a package
+# whose entry point died on its first line with a FileNotFoundError, while the clone path
+# kept working the whole time because there the file is simply next door.
+#
+# The general rule this is an instance of: anything a script OPENS is package data, not
+# prose, however much it reads like prose to a person.
+"references" = "miraudit_cli/references"
