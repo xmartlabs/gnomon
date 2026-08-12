@@ -34,6 +34,29 @@ Its before is Tool command 21.0/28 with `clis` 28, Token economy 50.0/50 with `c
 The open question is unchanged either way: nobody has measured a corpus where PowerShell is
 the primary shell, and `#75` is still an argument from the formula rather than from data.
 
+**The after arrived, and the rule fired as written.** Same person, same window, `03b87a0` /
+`18:18:18`. Tool command **21.0 to 21.4**, `clis` **28 to 29**: PowerShell surfaced exactly
+one CLI head that was not being counted. Token economy and Grounding did not move, both
+already at their ceiling, which is the row that says they could not.
+
+Two other axes moved and **neither is the fix**, which is only visible because all eleven
+were compared rather than the three the rule names. The corpus is not identical between the
+runs: same window, but 125 sessions against 122 and 27,527 tool calls against 27,423, three
+sessions having aged out of a rolling retention window between one run and the next.
+
+| axis | move | what its own signals say |
+|---|---|---|
+| Tool command | +0.4 | `clis` rose while `tool_calls` fell. A shrinking corpus cannot add a distinct CLI, so the direction rules the corpus out |
+| Verification | +0.3 | `test_covered_change_sessions` held at 51 while `eligible_change_sessions` fell 60 to 59. 51/60 = 0.8500 and 51/59 = 0.8644, reproducing both published values. The denominator moved, not the work |
+| Recovery | −0.1 | `api_retries` 130 to 129 |
+
+Verification not being the fix is also what upstream said to expect: `bash_runs_tests`,
+`bash_writes_file` and `bash_runs_knowledge` parse bash syntax, so Verification coverage
+stays Bash-only until there are PowerShell-aware predicates, and a test pins that limit.
+
+So the honest headline is **+0.4 of 28 on one axis for a Bash-primary Windows developer**,
+and that bounds the common Windows case rather than answering the question upstream asked.
+
 ### 1. `aq-is-mostly-ceiling` — read `saturation.delta` and `saturation.signals_cut`
 
 | What B's at-threshold arm does | What it means | What happens to the finding |
@@ -135,6 +158,10 @@ Conditions for B to count at all:
 | ... without thinking | 0,219 | 0,193 | 0,722 | 0,624 | 0,505 |
 | `thinking_share` | 0,806 | 0,802 | 0,708 | **0,590** | 0,656 |
 | AQ | 92 | 82 | 93 | 87 | **95** |
+
+**E was re-run on 2026-08-12** at `03b87a0` / `18:18:18`, same person and same window, once
+PowerShell began scoring as a shell. It is not a sixth corpus and gets no column here: rule 0
+above holds the before/after and what each moving axis turned out to be.
 
 **D is the one that was worth waiting for.** A different role, the smallest corpus of the
 four, and the only one where **Context Intelligence is missing from the payload entirely** —
