@@ -186,9 +186,46 @@ renormalized = [a for a in scored
                 and a["weight"] != a["base_weight"]]
 if not dropped and not renormalized:
     print("  none")
+def disclosed_elsewhere(name, blob):
+    """Where, if anywhere, the payload still mentions an axis it did not score.
+
+    'ABSENT from the payload' is what this line used to say, and it sent a cold run
+    hunting for a missing key that was right there: Steering leverage is withheld
+    upstream and the payload carries both `agentic.steering_leverage` and the pillar's
+    `not_applicable` list. It was absent from the SCORED AXES, which is a different
+    claim and the one worth making -- the interesting question is whether anything a
+    person reads says so.
+    """
+    needle = name.lower().replace(" ", "_")
+    hits = []
+
+    def walk(o, path):
+        if len(hits) >= 3:
+            return
+        if isinstance(o, dict):
+            for k, v in o.items():
+                if needle in k.lower():
+                    hits.append(f"{path}/{k}")
+                walk(v, f"{path}/{k}")
+        elif isinstance(o, list):
+            for i, v in enumerate(o):
+                if isinstance(v, str) and v.lower() == name.lower():
+                    hits.append(f"{path}[{i}]")
+                walk(v, f"{path}[{i}]")
+
+    walk(blob, "")
+    return hits
+
+
 for n in sorted(dropped):
-    print(f"  {n:28} {declared[n]:>4}  in aq.py, ABSENT from the payload."
+    where = disclosed_elsewhere(n, stats)
+    print(f"  {n:28} {declared[n]:>4}  in aq.py, not among the SCORED AXES."
           " Its weight went somewhere.")
+    if where:
+        print(f"  {'':28}       the payload does disclose it at {', '.join(where)} —"
+              " so the question is whether report.md or profile.html says anything.")
+    else:
+        print(f"  {'':28}       and nothing in the payload mentions it at all.")
 for a in renormalized:
     print(f"  {a['name']:28} {a['base_weight']:>4}  carries {a['weight']} after"
           " renormalization: it is absorbing a dropped sibling's weight.")

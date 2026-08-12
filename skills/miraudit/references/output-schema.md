@@ -102,8 +102,19 @@ reported as a point estimate is a specific, repeatable mistake: the −5.03 is a
 because it removes every forced call, and 90.2% is a lower bound because switching approach
 is also recovery.
 
-**`confidence`** — `fact` or `hypothesis`. Anything that could vary with the corpus, the
-version, or the reader's usage is a hypothesis. Facts are things this run measured.
+**`confidence`** — `fact` or `hypothesis`, and nothing else. Anything that could vary with
+the corpus, the version, or the reader's usage is a hypothesis. Facts are things this run
+measured. A run challenged on a finding once wrote a sentence here — "fact for the mechanism
+in the fixture; hypothesis for whether it fires on any real corpus" — which reads as
+precision and is a hedge: the finding had failed a Phase 3 row and belonged in `dismissed`.
+`emit-gate.py` rejects anything outside the two words.
+
+**`refuted`** — mandatory on every finding, one entry per Phase 3 row, each
+`{"verdict": "pass" | "fail" | "n/a", "note": "the fact behind the verdict"}`. A `fail`
+means the finding did not survive, and `emit-gate.py` rejects the file rather than letting
+it render: what did not survive goes to `dismissed`. A verdict without a note is rejected
+too — it is the same unchecked claim in a smaller box. The gate cannot judge whether a note
+is honest; it insists the row was answered, which is where the failure actually happened.
 
 **`evidence.control`** — mandatory for any finding backed by a synthetic fixture. Name the
 case that must come out non-zero and show that it did. Without it, a zero may be a broken

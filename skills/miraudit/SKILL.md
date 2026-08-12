@@ -124,11 +124,21 @@ claim. Quote the narrow one.
 Survivors become findings. The rest go to `dismissed` with the fact that killed them, so
 nobody reopens them. Worked examples: `references/refutation.md`.
 
+**This table is data, not prose.** Every finding carries a `refuted` block with one entry
+per row and a verdict in `pass` / `fail` / `n/a`, and `scripts/emit-gate.py` refuses the
+file if a row is unanswered or if any row is `fail` — a `fail` means it did not survive,
+and what did not survive is not a finding. The rows were prose until a cold run, with this
+file open, promoted a candidate whose own evidence said the fixture was the whole result.
+Nothing chirped; a person asking "is that verified?" caught it. That is the check that must
+not depend on someone remembering.
+
 ## Phase 4 — Emit
 
-Write `miraudit-<date>.json`, then render `miraudit-<date>.md` **from it**. Two
-hand-written sources drift, and a report that drifted from its evidence is the defect this
-skill catches.
+Write `miraudit-<date>.json`, **run `scripts/emit-gate.py` against it**, and render
+`miraudit-<date>.md` from it only if the gate exits 0. Two hand-written sources drift, and
+a report that drifted from its evidence is the defect this skill catches. The gate reads
+structure and not honesty — it cannot tell a real refutation from a plausible sentence, and
+it says so on every clean run.
 
 Report only findings carrying a reproducible command and a control that passed. Confirmed
 but already sent goes to `reported`; what the audit itself cost you goes to
