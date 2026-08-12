@@ -13,52 +13,66 @@ corpus is an anecdote; the same gap measured on five machines is a defect in the
 
 ## How a run flows
 
-Two phases are gates that stop the run rather than annotate it, and they are drawn as
-diamonds. Everything the audited tool owns is read-only: its checkout is copied before
-anything imports from it, and the transcripts are never written to at all.
+The diamonds are decision points. Three of them stop the run rather than annotate it: the
+behaviour probe and the reproduction check in Phase 0, and the refutation gate in Phase 3.
+A fourth, the coverage check in Phase 4, sends the run backwards instead of forwards.
+Everything the audited tool owns is read-only: its checkout is copied before anything
+imports from it, and the transcripts are never written to at all.
+
+The line breaks below are written as ` <br/> ` with spaces around them on purpose. Renderers
+that disable HTML labels drop the tag instead of honouring it, and without the spaces every
+label in this diagram closed up into words like `scoring toolread-only`.
 
 ```mermaid
 flowchart TD
-    CO[/"checkout of the scoring tool<br/>read-only"/]
-    CORP[/"transcript corpus<br/>read-only"/]
-    PUB[/"the published number<br/>and its window"/]
+    CO[/"checkout of the scoring tool <br/> read-only"/]
+    CORP[/"transcript corpus <br/> read-only"/]
+    PUB[/"the published number <br/> and its window"/]
 
-    CO --> COPY["copy the checkout<br/>everything below runs on the copy"]
+    CO --> COPY["copy the checkout <br/> everything below runs on the copy"]
 
     subgraph P0["Phase 0 — Anchor"]
-        COPY --> PROBE{{"contract-probe.py<br/>do the predicates still BEHAVE the same?"}}
-        PROBE -->|"a behaviour moved"| STOP1["STOP<br/>names the check that leans on it"]
-        PROBE -->|"18/18"| RUN["reproduce the number on the copy<br/>over the report's own window"]
-        RUN --> FP["print the corpus fingerprint<br/>files · lines · tool calls · sessions"]
-        FP --> GATE{{"does it reproduce the published number,<br/>on the expected contract?"}}
-        GATE -->|"no"| STOP2["STOP<br/>the method is wrong before any finding is"]
+        COPY --> PROBE{{"contract-probe.py <br/> do the predicates still BEHAVE the same?"}}
+        PROBE -->|"a behaviour moved"| STOP1["STOP <br/> names the check that leans on it"]
+        PROBE -->|"18/18"| RUN["reproduce the number on the copy <br/> over the report's own window"]
+        RUN --> FP["print the corpus fingerprint <br/> files · lines · tool calls · sessions"]
+        FP --> GATE{{"does it reproduce the published number, <br/> on the expected contract?"}}
+        GATE -->|"no"| STOP2["STOP <br/> the method is wrong before any finding is"]
     end
 
     subgraph P1["Phase 1 — Per-axis fidelity"]
-        HAS{{"is there a script for this axis?"}}
-        HAS -->|"yes"| SCR["run it: import their predicates,<br/>re-measure from the corpus"]
-        HAS -->|"no"| ADHOC["write one into the run's output dir<br/>see ad-hoc-checks.md"]
-        SCR --> DIR["report the gap AND its direction<br/>faithful · overestimates · underestimates"]
+        MAN["axis-coverage.py <br/> enumerate the axes from the payload AND from the scoring source"]
+        MAN --> HAS{{"is there a script for this axis?"}}
+        HAS -->|"yes"| SCR["run it: import their predicates, <br/> re-measure from the corpus"]
+        HAS -->|"no"| ADHOC["write one into the run's output dir <br/> see ad-hoc-checks.md"]
+        SCR --> DIR["report the gap AND its direction <br/> faithful · overestimates · underestimates"]
         ADHOC --> DIR
+        DIR --> TERMS["axis-terms.py <br/> rebuild each axis from its terms, list the ones the payload never shows"]
     end
 
     subgraph P2["Phase 2 — Structural shapes"]
-        SHAPES["dropped-term · saturated · contaminated-denominator<br/>signal-not-attributable-to-person · signal-reused"]
+        SHAPES["dropped-term · saturated · contaminated-denominator <br/> signal-not-attributable-to-person · signal-reused"]
     end
 
     subgraph P3["Phase 3 — Refutation"]
-        CAND["candidate finding"] --> ROWS{{"eight rows, each written after a<br/>real finding died on it"}}
+        CAND["candidate finding"] --> ROWS{{"eight rows, each written after a <br/> real finding died on it"}}
         ROWS -->|"survives all eight"| KEEP["finding"]
-        ROWS -->|"any row kills it"| DEAD["dismissed<br/>with the fact that killed it"]
+        ROWS -->|"any row kills it"| DEAD["dismissed <br/> with the fact that killed it"]
     end
 
-    GATE -->|"yes"| HAS
-    DIR --> SHAPES
+    subgraph P4["Phase 4 — Emit"]
+        JSON["miraudit-DATE.json"]
+        JSON --> BIND{{"axis-coverage.py --run <br/> did the run RECORD a gap, a direction and a control for each axis?"}}
+        BIND -->|"declared by a tag, never measured"| MAN
+        BIND -->|"all measured"| MD["miraudit-DATE.md <br/> rendered FROM the json, never written beside it"]
+    end
+
+    GATE -->|"yes"| MAN
+    TERMS --> SHAPES
     SHAPES --> CAND
 
-    KEEP --> JSON["miraudit-DATE.json"]
+    KEEP --> JSON
     DEAD --> JSON
-    JSON --> MD["miraudit-DATE.md<br/>rendered FROM the json, never written beside it"]
 
     CORP -.->|"read"| RUN
     CORP -.->|"read"| SCR
@@ -107,7 +121,32 @@ first run, one of each kind.
 
 That list used to be maintained by hand in prose, and it had been missing an axis for as
 long as it existed. Nobody noticed, because nothing enumerated the axes to check the prose
-against: the same failure, one level up, as the ones this skill reports.
+against: the same failure, one level up, as the ones this skill reports. The count is no
+longer written down anywhere either. The correction that fixed the missing axis replaced a
+wrong hand-typed number with a right one, and the right one was stale the next day.
+
+**A tag is not a measurement**, which is what `--run` separates. On its own the manifest
+greps `# miraudit-covers:` out of source comments, and a comment says a script claims an
+axis. It does not say the script ran, that it exited 0, or that anyone recorded a gap and a
+direction. Given the run's own JSON, `axis-coverage.py --run` splits the axes into measured,
+declared without a recorded measurement, and uncovered, and fails while anything sits outside
+the first. Reported the weaker way, a run once verdicted "11 of 11" while its own artifact
+held six, with two axes appearing in no run's records at all.
+
+**Terms, not only axes.** An axis can be covered while a term inside it is invisible, which
+is where the one hard finding of this audit lived: 30% of Skill fluency is a substring match
+on five skill names that appears in no signal. `scripts/axis-terms.py` generalises that
+recovery. It parses each axis's terms from the scoring source, evaluates the ones the payload
+publishes, and solves for a single remaining unknown by algebra on the tool's own
+`normalized_score`. The anchor is that rebuild: a parse that loses a term disagrees with the
+published score and the axis is reported as not decomposable, so an incomplete parse can
+never report a smaller world as a complete one.
+
+Two of its guards exist because it was wrong first. A recovered value is checked against the
+payload before it is called undisclosed, since Verification's coverage term is published as
+`test_coverage` under a name its expression never uses. And the check runs against the whole
+payload rather than one axis's signals, because Discipline's term is rebuildable from two
+fields under `/behavior` and an importable constant. Both had been proposed as findings.
 
 **Structural shapes**, independent of any formula: terms silently renormalized away for
 lack of evidence, saturated axes that no longer discriminate, denominators containing work
@@ -128,7 +167,7 @@ scores move, using the tool's own scoring function as the oracle. The run valida
 method before trusting it, by bisecting a threshold it could have imported and checking the
 two agree.
 
-**A refutation gate.** Nothing is reported until it survives seven attempts to kill it. Each
+**A refutation gate.** Nothing is reported until it survives eight attempts to kill it. Each
 attempt exists because it killed a real finding that was about to be sent; the write-ups
 are in `references/refutation.md`. Findings that die are recorded in `dismissed` with the
 fact that killed them, so nobody reopens them. The gate is deterministic on purpose, and
@@ -194,7 +233,7 @@ The checks in `scripts/` also run standalone. Start with the anchor, which does 
 one command and writes the `stats.json` the other checks read:
 
 ```bash
-scripts/anchor.sh --checkout /path/to/gnomon --since 2026-07-07 --until 2026-08-06 \
+python3 scripts/anchor.py --checkout /path/to/gnomon --since 2026-07-07 --until 2026-08-06 \
     --published 92 --expect-contract 17:17:17
 ```
 
@@ -258,13 +297,24 @@ uvx --from "git+https://github.com/ftrinidad/gnomon@feat/miraudit-skill#subdirec
     miraudit-second-corpus
 ```
 
-It needs `python3`, `git`, `uv` and **a POSIX shell** — on Windows, run it from **Git
-Bash**, which Git for Windows installs; a bare `bash` there resolves to the WSL launcher
-and fails inside WSL with a message about a missing `/bin/bash`. It takes about two
-minutes and 16 MB of scratch that is
-deleted afterwards, uploads nothing, and writes one small JSON into the directory you ran it
-from. Send that file back. It carries counts and shares — no transcripts, no file contents,
-no paths, no repository names — and it is short enough to read before sending, which is the
+It needs `python3`, `git` and `uv`, and **no shell** — PowerShell and CMD are fine. This
+paragraph used to say a POSIX shell was required and to send Windows runners to Git Bash.
+Every published requirements list already said "python3, git and uv" while the whole path
+went through `bash`, and on Windows a bare `bash` is the WSL launcher, which fails inside
+WSL complaining about a missing `/bin/bash`. That is what the first Windows runner got. Git
+Bash would have worked and was still the wrong fix: the orchestration moved into Python
+instead, so `scripts/anchor.sh` and `scripts/second-corpus.sh` are one-line shims that exec
+their `.py` twin, and there is one implementation rather than two.
+
+It takes about two minutes and 16 MB of scratch that is deleted afterwards, uploads nothing,
+and writes one small JSON into the directory you ran it from. If that directory is not
+writable it says so at the start and falls back to your home directory, because a Windows
+runner once completed the whole run from a terminal that starts inside `C:\Program Files`
+and lost it to a `PermissionError` on the last line. Nothing was wrong with that
+measurement; it had nowhere to land and found out last.
+
+Send the file back. It carries counts and shares — no transcripts, no file contents, no
+paths, no repository names — and it is short enough to read before sending, which is the
 point: a person contributing data about their own work should see what leaves their machine.
 
 `references/second-corpus.md` is the handout — prerequisites, what comes back, what is
@@ -280,12 +330,20 @@ the file you edited against the cached one before you trust any test of your cha
 has burned real money more than once.
 
 **Knowing when the skill has gone stale.** `references/known-state.md` pins the commit and
-contract string it was validated against. Pass that string as `--expect-contract` and the
-anchor stops the run when the checkout has moved. When it does, the fixtures in `scripts/`
-have to be re-run before anyone quotes a finding: a check written against one contract and
-silently measuring another is worse than no check. Nothing reads `known-state.md` for you,
-so an operator who omits the flag gets no comparison — this paragraph used to claim
-otherwise.
+contract string it was validated against, in a ```pin block that code reads: `--expect-contract`
+defaults from it, so the anchor stops the run on a moved contract whether or not you remember
+the flag. When it does stop, the fixtures in `scripts/` have to be re-run before anyone quotes
+a finding, because a check written against one contract and silently measuring another is
+worse than no check.
+
+**A moved commit is not a moved contract.** `pin-consistency.py` says when upstream has moved
+past the pin, as a note rather than a failure, and it moved twice in one afternoon while this
+paragraph was being written — which is why the count is not written here. Reading the diff is
+the cheap half of the answer: a commit that leaves `scoring/`, `taxonomy.py` and the
+accumulator alone cannot move the contract. The half worth doing is running both refs against
+the same corpus in the same window. That has come back identical so far, AQ and every axis.
+Two axes did appear to move the first time, against a payload from earlier the same day, and
+that was the corpus growing underneath a fixed window rather than the code.
 
 ## Scope
 
