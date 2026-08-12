@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # One command, one file. This is the entire ask for someone contributing a second corpus:
 #
-#   bash ~/.claude/skills/miraudit/scripts/second-corpus.sh
+#   uvx --from "git+https://github.com/ftrinidad/gnomon@feat/miraudit-skill#subdirectory=skills/miraudit" \
+#       miraudit-second-corpus
 #
-# Spelled out, because `scripts/second-corpus.sh` is relative to this directory and is the
-# first thing a new runner trips over, before they have any reason to trust the rest.
+# Nothing is installed and nothing is left behind. From a clone, the equivalent is
+# `bash <clone>/skills/miraudit/scripts/second-corpus.sh` -- spelled out because a bare
+# `scripts/second-corpus.sh` is relative to this directory and is the first thing a new
+# runner trips over, before they have any reason to trust the rest.
 #
 # No arguments. It clones the scoring tool at a pinned commit, scores the last 30 complete
 # days of your local transcripts, and writes ONE file to send back.
@@ -53,7 +56,13 @@ while [ $# -gt 0 ]; do
     --out-dir)   OUTDIR="$2";    shift 2 ;;
     --work)      WORK="$2";      shift 2 ;;
     --keep)      KEEP="yes";     shift 1 ;;
-    *) echo "unknown argument: $1" >&2; exit 2 ;;
+    -h|--help)
+      # It is an entry point now, so it answers the first thing anyone types at one.
+      sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      exit 0 ;;
+    *) echo "unknown argument: $1" >&2
+       echo "run with --help for the list." >&2
+       exit 2 ;;
   esac
 done
 

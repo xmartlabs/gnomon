@@ -100,13 +100,20 @@ no agent takes part, so there is no reason to put anything in somebody's config 
 for a favour.
 
 ```bash
-git clone -q -b feat/miraudit-skill --depth 1 https://github.com/ftrinidad/gnomon.git /tmp/miraudit
-bash /tmp/miraudit/skills/miraudit/scripts/second-corpus.sh
-rm -rf /tmp/miraudit
+uvx --from "git+https://github.com/ftrinidad/gnomon@feat/miraudit-skill#subdirectory=skills/miraudit" \
+    miraudit-second-corpus
 ```
 
-A 3.6 MB shallow clone, the result file in whatever directory you ran it from, and one line
-to remove every trace. Verified end to end.
+One line, nothing installed, nothing left behind, and the same shape as the scoring tool's
+own `uvx --from git+... xl-ai-insights` that this audience already types. The result lands
+in the directory you ran it from. Verified end to end.
+
+The `@branch#subdirectory=` is the ugly part, and it is not the mechanism: it is there
+because the skill lives on a branch of a fork. On a default branch it reads
+`uvx --from "git+https://github.com/xmartlabs/gnomon#subdirectory=skills/miraudit"`.
+
+From a clone instead, if someone prefers to read the scripts before running them:
+`bash <clone>/skills/miraudit/scripts/second-corpus.sh`.
 
 If the runner also wants the skill itself, to audit their own corpus rather than only
 contribute to a comparison, that is the install path in the README. The `#branch` suffix

@@ -1,0 +1,31 @@
+# Makes the second-corpus run installable and runnable in one line:
+#
+#   uvx --from "git+<repo>@<branch>#subdirectory=skills/miraudit" miraudit-second-corpus
+#
+# The previous instruction was a shallow clone, a path three directories deep, and a manual
+# `rm -rf`. That is three lines of ceremony to ask somebody for a favour, and it does not
+# look like anything else people run. This is the same shape as the scoring tool's own
+# `uvx --from git+... xl-ai-insights`, which is what the audience already types.
+#
+# The scripts keep their hyphenated names and stay runnable directly with `python3
+# scripts/<name>.py`. They are shipped as package data rather than turned into modules: a
+# rename would break every invocation the docs, the commit history and the reports quote.
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "miraudit"
+version = "0.1.0"
+description = "Audits whether a score computed about your work reflects what you did"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+miraudit-second-corpus = "miraudit_cli:second_corpus"
+
+[tool.hatch.build.targets.wheel]
+packages = ["miraudit_cli"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"scripts" = "miraudit_cli/scripts"
