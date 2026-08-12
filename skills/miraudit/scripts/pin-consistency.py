@@ -42,10 +42,10 @@ def read_block():
     return block, text
 
 
-# --field prints one value and leaves. The two shell scripts need `ref` and `contract`, and
-# the alternative was a second copy of this parser inlined in bash, which is the same mistake
-# as the copies it exists to remove, one level down. Handled BEFORE parse(), because reading
-# the pin must not require a checkout: second-corpus.sh needs `ref` in order to clone one.
+# --field prints one value and leaves. second_corpus.py needs `ref` and anchor.py needs
+# `contract`, and the alternative was a second copy of this parser inlined in each of them,
+# which is the same mistake as the copies it exists to remove, one level down. Handled BEFORE
+# parse(), because reading the pin must not require a checkout: `ref` is what clones one.
 if "--field" in sys.argv:
     _block, _ = read_block()
     _which = sys.argv[sys.argv.index("--field") + 1]

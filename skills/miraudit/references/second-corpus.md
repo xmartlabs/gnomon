@@ -124,7 +124,7 @@ Conditions for B to count at all:
 - **`tool.contract` must match A's.** Comparing a `16:16:16` run against a `17:17:17` run is
   not a comparison: PR #66 removed `TOOLSEARCH_PER_CALL_TARGET`, `TEST_RUNS_PER_CALL_TARGET`
   and `TASK_CALLS_PER_CALL_TARGET`, three rather than the two an earlier version of this file
-  claimed, so signals the counterfactual cuts stop existing. `second-corpus.sh` pins the
+  claimed, so signals the counterfactual cuts stop existing. `second_corpus.py` pins the
   clone to one commit precisely so this cannot drift between runners.
 - **`anchor.ok` may be `null`, and that is not the same as `true`.** It is `true` only when
   the runner passed the number their own report shows. Most runners have no published report
@@ -410,19 +410,22 @@ Every one of these came from a real first attempt, not from imagination.
 - `python3`, `git`, and **`uv`** — the scoring tool's entry point runs under `uv run`, so a
   machine without it fails at the anchor. An earlier version of this list said "python3 and
   git", which would have sent someone into a failure two minutes into their first run.
-- **A POSIX shell.** The orchestration is a bash script, and this list has been wrong about
-  that from the beginning: it named the three above and never named the shell, on all three
-  pages that carry it. **On Windows, run it from Git Bash**, which Git for Windows already
-  installs. A bare `bash` there is `C:\Windows\System32\bash.exe`, the WSL launcher, and
-  with no distribution installed it fails *inside* WSL with
+- **No shell.** PowerShell and CMD are fine and Git Bash is not needed. A requirement that
+  is absent earns a line because this one was real for a while and the list never named it:
+  it said the three above while the whole path went through `bash`, on all three pages that
+  carry it. On Windows a bare `bash` is `C:\Windows\System32\bash.exe`, the WSL launcher,
+  and with no distribution installed it fails *inside* WSL with
   `execvpe(/bin/bash) failed: No such file or directory` — a message about a missing shell,
-  produced on a machine that has one. Reported by the first Windows runner, on their first
-  attempt.
+  produced on a machine that has one. That is what the first Windows runner got, on their
+  first attempt. Git Bash would have worked and was still the wrong fix: the orchestration
+  moved into Python, so `scripts/second-corpus.sh` is a one-line shim that execs
+  `second_corpus.py`, and there is one implementation rather than two.
 
-  In WSL proper it also works, with two extra steps nobody would guess: `uv` and `python3`
-  have to be installed **inside** the distribution, and the corpus is on the Windows side,
-  so it needs `--corpus /mnt/c/Users/<user>/.claude/projects`. The WSL home is empty and a
-  run there would otherwise score nothing and say so in a way that looks like a bug.
+  None of this is needed on Windows now. It is kept for anyone who is inside WSL for their
+  own reasons, where two steps nobody would guess still apply: `uv` and `python3` have to be
+  installed **inside** the distribution, and the corpus is on the Windows side, so it needs
+  `--corpus /mnt/c/Users/<user>/.claude/projects`. The WSL home is empty and a run there
+  would otherwise score nothing and say so in a way that looks like a bug.
 - Their own transcript corpus at `~/.claude/projects` (the default; `--corpus` overrides it).
 - A copy of `scripts/` on disk. **Installing this as a Claude skill is not required**: no
   agent is involved in producing the comparison file, so the directory is enough.
@@ -458,7 +461,9 @@ which is accurate and still costs the reader a confused minute. A command that d
 yet is a broken command, however clearly the surrounding prose says "later".
 
 From a clone instead, if someone prefers to read the scripts before running them:
-`bash <clone>/skills/miraudit/scripts/second-corpus.sh`.
+`python3 <clone>/skills/miraudit/scripts/second_corpus.py`. The `second-corpus.sh` next to
+it still works and is only a shim that execs that file; it is the form quoted in reports
+that are already out, and it is the one form of the command that needs a shell.
 
 If the runner also wants the skill itself, to audit their own corpus rather than only
 contribute to a comparison, that is the install path in the README. The `#branch` suffix

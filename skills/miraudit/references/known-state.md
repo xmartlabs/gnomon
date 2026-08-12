@@ -5,7 +5,7 @@ version against it; if they differ, every finding below is a hypothesis again an
 fixtures in `scripts/` have to be re-run before anyone quotes them.
 
 The pin used to live in three places and the refresh procedure named two. It now lives here,
-once, and code reads it: `second-corpus.sh` takes `ref` and `anchor.sh` defaults
+once, and code reads it: `second_corpus.py` takes `ref` and `anchor.py` defaults
 `--expect-contract` from `contract`. Keep the block and the sentence below it in agreement —
 `scripts/pin-consistency.py` fails the run if they drift, and the block is the source.
 
@@ -99,8 +99,8 @@ notices the drift does this, in order:
    `measure-verification-corpus.py`. Deleting a *section* is the one that gets skipped,
    because the file still runs and still looks maintained: the scratchpad half of what is
    now `recovery-reality.py` outlived its subject that way.
-5. **Edit the ```pin block at the top. That is the whole update.** `second-corpus.sh` reads
-   `ref` from it and `anchor.sh` reads `contract`, so there is no second place to remember.
+5. **Edit the ```pin block at the top. That is the whole update.** `second_corpus.py` reads
+   `ref` from it and `anchor.py` reads `contract`, so there is no second place to remember.
    Then run `scripts/pin-consistency.py`: it checks the block against the prose sentence,
    against the `--expect-contract` example in `README.md`, and against `SCORE_CONTRACT_ID`
    **imported from the checkout** — that one is computed from three integers in
@@ -142,7 +142,7 @@ is consumed elsewhere; the run writes where it says.
 omitted: without it the entry point writes five files into the project directory, all five
 gitignored there, so `git status` stays clean and the write is invisible. A warning that
 tells someone the flag did nothing is a warning that invites them to drop it, and dropping
-it is the trap. `second-corpus.sh` prints a line saying so, because every second-corpus
+it is the trap. `second_corpus.py` prints a line saying so, because every second-corpus
 runner sees this on a run they agreed to do as a favour.
 
 **`--project` does not decide which gnomon runs. With `-m`, the current directory does.**
@@ -160,7 +160,7 @@ anchor was given a published number and a contract to check against.
 The fix is the invocation, not a habit. A console script is a **file**, so `sys.path` starts
 at its own directory and the caller's location cannot shadow the package. Verified with the
 `cd` removed, launched from that same v16 directory: `xl-ai-insights` reads 92 and
-`17:17:17` where `-m` read 91 and `16:16:16`. `anchor.sh` also `cd`s into the copy, which is
+`17:17:17` where `-m` read 91 and `16:16:16`. `anchor.py` also `cd`s into the copy, which is
 now redundant and kept as insurance against anyone restoring the `-m` form.
 
 Worth naming the path that led here: this file used to say *"`python3 xl_ai_insights.py` is

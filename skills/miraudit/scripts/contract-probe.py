@@ -15,7 +15,7 @@ Each case names the check that depends on it, so a failure says who breaks, not 
 
     python3 contract-probe.py --checkout <copy> --since YYYY-MM-DD --until YYYY-MM-DD
 
-Exits non-zero on the first behaviour that moved. Run it before the checks -- anchor.sh
+Exits non-zero on the first behaviour that moved. Run it before the checks -- anchor.py
 does.
 """
 import os

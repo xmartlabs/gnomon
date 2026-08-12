@@ -9,10 +9,9 @@ description: >
   AQ report, an engineering dashboard, or a productivity scorecard.
 license: MIT
 compatibility: >
-  Requires python3, git, uv, and a POSIX shell. On Windows that means Git Bash, which
-  Git for Windows already installs; a bare `bash` there is the WSL launcher, not a
-  shell. Reads the agent transcript corpus and a checkout of the
-  scoring tool; writes only inside its own output directory.
+  Requires python3, git and uv, and no shell: the orchestration is Python, so PowerShell
+  and CMD are fine and Git Bash is not needed. Reads the agent transcript corpus and a
+  checkout of the scoring tool; writes only inside its own output directory.
 allowed-tools: Bash(python3 *) Bash(uv *)
 ---
 
@@ -40,11 +39,11 @@ is not evidence.
    there too, because they expire and this file should not.
    A matching contract is not enough on its own: `scripts/contract-probe.py` asserts that
    the predicates still *behave* the same, which is the failure a version string cannot
-   express. `anchor.sh` runs it before the pipeline.
+   express. `anchor.py` runs it before the pipeline.
 2. Reproduce the published number on a **copy** of the checkout, over **the report's own
    window**. A window ending *now* drifts daily and includes the audit session itself.
 3. **If the base run does not reproduce it, stop.** The method is wrong before any finding.
-   Give `scripts/anchor.sh` the `--published` and `--expect-contract` values so it stops on
+   Give `scripts/anchor.py` the `--published` and `--expect-contract` values so it stops on
    its own. Omit them and it prints the number and asks you to compare, which is where the
    gate leaks: this step read as enforced for a long time while nothing enforced it.
 4. Print the corpus fingerprint — files, lines, tool calls, sources, window — before any
