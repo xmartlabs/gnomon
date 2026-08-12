@@ -101,7 +101,7 @@ Conditions for B to count at all:
 |---|---|---|---|
 | window | 2026-07-07 → 2026-08-06 | 2026-07-11 → 2026-08-10 | 2026-07-12 → 2026-08-11 |
 | contract | `17:17:17` | `17:17:17` | `17:17:17` |
-| schema | — | `comparison-1` | `comparison-1` |
+| schema | — | **`comparison-2`** (re-run, window pinned) | `comparison-1` |
 | `anchor.ok` | `null` in the comparison file | `null` | `null` |
 | tool calls | 42.874 | 5.862 | 42.003 |
 | sessions | 125 | 49 | 281 |
@@ -206,25 +206,48 @@ points is A's, and only A's — the other two were never run against a checkout.
 This is the rule that was written to be able to kill the Grounding write-up. It did not kill
 it, and it did make it smaller.
 
-**Rule 4 — still unevaluable, on both.** The rule says to read the Steering leverage axis;
-`emit-comparison.py` never wrote it, so neither B nor C has a field to read. Not something
-either runner did. Fixed in `comparison-2`, which emits a `steering` block and asserts that
-every rule's field is present before writing — the mechanism that would have caught it. Both
-files predate that, so **rule 4 has now gone unanswered twice**, which is the cost of a
-defect that only shows up when somebody sits down to apply the rules by hand.
+**Rule 4 — answered, on the second ask.** It went unanswered twice first, because
+`emit-comparison.py` never wrote the field the rule reads. B's runner re-ran on
+`comparison-2` **with the window pinned to their original one**, so the file is the same
+corpus with more fields rather than a fresh measurement: same 5.862 tool calls, same 49
+sessions, same AQ 82.
 
-**Skill fluency's undisclosed term, answered for C by an accident of rounding.** A
-`comparison-1` file carries no per-axis signals, so the 30% `has_skill` term normally cannot
-be isolated from it. C is the exception: its Skill fluency is **22,0/22**, and a score at the
-maximum bounds the normalized score to ≥ 0,9977, which forces every term including the
-undisclosed one to ≥ 0,992 — and it can only be 0,6 or 1,0. So C is on the 1,0 branch, and so
-are A and B.
+| | A | B |
+|---|---|---|
+| `actions_per_prompt` | 6,4 | 6,7 |
+| band | 5–20 | 5–20 |
 
-Three for three on a term that is 30% of an axis and never published. That is not evidence
-that anyone is losing points to it; it is evidence that it may be **a constant that lifts
-everyone equally**, which is a different and weaker thing than the write-up first assumed.
-Confirming it needs a `comparison-2` file from someone who does not use any of the five
-hard-coded names.
+Both inside. The rule's own row says what to do with that: *«two of two inside a band four
+times as wide as it is deep says little. Record it; do not raise it.»* Recorded, not raised.
+It says nothing about whether the band should stay withheld upstream.
+
+**Skill fluency's undisclosed term: three for three, and that REVERSES the finding.** The 30%
+`has_skill` term is recoverable by algebra wherever `signals` and `normalized_score` are both
+present, which is what `comparison-2` added.
+
+| | skills_distinct | rate term | normalized | recovered term 3 |
+|---|---|---|---|---|
+| A | 43/40 → 1,000 | 0,860 | 0,9581 | **1,0** |
+| B | 11/40 → 0,275 | 1,000 | 0,7100 | **1,0** |
+| C | — | — | 22,0/22 forces ≥ 0,992 | **1,0** |
+
+B was the one that could decide it. Its axis sits at 15,6/22, the lowest of the three, and
+both branches were arithmetically reachable until its signals arrived. It came back 1,0.
+
+So the original framing — *a hidden term is quietly costing someone 2,6 points* — **is wrong**,
+and the corpora gathered to support it are what killed it. What is left is smaller and
+sharper: the axis advertises three signals, one of them carries 30% of the weight, it is
+published nowhere, and it has not varied across any corpus measured. A term that never varies
+is not discriminating, so the axis scores on two terms at .571/.429 and presents as three.
+
+Recovered by `adhoc-skill-fluency-crosscorpus.py`, which graduated out of a single run's
+output directory the moment a second run needed the same measurement on a different input.
+Its control is the same algebra on Tool command, where every term IS disclosed: predicted
+0,654167 against a published 0,654167.
+
+**Not checked, and it matters here:** all three are Claude Code users and the five needles are
+Claude Code skill names, so "never varied" means across everyone measured, not by
+construction. Somebody who uses no skills at all lands on 0,6.
 
 ### Not settled by this pair
 
