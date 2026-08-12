@@ -13,6 +13,27 @@ This is the one thing the audit cannot do for itself. Everything else here is co
 Fix the rule first, so the second run cannot be read to mean whatever the first one wanted.
 Corpus **A** is the run already in hand; **B** is the new one.
 
+### 0. The PowerShell before/after, written before the after exists
+
+Contract `18:18:18` scores `PowerShell` as a shell, so re-running a Windows corpus first
+measured at `17:17:17` is a before/after on one person, one window and one machine. Corpus E
+is the only such corpus on record, and it is **Bash 42.94% against PowerShell 1.45%**: a
+Windows developer working in Bash, not the PowerShell-primary person upstream asked for. Say
+that when reporting it. A small movement here is not evidence that the fix is small for the
+person it was written for.
+
+Its before is Tool command 21.0/28 with `clis` 28, Token economy 50.0/50 with `cli_share`
+0.97, and Grounding 25.0/25.
+
+| What the after shows | What it means |
+|---|---|
+| Token economy or Grounding rise | Impossible as stated: both already sit at their ceiling, so this would mean the before was misread and the comparison is void |
+| Tool command rises | PowerShell surfaced CLI heads `clis_distinct` was not counting. The only one of the three with headroom, so the only one that can carry a signal |
+| Nothing moves | The fix is worth nothing to a Bash-primary Windows developer. Report exactly that. It bounds the common Windows case instead of answering the open question |
+
+The open question is unchanged either way: nobody has measured a corpus where PowerShell is
+the primary shell, and `#75` is still an argument from the formula rather than from data.
+
 ### 1. `aq-is-mostly-ceiling` — read `saturation.delta` and `saturation.signals_cut`
 
 | What B's at-threshold arm does | What it means | What happens to the finding |
