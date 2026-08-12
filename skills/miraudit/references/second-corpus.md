@@ -245,6 +245,19 @@ hard-coded names.
 - `python3`, `git`, and **`uv`** — the scoring tool's entry point runs under `uv run`, so a
   machine without it fails at the anchor. An earlier version of this list said "python3 and
   git", which would have sent someone into a failure two minutes into their first run.
+- **A POSIX shell.** The orchestration is a bash script, and this list has been wrong about
+  that from the beginning: it named the three above and never named the shell, on all three
+  pages that carry it. **On Windows, run it from Git Bash**, which Git for Windows already
+  installs. A bare `bash` there is `C:\Windows\System32\bash.exe`, the WSL launcher, and
+  with no distribution installed it fails *inside* WSL with
+  `execvpe(/bin/bash) failed: No such file or directory` — a message about a missing shell,
+  produced on a machine that has one. Reported by the first Windows runner, on their first
+  attempt.
+
+  In WSL proper it also works, with two extra steps nobody would guess: `uv` and `python3`
+  have to be installed **inside** the distribution, and the corpus is on the Windows side,
+  so it needs `--corpus /mnt/c/Users/<user>/.claude/projects`. The WSL home is empty and a
+  run there would otherwise score nothing and say so in a way that looks like a bug.
 - Their own transcript corpus at `~/.claude/projects` (the default; `--corpus` overrides it).
 - A copy of `scripts/` on disk. **Installing this as a Claude skill is not required**: no
   agent is involved in producing the comparison file, so the directory is enough.

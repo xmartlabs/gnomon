@@ -258,7 +258,10 @@ uvx --from "git+https://github.com/ftrinidad/gnomon@feat/miraudit-skill#subdirec
     miraudit-second-corpus
 ```
 
-It needs `python3`, `git` and `uv`, takes about two minutes and 16 MB of scratch that is
+It needs `python3`, `git`, `uv` and **a POSIX shell** — on Windows, run it from **Git
+Bash**, which Git for Windows installs; a bare `bash` there resolves to the WSL launcher
+and fails inside WSL with a message about a missing `/bin/bash`. It takes about two
+minutes and 16 MB of scratch that is
 deleted afterwards, uploads nothing, and writes one small JSON into the directory you ran it
 from. Send that file back. It carries counts and shares — no transcripts, no file contents,
 no paths, no repository names — and it is short enough to read before sending, which is the

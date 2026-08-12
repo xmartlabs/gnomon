@@ -9,7 +9,9 @@ description: >
   AQ report, an engineering dashboard, or a productivity scorecard.
 license: MIT
 compatibility: >
-  Requires python3, git, and uv. Reads the agent transcript corpus and a checkout of the
+  Requires python3, git, uv, and a POSIX shell. On Windows that means Git Bash, which
+  Git for Windows already installs; a bare `bash` there is the WSL launcher, not a
+  shell. Reads the agent transcript corpus and a checkout of the
   scoring tool; writes only inside its own output directory.
 allowed-tools: Bash(python3 *) Bash(uv *)
 ---

@@ -10,10 +10,38 @@ and this module locates them relative to itself and hands over. Everything after
 point behaves identically whether it was reached through `uvx` or through a clone.
 """
 import os
+import shutil
 import subprocess
 import sys
 
 SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts")
+
+
+def _bash():
+    r"""A bash that is actually a bash.
+
+    On Windows `bash` resolves to C:\Windows\System32\bash.exe, which is the WSL launcher
+    and not a shell. With no distribution installed it fails INSIDE WSL rather than here, so
+    the error names /bin/bash and reads like a missing shell on a machine that has one:
+
+        <3>WSL (10) ERROR: CreateProcessCommon:559: execvpe(/bin/bash) failed
+
+    Git for Windows ships a real bash beside its git, and `git` is already a stated
+    requirement of this run, so anyone who gets this far has one. Prefer it; fall back to
+    whatever `bash` means here, which is the right answer everywhere that is not Windows.
+
+    UNVERIFIED ON WINDOWS. Written from one report, not from a reproduction. The fallback is
+    what is tested. If this still fails, the answer is porting the orchestration to Python,
+    not another guess at a path.
+    """
+    if os.name != "nt":
+        return "bash"
+    git = shutil.which("git")
+    if git:
+        candidate = os.path.join(os.path.dirname(os.path.dirname(git)), "bin", "bash.exe")
+        if os.path.exists(candidate):
+            return candidate
+    return "bash"
 
 
 def _run(name, argv=None):
@@ -28,7 +56,7 @@ def _run(name, argv=None):
         sys.exit(f"error: {name} is missing from {SCRIPTS}. The package was built without "
                  "its scripts, which makes this launcher the only thing that works and "
                  "nothing it launches.")
-    runner = ["bash"] if name.endswith(".sh") else [sys.executable]
+    runner = [_bash()] if name.endswith(".sh") else [sys.executable]
     return subprocess.call(runner + [path] + list(argv if argv is not None else sys.argv[1:]))
 
 
