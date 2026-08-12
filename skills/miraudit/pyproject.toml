@@ -38,3 +38,8 @@ packages = ["miraudit_cli"]
 # The general rule this is an instance of: anything a script OPENS is package data, not
 # prose, however much it reads like prose to a person.
 "references" = "miraudit_cli/references"
+# Same rule, and it took two goes to apply it completely: pin-consistency.py compares
+# the pin against the pasteable --expect-contract example in the README, so the README
+# is something a script OPENS. The first fix shipped references/ and stopped there,
+# and the next run died one line further down.
+"README.md" = "miraudit_cli/README.md"

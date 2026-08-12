@@ -60,8 +60,17 @@ args, _WINDOW = parse(__doc__.strip().splitlines()[0], {
 })
 
 block, known_text = read_block()
-with open(README) as fh:
-    readme_text = fh.read()
+# Defensive because this file is opened from two very different places. In a clone it is
+# next door; inside the built wheel it is package data, and the FIRST version of this check
+# crashed a contributor's run on `open(README)` after the packaging fix had already been
+# applied to references/ and not to this. A consistency check that cannot find one of the
+# things it compares should say so, not take the run down with it.
+readme_text = ""
+try:
+    with open(README) as fh:
+        readme_text = fh.read()
+except OSError:
+    pass
 
 failures = []
 notes = []
@@ -82,7 +91,11 @@ else:
 
 # 2 -- README's pasteable command. Somebody copies this one and runs it.
 found = set(re.findall(r"--expect-contract\s+([\d:]+)", readme_text))
-if not found:
+if not readme_text:
+    notes.append(f"no README.md beside this script ({README}), so its pasteable "
+                 "--expect-contract example could not be compared. Expected inside a built "
+                 "wheel; a defect in a clone.")
+elif not found:
     notes.append("README.md no longer shows an --expect-contract example; nothing to drift.")
 elif found != {block["contract"]}:
     failures.append(f"README.md shows --expect-contract {sorted(found)}, the block says "

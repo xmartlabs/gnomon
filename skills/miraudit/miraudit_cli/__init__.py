@@ -61,8 +61,8 @@ def _run(name, argv=None):
 
 
 def second_corpus():
-    raise SystemExit(_run("second-corpus.sh"))
+    raise SystemExit(_run("second_corpus.py"))
 
 
 def anchor():
-    raise SystemExit(_run("anchor.sh"))
+    raise SystemExit(_run("anchor.py"))
