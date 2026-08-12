@@ -95,14 +95,22 @@ uploaded: the entry point runs with `--local`.
 
 ## What to run
 
+**Nothing needs to be installed.** Contributing a corpus needs the scripts, not the skill:
+no agent takes part, so there is no reason to put anything in somebody's config to ask them
+for a favour.
+
 ```bash
-npx skills add "ftrinidad/gnomon#feat/miraudit-skill" -a claude-code -s miraudit -y
-bash .claude/skills/miraudit/scripts/second-corpus.sh
+git clone -q -b feat/miraudit-skill --depth 1 https://github.com/ftrinidad/gnomon.git /tmp/miraudit
+bash /tmp/miraudit/skills/miraudit/scripts/second-corpus.sh
+rm -rf /tmp/miraudit
 ```
 
-The `#branch` suffix is required: the bare form clones the default branch and reports "No
-skills found". With `-g` the skill goes to `~/.claude/skills/` instead, and the second line
-becomes `bash ~/.claude/skills/miraudit/scripts/second-corpus.sh`.
+A 3.6 MB shallow clone, the result file in whatever directory you ran it from, and one line
+to remove every trace. Verified end to end.
+
+If the runner also wants the skill itself, to audit their own corpus rather than only
+contribute to a comparison, that is the install path in the README. The `#branch` suffix
+there is required: the bare form clones the default branch and reports "No skills found".
 
 No arguments. It clones the scoring tool at the pinned commit, scores the last 30 complete
 days, and writes one file **into the directory you ran it from**. Every default is printed
