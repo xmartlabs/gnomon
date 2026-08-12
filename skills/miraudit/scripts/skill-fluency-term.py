@@ -1,6 +1,6 @@
 """Skill fluency's undisclosed third term, recovered across every corpus we have.
 
-    python3 adhoc-skill-fluency-crosscorpus.py --checkout <copy> --since --until \
+    python3 skill-fluency-term.py --checkout <copy> --since --until \
         --stats <stats.json> --comparison <file.json> [--comparison <file.json> ...]
 
 # miraudit-covers: Skill fluency
@@ -18,7 +18,7 @@ import json
 import os
 import sys
 
-sys.path.insert(0, os.path.expanduser("~/.claude/skills/miraudit/scripts"))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import parse, header, load_stats, require  # noqa: E402
 
 args, WINDOW = parse(__doc__.strip().splitlines()[0], {
@@ -70,7 +70,10 @@ found = [recover("ours", axes_of(load_stats(args.stats)))]
 for path in args.comparison:
     with open(os.path.expanduser(path)) as fh:
         payload = json.load(fh)
-    found.append(recover(os.path.basename(path)[:10], axes_of(payload)))
+    # The stem minus the shared prefix, because every file starts "comparison-" and a blind
+    # truncation labelled all of them "comparison" -- an output nobody could read a corpus off.
+    stem = os.path.splitext(os.path.basename(path))[0]
+    found.append(recover(stem.replace("comparison-", "") or stem, axes_of(payload)))
 
 known = [v for v in found if v is not None]
 print(f"\n  {len(known)} corpora resolved; branches seen: {sorted(set(known))}")

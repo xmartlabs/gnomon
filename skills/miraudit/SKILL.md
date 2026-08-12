@@ -63,13 +63,21 @@ is not evidence.
 2. **Re-measure that behaviour from the corpus directly.** Never derive ground truth from
    the tool's own aggregates; a comparison against itself proves nothing.
 3. Report the gap **and its direction**: faithful, overestimates, underestimates.
+4. **Re-run it with `--run <your JSON>` before emitting.** A tag says a script claims an
+   axis; it does not say anybody recorded a gap, a direction and a control. Reported the
+   first way, a run once verdicted "11 of 11" while its own artifact held six.
+5. **`scripts/axis-terms.py` goes a level lower**, because an axis can be covered while a
+   term inside it is invisible — which is where the one hard finding lived. It rebuilds each
+   axis from the terms in the scoring source and lists those absent from `signals`. What it
+   emits are candidates for Phase 3, never findings.
 
-Use `scripts/` where a check exists. **Most of the score has none** — at the pin, five
-scored axes worth 175 of 350 base points — so the unscripted path is the normal path, not
-the exception. Take that count from the manifest, never from prose: the list used to be
-written down by hand and had been missing an axis for as long as it existed. Its procedure is `references/ad-hoc-checks.md`, with a worked example beside
-it; the short version is that you write a runnable script into the run's output directory,
-import the tool's own primitives, print both numbers with a direction, and carry a control.
+Use `scripts/` where a check exists, and expect the unscripted path to be normal rather
+than exceptional. **How many axes that is, and which, comes from the manifest — never from
+this file.** The list was prose once, was wrong about an axis for as long as it existed,
+and the fix that replaced it with a corrected count went stale the next day. Its procedure
+is `references/ad-hoc-checks.md`, with a worked example beside it; the short version is
+that you write a runnable script into the run's output directory, import the tool's own
+primitives, print both numbers with a direction, and carry a control.
 
 An agent conceives that measurement; the machine runs it; the number decides. What leaves
 the run is a file anyone can re-run, never a verdict. `references/design-rationale.md`

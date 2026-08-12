@@ -4,13 +4,23 @@ Most of the score has no check, and Phase 1 still has to report a gap and a dire
 each axis. **Do not read the uncovered list from here. Run `scripts/axis-coverage.py`.**
 
 This paragraph used to name the uncovered axes itself, and it named five: Skill fluency,
-Tool command, Grounding, Token economy and Steering leverage. It was wrong — Model mix (50)
-has no check either and was never added — and no run noticed, because nothing enumerated the
+Tool command, Grounding, Token economy and Steering leverage. It was wrong — Model mix had
+no check either and was never added — and no run noticed, because nothing enumerated the
 axes. The manifest derives them from the anchored payload and from the checkout, and the
-difference between those two is also the `dropped-term` detector, so Steering leverage now
-shows up under "dropped" rather than "uncovered": it is withheld upstream and never reaches
-the payload at all. Today that is five uncovered scored axes worth 175 of 350 base points,
-plus one dropped worth 50.
+difference between those two is also the `dropped-term` detector, so Steering leverage shows
+up under "dropped" rather than "uncovered": it is withheld upstream and never reaches the
+payload at all.
+
+**The count is deliberately absent here.** The correction to this paragraph replaced a wrong
+hand-typed number with a right one, and the right one was stale within a day: two checks
+graduated into `scripts/` and every total moved. A number in prose is a number nobody
+re-derives, which is the whole failure this file's opening line exists to prevent.
+
+**And a tag is not a measurement.** `# miraudit-covers:` is a grep over source comments: it
+says a script claims an axis, not that it ran, exited 0, or that anybody wrote down a gap and
+a direction. Pass `--run <the run's JSON>` and the manifest requires the record instead of
+the claim. Run it that way before emitting — the first run to do so found five axes green on
+a tag with no recorded measurement behind any of them.
 
 `design-rationale.md` argues why an agent belongs here and nowhere else: **conceiving the
 counter-measurement is the hard part and is not mechanical; deciding is mechanical and must
@@ -80,6 +90,39 @@ Same reasoning as `design-rationale.md`'s rule that a gate row is earned by a de
 than invented. v17 forced three fixtures to be deleted outright; every script in `scripts/`
 is something a person has to re-verify at each re-pin, so a library that grows on "this
 seemed useful" is a bill someone pays later.
+
+**Graduating is where defects enter, so it has a checklist.** An ad-hoc check is written
+against one machine, one run and one corpus; `scripts/` is none of those. Every line below
+comes from something that actually got through.
+
+- `sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))`. **Never `expanduser("~")`.**
+  The one check that graduated before this list hardcoded the installed skill's path, and an
+  insert at position 0 sits *ahead* of the script's own directory: running the fork's copy
+  imported the installed `_common.py`. Proven by putting a sentinel in a copy — the
+  hardcoded form could not see it, the `__file__` form could. Byte-identical today, so it
+  was latent, which is exactly why nobody caught it.
+- **Scoring constants through `require()`**, never as literals. Where the value genuinely is
+  an unnamed inline literal, see the rule below rather than copying it in silently.
+- **No paths from this machine and no personal names.** The file is going to a public fork.
+- **Rename the usage line too.** The graduated check kept naming the file it used to be.
+- **Derive weights and maxima from the payload** (`base_weight`), not from `/25` and `/50`
+  typed into an f-string.
+- **Re-run the manifest afterwards.** Graduating is the only thing that moves its totals.
+
+### When the number cannot be imported
+
+Some values have no named constant to import: the Model mix targets, its weights, and the
+cli_share target are unnamed literals inside `compute_aq`. Copying them is unavoidable;
+copying them *silently* is not. Beware the near-miss — `PLANNING_PRACTICE_TARGET` is also
+`0.30` and is a different target, so importing it would be right by coincidence.
+
+Rebuild the axis from **their** published signals and the copied literal, and compare
+against the score they published. That turns a stale copy into a failed control instead of a
+confident wrong number. Then state the range the probe is blind to: `sat()` is flat above
+the observed value, so a target lowered underneath it is invisible, and when every term is
+saturated the weights are unconstrained too. Both graduated checks print exactly that, and
+the probe was verified by injection — a target raised above the observed share makes the
+control disagree and the script exit 1; lowered, it agrees, as the blind-range line says.
 
 ## The worked example
 
