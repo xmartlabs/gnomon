@@ -313,11 +313,12 @@ def compute_aq(stats):
     # Via wsum, not raw arithmetic: `rate` returns None when there is no usable tool-call
     # denominator, and wsum is what drops such a term and renormalizes the rest. Multiplying
     # by a coefficient directly would raise a TypeError instead.
+    _process_skills_matched = has_skill(["subagent-driven", "brainstorm", "writing-plans",
+                                         "cerberus", "systematic-debugging"])
     skill_fluency = wsum(
         (.40, sat(st.get("skills_distinct", 0), SKILLS_DISTINCT_CEILING), None),
         (.30, rate(st.get("skills_total", 0), SKILLS_TOTAL_PER_CALL_TARGET), None),
-        (.30, 1.0 if has_skill(["subagent-driven", "brainstorm", "writing-plans",
-                                "cerberus", "systematic-debugging"]) else 0.6, None),
+        (.30, 1.0 if _process_skills_matched else 0.6, None),
         axis="Skill fluency")
     # mcp_servers/clis are distinct-counts (kept absolute). The toolsearch rate term was
     # removed (v17): it was ~94% select:-prefixed deterministic tool-loading the deferred-tool
@@ -383,7 +384,8 @@ def compute_aq(stats):
         ("Skill fluency", 22, skill_fluency, {
             "skills_distinct": st.get("skills_distinct", 0), "tool_calls": tool_calls,
             **rate_facts("skills_total", st.get("skills_total", 0),
-                         SKILLS_TOTAL_PER_CALL_TARGET)}, "skills"),
+                         SKILLS_TOTAL_PER_CALL_TARGET),
+            "process_skills_matched": _process_skills_matched}, "skills"),
         ("Tool command (MCP + CLI)", 28, tool_command, {
             "mcp_servers": t.get("mcp_servers_distinct", 0),
             "clis": t.get("clis_distinct", 0), "tool_calls": tool_calls,
@@ -492,9 +494,10 @@ def compute_aq(stats):
                               or b.get("no_tool_activity") or grounded is None or not ci_denom)
                      else sat(coverage, CONTEXT_INTELLIGENCE_TARGET))
     # compounding writes -> per-tool-call rate (rewards the habit, not raw volume)
+    _compounding_skills_matched = has_skill(["retro", "writing-plans", "brainstorm"])
     compounding = wsum((.6, rate(st.get("compounding_writes", 0),
                                  COMPOUNDING_WRITES_PER_CALL_TARGET), None),
-                       (.4, (1.0 if has_skill(["retro", "writing-plans", "brainstorm"]) else 0.6), "skill_reads"),
+                       (.4, (1.0 if _compounding_skills_matched else 0.6), "skill_reads"),
                        axis="Compounding")
     _review_skills_applicable = "skill_reads" in caps
     # v17 — disclose per-session COVERAGE (numerator / denominator / ratio) in place of the
@@ -537,7 +540,8 @@ def compute_aq(stats):
         ("Compounding", 20, compounding, {
             "tool_calls": tool_calls,
             **rate_facts("compounding_writes", st.get("compounding_writes", 0),
-                         COMPOUNDING_WRITES_PER_CALL_TARGET)}),
+                         COMPOUNDING_WRITES_PER_CALL_TARGET),
+            "compounding_skills_matched": _compounding_skills_matched}),
     ]
 
     # ---- Pillar 3: Efficiency ----

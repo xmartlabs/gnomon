@@ -328,6 +328,7 @@
                     "normalized_score": 0.85,
                     "score": 18.7,
                     "signals": {
+                      "process_skills_matched": true,
                       "skills_distinct": 25,
                       "skills_total": 900,
                       "skills_total_per_call": 0.225,
@@ -429,6 +430,7 @@
                     "normalized_score": 1.0,
                     "score": 20.0,
                     "signals": {
+                      "compounding_skills_matched": true,
                       "compounding_writes": 20,
                       "compounding_writes_per_call": 0.005,
                       "compounding_writes_per_call_target": 0.0018,
@@ -1244,6 +1246,7 @@
                     "normalized_score": 0.18,
                     "score": 4.0,
                     "signals": {
+                      "process_skills_matched": false,
                       "skills_distinct": 0,
                       "skills_total": 0,
                       "skills_total_per_call": 0.0,
@@ -1350,6 +1353,7 @@
                     },
                     "score": 12.0,
                     "signals": {
+                      "compounding_skills_matched": false,
                       "compounding_writes": 1,
                       "compounding_writes_per_call": null,
                       "compounding_writes_per_call_target": 0.0018,
@@ -2066,6 +2070,7 @@
                     "normalized_score": 0.85,
                     "score": 18.7,
                     "signals": {
+                      "process_skills_matched": true,
                       "skills_distinct": 25,
                       "skills_total": 900,
                       "skills_total_per_call": 0.225,
@@ -2167,6 +2172,7 @@
                     "normalized_score": 1.0,
                     "score": 20.0,
                     "signals": {
+                      "compounding_skills_matched": true,
                       "compounding_writes": 20,
                       "compounding_writes_per_call": 0.005,
                       "compounding_writes_per_call_target": 0.0018,
@@ -2536,6 +2542,7 @@
                     "normalized_score": 0.18,
                     "score": 4.0,
                     "signals": {
+                      "process_skills_matched": false,
                       "skills_distinct": 0,
                       "skills_total": 0,
                       "skills_total_per_call": 0.0,
@@ -2642,6 +2649,7 @@
                     },
                     "score": 12.0,
                     "signals": {
+                      "compounding_skills_matched": false,
                       "compounding_writes": 1,
                       "compounding_writes_per_call": null,
                       "compounding_writes_per_call_target": 0.0018,
@@ -3507,6 +3515,7 @@
                     "normalized_score": 0.85,
                     "score": 18.7,
                     "signals": {
+                      "process_skills_matched": true,
                       "skills_distinct": 25,
                       "skills_total": 900,
                       "skills_total_per_call": 0.225,
@@ -3608,6 +3617,7 @@
                     "normalized_score": 1.0,
                     "score": 20.0,
                     "signals": {
+                      "compounding_skills_matched": true,
                       "compounding_writes": 20,
                       "compounding_writes_per_call": 0.005,
                       "compounding_writes_per_call_target": 0.0018,
@@ -4404,6 +4414,7 @@
                     "normalized_score": 0.18,
                     "score": 4.9,
                     "signals": {
+                      "process_skills_matched": false,
                       "skills_distinct": 0,
                       "skills_total": 0,
                       "skills_total_per_call": null,
@@ -4473,6 +4484,7 @@
                     "normalized_score": 0.24,
                     "score": 6.0,
                     "signals": {
+                      "compounding_skills_matched": false,
                       "compounding_writes": 0,
                       "compounding_writes_per_call": null,
                       "compounding_writes_per_call_target": 0.0018,
@@ -5435,6 +5447,7 @@
                         "partial_terms": null,
                         "score": 18.7,
                         "signals": {
+                          "process_skills_matched": true,
                           "skills_distinct": 25,
                           "skills_total": 900,
                           "skills_total_per_call": 0.225,
@@ -5449,6 +5462,7 @@
                         "partial_terms": null,
                         "score": 18.7,
                         "signals": {
+                          "process_skills_matched": true,
                           "skills_distinct": 25,
                           "skills_total": 900,
                           "skills_total_per_call": 0.225,
@@ -5461,6 +5475,7 @@
                     "normalized_score": 0.85,
                     "score": 18.7,
                     "signals": {
+                      "process_skills_matched": true,
                       "skills_distinct": 25,
                       "skills_total": 900,
                       "skills_total_per_call": 0.225,
@@ -5732,6 +5747,7 @@
                         "partial_terms": null,
                         "score": 20.0,
                         "signals": {
+                          "compounding_skills_matched": true,
                           "compounding_writes": 20,
                           "compounding_writes_per_call": 0.005,
                           "compounding_writes_per_call_target": 0.0018,
@@ -5745,6 +5761,7 @@
                         "partial_terms": null,
                         "score": 20.0,
                         "signals": {
+                          "compounding_skills_matched": true,
                           "compounding_writes": 20,
                           "compounding_writes_per_call": 0.005,
                           "compounding_writes_per_call_target": 0.0018,
@@ -5756,6 +5773,7 @@
                     "normalized_score": 1.0,
                     "score": 20.0,
                     "signals": {
+                      "compounding_skills_matched": true,
                       "compounding_writes": 20,
                       "compounding_writes_per_call": 0.005,
                       "compounding_writes_per_call_target": 0.0018,

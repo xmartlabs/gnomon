@@ -2059,6 +2059,53 @@ class TestToolsDiagnostic(unittest.TestCase):
                 self.assertEqual(target, sig[f"{key}_per_call_target"])
 
 
+class TestHasSkillDiagnosticPublished(unittest.TestCase):
+    """Issue #71 — the binary has_skill() checks on Skill fluency and Compounding must be
+    published in the axis signals dict so a reader can see why the axis scored as it did."""
+
+    @staticmethod
+    def _signals(skills_all):
+        aq = paxel.compute_aq({
+            "tools": {"mcp_servers_distinct": 3, "clis_distinct": 5, "toolsearch_calls": 0,
+                      "task_tool_calls": 0, "agent_calls": 0},
+            "stack": {"skills_distinct": len(skills_all), "skills_total": 50,
+                      "subagent_types_distinct": 2, "max_session_subagent_types": 2,
+                      "top_skills": skills_all, "skills_all": skills_all,
+                      "compounding_writes": 10,
+                      "models": [("claude-sonnet-4", 100)]},
+            "behavior": {"fanout_median": 2, "shell_test_runs": 10,
+                         "error_recovery_ratio": 0.8, "api_errors_retries": 0,
+                         "actions_per_prompt": 5},
+            "volume": {"tool_calls_total": 5000, "total_sessions": 10},
+            "corpus": {"sources": {"claude": {}}},
+        })
+        breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
+        craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
+        sf = next(a for a in breadth["axes"] if a["name"] == "Skill fluency")
+        comp = next(a for a in craft["axes"] if a["name"] == "Compounding")
+        return sf["signals"], comp["signals"]
+
+    def test_process_skills_matched_true(self):
+        sf, _ = self._signals([("brainstorm", 10), ("code-review", 5)])
+        self.assertIn("process_skills_matched", sf)
+        self.assertTrue(sf["process_skills_matched"])
+
+    def test_process_skills_matched_false(self):
+        sf, _ = self._signals([("code-review", 5), ("tdd", 3)])
+        self.assertIn("process_skills_matched", sf)
+        self.assertFalse(sf["process_skills_matched"])
+
+    def test_compounding_skills_matched_true(self):
+        _, comp = self._signals([("retro", 10), ("code-review", 5)])
+        self.assertIn("compounding_skills_matched", comp)
+        self.assertTrue(comp["compounding_skills_matched"])
+
+    def test_compounding_skills_matched_false(self):
+        _, comp = self._signals([("code-review", 5), ("tdd", 3)])
+        self.assertIn("compounding_skills_matched", comp)
+        self.assertFalse(comp["compounding_skills_matched"])
+
+
 class TestAggregateKnowledgeServerUnion(unittest.TestCase):
     """Aggregate knowledge_servers is the UNION of distinct server names across sources, not
     max(count) (which undercounts) and not sum (which double-counts a shared server)."""
