@@ -5,9 +5,15 @@ Each case is { name, scoring_inputs_version, scoring_inputs_by_source, expected 
 `expected` = { by_source: {<source>: <profile>}, aggregate: <profile> }, snapshotted from
 the Python scoring implementation (gnomon.scoring.aggregate.score_by_source).
 
-mirdash reimplements scoring in TS and tests against this same file. test_scoring_vectors.py
-re-derives `expected` from the Python impl and asserts it matches the committed file, so the
-snapshot can never silently drift from the code.
+mirdash does NOT reimplement scoring in TS -- `lib/metrics-profile.ts` only PARSES this
+payload and treats `score_contract_id` as an opaque cohort key, so Python is the sole scoring
+runtime (see gnomon/scoring/replay.py, and test_scoring_vectors.py's module docstring, which
+this line used to contradict). mirdash tests against the SAME file to keep its parser's
+expectations honest with what Python actually produces. A contract bump therefore needs no
+matching TS change: mirdash groups by whatever id it receives.
+
+test_scoring_vectors.py re-derives `expected` from the Python impl and asserts it matches the
+committed file, so the snapshot can never silently drift from the code.
 
 Run:  python3 tests/gen_scoring_vectors.py
 """
