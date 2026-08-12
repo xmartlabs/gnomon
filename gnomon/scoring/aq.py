@@ -15,6 +15,13 @@ PLANNING_TARGET = 0.50
 # Planning-practice is the share of eligible top-level sessions with plan-mode
 # or planning-skill evidence. It lives here because both AQ and GStack use it.
 PLANNING_PRACTICE_TARGET = 0.30
+# PROVISIONAL -- recalibrate from a production p40-50, which this value has never been
+# fitted against (the note was previously buried beside the axis; it belongs next to the
+# number). Issue #72 measured five corpora at 0.984-1.000 coverage, i.e. every one of them
+# saturated a target set at 0.60, which is consistent with 0.60 being too low but does NOT
+# establish it: five self-selected corpora cannot show where the real population mass sits.
+# Moving this value is a registered calibration change (see calibration.py's
+# CALIBRATION_CONSTANT_NAMES) and needs a new contract ID and fingerprint.
 CONTEXT_INTELLIGENCE_TARGET = 0.60
 
 # ---- Per-tool-call rate targets ---------------------------------------------------
@@ -462,6 +469,16 @@ def compute_aq(stats):
     verification = wsum((.5, verification_coverage, None),
                         (.5, rate(review_n, REVIEW_SKILLS_PER_CALL_TARGET), "skill_reads"),
                         axis="Verification")
+    # Grounding is a PURE FRACTION with no fitted target: parity (one explore-or-reason
+    # action per doing action) is full marks, and the ratio is saturated there because
+    # exploring MORE than you build is not a further virtue to reward.
+    #
+    # KNOWN LIMITATION (issue #72, five corpora): observed ratios spanned 0.974-1.469 and
+    # every corpus scored at or within half a point of this ceiling, so above 1.0 the term
+    # carries no information and does not separate people IN THAT RANGE. Whether it
+    # discriminates below parity is unmeasured. Raising the ceiling would be a genuine
+    # recalibration -- it needs a production distribution, not a re-read of the formula --
+    # so the target stays 1.0 and the limitation is published instead of quietly carried.
     grounding = sat(b.get("planning_ratio_explore_to_doing", 0), 1.0)
     # Context Intelligence: PURE per-session grounding COVERAGE, not knowledge-MCP call/
     # server volume (the old `<50 calls` gate was gameable by auto-fired knowledge-MCP
