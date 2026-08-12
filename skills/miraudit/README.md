@@ -133,12 +133,21 @@ cp -r /tmp/miraudit-src/miraudit ~/.claude/skills/    # all your projects
 cp -r /tmp/miraudit-src/miraudit .claude/skills/      # this project only
 ```
 
-**Via the skills CLI.** Not verified yet. Confirm how it discovers skills in a repository
-before relying on it.
+**Via the skills CLI.** Verified, including that `scripts/` and `references/` come with it,
+which matters because the checks are the point.
 
 ```bash
-npx skills add OWNER/REPO -a claude-code
+npx skills add "ftrinidad/gnomon#feat/miraudit-skill" -a claude-code -s miraudit -y
 ```
+
+**The `#branch` suffix is not optional here.** This skill lives on a branch of a fork, and
+the bare `owner/repo` form clones the default branch and reports "No skills found" — a
+message that reads like the skill is broken rather than like you are looking at the wrong
+branch. Drop the suffix once it lands on a default branch somewhere.
+
+That installs into `.claude/skills/` for the current project. `-g` puts it in
+`~/.claude/skills/` for every project instead. **If you are the one editing this skill, do
+not use `-g`**: that is where the source lives, and the installer would write over it.
 
 **As part of a plugin.** If it ships inside one, install the plugin and read the update
 note below, which matters more than it looks.

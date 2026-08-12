@@ -96,8 +96,13 @@ uploaded: the entry point runs with `--local`.
 ## What to run
 
 ```bash
-bash ~/.claude/skills/miraudit/scripts/second-corpus.sh
+npx skills add "ftrinidad/gnomon#feat/miraudit-skill" -a claude-code -s miraudit -y
+bash .claude/skills/miraudit/scripts/second-corpus.sh
 ```
+
+The `#branch` suffix is required: the bare form clones the default branch and reports "No
+skills found". With `-g` the skill goes to `~/.claude/skills/` instead, and the second line
+becomes `bash ~/.claude/skills/miraudit/scripts/second-corpus.sh`.
 
 No arguments. It clones the scoring tool at the pinned commit, scores the last 30 complete
 days, and writes one file **into the directory you ran it from**. Every default is printed
