@@ -254,37 +254,39 @@ I drew the conclusion anyway. Recovered by `scripts/skill-fluency-term.py`, whos
 the same algebra on Tool command where every term IS disclosed: 0,654167 predicted against
 0,654167 published.
 
-### Context Intelligence: the numerator and the denominator are the same set
+### Context Intelligence: a 60% target that nobody scores under 98%
 
-Five corpora put `evidence_eligible_sessions` above threshold every time at a suspiciously
-constant multiple — 1,67 / 1,67 / 1,64 / 1,67 / 1,67. That is not five independent
-observations of headroom. `CONTEXT_INTELLIGENCE_TARGET = 0,60` (`aq.py:18`) and the axis is
+Five corpora put `evidence_eligible_sessions` above threshold every time at a nearly constant
+multiple — 1,67 / 1,67 / **1,64** / 1,67 / 1,67. That is not five independent observations of
+headroom. `CONTEXT_INTELLIGENCE_TARGET = 0,60` (`aq.py:18`) and the axis is
 `sat(coverage, 0,60)`, so a multiple of 1,667 is exactly **coverage = 1,0**.
 
-Read straight from the published signals of the three corpora that carry them:
+Three corpora publish the numbers directly. The fourth does not, and is recoverable anyway:
+the bisection point IS `0,60 × eligible_change_sessions`, so dividing it back out gives the
+denominator.
 
-| | grounded_sessions | write_sessions | coverage |
-|---|---|---|---|
-| A | 50 | 50 | 1,0 |
-| B | 15 | 15 | 1,0 |
-| E | 60 | 60 | 1,0 |
+| | grounded_sessions | write_sessions | coverage | source |
+|---|---|---|---|---|
+| A | 50 | 50 | 1,000 | published signals |
+| B | 15 | 15 | 1,000 | published signals |
+| C | 124 | **126** | **0,984** | derived from its bisection point, 75,6 / 0,60 |
+| D | — | — | — | axis absent from the payload |
+| E | 60 | 60 | 1,000 | published signals |
 
-Not "high". **Identical, every time.** Every session that wrote code had a qualifying call
-before the write, for three different people on corpora between 5.862 and 42.874 tool calls.
-The axis scores 20,0/20 for all of them because its input is a proportion nobody fails to
-max, not because they cleared a bar.
+**Against a target of 60%, four people are at 100% and the fifth is at 98,4%.** The axis
+awards full marks from 0,60 upward, and every person measured sits in the top 2% of its
+input range. It cannot discriminate between any of them, and it would take somebody at 59%
+before it said anything at all.
 
-**Stated as a hypothesis, because the mechanism is not verified.** The published rule is *«a
-knowledge-MCP call OR an explore-class project/data/design MCP call before a later
-Edit/Write/MultiEdit/NotebookEdit in the same session»*. If anything fires an MCP call early
-in a session — a memory recall, a session-start hook, a connected server that greets — then
-every write-session is grounded by construction and the axis is measuring **configuration**
-rather than judgement, which is the `signal-not-attributable-to-person` shape. What is
-measured here is the coincidence; the mechanism needs a corpus where coverage is **not** 1,0.
+**C is the reason this is stated carefully.** An earlier version of this section said the
+numerator and the denominator were the same set — that grounded_sessions equalled
+write_sessions by construction. C is 124 of 126: two sessions wrote code without a
+qualifying call first. The metric CAN come out below 1,0, so whatever produces these numbers
+is behaviour and not an identity, and the "by construction" reading is withdrawn.
 
-D would have been that test and cannot be: its Context Intelligence axis is absent from the
-payload entirely, so Craft renormalizes without it. C carries no per-axis signals. Two of the
-five could have falsified this and neither can.
+What remains is a calibration observation rather than a fidelity defect, and it is filed as
+one: a 60% target on a quantity where the observed floor is 98%. Whether the graded
+population has mass below 60% is exactly what none of these five corpora can say.
 
 ### One Windows corpus, and one thing it makes visible
 
