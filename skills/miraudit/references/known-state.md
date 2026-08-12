@@ -33,6 +33,21 @@ upstream: https://github.com/xmartlabs/gnomon.git
   note rather than a failure — which is the intended severity: a moved upstream is a
   different question, not a broken run.
 
+  **Measured, not only read (2026-08-12).** Everything above is step 1 of the refresh, which
+  is a diff read; this is the arm that outranks it. Both refs were run against the same
+  corpus minutes apart, fixed window, `--local --console --no-open --output-dir`: **AQ 92 on
+  both, and not one of the eleven axes differs.** `contract-probe.py` reports 18/18
+  behaviours unchanged at `ed2a645` and all eleven checks in `scripts/` exit 0 against it.
+  Nothing needs doing, and re-pinning would buy nothing but a careful pass over every anchor.
+
+  Two axes *appeared* to move — Discipline 16.3→16.5, Verification 23.2→23.0 — when the new
+  run was compared against a payload from earlier the same day. That was the corpus growing
+  under a fixed window, 3,029 files against 3,038, and both arms of the real A/B show the
+  same new values. Gate row 1, caught on our own measurement rather than someone else's.
+  Residual worth stating: the two arms are not byte-identical either (246,271 against
+  246,203 lines), so the corpus moved *between* them too. That confound can only manufacture
+  a difference, and none appeared.
+
 ## How to refresh this file
 
 The pin going stale is expected. The file going stale *silently* is the failure. Whoever
