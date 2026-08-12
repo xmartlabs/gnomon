@@ -97,22 +97,27 @@ Conditions for B to count at all:
 
 ## Corpora on record
 
-| | A | B | C |
-|---|---|---|---|
-| window | 2026-07-07 → 2026-08-06 | 2026-07-11 → 2026-08-10 | 2026-07-12 → 2026-08-11 |
-| contract | `17:17:17` | `17:17:17` | `17:17:17` |
-| schema | — | **`comparison-2`** (re-run, window pinned) | `comparison-1` |
-| `anchor.ok` | `null` in the comparison file | `null` | `null` |
-| tool calls | 42.874 | 5.862 | 42.003 |
-| sessions | 125 | 49 | 281 |
-| project roots | 20 | 15 | **74** |
-| sources scored | claude | claude | claude, codex |
-| sidechain share | 0,626 | 0,358 | 0,669 |
-| Bash share | 0,631 | 0,663 | **0,426** |
-| `explore_to_doing` | 1,124 | 0,974 | 1,439 |
-| ... without thinking | 0,219 | 0,193 | 0,722 |
-| `thinking_share` | 0,806 | 0,802 | 0,708 |
-| AQ | 92 | 82 | **93** |
+| | A | B | C | D |
+|---|---|---|---|---|
+| window | 2026-07-07 → 2026-08-06 | 2026-07-11 → 2026-08-10 | 2026-07-12 → 2026-08-11 | 2026-07-12 → 2026-08-11 |
+| contract | `17:17:17` | `17:17:17` | `17:17:17` | `17:17:17` |
+| schema | — | **`comparison-2`** (re-run, window pinned) | `comparison-1` | **`comparison-2`** |
+| `anchor.ok` | `null` | `null` | `null` | `null` |
+| tool calls | 42.874 | 5.862 | 42.003 | 3.702 |
+| sessions | 125 | 49 | 281 | 30 |
+| project roots | 20 | 15 | **74** | 14 |
+| sources scored | claude | claude | claude, codex | claude |
+| sidechain share | 0,626 | 0,358 | 0,669 | 0,458 |
+| Bash share | 0,631 | 0,663 | 0,426 | **0,384** |
+| `explore_to_doing` | 1,124 | 0,974 | 1,439 | 1,469 |
+| ... without thinking | 0,219 | 0,193 | 0,722 | 0,624 |
+| `thinking_share` | 0,806 | 0,802 | 0,708 | **0,590** |
+| AQ | 92 | 82 | **93** | 87 |
+
+**D is the one that was worth waiting for.** A different role, the smallest corpus of the
+four, and the only one where **Context Intelligence is missing from the payload entirely** —
+Craft's remaining three axes carry 100 points of base 80, so Verification reads 44,0/44 and
+Grounding 31,0/31. A dropped axis observed in somebody else's run, not inferred from ours.
 
 C arrived 2026-08-12 and is the least like the other two: 74 project roots, a second source
 scored, and Bash at 0,43 where A and B sit at 0,63 and 0,66. It is also the only one that
@@ -157,99 +162,93 @@ That statement needs no counterfactual and no decision rule: it is three publish
 compared. Keep it separate from the signal-level claim below, which is an inference from a
 method and is governed by rule 1.
 
-**Rule 1 — row 3, not row 1, and the third corpus did not change which two.** The delta is 0
-on all three (92→92, 82→82, 93→93), controls move on all three (69/55, 66/54, 69/55),
-`method_check_passed` on all three, and `not_cuttable` is the identical list each time. But
-row 1 needs the *same* signals cut and they are not: A cuts 10, B cuts 5, C cuts 11.
+**Rule 1 — row 3, and four corpora have not changed which two.** Delta 0 on all four
+(92→92, 82→82, 93→93, 87→87), controls move on all four (69/55, 66/54, 69/55, 73/62),
+`not_cuttable` the identical list every time. Signals cut: 10 / 5 / 11 / 7 — never the same
+set, so row 1 never applies and row 3 always does.
 
-Above threshold in **all three**, and it is the same pair the two-corpus intersection found:
+Above threshold in **all four**, and it is the same pair the two-corpus intersection found:
 
-| señal | A | B | C | eje |
-|---|---|---|---|---|
-| `cli_calls` | 9,61× | 13,53× | 2,34× | Token economy (`aq.py:585-589`) |
-| `evidence_eligible_sessions` | 1,67× | 1,67× | 1,64× | Context Intelligence (`aq.py:484`) |
+| señal | A | B | C | D | eje |
+|---|---|---|---|---|---|
+| `cli_calls` | 9,61× | 13,53× | 2,34× | 8,81× | Token economy (`aq.py:585-589`) |
+| `evidence_eligible_sessions` | 1,67× | 1,67× | 1,64× | 1,67× | Context Intelligence (`aq.py:484`) |
 
-Nine other signals are pinned on one or two corpora and not the third, which is exactly what
-row 3 exists to filter. `planning_ratio` is above on A and C and *below* on B;
-`test_covered_change_sessions` is within half a percent of its threshold on all three and
-above it on none convincingly.
+Eleven other signals are pinned on some corpora and not others, which is what row 3 exists to
+filter. `evidence_eligible_sessions` sits at 1,67× on three of the four and 1,64× on the
+fourth, which is a tighter agreement than anything else in the table and is worth a second
+look rather than a claim.
 
-Those two signals feed the two axes at identical maxima in the table above. The same fact
-reached by two independent routes, now on three corpora. That, and not the AQ delta, is what
-the set supports.
+One wrinkle worth stating: on D, **Context Intelligence is not scored at all** — the axis is
+absent from the payload and Craft renormalizes without it. So on D that signal is saturated
+while the axis it feeds is dropped. It does not weaken the pair; it does mean "these two
+signals feed the two axes at identical maxima" is a statement about A, B and C.
 
-**Rule 2 — fires, and the third corpus is what makes it convincing.** The three ratios are
-0,974 / 1,124 / **1,439** — a 48% spread — and the axis scores 24,5 / 25,0 / 25,0. Under the
-band as written, 0,90-or-above: the axis does not discriminate in this range. Three people
-whose underlying ratio differs by half land within half a point of each other on 25.
+**Rule 2 — fires, and the spread keeps widening while the scores do not.** Four ratios:
+0,974 / 1,124 / 1,439 / **1,469**. That is a 51% spread, and the axis scores 24,5 / 25,0 /
+25,0 / 31,0-of-31 — every one of them at or within half a point of its ceiling. Under the
+band as written, 0,90-or-above: the axis does not discriminate in this range.
 
-**Rule 3 — fires on all three, and the third one shrinks the finding without moving it.**
-`thinking_share` reads 0,806 / 0,802 / **0,708**. All inside the 0,70–0,90 row, so the rule
-fires as written and the band is not touched. C sits 0,008 above the lower edge, which is
-close enough to say out loud.
+**Rule 3 — the fourth corpus moves it off the row it was on.** `thinking_share` reads
+0,806 / 0,802 / 0,708 / **0,590**. D lands between 0,50 and 0,70, which is the rule's
+**middle** row, not its top one: *«report the range and stop calling it dominant.»*
 
-**The consequence is not the same size for everyone, and this is the honest part.** Strip the
-thinking blocks:
+So the range is reported and the word is dropped. It is **59% to 81%** across four people,
+not "80%", and the consequence varies by a factor of three:
 
-| | ratio | without thinking | Grounding | loses |
-|---|---|---|---|---|
-| A | 1,124 | 0,219 | 25,0/25 | **19,5** |
-| B | 0,974 | 0,193 | 24,5/25 | **19,7** |
-| C | 1,439 | 0,722 | 25,0/25 | **6,9** |
+| | ratio | without thinking | Grounding | would score | loses |
+|---|---|---|---|---|---|
+| A | 1,124 | 0,219 | 25,0/25 | 5,5 | 19,5 |
+| B | 0,974 | 0,193 | 24,5/25 | 4,8 | 19,7 |
+| C | 1,439 | 0,722 | 25,0/25 | 18,1 | 6,9 |
+| D | 1,469 | 0,624 | 31,0/31 | 19,3 | 11,7 |
 
-The composition claim survives on three corpora. The **magnitude** claim does not generalise:
-C loses a third of what A and B lose, because C's non-thinking exploration is high enough on
-its own to keep the ratio near the ceiling. Any write-up that quotes "the axis collapses"
-has to quote a range and say which corpus each number came from. The measured AQ cost of 7
-points is A's, and only A's — the other two were never run against a checkout.
+The composition claim survives on four corpora — thinking blocks are a majority of the
+numerator every time — and the magnitude claim is dead as a single number. The 7-point AQ
+cost is A's, measured once, on A.
 
-This is the rule that was written to be able to kill the Grounding write-up. It did not kill
-it, and it did make it smaller.
+D is also the only one below the 0,70 edge, and it is the only different role in the set.
+That is one observation, not a pattern, and it is written here so a fifth corpus can test it
+rather than confirm it.
 
-**Rule 4 — answered, on the second ask.** It went unanswered twice first, because
-`emit-comparison.py` never wrote the field the rule reads. B's runner re-ran on
-`comparison-2` **with the window pinned to their original one**, so the file is the same
-corpus with more fields rather than a fresh measurement: same 5.862 tool calls, same 49
-sessions, same AQ 82.
-
-| | A | B |
-|---|---|---|
-| `actions_per_prompt` | 6,4 | 6,7 |
-| band | 5–20 | 5–20 |
-
-Both inside. The rule's own row says what to do with that: *«two of two inside a band four
+**Rule 4 — answered.** `actions_per_prompt` reads 6,4 / 6,7 / — / 7,6. Three of three that
+carry the field are inside the 5–20 band. The rule's own row: *«two of two inside a band four
 times as wide as it is deep says little. Record it; do not raise it.»* Recorded, not raised.
-It says nothing about whether the band should stay withheld upstream.
 
-**Skill fluency's undisclosed term: three for three, and that REVERSES the finding.** The 30%
-`has_skill` term is recoverable by algebra wherever `signals` and `normalized_score` are both
-present, which is what `comparison-2` added.
+**Skill fluency: I reversed this finding on three corpora and the fourth reversed it back.**
 
-| | skills_distinct | rate term | normalized | recovered term 3 |
-|---|---|---|---|---|
-| A | 43/40 → 1,000 | 0,860 | 0,9581 | **1,0** |
-| B | 11/40 → 0,275 | 1,000 | 0,7100 | **1,0** |
-| C | — | — | 22,0/22 forces ≥ 0,992 | **1,0** |
+That sentence is the finding. Two commits ago the recovered term was 1,0 on A, B and C, and
+the write-up was rewritten to say it was a constant that lifted everyone equally and cost
+nobody points. D came back **0,6**.
 
-B was the one that could decide it. Its axis sits at 15,6/22, the lowest of the three, and
-both branches were arithmetically reachable until its signals arrived. It came back 1,0.
+| | skills_distinct | rate vs target | normalized | recovered term 3 | axis |
+|---|---|---|---|---|---|
+| A | 43/40 | 0,86× | 0,9581 | 1,0 | 21,1/22 |
+| B | 11/40 | 1,10× | 0,7100 | 1,0 | 15,6/22 |
+| C | — | — | 22,0/22 forces ≥0,992 | 1,0 | 22,0/22 |
+| **D** | **17/40** | **3,92×** | **0,6500** | **0,6** | **14,3/22** |
 
-So the original framing — *a hidden term is quietly costing someone 2,6 points* — **is wrong**,
-and the corpora gathered to support it are what killed it. What is left is smaller and
-sharper: the axis advertises three signals, one of them carries 30% of the weight, it is
-published nowhere, and it has not varied across any corpus measured. A term that never varies
-is not discriminating, so the axis scores on two terms at .571/.429 and presents as three.
+**Compare B and D, because that pair is the whole argument.** On both signals the axis
+actually publishes, D beats B: more distinct skills (17 against 11) and nearly four times the
+per-call rate (3,92× target against 1,10×). D scores **lower** — 14,3 against 15,6. The only
+thing separating them is a term nobody can see, and it costs D **2,6 points of a 22-point
+axis**.
 
-Recovered by `adhoc-skill-fluency-crosscorpus.py`, which graduated out of a single run's
-output directory the moment a second run needed the same measurement on a different input.
-Its control is the same algebra on Tool command, where every term IS disclosed: predicted
-0,654167 against a published 0,654167.
+D is not somebody who avoids skills. D uses more of them, more often, than the corpus that
+outscores them. What D does not do is use a skill whose *name* contains one of
+`subagent-driven`, `brainstorm`, `writing-plans`, `cerberus` or `systematic-debugging`. The
+term is not measuring skill fluency; it is measuring whether five particular names appear.
 
-**Not checked, and it matters here:** all three are Claude Code users and the five needles are
-Claude Code skill names, so "never varied" means across everyone measured, not by
-construction. Somebody who uses no skills at all lands on 0,6.
+**The methodological lesson is worth more than the finding.** Three corpora agreeing on a
+BINARY term is close to no evidence: with two possible values you have learned nothing until
+you have seen both, and self-selected volunteers who share a workplace and a set of skills
+will sit on the same branch. The `not_checked` line written at the time said exactly this —
+*"never varied means across everyone measured, not by construction"* — and it was right, and
+I drew the conclusion anyway. Recovered by `scripts/skill-fluency-term.py`, whose control is
+the same algebra on Tool command where every term IS disclosed: 0,654167 predicted against
+0,654167 published.
 
-### Not settled by this pair
+### Not settled by this set
 
 - **Model mix**, 50/50 on all three, and this method cannot test it: its signals are in
   `not_cuttable` on all three runs, the identical list each time (`offload_share`,
@@ -259,9 +258,10 @@ construction. Somebody who uses no skills at all lands on 0,6.
   near the top of five axes. That the axes do not separate *them* is measured; that the axes
   would not separate someone much further down is not, and nothing here should be read as
   saying so.
-- **Calibration.** Three corpora are not a distribution, and people who agree to run an audit
-  are not a random sample of the graded population. All three are self-selected volunteers
-  from one workplace.
+- **Calibration.** Four corpora are not a distribution, and people who agree to run an audit
+  are not a random sample of the graded population. All four are self-selected volunteers
+  from one workplace. The Skill fluency reversal is what that costs in practice: three of
+  them shared a branch of a binary term for reasons that had nothing to do with the term.
 
 ## Traps a runner actually hit
 
