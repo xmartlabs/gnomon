@@ -66,8 +66,18 @@ standing in. See the trap below. `--help` does not list `--since`/`--until`; the
 documented in `sources/discovery.py` and parsed from the same `argv`, verified by running
 both forms over the same window and getting identical fingerprints.
 
-`--output-dir` warns "unknown flag" and then honours it. That is an upstream quirk, not a
-sign the command is wrong.
+`--output-dir` warns "unknown flag ... ignored" and then honours it. Traced: `cli/local.py`
+runs every argument through `--([a-z]+(?:-[a-z]+)*)-dir=(.+)$` looking for source overrides
+like `--claude-dir=`, so `--output-dir=` matches with `src="output"`, is not in `_DIR_FLAGS`,
+and gets the warning. The flag itself is real and documented at `cli/insights.py:35,56` and
+is consumed elsewhere; the run writes where it says.
+
+**Not purely cosmetic.** The flag it wrongly calls ignored is the one that must not be
+omitted: without it the entry point writes five files into the project directory, all five
+gitignored there, so `git status` stays clean and the write is invisible. A warning that
+tells someone the flag did nothing is a warning that invites them to drop it, and dropping
+it is the trap. `second-corpus.sh` prints a line saying so, because every second-corpus
+runner sees this on a run they agreed to do as a favour.
 
 **`--project` does not decide which gnomon runs. With `-m`, the current directory does.**
 `uv run --project X -- python -m gnomon.cli.insights` lets python put the working directory

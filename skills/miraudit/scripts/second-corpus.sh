@@ -132,6 +132,10 @@ if [ ! -d "$CORPUS" ]; then
 fi
 
 echo "==> anchoring"
+echo "    (the scoring tool will warn that --output-dir is an 'unknown flag ignored'."
+echo "     It is not ignored: the flag is real and documented, and the run writes exactly"
+echo "     where it says at the end. Its source-directory parser claims every --*-dir="
+echo "     argument and warns about the ones it does not own.)"
 if [ -n "$PUBLISHED" ]; then
   bash "$HERE/anchor.sh" --checkout "$CHECKOUT" --since "$SINCE" --until "$UNTIL" \
       --corpus "$CORPUS" --work "$WORK/anchor" --published "$PUBLISHED"
