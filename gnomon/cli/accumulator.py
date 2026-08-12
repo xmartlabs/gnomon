@@ -780,6 +780,25 @@ class Accumulator:
                         "writes": 0,
                     })
                     continue
+                async_no_notification = (
+                    attempt.get("status") == "async_launched"
+                    and attempt.get("invocation_seen")
+                    and not attempt.get("ambiguous")
+                    and attempt.get("lead_model"))
+                if async_no_notification:
+                    if agent_id:
+                        referenced_children.add(agent_id)
+                    pairs.append({
+                        "provider": "anthropic",
+                        "parent_session": attempt.get("parent_session"),
+                        "child_session": agent_id,
+                        "lead_model": attempt.get("lead_model"),
+                        "child_model": child_model,
+                        "completed": False,
+                        "substantive_calls": 0,
+                        "writes": 0,
+                    })
+                    continue
                 valid = (attempt.get("invocation_seen") and not attempt.get("ambiguous")
                          and agent_id and lifecycle_known and attempt.get("lead_model")
                          and child_model and child is not None)
@@ -798,6 +817,10 @@ class Accumulator:
                         attempt.get("substantive_calls", 0), child["substantive_calls"]),
                     "writes": max(attempt.get("writes", 0), child["writes"]),
                 })
+            # Workflow fan-out fix: children identified by parse_workflow_agent_dispatch
+            # have a known parent — they are not real orphans.
+            for _parent_sid, _child_id in self._fanout_credited_agents:
+                referenced_children.add(_child_id)
             if set(self.claude_child_facts) - referenced_children:
                 incomplete = True
         return pairs, "unmeasured" if incomplete else "measured"

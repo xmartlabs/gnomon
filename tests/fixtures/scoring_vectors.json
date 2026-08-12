@@ -469,6 +469,11 @@
                     "base_weight": 50,
                     "name": "Model mix",
                     "normalized_score": 0.75,
+                    "partial_terms": {
+                      "scored": 2,
+                      "total": 3,
+                      "weight_scored": 0.7
+                    },
                     "score": 37.5,
                     "signals": {
                       "distinct_models": 2,
@@ -2207,6 +2212,11 @@
                     "base_weight": 50,
                     "name": "Model mix",
                     "normalized_score": 0.75,
+                    "partial_terms": {
+                      "scored": 2,
+                      "total": 3,
+                      "weight_scored": 0.7
+                    },
                     "score": 37.5,
                     "signals": {
                       "distinct_models": 2,
@@ -3648,6 +3658,11 @@
                     "base_weight": 50,
                     "name": "Model mix",
                     "normalized_score": 0.75,
+                    "partial_terms": {
+                      "scored": 2,
+                      "total": 3,
+                      "weight_scored": 0.7
+                    },
                     "score": 37.5,
                     "signals": {
                       "distinct_models": 2,
@@ -4516,6 +4531,11 @@
                     "base_weight": 50,
                     "name": "Model mix",
                     "normalized_score": 0.166666666666667,
+                    "partial_terms": {
+                      "scored": 2,
+                      "total": 3,
+                      "weight_scored": 0.7
+                    },
                     "score": 8.3,
                     "signals": {
                       "distinct_models": 1,
@@ -5825,7 +5845,11 @@
                         "effective_weight": 0.65,
                         "id": "recent_30d",
                         "normalized_score": 0.75,
-                        "partial_terms": null,
+                        "partial_terms": {
+                          "scored": 2,
+                          "total": 3,
+                          "weight_scored": 0.7
+                        },
                         "score": 37.5,
                         "signals": {
                           "distinct_models": 2,
@@ -5843,7 +5867,11 @@
                         "effective_weight": 0.35,
                         "id": "full_window",
                         "normalized_score": 0.75,
-                        "partial_terms": null,
+                        "partial_terms": {
+                          "scored": 2,
+                          "total": 3,
+                          "weight_scored": 0.7
+                        },
                         "score": 37.5,
                         "signals": {
                           "distinct_models": 2,
@@ -5860,6 +5888,11 @@
                     ],
                     "name": "Model mix",
                     "normalized_score": 0.75,
+                    "partial_terms": {
+                      "scored": 2,
+                      "total": 3,
+                      "weight_scored": 0.7
+                    },
                     "score": 37.5,
                     "signals": {
                       "distinct_models": 2,

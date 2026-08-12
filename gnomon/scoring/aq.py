@@ -579,9 +579,12 @@ def compute_aq(stats):
     top_turns = max((n for _, n in models), default=0)
     offload_share = (1 - top_turns / total_turns) if total_turns else 0
     routing = score_linked_routing(b.get("linked_model_pairs", []), b.get("linked_model_routing_state", "unsupported"))
-    model_mix = (.35 * sat(len(models), 3) + .35 * sat(offload_share, 0.30)
-                 + .30 * routing["score"] if routing["score"] is not None
-                 else .5 * sat(len(models), 3) + .5 * sat(offload_share, 0.30))
+    model_mix = wsum(
+        (0.35, sat(len(models), 3), None),
+        (0.35, sat(offload_share, 0.30), None),
+        (0.30, routing["score"], None),
+        axis="Model mix",
+    )
     cli_calls, mcp_calls = t.get("cli_calls", 0), t.get("mcp_calls", 0)
     cli_share = cli_calls / (cli_calls + mcp_calls) if (cli_calls + mcp_calls) else 0
     # The toolsearch rate term was removed (v17, see Tool command above); wsum renormalizes
