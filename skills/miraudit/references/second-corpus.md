@@ -159,9 +159,48 @@ Conditions for B to count at all:
 | `thinking_share` | 0,806 | 0,802 | 0,708 | **0,590** | 0,656 |
 | AQ | 92 | 82 | 93 | 87 | **95** |
 
-**E was re-run on 2026-08-12** at `03b87a0` / `18:18:18`, same person and same window, once
-PowerShell began scoring as a shell. It is not a sixth corpus and gets no column here: rule 0
-above holds the before/after and what each moving axis turned out to be.
+**Every column above is `17:17:17`, and the pin this skill ships is `18:18:18`.** Somebody
+installing it today cannot reproduce a single comparison in that table with the checkout
+`known-state.md` hands them. The table is not wrong; it is closed. Read it as the record of
+a contract that has moved, and put new corpora in the table below.
+
+### On `18:18:18`
+
+`tool.contract` must match for two corpora to be compared, so these do not go in the table
+above. Two exist so far, same window, both re-runs of a corpus that is already up there.
+
+| | A | E |
+|---|---|---|
+| window | 07-12→08-11 | 07-12→08-11 |
+| contract | `18:18:18` | `18:18:18` |
+| ref | `03b87a0` | `03b87a0` |
+| schema | `comparison-2` | `comparison-2` |
+| `anchor.ok` | `null` | `null` |
+| platform | macOS | **Windows** |
+| tool calls | 40.896 | 25.573 |
+| sessions | 101 | 122 |
+| project roots | 21 | 39 |
+| sources scored | claude | claude |
+| sidechain share | 0,609 | 0,462 |
+| Bash share | 0,639 | 0,430 |
+| `explore_to_doing` | 1,080 | 1,400 |
+| ... without thinking | 0,199 | 0,493 |
+| `thinking_share` | 0,815 | 0,656 |
+| `steering.actions_per_prompt` | 7,0 | 8,7 |
+| AQ | 91 | **95** |
+
+**A moved 92 → 91 and that is not a decline**, it is a different window on a different
+contract: A's `17:17:17` column is 07-07→08-06 and this one is 07-12→08-11. E is the pair
+worth reading, because it is the same window on both contracts — rule 0 holds its
+before/after, and what moved was the axis PowerShell touches.
+
+**What two corpora do pin, which one could not.** `steering.axis_present_in_payload` is
+`false` on both and `band_validated` is `false` on both, so the Steering leverage axis is
+withheld for everyone rather than for one person's setup — 50 of the Efficiency pillar's 100
+base points, dropped and renormalized onto Recovery. And both sit INSIDE the unvalidated band
+[5, 20] at 7,0 and 8,7, so on this evidence the withholding costs points rather than saving
+them. What neither corpus can settle is whether any artifact a person reads says the term was
+withheld: that is a property of the renderer, and the comparison payload does not capture it.
 
 **D is the one that was worth waiting for.** A different role, the smallest corpus of the
 four, and the only one where **Context Intelligence is missing from the payload entirely** —
