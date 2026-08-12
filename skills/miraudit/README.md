@@ -228,10 +228,24 @@ produces a number that is true and means nothing. That mistake is documented in
 ### Running it on a second corpus
 
 The `saturated` shape is the one finding a single corpus cannot settle: it cannot tell "the
-axis saturates" from "this person clears every bar." `references/second-corpus.md` is the
-handout for whoever runs it next — prerequisites, what comes back, what is deliberately not
-compared, and the decision rule written down **before** the second run, including the result
-that withdraws the finding.
+axis saturates" from "this person clears every bar."
+
+**The entire ask is one command**, and it installs nothing:
+
+```bash
+uvx --from "git+https://github.com/ftrinidad/gnomon@feat/miraudit-skill#subdirectory=skills/miraudit" \
+    miraudit-second-corpus
+```
+
+It needs `python3`, `git` and `uv`, takes about two minutes and 16 MB of scratch that is
+deleted afterwards, uploads nothing, and writes one small JSON into the directory you ran it
+from. Send that file back. It carries counts and shares — no transcripts, no file contents,
+no paths, no repository names — and it is short enough to read before sending, which is the
+point: a person contributing data about their own work should see what leaves their machine.
+
+`references/second-corpus.md` is the handout — prerequisites, what comes back, what is
+deliberately not compared, and the decision rules written down **before** the second run,
+including the ones that withdraw a finding.
 
 ## Updating
 
