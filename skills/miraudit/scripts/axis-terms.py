@@ -31,6 +31,15 @@ first version reported Verification's coverage term as published nowhere. It is 
 as `test_coverage`, under a name the expression does not use -- and the algebra recovered
 0.3672 against a published 0.3673, which is now a control rather than a false positive.
 
+AND "UNDISCLOSED" IS CHECKED AGAINST THE WHOLE PAYLOAD, NOT THE AXIS. The version after
+that one proposed Discipline's `ordered_planning` as a third candidate. It is
+`sat(planned_eligible_sessions / eligible_change_sessions, PLANNING_TARGET)`: both inputs
+are published under /behavior and the target is an importable constant, so anyone can
+rebuild it. Absent from an axis's `signals` is not absent from the payload, and scoping an
+absence claim to the wrong object is the invented-denominator scar wearing a new hat. What
+survives is the shape that genuinely cannot be rebuilt -- `has_skill([...])` closes over
+skill names that reach the payload nowhere at all.
+
 Axes that are not a `wsum` are named as such rather than silently skipped, and so are the
 ones where a wsum is only PART of the axis. Neither is a parse failure, and calling them
 one would be a finding about our own code.
@@ -160,6 +169,28 @@ for m in re.finditer(r"\bwsum\(", SRC):
 scored = {a["name"]: a for p in (stats.get("agentic") or {}).get("pillars") or []
           for a in p.get("axes") or []}
 
+
+def payload_keys(node, out=None):
+    """Every key name anywhere in the payload, not only inside an axis's `signals`.
+
+    Discipline is why this exists. Its `ordered_planning` term was reported as published
+    nowhere on the strength of the axis's signals alone, while both of its inputs sit in
+    /behavior and its target is an importable constant -- so anyone could rebuild it. An
+    absence claim scoped to the wrong object is the `invented-denominator` scar in another
+    costume."""
+    out = set() if out is None else out
+    if isinstance(node, dict):
+        for k, v in node.items():
+            out.add(k)
+            payload_keys(v, out)
+    elif isinstance(node, list):
+        for v in node:
+            payload_keys(v, out)
+    return out
+
+
+PAYLOAD_KEYS = payload_keys(stats)
+
 CONST_RX = re.compile(r"\b([A-Z][A-Z0-9_]{3,})\b")
 GET_RX = re.compile(r"\.get\(\s*[\"'](\w+)[\"']")
 
@@ -250,6 +281,46 @@ def evaluate(expr, signals, used):
     return None, "opaque"
 
 
+def definition_of(name):
+    """The right-hand side of `name = ...` in the scoring source, parens balanced so a
+    multi-line expression comes back whole."""
+    m = re.search(rf"^[ \t]*{re.escape(name)}\s*=\s*", SRC, re.M)
+    if not m:
+        return None
+    i, depth = m.end(), 0
+    while i < len(SRC):
+        ch = SRC[i]
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        elif ch == "\n" and depth <= 0:
+            break
+        i += 1
+    return SRC[m.end():i]
+
+
+def rebuildable(expr, seen=None, depth=0):
+    """Can this term be rebuilt from fields the payload publishes?
+
+    Follows a bare name to its definition once, because a wsum term is often just a local
+    (`ordered_planning`) whose inputs live one hop away. Returns the payload fields it needs
+    and the ones it cannot get. A term with NO payload fields at all is not rebuildable --
+    `has_skill([...])` closes over skill names that never reach the payload, which is the
+    real shape of an undisclosed term."""
+    seen = seen or set()
+    keys = set(GET_RX.findall(expr))
+    if depth < 2:
+        for ident in re.findall(r"\b([a-z_][a-z0-9_]{3,})\b", expr):
+            if ident in seen or ident in ("else", "None", "True", "False"):
+                continue
+            seen.add(ident)
+            body = definition_of(ident)
+            if body and "wsum(" not in body:
+                keys |= rebuildable(body, seen, depth + 1)[0]
+    return keys, {k for k in keys if k not in PAYLOAD_KEYS}
+
+
 def published_as(value, signals, used):
     """Does a signal already carry this recovered value under another name? Verification's
     coverage term does, and calling it undisclosed was a false positive.
@@ -276,7 +347,7 @@ NOT_WSUM = {
 }
 
 print("PER-AXIS TERM ACCOUNTING")
-undisclosed, renamed, reproduced, recovered = [], [], 0, 0
+undisclosed, renamed, rebuilt, reproduced, recovered = [], [], [], 0, 0
 for name in sorted(scored, key=lambda n: -(scored[n].get("base_weight") or 0)):
     ax = scored[name]
     sig = ax.get("signals") or {}
@@ -302,7 +373,7 @@ for name in sorted(scored, key=lambda n: -(scored[n].get("base_weight") or 0)):
         val, how = evaluate(expr, sig, used)
         short = re.sub(r"\s+", " ", expr)[:52]
         if val is None:
-            unknown.append((coef, short, how))
+            unknown.append((coef, short, how, expr))
             print(f"    {coef:>5}  UNKNOWN   {short}")
             print(f"    {'':>5}            {how}")
         else:
@@ -329,16 +400,22 @@ for name in sorted(scored, key=lambda n: -(scored[n].get("base_weight") or 0)):
             print("       NOT DECOMPOSABLE — a term is missing or mismapped. Ignore the lines"
                   " above.")
     elif len(unknown) == 1 and values:
-        coef, short, _why = unknown[0]
+        coef, short, _why, full = unknown[0]
         x = (norm * total - known_sum) / coef if coef else None
         share = coef / total
         hits = published_as(x, sig, used)
+        needs, missing = rebuildable(full)
         recovered += 1
         print(f"    -> ONE UNKNOWN, determined by algebra: {x:.4f}  ({share:.0%} of the axis)")
         if hits:
             print(f"       Published after all, under {' or '.join(hits)} — the expression"
                   " names a local, the payload names the number.")
             renamed.append((name, hits[0], x))
+        elif needs and not missing:
+            print(f"       REBUILDABLE from published fields: {', '.join(sorted(needs))}.")
+            print("       Absent from this axis's signals is not absent from the payload,"
+                  " so this is not an undisclosed term.")
+            rebuilt.append((name, sorted(needs)))
         else:
             undisclosed.append((name, share, x, short))
     elif len(unknown) == 1:
