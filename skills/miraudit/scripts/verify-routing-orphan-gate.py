@@ -80,9 +80,14 @@ CASES = [
     ("A  control: one Agent call, one child, completed", BASE, "measured"),
     ("B  + one unreferenced child (a Workflow-dispatched agent)",
      BASE + child_work("Y", "s1"), "unmeasured"),
-    ("C  the same call, dispatched in background",
+    # C used to expect `unmeasured`, and that was the finding. gnomon unblocked background
+    # dispatch, so the case now guards their fix instead of reporting the defect: it flipped
+    # to `measured` with pairs 0 -> 1, verified as an A/B on the two refs before this line
+    # was changed. Left in rather than deleted because an expectation that pins a fix is
+    # what stops it regressing quietly.
+    ("C  the same call, dispatched in background (fixed upstream)",
      [dispatch("s1", "T1", "a1")] + child_work("X", "s1")
-     + [result("s1", "T1", "r1", "X", "async_launched")], "unmeasured"),
+     + [result("s1", "T1", "r1", "X", "async_launched")], "measured"),
 ]
 
 print(header(args, WINDOW))
@@ -108,7 +113,10 @@ else:
     print("  Case B differs from A by ONE sidechain transcript that no attempt references.")
     print("  That single transcript discards the routing term for the entire corpus, and")
     print("  `score_linked_routing` returns before examining the pair that case A scored.")
-    print("  Case C shows background dispatch does the same through `lifecycle_known`.")
+    print("  That half is still live.")
+    print("  Case C is a guard, not a finding: background dispatch used to discard the term")
+    print("  through `lifecycle_known` and no longer does. If it ever reports `unmeasured`")
+    print("  again, the fix regressed.")
 
 print("\n  NOT CHECKED: whether a real corpus with neither fan-out nor background dispatch")
 print("  reaches `measured`. This is a synthetic fixture; it shows the gate's behaviour,")

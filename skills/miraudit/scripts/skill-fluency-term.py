@@ -1,4 +1,4 @@
-"""Skill fluency's undisclosed third term, recovered across every corpus we have.
+"""Skill fluency's third term: recovered by algebra, and checked against the diagnostic.
 
     python3 skill-fluency-term.py --checkout <copy> --since --until \
         --stats <stats.json> --comparison <file.json> [--comparison <file.json> ...]
@@ -9,10 +9,19 @@ Graduated from adhoc-skill-fluency.py because a second run needed the same measu
 different input: comparison-2 payloads carry per-axis `signals` and `normalized_score`, which
 is exactly what the algebra needs, so the same recovery now runs on anybody's corpus.
 
-aq.py:319-320 gives 30% of the axis to `1.0 if has_skill([...]) else 0.6`, a SUBSTRING match
-against five hard-coded names that appears in no `signals` field. `has_skill` is a closure
-inside compute_aq and cannot be imported, so nothing here reimplements it: the term is
-recovered by algebra on gnomon's own published normalized_score.
+30% of the axis is `1.0 if has_skill([...]) else 0.6`, a SUBSTRING match against five
+hard-coded names. `has_skill` is a closure inside compute_aq and cannot be imported, so
+nothing here reimplements it: the term is recovered by algebra on gnomon's own published
+normalized_score.
+
+It used to appear in no `signals` field, which was the finding. gnomon now publishes
+`process_skills_matched` as a diagnostic that scores nothing, so on a current payload this
+file has a different job: the algebra and the diagnostic are two independent routes to the
+same bit, and it reports when they disagree. On an older payload, or any corpus collected
+before the diagnostic existed, the recovery is still the only route and still runs.
+
+Saying "the term is published nowhere" past that fix would be a fixture outliving its
+subject, which is what step 4 of the refresh procedure is about.
 """
 import json
 import os
@@ -35,6 +44,7 @@ args, WINDOW = parse(__doc__.strip().splitlines()[0], {
 
 W = (0.40, 0.30, 0.30)
 BRANCHES = {1.0: "a name matched", 0.6: "no name matched"}
+crosscheck_failed = []
 print(header(args, WINDOW))
 
 
@@ -53,7 +63,16 @@ def recover(label, axes):
     norm = sf["normalized_score"]
     x = (norm * sum(W) - W[0] * t1 - W[1] * t2) / W[2]
     hit = [v for v in BRANCHES if abs(x - v) < 0.005]
-    verdict = BRANCHES[hit[0]] if hit else "INCONSISTENT — do not report"
+    verdict = BRANCHES[hit[0]] if hit else "INCONSISTENT, do not report"
+    # gnomon now publishes the branch as a diagnostic that scores nothing. Where a payload
+    # carries it, the algebra stops being a recovery and becomes a check ON that diagnostic:
+    # two independent routes to the same bit.
+    published = s.get("process_skills_matched")
+    if published is not None and hit:
+        agrees = bool(published) == (hit[0] == 1.0)
+        verdict += f"; published {published!r}, {'agrees' if agrees else 'DISAGREES'}"
+        if not agrees:
+            crosscheck_failed.append(label)
     print(f"  {label:10} distinct {s['skills_distinct']:>4}/{CEIL}  rate {t2:.3f}"
           f"  norm {norm:.4f}  ->  term3 {x:.4f}  ({verdict})")
     return hit[0] if hit else None
@@ -78,9 +97,12 @@ for path in args.comparison:
 known = [v for v in found if v is not None]
 print(f"\n  {len(known)} corpora resolved; branches seen: {sorted(set(known))}")
 if known and set(known) == {1.0}:
-    print("  Every corpus measured is on the 1.0 branch. The term is 30% of the axis, is")
-    print("  published nowhere, and so far has never varied — which makes it a constant")
-    print("  that lifts everyone equally rather than one that costs anyone points.")
+    print("  Every corpus measured is on the 1.0 branch, so on this evidence the term is a")
+    print("  constant that lifts everyone equally rather than one that costs anyone points.")
+if crosscheck_failed:
+    print(f"\n  CROSS-CHECK FAILED on {', '.join(crosscheck_failed)}: the algebra and the")
+    print("  published diagnostic disagree about the same bit. One of them is wrong and this")
+    print("  script cannot say which.")
 
 # CONTROL: the same algebra on an axis whose terms are all disclosed must reproduce exactly.
 ours = axes_of(load_stats(args.stats))

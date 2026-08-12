@@ -10,15 +10,34 @@ once, and code reads it: `second-corpus.sh` takes `ref` and `anchor.sh` defaults
 `scripts/pin-consistency.py` fails the run if they drift, and the block is the source.
 
 ```pin
-ref: c6401cc
+ref: 03b87a0
 branch: main
-contract: 17:17:17
-validated: 2026-08-10
+contract: 18:18:18
+validated: 2026-08-12
 upstream: https://github.com/xmartlabs/gnomon.git
 ```
 
-- **Validated against:** `c6401cc` on `main` (contract `17:17:17`), 2026-08-10.
-- **Known to be moving:** `main` is at `ed2a645`, two commits past the pin — #69
+- **Validated against:** `03b87a0` on `main` (contract `18:18:18`), 2026-08-12.
+- **Why the contract moved.** `#75` scores `PowerShell` as a shell: `SHELL_TOOLS =
+  {"Bash", "PowerShell"}` in `taxonomy.py`, read by the CLI counter at
+  `accumulator.py:1437`, so a PowerShell call now classifies `execute` and feeds
+  `cli_calls`. That is a real score delta with **no calibration delta**: no constant in
+  `aq.py` changed value, and `contract-probe.py` reads 18/18 unchanged. Measured on this
+  corpus the bump costs nothing at all, AQ 92 either way and not one axis apart, because
+  this corpus has no PowerShell in it. The people it moves are the ones we have never
+  measured, which is the whole point of the change.
+- **Two upstream fixes answered findings of ours**, and both are verified here rather than
+  taken on trust. `#74` publishes `process_skills_matched` and
+  `compounding_skills_matched` as diagnostics that score nothing, which is what the Skill
+  fluency finding asked for; `skill-fluency-term.py` now checks its algebra against the
+  published bit and they agree. `#73` unblocks background dispatch for the routing term:
+  case C of `verify-routing-orphan-gate.py` flipped from `unmeasured`/pairs 0 to
+  `measured`/pairs 1, and that case is now a guard on the fix rather than a report of the
+  defect. Case B is untouched and still live: one unreferenced child still discards the
+  term for the whole corpus.
+- **Superseded pin:** `c6401cc` on `main` (contract `17:17:17`), validated 2026-08-10.
+  Findings 1 and 2 were validated at `3148a96`, earlier still. The history below that names
+  `ed2a645` was written while `main` sat there, two commits past the old pin — #69
   (`36a5000`, gate the Claude retention offer on history) and #70 (`ed2a645`, re-upload the
   previous month on a score-contract mismatch). **The pin holds.** Step 1 of the refresh
   procedure applied on 2026-08-12: the diff touches `cli/insights.py`, `cli/local.py`,

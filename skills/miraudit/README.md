@@ -236,7 +236,7 @@ one command and writes the `stats.json` the other checks read:
 
 ```bash
 python3 scripts/anchor.py --checkout /path/to/gnomon --since 2026-07-07 --until 2026-08-06 \
-    --published 92 --expect-contract 17:17:17
+    --published 92 --expect-contract 18:18:18
 ```
 
 It copies the checkout, reproduces the published number on the copy, prints the corpus
