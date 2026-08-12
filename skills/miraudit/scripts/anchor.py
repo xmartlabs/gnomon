@@ -21,6 +21,7 @@ import argparse
 import os
 import shutil
 import subprocess
+import tempfile
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -50,8 +51,11 @@ def main(argv=None):
         sys.exit(f"error: {checkout} does not look like a checkout "
                  "(no gnomon/ package inside).")
 
+    # tempfile.gettempdir(), not TMPDIR-or-/tmp. Windows sets TEMP, not TMPDIR, so the
+    # fallback would have been a literal /tmp on a machine with no such directory --
+    # the same class of assumption as calling `bash`, surviving one layer deeper.
     work = args.work or os.path.join(
-        os.environ.get("TMPDIR") or "/tmp", f"miraudit-anchor.{os.getpid()}")
+        tempfile.gettempdir(), f"miraudit-anchor.{os.getpid()}")
     work = os.path.abspath(os.path.expanduser(work))
     copy, out = os.path.join(work, "checkout"), os.path.join(work, "report")
     os.makedirs(out, exist_ok=True)

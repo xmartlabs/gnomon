@@ -35,6 +35,7 @@ import datetime
 import os
 import shutil
 import subprocess
+import tempfile
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -76,7 +77,7 @@ def main(argv=None):
     # exactly when the intermediate files are worth having.
     auto_work = args.work is None
     work = os.path.abspath(os.path.expanduser(
-        args.work or os.path.join(os.environ.get("TMPDIR") or "/tmp",
+        args.work or os.path.join(tempfile.gettempdir(),
                                   f"miraudit-second-corpus.{os.getpid()}")))
 
     # The window ends YESTERDAY. A window ending now includes the session running the audit,
