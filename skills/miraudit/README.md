@@ -97,6 +97,18 @@ that depend on it go red, no others.
 behaviour from the transcript corpus, and reports the gap and its direction: faithful,
 overestimates, or underestimates. Ground truth never comes from the tool's own aggregates.
 
+Most axes have no script, so the first thing a run does is find out which.
+`scripts/axis-coverage.py` derives the axis list from two places — the anchored payload, for
+what was scored, and the scoring source, for what exists — reports which axes a check claims
+and which the run is about to skip, and exits non-zero while any is unaccounted for. Their
+difference is itself a finding: an axis present in the source and absent from the payload is
+a dropped term, which until now was caught only by reading code by eye. It found two on its
+first run, one of each kind.
+
+That list used to be maintained by hand in prose, and it had been missing an axis for as
+long as it existed. Nobody noticed, because nothing enumerated the axes to check the prose
+against: the same failure, one level up, as the ones this skill reports.
+
 **Structural shapes**, independent of any formula: terms silently renormalized away for
 lack of evidence, saturated axes that no longer discriminate, denominators containing work
 the person did not do, counters driven by the harness rather than by anyone's judgement,
@@ -192,9 +204,18 @@ fingerprint, and tells you where `stats.json` landed.
 **Pass `--published`.** With it the anchor compares and exits non-zero when the two numbers
 disagree, saying which is which. Without it the script prints the number and asks you to
 compare it yourself, which is what it used to do, and a gate nobody is forced through is not
-a gate. `--expect-contract` does the same for the contract string in
-`references/known-state.md`. A number that did not reproduce makes every later finding
-unsafe to read, so this is the one place worth failing loudly.
+a gate. A number that did not reproduce makes every later finding unsafe to read, so this is
+the one place worth failing loudly.
+
+`--expect-contract` **now defaults from the pin**, so the contract half is gated whether or
+not you remember the flag. The value lives once, in a ```pin block at the top of
+`references/known-state.md`, and `scripts/pin-consistency.py` — which the anchor runs beside
+the behaviour probe — checks that block against the prose beside it, against the pasteable
+command below, and against `SCORE_CONTRACT_ID` imported from the checkout. It had been
+stated in three places with nothing comparing them, and the refresh procedure named two of
+the three; the third was this README, where a stale value is executable-wrong rather than
+merely out of date. It also says, without failing the run, when upstream has moved past the
+pin.
 
 Then the individual checks. **Point them at the copy the anchor made, not at the original.**
 They import the tool's own predicates, and importing writes `__pycache__` directories into

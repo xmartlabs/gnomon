@@ -35,11 +35,11 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # contracts, and comparing across contracts is not a comparison: v17 removed three targets
 # outright, so signals the counterfactual cuts simply stop existing.
 #
-# SECOND HOME OF THE PIN. The other is references/known-state.md, and its refresh procedure
-# names this line for a reason: re-pinning the skill and forgetting this one does not fail
-# loudly. The runner's run succeeds, on the contract nobody uses any more, and the
-# comparison quietly stops being one. Keep them equal, and `--ref` overrides both.
-REF="c6401cc"
+# NOT a second home of the pin any more. This used to be a literal beside another literal in
+# references/known-state.md, kept equal by a step in a written procedure -- and that
+# procedure was already incomplete when it was written, because it named two of the three
+# places. Now there is one source and this reads it. `--ref` still overrides.
+REF="$(python3 "$HERE/pin-consistency.py" --field ref)"
 REPO_URL="https://github.com/xmartlabs/gnomon.git"
 
 CHECKOUT=""; SINCE=""; UNTIL=""; PUBLISHED=""; CORPUS="$HOME/.claude/projects"
@@ -163,11 +163,11 @@ echo
 echo "==> writing the payload"
 if [ -n "$PUBLISHED" ]; then
   python3 "$HERE/emit-comparison.py" --checkout "$COPY" --corpus "$CORPUS" \
-      --since "$SINCE" --until "$UNTIL" --stats "$STATS" \
+      --since "$SINCE" --until "$UNTIL" --stats "$STATS" --ref "$RESOLVED" \
       --saturation "$WORK/saturation.json" --published "$PUBLISHED" --out "$OUT"
 else
   python3 "$HERE/emit-comparison.py" --checkout "$COPY" --corpus "$CORPUS" \
-      --since "$SINCE" --until "$UNTIL" --stats "$STATS" \
+      --since "$SINCE" --until "$UNTIL" --stats "$STATS" --ref "$RESOLVED" \
       --saturation "$WORK/saturation.json" --out "$OUT"
 fi
 

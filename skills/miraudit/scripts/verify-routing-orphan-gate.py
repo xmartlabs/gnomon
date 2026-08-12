@@ -118,3 +118,4 @@ print("  not how often the condition arises in anyone's actual transcripts.")
 # stops agreeing with a broken fixture.
 if not ok:
     raise SystemExit(1)
+# miraudit-covers: Orchestration

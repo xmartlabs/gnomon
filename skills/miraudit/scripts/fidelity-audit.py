@@ -220,3 +220,7 @@ if _v:
               f"{_sig.get('eligible_change_sessions')} = {_sig['test_coverage']}")
 else:
     print("  the axis scores                   : not read (pass --stats)")
+# miraudit-covers: Context Intelligence
+# miraudit-covers: Discipline
+# miraudit-covers: Compounding
+# miraudit-covers: Verification

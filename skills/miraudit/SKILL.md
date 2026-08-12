@@ -52,14 +52,20 @@ is not evidence.
 
 ## Phase 1 — Per-axis fidelity
 
+0. **Run `scripts/axis-coverage.py` first.** It lists every scored axis, which ones a check
+   claims, and which the run is about to skip. It exits non-zero while any is unaccounted
+   for, so "no script exists" can no longer pass for "nobody looked". It also reports axes
+   present in the scoring source and **absent from the payload**, which is the `dropped-term`
+   shape of Phase 2 arriving for free.
 1. Take each axis's declared signals from the stats payload.
 2. **Re-measure that behaviour from the corpus directly.** Never derive ground truth from
    the tool's own aggregates; a comparison against itself proves nothing.
 3. Report the gap **and its direction**: faithful, overestimates, underestimates.
 
-Use `scripts/` where a check exists. **Most of the score has none** — at the pin, five axes
-worth 175 points have no dedicated check — so the unscripted path is the normal path, not
-the exception. Its procedure is `references/ad-hoc-checks.md`, with a worked example beside
+Use `scripts/` where a check exists. **Most of the score has none** — at the pin, five
+scored axes worth 175 of 350 base points — so the unscripted path is the normal path, not
+the exception. Take that count from the manifest, never from prose: the list used to be
+written down by hand and had been missing an axis for as long as it existed. Its procedure is `references/ad-hoc-checks.md`, with a worked example beside
 it; the short version is that you write a runnable script into the run's output directory,
 import the tool's own primitives, print both numbers with a direction, and carry a control.
 
@@ -82,7 +88,14 @@ Formula-independent. Each is a `shape` key in the output; see
 
 `saturated` is the one shape a single corpus cannot settle — it cannot separate a pinned axis
 from a person who clears every bar. Report it as a hypothesis until a second corpus confirms
-it; the protocol and its decision rule are in `references/second-corpus.md`.
+it; the protocol and its decision rules are in `references/second-corpus.md`.
+
+**Two corpora are on record there, and what they support is narrow.** The AQ delta was zero
+on both, but the signals cut were not the same set, so the rule's own third row applies:
+report only what is pinned on both. That is two signals, and they feed the two axes that
+scored identical maxima on both. Five other axes separate the two people by a wide margin,
+so "the score is mostly ceiling" is refuted by the same pair that establishes the narrow
+claim. Quote the narrow one.
 
 ## Phase 3 — Refute. Gate.
 

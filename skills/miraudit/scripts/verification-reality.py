@@ -268,3 +268,4 @@ print("  theirs, and it recognises __tests__/, tests/, test_ and _spec, not just
 print("  Pairing a test to its subject is OURS and deliberately strict, so a repo that keeps")
 print("  tests in a top-level tests/ tree mirroring src/ reads LOW here. Read this as a")
 print("  lower bound, and check the layout before quoting it.")
+# miraudit-covers: Verification

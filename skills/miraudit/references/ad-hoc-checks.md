@@ -1,8 +1,16 @@
 # Measuring an axis that has no script
 
-Most of the score has no check. At the pin, Skill fluency (22), Tool command (28),
-Grounding (25), Token economy (50) and Steering leverage (50) have no dedicated script at
-all, and Phase 1 still has to report a gap and a direction for each.
+Most of the score has no check, and Phase 1 still has to report a gap and a direction for
+each axis. **Do not read the uncovered list from here. Run `scripts/axis-coverage.py`.**
+
+This paragraph used to name the uncovered axes itself, and it named five: Skill fluency,
+Tool command, Grounding, Token economy and Steering leverage. It was wrong — Model mix (50)
+has no check either and was never added — and no run noticed, because nothing enumerated the
+axes. The manifest derives them from the anchored payload and from the checkout, and the
+difference between those two is also the `dropped-term` detector, so Steering leverage now
+shows up under "dropped" rather than "uncovered": it is withheld upstream and never reaches
+the payload at all. Today that is five uncovered scored axes worth 175 of 350 base points,
+plus one dropped worth 50.
 
 `design-rationale.md` argues why an agent belongs here and nowhere else: **conceiving the
 counter-measurement is the hard part and is not mechanical; deciding is mechanical and must

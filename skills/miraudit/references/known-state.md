@@ -4,9 +4,34 @@
 version against it; if they differ, every finding below is a hypothesis again and the
 fixtures in `scripts/` have to be re-run before anyone quotes them.
 
+The pin used to live in three places and the refresh procedure named two. It now lives here,
+once, and code reads it: `second-corpus.sh` takes `ref` and `anchor.sh` defaults
+`--expect-contract` from `contract`. Keep the block and the sentence below it in agreement —
+`scripts/pin-consistency.py` fails the run if they drift, and the block is the source.
+
+```pin
+ref: c6401cc
+branch: main
+contract: 17:17:17
+validated: 2026-08-10
+upstream: https://github.com/xmartlabs/gnomon.git
+```
+
 - **Validated against:** `c6401cc` on `main` (contract `17:17:17`), 2026-08-10.
-- **Known to be moving:** nothing pending upstream. #66 and #67 merged on 2026-08-10; see
-  "What v17 changed" below for what that invalidated here.
+- **Known to be moving:** `main` is at `ed2a645`, two commits past the pin — #69
+  (`36a5000`, gate the Claude retention offer on history) and #70 (`ed2a645`, re-upload the
+  previous month on a score-contract mismatch). **The pin holds.** Step 1 of the refresh
+  procedure applied on 2026-08-12: the diff touches `cli/insights.py`, `cli/local.py`,
+  `upload/mirdash.py` and four test files, and none of `scoring/`, `taxonomy.py` or
+  `cli/accumulator.py`. `SCORING_INPUTS_VERSION`, `AQ_VERSION` and `GSTACK_VERSION` are all
+  still 17, so the contract is still `17:17:17`.
+
+  `cli/local.py` is the one worth naming, because the second-corpus protocol leans on its
+  source-volume policy: the change is purely additive, a new `_claude_history_preflight`
+  that *reuses* `_filter_low_volume_sources` and `_DIR_FLAGS["claude"]` without altering
+  either. `pin-consistency.py` is what surfaced the drift, on its first run, as an advisory
+  note rather than a failure — which is the intended severity: a moved upstream is a
+  different question, not a broken run.
 
 ## How to refresh this file
 
@@ -40,11 +65,18 @@ notices the drift does this, in order:
    `measure-verification-corpus.py`. Deleting a *section* is the one that gets skipped,
    because the file still runs and still looks maintained: the scratchpad half of what is
    now `recovery-reality.py` outlived its subject that way.
-5. Update the pin and the date at the top — **and `REF` in `scripts/second-corpus.sh`**, which
-   is the second place the commit is written down. It is what a second-corpus runner clones,
-   so leaving it behind does not fail loudly: their run succeeds, on the old contract, and
-   the comparison quietly stops being one. Grep for the old hash before you finish and check
-   every hit is either history ("merged in X") or updated.
+5. **Edit the ```pin block at the top. That is the whole update.** `second-corpus.sh` reads
+   `ref` from it and `anchor.sh` reads `contract`, so there is no second place to remember.
+   Then run `scripts/pin-consistency.py`: it checks the block against the prose sentence,
+   against the `--expect-contract` example in `README.md`, and against `SCORE_CONTRACT_ID`
+   **imported from the checkout** — that one is computed from three integers in
+   `scoring/versioning.py`, so no grep can read it.
+
+   This step used to say "update the pin, and also `REF` in `second-corpus.sh`", and it was
+   already incomplete when it said it: the third copy is a pasteable command in `README.md`,
+   so a stale value there is executable-wrong rather than merely out of date. A procedure
+   that lists the places by hand is the same defect as a coverage list maintained by hand,
+   and it failed the same way.
 
 ## Running the tool (Phase 0 operations)
 

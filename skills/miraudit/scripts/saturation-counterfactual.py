@@ -356,7 +356,15 @@ if args.emit:
             "base_aq": base_aq,
             "at_threshold_aq": at_target,
             "delta": at_target - base_aq,
-            "signals_cut": [{"signal": k, "you_did": w, "same_score_at": n}
+            # `ratio` and `above_threshold` because the bare list invites reading every
+            # entry as a saturated signal, and it is not one. On the second corpus two of
+            # the five sat AT or BELOW their threshold -- planning_ratio 0.98 against 1.0,
+            # test_covered 10 against 10.0 -- and counting those is exactly the
+            # over-claim that row 3 of decision rule 1 exists to stop. The reader should
+            # not have to divide two columns to find that out.
+            "signals_cut": [{"signal": k, "you_did": w, "same_score_at": n,
+                             "ratio": round(w / n, 4) if n else None,
+                             "above_threshold": bool(n) and w > n}
                             for k, w, n in changed],
             "examined": examined,
             "looked_for_not_found": absent,

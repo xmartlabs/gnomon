@@ -86,3 +86,4 @@ for label, events in cases:
 print("\nSame number of persistence acts, different backend:")
 print(f"  {N} file writes          -> {run(cases[0][1])} credits")
 print(f"  {N} distinct add_memory  -> {run(cases[2][1])} credits")
+# miraudit-covers: Compounding

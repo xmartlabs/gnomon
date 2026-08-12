@@ -100,3 +100,4 @@ print(f"\n  ratio under today's definition (any tool call)  : "
 print(f"  ratio requiring a successful same-tool retry    : "
       f"{retried_ok/max(1,tot):.3f}")
 print("\n  (the second is a LOWER BOUND: changing approach is also recovering)")
+# miraudit-covers: Recovery

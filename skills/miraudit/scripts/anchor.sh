@@ -15,7 +15,8 @@
 # Never runs against the original checkout. Everything happens on a copy under --work.
 set -euo pipefail
 
-CHECKOUT=""; SINCE=""; UNTIL=""; CORPUS="$HOME/.claude/projects"
+DEFAULT_CORPUS="$HOME/.claude/projects"
+CHECKOUT=""; SINCE=""; UNTIL=""; CORPUS="$DEFAULT_CORPUS"
 PUBLISHED=""; EXPECT=""
 WORK="${TMPDIR:-/tmp}/miraudit-anchor.$$"
 
@@ -57,8 +58,47 @@ mkdir -p "$WORK" "$OUT"
 echo "==> copying the checkout (the original is never written to)"
 cp -R "$CHECKOUT" "$COPY"
 
+# --corpus used to reach only contract-probe.py and fingerprint.py, never the pipeline. So
+# `--corpus X` fingerprinted X and SCORED the default corpus, and the resulting payload and
+# fingerprint described different corpora with nothing saying so. On the default corpus the
+# two happen to agree, which is why it survived every run here.
+#
+# The scoring tool's own flag is --claude-dir=PATH (sources/discovery.py:48). Its resolver
+# takes either the config root or the transcripts subdir (discovery.py:92-98), so --corpus
+# passes straight through. Only when it differs from the default, so existing runs are
+# byte-identical. The ${VAR+"${VAR[@]}"} form is the bash 3.2 + `set -u` idiom: a bare
+# "${ARR[@]}" on an empty array is an unbound-variable error there.
+#
+# IT OVERRIDES THE CLAUDE SOURCE ONLY. Codex, Gemini, Cursor and the rest keep resolving to
+# their own default locations, so on a machine where any of those clears the source-volume
+# threshold the run is a mix: overridden Claude plus default everything else. Read the
+# "Found N transcript files across ..." line, and `sources_scored` in the payload, which is
+# what makes the mix visible. Measured here: 62 files discovered across four tools, only
+# `claude` scored, so the toy-corpus arm was clean.
+DIRFLAG=()
+if [ "$CORPUS" != "$DEFAULT_CORPUS" ]; then
+  DIRFLAG=(--claude-dir="$CORPUS")
+  echo "    corpus override: --claude-dir=$CORPUS"
+fi
+
 # Before the pipeline, not after: this takes a second and the pipeline takes minutes, and a
 # checkout whose predicates have moved makes every later number unsafe to read anyway.
+# The pin is what a second corpus and this run have to share, and it was stated in three
+# places that nothing compared. Before the pipeline, like the probe, because it costs
+# milliseconds.
+echo "==> checking the pin agrees with itself and with the checkout"
+python3 "$HERE/pin-consistency.py" --checkout "$COPY" --corpus "$CORPUS" \
+    --since "$SINCE" --until "$UNTIL"
+
+# Default it from the pin block rather than making the operator carry the value across from
+# a markdown file by hand. An unpassed flag used to mean no comparison at all, which is how
+# a gate ends up documented and unenforced.
+if [ -z "$EXPECT" ]; then
+  EXPECT="$(python3 "$HERE/pin-consistency.py" --field contract)"
+  echo "    --expect-contract defaulted to $EXPECT from the pin block"
+fi
+
+echo
 echo "==> probing the predicates the checks are built on"
 python3 "$HERE/contract-probe.py" --checkout "$COPY" --corpus "$CORPUS" \
     --since "$SINCE" --until "$UNTIL" | tail -n +5
@@ -85,7 +125,7 @@ echo "==> reproducing the published number: $SINCE -> $UNTIL"
 # untouched.
 (cd "$COPY" && uv run --project "$COPY" xl-ai-insights \
     --local --console --no-open \
-    --since="$SINCE" --until="$UNTIL" --output-dir="$OUT")
+    --since="$SINCE" --until="$UNTIL" --output-dir="$OUT" ${DIRFLAG+"${DIRFLAG[@]}"})
 
 STATS="$(find "$OUT" -name 'stats.json' -print -quit)"
 if [ -z "$STATS" ]; then
@@ -138,10 +178,15 @@ if failed:
     print("\n  GATE FAILED: " + "; ".join(failed) + ".")
     print("  The method is wrong before any finding is. Do not run the checks.")
     raise SystemExit(1)
-if not published and not expect:
-    print("\n  No gate ran. Pass --published <N> to have this script check the number")
-    print("  instead of asking you to, and --expect-contract <X> for the contract string")
-    print("  in references/known-state.md.")
+# Per flag, not on the conjunction. `if not published and not expect` stayed silent whenever
+# EITHER was given, so passing --published alone skipped the contract gate with nothing on
+# screen saying a gate had been skipped. Half a gate reads exactly like a whole one.
+if not published:
+    print("\n  The NUMBER was not gated. Pass --published <N> to have this script compare")
+    print("  it instead of asking you to.")
+if not expect:
+    print("\n  The CONTRACT was not gated. Pass --expect-contract <X>; the value is the")
+    print("  `contract` field of the block at the top of references/known-state.md.")
 PY
 
 echo
