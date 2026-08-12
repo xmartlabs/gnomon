@@ -263,6 +263,28 @@ construction. Somebody who uses no skills at all lands on 0,6.
   are not a random sample of the graded population. All three are self-selected volunteers
   from one workplace.
 
+## Traps a runner actually hit
+
+Every one of these came from a real first attempt, not from imagination.
+
+- **Windows needs no shell now.** The orchestration was bash; it is Python. The first
+  Windows attempt could not start at all — `bash` there is the WSL launcher, and with no
+  distribution installed it failed *inside* WSL with `execvpe(/bin/bash) failed`.
+- **Where the file lands is decided before the work, not after.** The second Windows attempt
+  ran the whole thing — pin, probe 18/18, pipeline, AQ, counterfactual with controls moving
+  — and then lost the payload to a `PermissionError`, because the terminal had started in
+  `C:\Program Files (x86)\Cmder` and `--out-dir` defaults to the working directory. The run
+  now probes for writability first and falls back to the home directory, loudly. A run that
+  fails on its last line after two minutes of correct work is the worst possible place to
+  fail.
+- **The scoring tool may ask an interactive question.** It offers to add
+  `"cleanupPeriodDays": 180` to `~/.claude/settings.json` and waits on `[y/N]`. Enter
+  declines and changes nothing. Worth knowing before it appears, and worth remembering if
+  this is ever run somewhere nothing can answer it.
+- **`--output-dir` is reported as an "unknown flag ignored". It is not ignored.** The
+  scoring tool's source-directory parser claims every `--*-dir=` argument and warns about
+  the ones it does not own. The run announces this before it happens.
+
 ## What the runner needs
 
 - `python3`, `git`, and **`uv`** — the scoring tool's entry point runs under `uv run`, so a

@@ -54,6 +54,20 @@ def pin(field):
     return r.stdout.strip()
 
 
+def writable(path):
+    """Can a file actually be created here? os.access(W_OK) lies on Windows, where it
+    reports the read-only ATTRIBUTE rather than the ACL that does the denying."""
+    try:
+        os.makedirs(path, exist_ok=True)
+        probe = os.path.join(path, f".miraudit-write-probe.{os.getpid()}")
+        with open(probe, "w"):
+            pass
+        os.remove(probe)
+        return True
+    except OSError:
+        return False
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="miraudit-second-corpus",
                                 description=__doc__,
@@ -86,6 +100,23 @@ def main(argv=None):
     since = args.since or str(datetime.date.fromisoformat(until)
                               - datetime.timedelta(days=30))
     defaulted = "   (default: the last 30 complete days)" if not args.since else ""
+
+    # WHERE THE DELIVERABLE GOES, DECIDED BEFORE THE TWO MINUTES OF WORK, NOT AFTER.
+    # A Windows runner launched from C:\Program Files (x86)\Cmder -- a terminal that starts
+    # in its own install directory -- completed the whole run and then lost it to a
+    # PermissionError on the last line. Nothing was wrong with the measurement; it had
+    # nowhere to land, and found out last.
+    out_dir = os.path.abspath(os.path.expanduser(args.out_dir))
+    if not writable(out_dir):
+        if args.out_dir != os.getcwd():
+            sys.exit(f"error: cannot write to {out_dir}. Pass a different --out-dir.")
+        fallback = os.path.expanduser("~")
+        if not writable(fallback):
+            sys.exit(f"error: cannot write to {out_dir} or to {fallback}. "
+                     "Pass --out-dir somewhere writable.")
+        print(f"!! this directory is not writable: {out_dir}")
+        print(f"!! the result will go to {fallback} instead. Pass --out-dir to choose.\n")
+        out_dir = fallback
 
     os.makedirs(work, exist_ok=True)
     ok = False
@@ -136,8 +167,6 @@ def main(argv=None):
                 break
         copy = os.path.join(work, "anchor", "checkout")
 
-        out_dir = os.path.abspath(os.path.expanduser(args.out_dir))
-        os.makedirs(out_dir, exist_ok=True)
         out = os.path.join(out_dir, f"miraudit-comparison-{until}.json")
 
         common = ["--checkout", copy, "--corpus", args.corpus, "--since", since,
