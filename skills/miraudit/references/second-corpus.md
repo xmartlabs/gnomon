@@ -97,20 +97,28 @@ Conditions for B to count at all:
 
 ## Corpora on record
 
-| | A | B |
-|---|---|---|
-| window | 2026-07-07 → 2026-08-06 | 2026-07-11 → 2026-08-10 |
-| contract | `17:17:17` | `17:17:17` |
-| `anchor.ok` | `null` in the comparison file | `null` |
-| tool calls | 42.874 | 5.862 |
-| sessions | 125 | 49 |
-| project roots | 20 | 15 |
-| sidechain share | 0,626 | 0,358 |
-| Bash share | 0,631 | 0,663 |
-| `explore_to_doing` | 1,124 | 0,974 |
-| ... without thinking | 0,219 | 0,193 |
-| `thinking_share` | 0,806 | 0,802 |
-| AQ | 92 | 82 |
+| | A | B | C |
+|---|---|---|---|
+| window | 2026-07-07 → 2026-08-06 | 2026-07-11 → 2026-08-10 | 2026-07-12 → 2026-08-11 |
+| contract | `17:17:17` | `17:17:17` | `17:17:17` |
+| schema | — | `comparison-1` | `comparison-1` |
+| `anchor.ok` | `null` in the comparison file | `null` | `null` |
+| tool calls | 42.874 | 5.862 | 42.003 |
+| sessions | 125 | 49 | 281 |
+| project roots | 20 | 15 | **74** |
+| sources scored | claude | claude | claude, codex |
+| sidechain share | 0,626 | 0,358 | 0,669 |
+| Bash share | 0,631 | 0,663 | **0,426** |
+| `explore_to_doing` | 1,124 | 0,974 | 1,439 |
+| ... without thinking | 0,219 | 0,193 | 0,722 |
+| `thinking_share` | 0,806 | 0,802 | 0,708 |
+| AQ | 92 | 82 | **93** |
+
+C arrived 2026-08-12 and is the least like the other two: 74 project roots, a second source
+scored, and Bash at 0,43 where A and B sit at 0,63 and 0,66. It is also the only one that
+uses `Grep` at all (6,5% of its tool mix), which retires a note carried in this
+investigation's own `CLAUDE.md` — `Grep`/`Glob` being unavailable is a property of one
+machine's configuration, not of the harness.
 
 B arrived 2026-08-11. **Both files carry `anchor.ok: null`**, for different reasons: B's
 runner had no published report to match, and A's comparison was emitted without
@@ -125,58 +133,112 @@ gain events timestamped inside it. Compared like for like, both counted the same
 
 ### What the rules decided
 
-**Axis by axis, which is the part no rule anticipated.** Five axes separate the two people
-by a wide margin, and on one of them B is *better*. Whatever else is true, "the AQ is mostly
-ceiling" is not:
+**Axis by axis, which is the part no rule anticipated, and it needs no rule: these are their
+own published scores, read directly.** Five axes separate the three people widely — on one of
+them B beats A, on two of them C is at the ceiling A is nowhere near — and five are pinned at
+the top for all three.
 
-| eje | A | B | max |
-|---|---|---|---|
-| Orchestration | 33,0 | **19,6** | 33 |
-| Discipline | 16,3 | **6,7** | 17 |
-| Tool command | 18,3 | **12,1** | 28 |
-| Skill fluency | 21,1 | **15,6** | 22 |
-| Verification | 23,2 | **29,2** | 35 |
-| Grounding | 25,0 | 24,5 | 25 |
-| Compounding | 20,0 | 19,4 | 20 |
-| Recovery | 97,0 | 91,6 | 100 |
-| Context Intelligence | 20,0 | 20,0 | 20 |
-| Model mix | 50,0 | 50,0 | 50 |
-| Token economy | 50,0 | 50,0 | 50 |
+| eje | A | B | C | max | spread |
+|---|---|---|---|---|---|
+| Tool command | 18,3 | 12,1 | **28,0** | 28 | 15,9 |
+| Orchestration | 33,0 | 19,6 | 29,3 | 33 | 13,4 |
+| Discipline | 16,5 | 6,7 | 12,4 | 17 | 9,8 |
+| Skill fluency | 21,1 | 15,6 | **22,0** | 22 | 6,4 |
+| Verification | 23,0 | **29,2** | 24,6 | 35 | 6,2 |
+| Recovery | 97,0 | 91,6 | 95,9 | 100 | 5,4 |
+| Compounding | 20,0 | 19,4 | 20,0 | 20 | 0,6 |
+| Grounding | 25,0 | 24,5 | 25,0 | 25 | 0,5 |
+| Context Intelligence | 20,0 | 20,0 | 20,0 | 20 | 0,0 |
+| Model mix | 50,0 | 50,0 | 50,0 | 50 | 0,0 |
+| Token economy | 50,0 | 50,0 | 50,0 | 50 | 0,0 |
 
-**Rule 1 — row 3, not row 1.** The delta is 0 on both (92→92, 82→82) with controls that move
-on both (A 69/55, B 66/54) and `method_check_passed` on both. But row 1 needs the *same*
-signals cut, and they are not the same: A cuts 10, B cuts 5, and only **two** sit above
-threshold on both — `cli_calls` (9,6× and 13,5×) and `evidence_eligible_sessions` (1,67× on
-each). Of B's other three, `planning_ratio` is *below* its threshold and
-`test_covered_change_sessions` is exactly at it.
+**Five axes worth 165 of 350 base points sit at or within 3% of their ceiling for all three.**
+That statement needs no counterfactual and no decision rule: it is three published payloads
+compared. Keep it separate from the signal-level claim below, which is an inference from a
+method and is governed by rule 1.
 
-Those two signals feed Context Intelligence (`aq.py:484`) and Token economy
-(`aq.py:585-589`) — the two axes at identical maxima above. The same fact, reached twice by
-independent routes. That, and not the AQ delta, is the claim the pair supports.
+**Rule 1 — row 3, not row 1, and the third corpus did not change which two.** The delta is 0
+on all three (92→92, 82→82, 93→93), controls move on all three (69/55, 66/54, 69/55),
+`method_check_passed` on all three, and `not_cuttable` is the identical list each time. But
+row 1 needs the *same* signals cut and they are not: A cuts 10, B cuts 5, C cuts 11.
 
-**Rule 2 — the boundary case that widened the rule.** See above; B is 0.974 scoring 24,5/25.
-Under the band as now written, 0.90-or-above: the axis does not discriminate in this range.
+Above threshold in **all three**, and it is the same pair the two-corpus intersection found:
 
-**Rule 3 — fires cleanly.** B reads `thinking_share` **0,802** against A's **0,806**, both
-inside the 0,70–0,90 row, on corpora that differ 7× in size. Structural rather than
-personal. Strip the thinking blocks and the ratios fall together: A 1,124 → 0,219 and B
-0,974 → 0,193. This is the rule that was written to be able to kill the Grounding write-up,
-and it did not.
+| señal | A | B | C | eje |
+|---|---|---|---|---|
+| `cli_calls` | 9,61× | 13,53× | 2,34× | Token economy (`aq.py:585-589`) |
+| `evidence_eligible_sessions` | 1,67× | 1,67× | 1,64× | Context Intelligence (`aq.py:484`) |
 
-**Rule 4 — was unevaluable, and that was our defect.** The rule says to read the Steering
-leverage axis; `emit-comparison.py` never wrote it, so B's file has no field to read. Not
-something the runner did. Fixed in `comparison-2`, which emits a `steering` block and asserts
-that every rule's field is present before writing — the mechanism that would have caught it.
-B is a `comparison-1` file and rule 4 stays unanswered for it.
+Nine other signals are pinned on one or two corpora and not the third, which is exactly what
+row 3 exists to filter. `planning_ratio` is above on A and C and *below* on B;
+`test_covered_change_sessions` is within half a percent of its threshold on all three and
+above it on none convincingly.
+
+Those two signals feed the two axes at identical maxima in the table above. The same fact
+reached by two independent routes, now on three corpora. That, and not the AQ delta, is what
+the set supports.
+
+**Rule 2 — fires, and the third corpus is what makes it convincing.** The three ratios are
+0,974 / 1,124 / **1,439** — a 48% spread — and the axis scores 24,5 / 25,0 / 25,0. Under the
+band as written, 0,90-or-above: the axis does not discriminate in this range. Three people
+whose underlying ratio differs by half land within half a point of each other on 25.
+
+**Rule 3 — fires on all three, and the third one shrinks the finding without moving it.**
+`thinking_share` reads 0,806 / 0,802 / **0,708**. All inside the 0,70–0,90 row, so the rule
+fires as written and the band is not touched. C sits 0,008 above the lower edge, which is
+close enough to say out loud.
+
+**The consequence is not the same size for everyone, and this is the honest part.** Strip the
+thinking blocks:
+
+| | ratio | without thinking | Grounding | loses |
+|---|---|---|---|---|
+| A | 1,124 | 0,219 | 25,0/25 | **19,5** |
+| B | 0,974 | 0,193 | 24,5/25 | **19,7** |
+| C | 1,439 | 0,722 | 25,0/25 | **6,9** |
+
+The composition claim survives on three corpora. The **magnitude** claim does not generalise:
+C loses a third of what A and B lose, because C's non-thinking exploration is high enough on
+its own to keep the ratio near the ceiling. Any write-up that quotes "the axis collapses"
+has to quote a range and say which corpus each number came from. The measured AQ cost of 7
+points is A's, and only A's — the other two were never run against a checkout.
+
+This is the rule that was written to be able to kill the Grounding write-up. It did not kill
+it, and it did make it smaller.
+
+**Rule 4 — still unevaluable, on both.** The rule says to read the Steering leverage axis;
+`emit-comparison.py` never wrote it, so neither B nor C has a field to read. Not something
+either runner did. Fixed in `comparison-2`, which emits a `steering` block and asserts that
+every rule's field is present before writing — the mechanism that would have caught it. Both
+files predate that, so **rule 4 has now gone unanswered twice**, which is the cost of a
+defect that only shows up when somebody sits down to apply the rules by hand.
+
+**Skill fluency's undisclosed term, answered for C by an accident of rounding.** A
+`comparison-1` file carries no per-axis signals, so the 30% `has_skill` term normally cannot
+be isolated from it. C is the exception: its Skill fluency is **22,0/22**, and a score at the
+maximum bounds the normalized score to ≥ 0,9977, which forces every term including the
+undisclosed one to ≥ 0,992 — and it can only be 0,6 or 1,0. So C is on the 1,0 branch, and so
+are A and B.
+
+Three for three on a term that is 30% of an axis and never published. That is not evidence
+that anyone is losing points to it; it is evidence that it may be **a constant that lifts
+everyone equally**, which is a different and weaker thing than the write-up first assumed.
+Confirming it needs a `comparison-2` file from someone who does not use any of the five
+hard-coded names.
 
 ### Not settled by this pair
 
-- **Model mix**, 50/50 on both, and this method cannot test it: its signals are in
-  `not_cuttable` on both runs, the same list each time (`offload_share`, `distinct_models`,
-  `review_skills`). They are derived, so cutting them post-hoc is not available. Reaching
-  them means driving the accumulator from a transformed corpus.
-- **Calibration.** Two corpora are not a distribution, and people who agree to run an audit
-  are not a random sample of the graded population.
+- **Model mix**, 50/50 on all three, and this method cannot test it: its signals are in
+  `not_cuttable` on all three runs, the identical list each time (`offload_share`,
+  `distinct_models`, `review_skills`). They are derived, so cutting them post-hoc is not
+  available. Reaching them means driving the accumulator from a transformed corpus.
+- **Whether the ceiling axes discriminate lower down.** All three of these people are at or
+  near the top of five axes. That the axes do not separate *them* is measured; that the axes
+  would not separate someone much further down is not, and nothing here should be read as
+  saying so.
+- **Calibration.** Three corpora are not a distribution, and people who agree to run an audit
+  are not a random sample of the graded population. All three are self-selected volunteers
+  from one workplace.
 
 ## What the runner needs
 
