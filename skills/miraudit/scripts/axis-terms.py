@@ -321,6 +321,22 @@ def rebuildable(expr, seen=None, depth=0):
     return keys, {k for k in keys if k not in PAYLOAD_KEYS}
 
 
+def named_in_signals(expr, signals):
+    """A term whose expression names a variable the payload publishes under the same name,
+    give or take a leading underscore.
+
+    This is the third guard of its kind and the one with the worst failure mode. gnomon
+    answered a finding of ours by publishing `process_skills_matched` and
+    `compounding_skills_matched` as diagnostics, holding the score fixed. The value is a
+    BOOL, so the value-matching guard below skipped it (`isinstance(True, float)` is False)
+    and this file went on reporting both terms as published nowhere. A tool that accuses
+    someone of hiding the thing they just disclosed is worse than one that says nothing."""
+    for ident in re.findall(r"\b_?([a-z][a-z0-9_]{3,})\b", expr):
+        if ident in signals:
+            return ident
+    return None
+
+
 def published_as(value, signals, used):
     """Does a signal already carry this recovered value under another name? Verification's
     coverage term does, and calling it undisclosed was a false positive.
@@ -404,10 +420,15 @@ for name in sorted(scored, key=lambda n: -(scored[n].get("base_weight") or 0)):
         x = (norm * total - known_sum) / coef if coef else None
         share = coef / total
         hits = published_as(x, sig, used)
+        named = named_in_signals(full, sig)
         needs, missing = rebuildable(full)
         recovered += 1
         print(f"    -> ONE UNKNOWN, determined by algebra: {x:.4f}  ({share:.0%} of the axis)")
-        if hits:
+        if named:
+            print(f"       Published as the diagnostic {named}={sig[named]!r}, which scores"
+                  " nothing and explains the term.")
+            renamed.append((name, named, x))
+        elif hits:
             print(f"       Published after all, under {' or '.join(hits)} — the expression"
                   " names a local, the payload names the number.")
             renamed.append((name, hits[0], x))
