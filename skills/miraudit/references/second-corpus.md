@@ -97,22 +97,23 @@ Conditions for B to count at all:
 
 ## Corpora on record
 
-| | A | B | C | D |
-|---|---|---|---|---|
-| window | 2026-07-07 → 2026-08-06 | 2026-07-11 → 2026-08-10 | 2026-07-12 → 2026-08-11 | 2026-07-12 → 2026-08-11 |
-| contract | `17:17:17` | `17:17:17` | `17:17:17` | `17:17:17` |
-| schema | — | **`comparison-2`** (re-run, window pinned) | `comparison-1` | **`comparison-2`** |
-| `anchor.ok` | `null` | `null` | `null` | `null` |
-| tool calls | 42.874 | 5.862 | 42.003 | 3.702 |
-| sessions | 125 | 49 | 281 | 30 |
-| project roots | 20 | 15 | **74** | 14 |
-| sources scored | claude | claude | claude, codex | claude |
-| sidechain share | 0,626 | 0,358 | 0,669 | 0,458 |
-| Bash share | 0,631 | 0,663 | 0,426 | **0,384** |
-| `explore_to_doing` | 1,124 | 0,974 | 1,439 | 1,469 |
-| ... without thinking | 0,219 | 0,193 | 0,722 | 0,624 |
-| `thinking_share` | 0,806 | 0,802 | 0,708 | **0,590** |
-| AQ | 92 | 82 | **93** | 87 |
+| | A | B | C | D | E |
+|---|---|---|---|---|---|
+| window | 07-07→08-06 | 07-11→08-10 | 07-12→08-11 | 07-12→08-11 | 07-12→08-11 |
+| contract | `17:17:17` | `17:17:17` | `17:17:17` | `17:17:17` | `17:17:17` |
+| schema | — | `comparison-2` | `comparison-1` | `comparison-2` | `comparison-2` |
+| `anchor.ok` | `null` | `null` | `null` | `null` | `null` |
+| platform | macOS | macOS | macOS | macOS | **Windows** |
+| tool calls | 42.874 | 5.862 | 42.003 | 3.702 | 25.677 |
+| sessions | 125 | 49 | 281 | 30 | 125 |
+| project roots | 20 | 15 | **74** | 14 | 39 |
+| sources scored | claude | claude | claude, codex | claude | claude |
+| sidechain share | 0,626 | 0,358 | 0,669 | 0,458 | 0,460 |
+| Bash share | 0,631 | 0,663 | 0,426 | **0,384** | 0,429 |
+| `explore_to_doing` | 1,124 | 0,974 | 1,439 | 1,469 | 1,435 |
+| ... without thinking | 0,219 | 0,193 | 0,722 | 0,624 | 0,505 |
+| `thinking_share` | 0,806 | 0,802 | 0,708 | **0,590** | 0,656 |
+| AQ | 92 | 82 | 93 | 87 | **95** |
 
 **D is the one that was worth waiting for.** A different role, the smallest corpus of the
 four, and the only one where **Context Intelligence is missing from the payload entirely** —
@@ -162,17 +163,20 @@ That statement needs no counterfactual and no decision rule: it is three publish
 compared. Keep it separate from the signal-level claim below, which is an inference from a
 method and is governed by rule 1.
 
-**Rule 1 — row 3, and four corpora have not changed which two.** Delta 0 on all four
-(92→92, 82→82, 93→93, 87→87), controls move on all four (69/55, 66/54, 69/55, 73/62),
-`not_cuttable` the identical list every time. Signals cut: 10 / 5 / 11 / 7 — never the same
-set, so row 1 never applies and row 3 always does.
+**Rule 1 — row 3, and five corpora have not changed which two.** Delta 0 on all five
+(92→92, 82→82, 93→93, 87→87, 95→95), controls move on all five (69/55, 66/54, 69/55,
+73/62, 69/55), `not_cuttable` the identical list every time. Signals cut: 10 / 5 / 11 / 7 /
+10 — never the same set, so row 1 never applies and row 3 always does.
 
 Above threshold in **all four**, and it is the same pair the two-corpus intersection found:
 
-| señal | A | B | C | D | eje |
-|---|---|---|---|---|---|
-| `cli_calls` | 9,61× | 13,53× | 2,34× | 8,81× | Token economy (`aq.py:585-589`) |
-| `evidence_eligible_sessions` | 1,67× | 1,67× | 1,64× | 1,67× | Context Intelligence (`aq.py:484`) |
+| señal | A | B | C | D | E | eje |
+|---|---|---|---|---|---|---|
+| `cli_calls` | 9,61× | 13,53× | 2,34× | 8,81× | 13,47× | Token economy (`aq.py:585-589`) |
+| `evidence_eligible_sessions` | 1,67× | 1,67× | 1,64× | 1,67× | 1,67× | Context Intelligence (`aq.py:484`) |
+
+That second row is not headroom, and the section below takes it apart: 1,667 is exactly
+`1 / CONTEXT_INTELLIGENCE_TARGET`, so every one of those is a coverage of 1,0.
 
 Eleven other signals are pinned on some corpora and not others, which is what row 3 exists to
 filter. `evidence_eligible_sessions` sits at 1,67× on three of the four and 1,64× on the
@@ -184,16 +188,16 @@ absent from the payload and Craft renormalizes without it. So on D that signal i
 while the axis it feeds is dropped. It does not weaken the pair; it does mean "these two
 signals feed the two axes at identical maxima" is a statement about A, B and C.
 
-**Rule 2 — fires, and the spread keeps widening while the scores do not.** Four ratios:
-0,974 / 1,124 / 1,439 / **1,469**. That is a 51% spread, and the axis scores 24,5 / 25,0 /
-25,0 / 31,0-of-31 — every one of them at or within half a point of its ceiling. Under the
-band as written, 0,90-or-above: the axis does not discriminate in this range.
+**Rule 2 — fires, and the spread keeps widening while the scores do not.** Five ratios:
+0,974 / 1,124 / 1,435 / 1,439 / **1,469**. A 51% spread, and every one of the five scores
+sits at or within half a point of its own ceiling. Under the band as written, 0,90-or-above:
+the axis does not discriminate in this range.
 
-**Rule 3 — the fourth corpus moves it off the row it was on.** `thinking_share` reads
-0,806 / 0,802 / 0,708 / **0,590**. D lands between 0,50 and 0,70, which is the rule's
-**middle** row, not its top one: *«report the range and stop calling it dominant.»*
+**Rule 3 — two of five now sit in the middle row.** `thinking_share` reads
+0,806 / 0,802 / 0,708 / **0,590** / **0,656**. D and E both land between 0,50 and 0,70, the
+rule's **middle** row: *«report the range and stop calling it dominant.»*
 
-So the range is reported and the word is dropped. It is **59% to 81%** across four people,
+So the range is reported and the word is dropped. It is **59% to 81%** across five people,
 not "80%", and the consequence varies by a factor of three:
 
 | | ratio | without thinking | Grounding | would score | loses |
@@ -202,6 +206,7 @@ not "80%", and the consequence varies by a factor of three:
 | B | 0,974 | 0,193 | 24,5/25 | 4,8 | 19,7 |
 | C | 1,439 | 0,722 | 25,0/25 | 18,1 | 6,9 |
 | D | 1,469 | 0,624 | 31,0/31 | 19,3 | 11,7 |
+| E | 1,435 | 0,505 | 25,0/25 | 12,6 | 12,4 |
 
 The composition claim survives on four corpora — thinking blocks are a majority of the
 numerator every time — and the magnitude claim is dead as a single number. The 7-point AQ
@@ -211,8 +216,8 @@ D is also the only one below the 0,70 edge, and it is the only different role in
 That is one observation, not a pattern, and it is written here so a fifth corpus can test it
 rather than confirm it.
 
-**Rule 4 — answered.** `actions_per_prompt` reads 6,4 / 6,7 / — / 7,6. Three of three that
-carry the field are inside the 5–20 band. The rule's own row: *«two of two inside a band four
+**Rule 4 — answered.** `actions_per_prompt` reads 6,4 / 6,7 / — / 7,6 / 8,5. Four of four
+that carry the field are inside the 5–20 band, spanning a third of its width. The rule's own row: *«two of two inside a band four
 times as wide as it is deep says little. Record it; do not raise it.»* Recorded, not raised.
 
 **Skill fluency: I reversed this finding on three corpora and the fourth reversed it back.**
@@ -227,6 +232,7 @@ nobody points. D came back **0,6**.
 | B | 11/40 | 1,10× | 0,7100 | 1,0 | 15,6/22 |
 | C | — | — | 22,0/22 forces ≥0,992 | 1,0 | 22,0/22 |
 | **D** | **17/40** | **3,92×** | **0,6500** | **0,6** | **14,3/22** |
+| E | 40/40 | 1,59× | 1,0000 | 1,0 | 22,0/22 |
 
 **Compare B and D, because that pair is the whole argument.** On both signals the axis
 actually publishes, D beats B: more distinct skills (17 against 11) and nearly four times the
@@ -247,6 +253,56 @@ will sit on the same branch. The `not_checked` line written at the time said exa
 I drew the conclusion anyway. Recovered by `scripts/skill-fluency-term.py`, whose control is
 the same algebra on Tool command where every term IS disclosed: 0,654167 predicted against
 0,654167 published.
+
+### Context Intelligence: the numerator and the denominator are the same set
+
+Five corpora put `evidence_eligible_sessions` above threshold every time at a suspiciously
+constant multiple — 1,67 / 1,67 / 1,64 / 1,67 / 1,67. That is not five independent
+observations of headroom. `CONTEXT_INTELLIGENCE_TARGET = 0,60` (`aq.py:18`) and the axis is
+`sat(coverage, 0,60)`, so a multiple of 1,667 is exactly **coverage = 1,0**.
+
+Read straight from the published signals of the three corpora that carry them:
+
+| | grounded_sessions | write_sessions | coverage |
+|---|---|---|---|
+| A | 50 | 50 | 1,0 |
+| B | 15 | 15 | 1,0 |
+| E | 60 | 60 | 1,0 |
+
+Not "high". **Identical, every time.** Every session that wrote code had a qualifying call
+before the write, for three different people on corpora between 5.862 and 42.874 tool calls.
+The axis scores 20,0/20 for all of them because its input is a proportion nobody fails to
+max, not because they cleared a bar.
+
+**Stated as a hypothesis, because the mechanism is not verified.** The published rule is *«a
+knowledge-MCP call OR an explore-class project/data/design MCP call before a later
+Edit/Write/MultiEdit/NotebookEdit in the same session»*. If anything fires an MCP call early
+in a session — a memory recall, a session-start hook, a connected server that greets — then
+every write-session is grounded by construction and the axis is measuring **configuration**
+rather than judgement, which is the `signal-not-attributable-to-person` shape. What is
+measured here is the coincidence; the mechanism needs a corpus where coverage is **not** 1,0.
+
+D would have been that test and cannot be: its Context Intelligence axis is absent from the
+payload entirely, so Craft renormalizes without it. C carries no per-axis signals. Two of the
+five could have falsified this and neither can.
+
+### One Windows corpus, and one thing it makes visible
+
+E is the only non-macOS run. Nothing platform-shaped shows up where it would be easiest to
+imagine one: its `cli_share` is 0,97, the same as everyone's, because it runs Bash under the
+harness like the rest.
+
+What it does expose is a hole the other four could not. `classify_tool("PowerShell")` returns
+**`other`** — verified by importing it — and `other` is on **neither side** of Grounding's
+explore/doing ratio. Separately, `cli_counter` only ever increments under
+`elif name == "Bash"` (`accumulator.py:1414`), so a PowerShell call contributes nothing to
+`cli_calls` or `clis_distinct` either. A whole shell is invisible to three axes.
+
+On E it barely matters: PowerShell is 1,45% of its tool mix, and E scores at the ceiling on
+Grounding and Token economy anyway. **The magnitude here is small and the shape is not.** For
+somebody whose primary shell is PowerShell rather than an occasional one, the same three axes
+would be reading a fraction of their work. That is a hypothesis about a person we have not
+measured, and it is written as one.
 
 ### Not settled by this set
 
