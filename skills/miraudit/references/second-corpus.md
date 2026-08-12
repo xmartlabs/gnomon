@@ -278,6 +278,20 @@ awards full marks from 0,60 upward, and every person measured sits in the top 2%
 input range. It cannot discriminate between any of them, and it would take somebody at 59%
 before it said anything at all.
 
+**The derivation carries a control, because otherwise it is just arithmetic that suits us.**
+Three corpora publish the denominator *and* were bisected, so the method can be checked
+against them before it is trusted on the one that cannot:
+
+| | derived `thr / 0,60` | published `write_sessions` | |
+|---|---|---|---|
+| A | 50 | 50 | agree |
+| B | 15 | 15 | agree |
+| E | 60 | 60 | agree |
+
+Three for three, exactly. That is what makes C's 126 quotable, and it is also why **C does
+not need to re-run**: a `comparison-2` file from that corpus would publish a number three
+independent checks already reconstruct.
+
 **C is the reason this is stated carefully.** An earlier version of this section said the
 numerator and the denominator were the same set — that grounded_sessions equalled
 write_sessions by construction. C is 124 of 126: two sessions wrote code without a
