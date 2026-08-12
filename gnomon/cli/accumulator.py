@@ -34,7 +34,7 @@ from gnomon.taxonomy import (
     PLAN_SKILL_NEEDLES, KNOWLEDGE_SKILL_NEEDLES, ORCHESTRATION_TOOLS,
     FANOUT_BY_TRANSCRIPT_TOOLS, parse_workflow_agent_dispatch,
     classify_tool, classify_mcp_subcategory, CI_CONTEXT_SUBCATS,
-    is_substantive_tool, classify_change_target, is_plan_file_target,
+    is_substantive_tool, classify_change_target, is_plan_file_target, SHELL_TOOLS,
     bash_writes_file, bash_runs_tests, bash_runs_knowledge, _extract_clis,
     _is_compounding_path, _norm_path_seps, _SKILL_MD_RX,
     extract_skill_name_from_path, _canon_mcp_server, is_mcp_knowledge_write,
@@ -1106,7 +1106,7 @@ class Accumulator:
                         # scores identically to its already-joined sibling instead of
                         # raising TypeError wherever the join was missing.
                         _bash_cmd = (_normalize_bash_command(inp.get("command"))
-                                    if name == "Bash" else "")
+                                    if name in SHELL_TOOLS else "")
                         self.tool_use_total += 1
                         # Identity is an EVENT fact, so it is read here rather than derived
                         # from the session: a parent transcript and its subagent turns share
@@ -1434,12 +1434,26 @@ class Accumulator:
                                 self.compounding_counter += 1
                                 if mkey:
                                     self.month_compounding[mkey] += 1
-                        elif name == "Bash":
+                        elif name in SHELL_TOOLS:
                             cmd = _bash_cmd
+                            # CLI accounting is shell-agnostic: `_extract_clis` reads the
+                            # command HEAD against the KNOWN_CLIS allowlist, so `git status`
+                            # extracts `git` whichever shell ran it, and a PowerShell-native
+                            # cmdlet simply misses the allowlist instead of inventing a CLI.
                             for _cli in _extract_clis(cmd):
                                 self.cli_counter[_cli] += 1
                                 if mkey:
                                     self.month_cli_counter[mkey][_cli] += 1
+                            # Everything below reads bash SYNTAX -- POSIX redirection,
+                            # heredocs, `sed -i`, `tee`, shell SKILL.md reads -- so it stays
+                            # Bash-gated. Reusing those heuristics on PowerShell text is a
+                            # separate change with its own false-positive surface, and this
+                            # one is deliberately scoped to the three axes issue #72 names
+                            # (Grounding, Tool command, Token economy). Verification's
+                            # `runs_tests` and the knowledge-grounding arm are Bash-only for
+                            # the same reason -- see their gates in the ordered-fact literal.
+                            if name != "Bash":
+                                continue
                             if self._cur_src != "claude":
                                 # Claude invokes skills via the Skill tool (counted
                                 # above); other CLIs read SKILL.md through the shell

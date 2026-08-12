@@ -4,7 +4,16 @@ import re
 WRITE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 READ_TOOLS = {"Read", "Grep", "Glob", "NotebookRead"}
 DISCOVER_TOOLS = {"WebSearch", "WebFetch", "ToolSearch"}
-EXEC_TOOLS = {"Bash", "BashOutput", "KillShell"}
+EXEC_TOOLS = {"Bash", "BashOutput", "KillShell", "PowerShell"}
+# The shell tools whose `input.command` is a real command line. `PowerShell` is what Claude
+# Code emits on Windows; it was absent from the taxonomy entirely until issue #72, so it fell
+# through classify_tool to `other` -- a category on NEITHER side of
+# planning_ratio_explore_to_doing -- and never reached the accumulator's CLI accounting. A
+# developer whose primary shell is PowerShell therefore had that work read as nothing by
+# Grounding and, worse, by Token economy: `cli_share = cli_calls / (cli_calls + mcp_calls)`
+# omitted those calls from BOTH sides of the fraction, so the axis actively understated them.
+# BashOutput/KillShell are shell CONTROL tools with no command line, so they stay out.
+SHELL_TOOLS = {"Bash", "PowerShell"}
 DELEGATE_TOOLS = {"Agent", "Task", "Workflow"}
 PLAN_TOOLS = {"TodoWrite", "TodoRead", "ExitPlanMode", "EnterPlanMode", "EnterWorktree",
               "ExitWorktree", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet"}
