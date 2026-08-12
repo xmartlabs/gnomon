@@ -38,17 +38,17 @@ class TestPublicDocumentationContract(unittest.TestCase):
 
     def test_public_docs_publish_current_contract_only(self):
         expected = (
-            "scoring inputs version 17",
-            "AQ version 17",
-            "GStack version 17",
+            "scoring inputs version 18",
+            "AQ version 18",
+            "GStack version 18",
             SCORE_CONTRACT_ID,
         )
         for document in (self.readme, self.metrics):
             for phrase in expected:
                 with self.subTest(phrase=phrase):
                     self.assertIn(phrase, document)
-            self.assertNotIn("scoring inputs version 16", document)
-            self.assertNotIn("16:16:16", document)
+            self.assertNotIn("scoring inputs version 17", document)
+            self.assertNotIn("17:17:17", document)
             self.assertNotIn("96.8%", document)
 
     def test_public_docs_explain_actions_per_prompt_inputs(self):
@@ -102,7 +102,7 @@ class TestPublicDocumentationContract(unittest.TestCase):
             encoding="utf-8")
         calibration = (ROOT / "gnomon" / "scoring" / "calibration.py").read_text(
             encoding="utf-8")
-        self.assertEqual(SCORE_CONTRACT_ID, "17:17:17")
+        self.assertEqual(SCORE_CONTRACT_ID, "18:18:18")
         self.assertEqual(HARNESS_TEAM_SESSION_TYPES, 3)
         self.assertEqual(HARNESS_BELOW_TEAM_CREDIT, 0.6)
         self.assertIn("unmeasured delegation", source)

@@ -253,6 +253,28 @@ class TestWorkflowAgentDispatchPathParsing(unittest.TestCase):
         self.assertEqual(FANOUT_BY_TRANSCRIPT_TOOLS, {"Workflow"})
 
 
+class TestPowerShellIsAShell(unittest.TestCase):
+    """Issue #72: `PowerShell` is the shell tool Claude Code emits on Windows, and it was
+    unhandled everywhere `Bash` is handled. `classify_tool` fell through to `other`, which
+    sits on NEITHER side of planning_ratio_explore_to_doing, so a Windows developer's shell
+    work was invisible to Grounding, and `is_substantive_tool` excluded it from
+    actions_per_prompt. It is the same category of action as Bash and must classify as one."""
+
+    def test_powershell_classifies_as_execute(self):
+        self.assertEqual(classify_tool("PowerShell"), "execute")
+
+    def test_powershell_is_in_exec_tools(self):
+        self.assertIn("PowerShell", EXEC_TOOLS)
+
+    def test_powershell_is_substantive_work(self):
+        self.assertTrue(is_substantive_tool("PowerShell"))
+
+    def test_powershell_matches_bash_classification(self):
+        # The point of the fix: the two shells are indistinguishable to the taxonomy.
+        self.assertEqual(classify_tool("PowerShell"), classify_tool("Bash"))
+        self.assertEqual(is_substantive_tool("PowerShell"), is_substantive_tool("Bash"))
+
+
 class TestClassifyToolOtherCategoriesUnchanged(unittest.TestCase):
     """Guard: carving `plan` out of the explore branch must not shift anything else."""
 

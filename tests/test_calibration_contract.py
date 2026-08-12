@@ -137,11 +137,15 @@ class TestV17DropToolsearchContract(unittest.TestCase):
 
     def test_seventeen_digest_is_a_new_unique_value(self):
         # Three constants left the fingerprinted set, so the digest MUST differ from every
-        # prior contract -- this is the calibration delta the bump records.
+        # PRIOR contract -- this is the calibration delta the bump records. Scoped to the
+        # contracts 17 followed: a LATER zero-calibration-delta bump legitimately reuses
+        # this digest (18:18:18 does), and that is what
+        # ZERO_CALIBRATION_DELTA_CONTRACT_IDS documents.
         self.assertNotEqual(
             CALIBRATION_FINGERPRINTS["17:17:17"], CALIBRATION_FINGERPRINTS["16:16:16"])
-        others = [fp for cid, fp in CALIBRATION_FINGERPRINTS.items() if cid != "17:17:17"]
-        self.assertNotIn(CALIBRATION_FINGERPRINTS["17:17:17"], others)
+        priors = [fp for cid, fp in CALIBRATION_FINGERPRINTS.items()
+                  if int(cid.split(":")[0]) < 17]
+        self.assertNotIn(CALIBRATION_FINGERPRINTS["17:17:17"], priors)
 
     def test_seventeen_is_not_a_zero_calibration_delta_contract(self):
         self.assertNotIn("17:17:17", ZERO_CALIBRATION_DELTA_CONTRACT_IDS)
@@ -157,6 +161,26 @@ class TestV17DropToolsearchContract(unittest.TestCase):
     def test_task_calls_target_is_no_longer_registered_or_present(self):
         self.assertNotIn("TASK_CALLS_PER_CALL_TARGET", CALIBRATION_CONSTANT_NAMES)
         self.assertFalse(hasattr(aq, "TASK_CALLS_PER_CALL_TARGET"))
+
+
+class TestV18PowerShellShellTaxonomyContract(unittest.TestCase):
+    """v18 (PowerShell admitted to the shell taxonomy, issue #72): real score delta, zero
+    calibration delta -- the same template as v14/v15/v16 against 13:13:13."""
+
+    def test_eighteen_is_registered(self):
+        self.assertIn("18:18:18", CALIBRATION_FINGERPRINTS)
+
+    def test_eighteen_digest_is_byte_identical_to_seventeen(self):
+        # No registered constant moved: only the taxonomy that decides WHICH tool calls
+        # reach the axes changed, and the fingerprint hashes constant VALUES, not taxonomy.
+        self.assertEqual(
+            CALIBRATION_FINGERPRINTS["18:18:18"], CALIBRATION_FINGERPRINTS["17:17:17"])
+
+    def test_eighteen_is_registered_as_zero_calibration_delta(self):
+        self.assertIn("18:18:18", ZERO_CALIBRATION_DELTA_CONTRACT_IDS)
+
+    def test_eighteen_is_the_current_contract(self):
+        self.assertEqual(SCORE_CONTRACT_ID, "18:18:18")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,32 @@
-# Current scoring contract (17:17:17).
+# Current scoring contract (18:18:18).
+#
+# v18 admits `PowerShell` to the shell taxonomy. It is the shell tool Claude Code emits on
+# Windows and it was absent from the codebase entirely (issue #72), so `classify_tool` fell
+# through to `other` -- a category on NEITHER side of planning_ratio_explore_to_doing -- and
+# the accumulator's CLI accounting branch was gated on the literal `name == "Bash"`. Three
+# axes therefore read a Windows developer's shell work as if it had not happened: Grounding
+# (the call reached neither side of the ratio), Tool command (`clis_distinct`), and Token
+# economy, where the omission is an active PENALTY rather than a neutral gap -- `cli_share =
+# cli_calls / (cli_calls + mcp_calls)` dropped those calls from BOTH sides of the fraction,
+# so a developer whose primary shell is PowerShell scored as if they used no CLI at all.
+# `is_substantive_tool` (actions_per_prompt, currently feeding the withheld Steering term)
+# was blind to it for the same reason.
+#
+# `PowerShell` joins EXEC_TOOLS, and the accounting branch is keyed on the new
+# `taxonomy.SHELL_TOOLS` ({"Bash", "PowerShell"} -- the shell tools that carry a real command
+# line; BashOutput/KillShell are control tools with none). SCOPE IS DELIBERATELY NARROW: only
+# the KNOWN_CLIS-allowlisted CLI extraction is shell-agnostic. `bash_writes_file`,
+# `bash_runs_tests`, `bash_runs_knowledge` and the shell SKILL.md read are bash-SYNTAX
+# heuristics (POSIX redirection, heredocs, `sed -i`, `tee`), so they stay Bash-gated and
+# Verification coverage remains Bash-only pending PowerShell-aware predicates -- see
+# tests/test_accumulator.py's TestPowerShellShellAccounting, which pins that limit.
+#
+# This is a REAL score delta (Grounding, Tool command, Token economy, and AQ move for any
+# corpus containing PowerShell calls) but a ZERO calibration delta: no registered
+# CALIBRATION_CONSTANT_NAMES value moved -- CLIS_DISTINCT_CEILING stays 40 and no rate target,
+# weight, or denominator changed -- exactly the v14/v15/v16 template. 18:18:18 therefore
+# reuses 17:17:17's digest and IS listed in ZERO_CALIBRATION_DELTA_CONTRACT_IDS -- see
+# calibration.py's CALIBRATION_FINGERPRINTS.
 #
 # v17 makes FOUR anti-gaming term redesigns in this single combined bump, each dropping or
 # reshaping a term whose signal is confounded, trivially saturated, or not a developer virtue:
@@ -101,9 +129,9 @@
 #
 # Contract IDs are comparison boundaries. Calibration fingerprints are append-only:
 # a score-affecting change requires a new ID and fingerprint entry.
-SCORING_INPUTS_VERSION = 17
-AQ_VERSION = 17
-GSTACK_VERSION = 17
+SCORING_INPUTS_VERSION = 18
+AQ_VERSION = 18
+GSTACK_VERSION = 18
 # First input version with deduplicated per-session skill counters. Earlier
 # payloads use different persisted quantities and cannot be replayed against these targets.
 SKILL_DEDUP_INPUTS_VERSION = 8

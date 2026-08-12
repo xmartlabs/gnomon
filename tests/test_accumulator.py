@@ -544,6 +544,69 @@ class TestBashListValuedCommandSafety(unittest.TestCase):
         self.assertTrue(fact["knowledge"])
 
 
+class TestPowerShellShellAccounting(unittest.TestCase):
+    """Issue #72: the CLI accounting branch was gated on the literal `name == "Bash"`, so a
+    `PowerShell` call fed neither `cli_calls` nor `clis_distinct`. Because Token economy is
+    `sat(cli_share, 0.70)` over `cli_calls / (cli_calls + mcp_calls)` and PowerShell reached
+    NEITHER side of that fraction, a developer whose primary shell is PowerShell had their
+    CLI work scored as if it never happened -- an active penalty, not a neutral omission."""
+
+    def test_powershell_command_feeds_the_cli_counters(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "PowerShell", {
+            "command": "git status",
+        }), None, None)
+        self.assertEqual(acc.cli_counter["git"], 1)
+
+    def test_powershell_matches_bash_cli_accounting(self):
+        def _counts(tool):
+            acc = Accumulator()
+            acc.begin_file("claude", "f.jsonl")
+            acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", tool, {
+                "command": "git status && npm run build",
+            }), None, None)
+            return dict(acc.cli_counter)
+
+        self.assertEqual(_counts("PowerShell"), _counts("Bash"))
+
+    def test_powershell_list_valued_command_does_not_crash(self):
+        # Same argv-list shape non-Claude adapters emit for Bash (F2).
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "PowerShell", {
+            "command": ["git", "status"],
+        }), None, None)
+        self.assertEqual(acc.cli_counter["git"], 1)
+
+    def test_powershell_counts_on_the_doing_side_of_the_planning_ratio(self):
+        # classify_tool("PowerShell") == "execute" puts it in the ratio's DENOMINATOR;
+        # before the fix it was "other" and reached neither side.
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "PowerShell", {
+            "command": "git status",
+        }), None, None)
+        self.assertEqual(acc.cat_counter["execute"], 1)
+        self.assertEqual(acc.cat_counter.get("other", 0), 0)
+
+    def test_powershell_test_runs_stay_bash_only_for_now(self):
+        """Deliberate scope limit, recorded as a test so it cannot rot into an accident.
+        `bash_runs_tests` / `bash_runs_knowledge` / `bash_writes_file` are bash-syntax
+        heuristics (heredocs, `sed -i`, `tee`, POSIX redirection). Reusing them verbatim on
+        PowerShell text is a separate change with its own false-positive surface, so this
+        fix restores the three axes issue #72 names (Grounding, Tool command, Token economy)
+        and leaves Verification/knowledge enrichment Bash-gated pending PowerShell-aware
+        predicates."""
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "PowerShell", {
+            "command": "pytest -q",
+        }), None, None)
+        self.assertEqual(acc.shell_test_runs, 0)
+        self.assertFalse(_facts_for(acc, "claude", "s1")[0]["runs_tests"])
+
+
 class TestVerificationCoverageF7(unittest.TestCase):
     """F7: Verification coverage requires a `runs_tests` Bash fact that ran
     AFTER the first CODE write AND whose tool_result resolved successfully.

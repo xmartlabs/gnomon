@@ -141,13 +141,23 @@ CALIBRATION_FINGERPRINTS = {
     # fingerprinted set. The digest therefore CHANGES (a unique new value), and 17:17:17 is
     # deliberately NOT in ZERO_CALIBRATION_DELTA_CONTRACT_IDS.
     "17:17:17": "7fd9a230f7fb2264",
+    # v18 (PowerShell admitted to the shell taxonomy): `PowerShell` joins EXEC_TOOLS and the
+    # accumulator's CLI accounting is keyed on taxonomy.SHELL_TOOLS instead of the literal
+    # `name == "Bash"`. A real score delta (Grounding, Tool command, Token economy and AQ
+    # move for any corpus with PowerShell calls -- see versioning.py's v18 note on why Token
+    # economy was an active penalty, not a neutral gap), but no registered
+    # CALIBRATION_CONSTANT_NAMES value changed: CLIS_DISTINCT_CEILING stays 40 and no rate
+    # target, weight, or denominator moved. The digest is therefore unchanged from 17:17:17,
+    # the same documented-duplicate template as 14/15/16 against 13:13:13.
+    "18:18:18": "7fd9a230f7fb2264",
 }
 
 # Contract IDs whose fingerprint is a DOCUMENTED, deliberate duplicate of the contract
 # they immediately followed: the bump was score-affecting through a derivation/taxonomy
-# change (H10 active_hours union, WU4 ORCHESTRATION_TOOLS gate), not a registered
-# CALIBRATION_CONSTANT_NAMES value, so no constant moved and the digest is legitimately
-# unchanged. test_calibration_contract.py's injectivity guard excludes exactly these IDs;
-# any OTHER duplicate fingerprint remains the accidental-drift failure mode it exists to
-# catch.
-ZERO_CALIBRATION_DELTA_CONTRACT_IDS = frozenset({"14:14:14", "15:15:15", "16:16:16"})
+# change (H10 active_hours union, WU4 ORCHESTRATION_TOOLS gate, v18's PowerShell shell
+# taxonomy), not a registered CALIBRATION_CONSTANT_NAMES value, so no constant moved and the
+# digest is legitimately unchanged. test_calibration_contract.py's injectivity guard excludes
+# exactly these IDs; any OTHER duplicate fingerprint remains the accidental-drift failure
+# mode it exists to catch.
+ZERO_CALIBRATION_DELTA_CONTRACT_IDS = frozenset(
+    {"14:14:14", "15:15:15", "16:16:16", "18:18:18"})
