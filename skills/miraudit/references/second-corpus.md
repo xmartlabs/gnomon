@@ -109,8 +109,14 @@ own `uvx --from git+... xl-ai-insights` that this audience already types. The re
 in the directory you ran it from. Verified end to end.
 
 The `@branch#subdirectory=` is the ugly part, and it is not the mechanism: it is there
-because the skill lives on a branch of a fork. On a default branch it reads
-`uvx --from "git+https://github.com/xmartlabs/gnomon#subdirectory=skills/miraudit"`.
+because the skill lives on a branch of a fork. If it ever merges upstream, the fork and the
+branch drop out of that URL and the rest stays as it is.
+
+**Do not write that shorter command down until it works.** An earlier version of this
+paragraph showed it fully formed, one sentence away from the real one and looking exactly
+like it, and it got copied and run. It fails with `has no subdirectory skills/miraudit`,
+which is accurate and still costs the reader a confused minute. A command that does not work
+yet is a broken command, however clearly the surrounding prose says "later".
 
 From a clone instead, if someone prefers to read the scripts before running them:
 `bash <clone>/skills/miraudit/scripts/second-corpus.sh`.
