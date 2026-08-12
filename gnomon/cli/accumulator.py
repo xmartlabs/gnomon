@@ -1530,6 +1530,25 @@ class Accumulator:
         self.gc = gc
         git_velocity = (gc["churn"] / active_hours) if active_hours > 0 else 0
 
+        # Reasoning blocks are DELIBERATELY part of the explore numerator, and the decision
+        # is recorded here because it reads as inconsistent with the `plan` exclusion in
+        # taxonomy.classify_tool without it (issue #72).
+        #
+        # `plan` is excluded because entering plan mode or updating a todo list is CEREMONY
+        # that already pays on a separate term (Planning practice), and one action must not
+        # pay twice in one axis. A thinking block is not ceremony and pays nowhere else: it
+        # is the only observable evidence that the model reasoned about the change BEFORE
+        # committing to it, and `planning_ratio_explore_to_doing` measures exactly that
+        # precedence -- thinking-and-reading before producing -- not filesystem contact.
+        # The axis is named Grounding after the HABIT (grounding a change in prior thought)
+        # rather than after the mechanism, which is why reasoning that consults no file
+        # still belongs in the numerator.
+        #
+        # Known consequence, measured across five corpora in issue #72: reasoning blocks are
+        # 59-81% of this numerator in practice, so the term is dominated by a signal that no
+        # source other than Claude emits. Sources without per-turn thinking blocks are scored
+        # on `cat_counter["explore"]` alone and are NOT renormalized -- see the saturation
+        # note beside `grounding` in scoring/aq.py for why that is currently tolerated.
         explore = self.cat_counter.get("explore", 0) + self.thinking_blocks
         produce = self.cat_counter.get("produce", 0)
         execute = self.cat_counter.get("execute", 0)
@@ -1986,6 +2005,8 @@ class Accumulator:
         _s_norm_entropy = _s_entropy / math.log2(_s_diversity) if _s_diversity > 1 else 0
 
         _s_cats = self.cat_counter
+        # Mirrors the corpus path's explore numerator, reasoning blocks included -- see the
+        # rationale beside `explore` in to_corpus_stats above.
         _s_explore = _s_cats.get("explore", 0) + self.thinking_blocks
         _s_produce = _s_cats.get("produce", 0)
         _s_execute = _s_cats.get("execute", 0)
