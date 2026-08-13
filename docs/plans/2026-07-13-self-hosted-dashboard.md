@@ -21,7 +21,12 @@ This plan is self-contained; a cleared session can execute it top-to-bottom. Cur
 - **Done so far (committed):** design spec, this plan (validated with Codex, all BLOCKER/HIGH folded in), the "The Ledger" design system + 3 Playwright-verified mockups (`docs/design/mockups/`), the 3 `/design-directions` explorations (`docs/design/directions/`), and **Tasks 1–6**: scaffold, SQLite layer, auth lib, ingest validation, `POST /api/gnomon/ingest`, and the `/cli-auth` page + form handler. 48 unit tests green, `pnpm build` clean, and the full CLI contract verified end-to-end against a running container-less server (sign-in → tokens → ingest → `uploaded_history` round-trip).
 - **How to execute:** invoke `superpowers:subagent-driven-development` (or `superpowers:executing-plans`) and work Task 7 → Task 13 in order. Each task ends with the **[Per-task gate](#per-task-gate-mandatory--applies-to-every-task-below)** (tests green → `/simplify` → Codex validation with zero BLOCKER/HIGH → commit). Do not advance a task until its gate is clean.
 - **Deviations from this plan already made (deliberate, in commits):** `lib/paths.ts` owns `dataDir()` for both db and auth; `issueTokens` mints a `jti` per token so the N credentials are distinct; `/cli-auth` also emits `uploaded_history` (the CLI's current contract generation — see `_history_from_query`); the palette is registered via `@theme inline` in `globals.css`, so **Tasks 8/9 should use Tailwind utilities (`text-ink-60`, `border-hairline`) rather than the inline `style` objects shown in their JSX blocks**; test bootstrap lives in `tests/helpers/`.
-- **Known gap deferred:** Tasks 3–6 ran the gate as tests + `/simplify` only — Codex validation was skipped by request, so those six tasks have no adversarial second opinion. Consider one Codex pass over `dashboard/src/` before Task 11 (Docker) makes the surface public.
+- **Codex validation: done for Tasks 3–6** (job `task-msrxs1co-2thrd1`), fixes committed in `87ebe84`. It found one BLOCKER and two HIGHs, all resolved:
+  - `context.date_range` carries **tz-aware ISO-8601 timestamps**, not bare dates — the reference block above was wrong and the strict validator 400'd every real CLI upload. **The fixtures were wrong the same way, which is why the suite stayed green over a broken contract — re-check any new assumption against `gnomon/`, not against this plan.**
+  - Uploads must not silently degrade a stored month: `lib/ingest.ts` now mirrors mirdash's anti-degradation guard (coverage rank, then session count; top-level `force: true` overrides).
+  - `uploaded_history` must carry `scoreContractId`/`coverage`/`totalSessions`, else `plan_upload` re-uploads the previous month on every run forever. Built in `lib/history.ts`.
+  - Also: throttle no longer trusts `x-forwarded-for` unless `TRUST_PROXY=1`; ingest cap is 900 KiB (matching `_INGEST_MAX_BYTES`); `isLoopbackRedirect` matches the two literal CLI forms; empty `JWT_SECRET` counts as unset.
+- **New helpers Tasks 7–9 should use:** `getUpload(db, personId, monthKey)`, `uploadsForPerson` (now also returns `uploadedAt`), and `lib/history.ts`.
 - **UI:** implement Tasks 6/8/9 to match `docs/design/mockups/*.html` (The Ledger). The JSX in those tasks is structural scaffolding — the mockups + `docs/design/design-system.md` tokens are authoritative for all visuals.
 - **Verify before "done":** never claim a step passes without running it (`pnpm test`, `pnpm build`, `ppnpm test:e2e`) and pasting the output. Task 13 (seed + Playwright) is the final whole-system visual gate.
 
@@ -63,7 +68,13 @@ From `gnomon/output/summary.py` (`build_summary`) — the upload body shape:
 
 ```jsonc
 {
-  "context": { "date_range": ["YYYY-MM-DD","YYYY-MM-DD"], "total_sessions": 171,
+  // ⚠️ date_range carries tz-aware ISO-8601 TIMESTAMPS, not bare dates:
+  // "2026-06-30T00:00:00-03:00". parse_window (gnomon/sources/discovery.py)
+  // makes the --since/--until bounds aware and the accumulator writes them with
+  // .isoformat(); context.date_range is that field verbatim (summary.py:357).
+  // Bare YYYY-MM-DD only appears when a run has no window flags at all.
+  "context": { "date_range": ["2026-01-01T00:00:00-03:00","2026-06-30T00:00:00-03:00"],
+               "total_sessions": 171,
                "total_prompts": 1167, "sources": ["claude"], "client_version": "0.3.0",
                "window_months": 6 },   // window_months injected by CLI before upload
   "planning_ratio_explore_to_doing": 0.82,
@@ -98,7 +109,7 @@ From `gnomon/output/summary.py` (`build_summary`) — the upload body shape:
 }
 ```
 
-**monthKey derivation:** month (`YYYY-MM`) of `context.date_range[1]` (the window's end/anchor month — CLI sets `--until` to the anchor month's last day).
+**monthKey derivation:** month (`YYYY-MM`) of `context.date_range[1]` (the window's end/anchor month — CLI sets `--until` to the anchor month's last day). Take the first 7 characters of the **local** timestamp; do NOT convert to UTC first, or a positive-offset end-of-month bound lands in the next month.
 
 **Usage-over-time note:** per-month tokens come from the `progression_monthly` entry whose `month` equals the row's monthKey. Per-model split for a month is **approximated** by distributing `tokens_total` proportionally to model invocation counts in `models` (exact per-model monthly tokens are not in the payload). Cost applies the pricing map to that split.
 
