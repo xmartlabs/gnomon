@@ -317,6 +317,14 @@ def compute_scores(stats):
         return {"Execution": 0.0, "Planning": 0.0, "Engineering": 0.0}
     sess = max(v["total_sessions"], 1)
     prompts = max(v["total_prompts"], 1)
+    # DIVERGENCE, deliberately preserved: this reads `vel["active_hours"]` and raises on a
+    # payload that omits the key, while `score_breakdown` below reads it through `.get(_, 0.1)`
+    # and defaults instead. `gnomon/scoring/inputs.py` always emits the key, so no payload from
+    # the real pipeline reaches either branch and the two paths agree everywhere it matters.
+    # Converging them is a BEHAVIOUR change the calibration fingerprint cannot see -- it hashes
+    # constant values, not control flow -- so it does not belong in a delta-zero governance
+    # change. Note which way it would have to converge: defaulting fabricates a value AND
+    # flatters, because `out_rate = churn / 0.1` inflates Execution by ~10x.
     hours = max(vel["active_hours"], 0.1)
     ev = _evidence(stats)   # 0..1 confidence; gates the inverse terms so a thin corpus
                             # can't read as flawless (no-op at ev=1.0 for any real user).
@@ -469,6 +477,10 @@ def score_breakdown(stats):
 
     sess = max(v["total_sessions"], 1)
     prompts = max(v["total_prompts"], 1)
+    # The lenient half of the divergence documented in `compute_scores` above: `.get(_, 0.1)`
+    # where the scoring path subscripts. Left alone here for the same reason -- converging it
+    # is a behaviour change, and this function is also internally inconsistent about it (the
+    # two lines directly above subscript `v` without a default).
     hours = max(vel.get("active_hours", 0.1), 0.1)
     ev = _evidence(stats)
     caps = _caps_of(stats)
