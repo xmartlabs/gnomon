@@ -58,6 +58,13 @@ ONE CANONICAL COMBINED AQ:
     that. The gap stays around 5 points; publishing one answer is what retires the choice.
 """
 
+# The MODULE is imported, not the two Model mix constants by name, and
+# `blend_model_mix_components` reads them as attributes at call time. `from aq import X`
+# would bind a copy of the reference here, which is correct in production but makes the
+# coupling unprovable at runtime -- patching the registered constant would move compute_aq
+# and leave the blend on the old value. Reading through the module is the same technique
+# calibration.py's `_registered_value` uses, and for the same reason: track the live module.
+from gnomon.scoring import aq as _aq
 from gnomon.scoring.aq import compute_aq
 from gnomon.scoring.gstack import (
     compute_scores, score_breakdown, _axis_verdict, _nonnegative_integral_count,
@@ -116,9 +123,11 @@ def blend_model_mix_components(components):
     if not components:
         return 0.0
     total = sum(weight for weight, _ in components) or 1.0
-    distinct = sum(weight * min(1.0, signals.get("distinct_models", 0) / 3)
+    distinct = sum(weight * min(1.0, signals.get("distinct_models", 0)
+                                / _aq.MODELS_DISTINCT_CEILING)
                    for weight, signals in components) / total
-    offload = sum(weight * min(1.0, signals.get("offload_share", 0) / 0.30)
+    offload = sum(weight * min(1.0, signals.get("offload_share", 0)
+                               / _aq.OFFLOAD_SHARE_TARGET)
                   for weight, signals in components) / total
     measured = [(weight, (signals.get("routing") or {}).get("score"))
                 for weight, signals in components
