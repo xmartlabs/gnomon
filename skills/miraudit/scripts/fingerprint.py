@@ -69,13 +69,24 @@ print(header(args, WINDOW))
 print("=" * 62)
 print("CORPUS FINGERPRINT  (must match to compare figures across machines)")
 print("=" * 62)
-print(f"  .jsonl files          {len(files):,}")
-print(f"  total lines           {lines:,}")
+# Only fields computed AFTER the window filter belong under that header. `lines` and
+# `files` are counted over every .jsonl on disk, so they move whenever anyone works,
+# including during the audit itself. A second cold run four hours after the first, same
+# window and same machine, read 262,456 lines against 260,129 while every windowed number
+# above was identical: the one number the header promised would match was the only one that
+# moved. They stay in the output because corpus size is worth seeing. They stay out of the
+# fingerprint because they cannot do the job the fingerprint exists for.
 print(f"  tool calls in window  {tool_calls:,}")
 print(f"  sessions in window    {len(sessions):,}")
 print(f"  sidechain share       {100 * sidechain / max(tool_calls, 1):.1f}%")
 if sources:
     print(f"  sources               {', '.join(sorted(sources))}")
+
+print("\n  corpus size, NOT part of the fingerprint: these count every file on disk")
+print("  rather than the window, so they drift as you work and two runs of the same")
+print("  window will disagree on them.")
+print(f"    .jsonl files        {len(files):,}")
+print(f"    total lines         {lines:,}")
 
 print("\n  top 15 tools in window")
 for name, count in tools.most_common(15):

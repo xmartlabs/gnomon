@@ -67,11 +67,19 @@ def render(doc):
     out.append("Counts compared across machines mean nothing without this, so it comes "
                "before any other number.\n")
     out.append(f"- Window: {c.get('window', 'unstated')}\n")
-    out.append(f"- {c.get('files', '?')} files, {c.get('lines', '?')} lines, "
-               f"{c.get('tool_calls', '?')} tool calls, {c.get('sessions', '?')} sessions\n")
+    out.append(f"- {c.get('tool_calls', '?')} tool calls in window, "
+               f"{c.get('sessions', '?')} sessions in window\n")
     if side is not None:
         out.append(f"- Sidechain share: {side}\n")
     out.append(f"- Sources scored: {sources}\n")
+    # files and lines count every transcript on disk rather than the window, so they move
+    # while you work and two runs of one window disagree on them. They were inside the block
+    # above until a second run of this skill read 262,456 lines against 260,129 with every
+    # windowed number identical, which is the fingerprint failing on its own promise.
+    if c.get("files") is not None or c.get("lines") is not None:
+        out.append(f"\nCorpus size, outside the fingerprint because it counts every file on "
+                   f"disk and drifts as you work: {c.get('files', '?')} files, "
+                   f"{c.get('lines', '?')} lines.\n")
 
     ok = a.get("ok")
     verdicts = {True: "PASSED", False: "FAILED", None: "PARTIAL"}
@@ -92,10 +100,18 @@ def render(doc):
     out.append(f"{len(findings)} raised, {len(not_raised)} confirmed and deliberately not "
                f"raised, {len(dismissed)} killed in refutation, {len(reported)} already "
                "reported.\n")
-    if not findings:
+    if not findings and dismissed:
         out.append("Nothing is being raised. An empty findings list with a populated "
                    "dismissed list is a normal result: it is the evidence that what "
                    "survived went through a filter.\n")
+    elif not findings:
+        # Saying "and a populated dismissed list proves we filtered" while dismissed is
+        # empty was the first thing this renderer printed that was not true. A run that
+        # proposed nothing has no filter to show for it, and should say which it was.
+        out.append("Nothing is being raised, and nothing was proposed and killed either. "
+                   "Read the friction and the axes below for what this run was for: with "
+                   "an empty dismissed list there is no filtering on display here, so this "
+                   "is not evidence that candidates were tested and rejected.\n")
 
     if findings:
         out.append("\n## Raised\n")
