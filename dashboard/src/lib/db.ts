@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
+import { dataDir } from "@/lib/paths";
 
 export type Db = Database.Database;
 
@@ -32,12 +33,16 @@ export function initSchema(db: Db): void {
 
 let _db: Db | null = null;
 
+function dbFile(): string {
+  const custom = process.env.GNOMON_DB_PATH;
+  if (!custom) return path.join(dataDir(), "gnomon.db");
+  fs.mkdirSync(path.dirname(custom), { recursive: true });
+  return custom;
+}
+
 export function getDb(): Db {
   if (_db) return _db;
-  const dir = process.env.DATA_DIR ?? "/data";
-  const file = process.env.GNOMON_DB_PATH ?? path.join(dir, "gnomon.db");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const db = new Database(file);
+  const db = new Database(dbFile());
   initSchema(db);
   _db = db; // only cache after schema init succeeds, so a failure retries next call
   return _db;
