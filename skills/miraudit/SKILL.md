@@ -7,7 +7,6 @@ description: >
   "this doesn't reflect what I do", "why does it say that", "mi score bajó", "la métrica
   está mal", "esto no refleja lo que hago" — or when auditing a gnomon / xl-ai-insights /
   AQ report, an engineering dashboard, or a productivity scorecard.
-license: MIT
 compatibility: >
   Requires python3, git and uv, and no shell: the orchestration is Python, so PowerShell
   and CMD are fine and Git Bash is not needed. Reads the agent transcript corpus and a
