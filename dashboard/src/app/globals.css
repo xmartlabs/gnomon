@@ -13,6 +13,23 @@
   --parch: #C9B99A;     /* parchment — 3rd chart series / older level bars */
 }
 
+/* Register the palette with Tailwind so the tokens are reachable as utilities
+   (text-ink-60, border-hairline, bg-paper …) instead of inline style objects. */
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-ink: var(--ink);
+  --color-ink-60: var(--ink-60);
+  --color-ink-30: var(--ink-30);
+  --color-hairline: var(--hairline);
+  --color-accent: var(--accent);
+  --color-gain: var(--gain);
+  --color-loss: var(--loss);
+  --color-parch: var(--parch);
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+}
+
 html { background: #E9E2D2; }  /* gutter outside the sheet */
 body {
   background: var(--paper);
