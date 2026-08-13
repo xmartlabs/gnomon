@@ -85,14 +85,30 @@ print(f"  numerator                         {explore:>8}")
 print(f"  denominator (their subtraction)   {doing:>8}   raw {raw_doing}, dispatch {dispatch}")
 print(f"  ratio ours {ours:.3f}   theirs {theirs}   -> "
       f"{'faithful' if abs(ours - theirs) < 0.02 else 'DIVERGES'}")
-share = thinking / explore if explore else 0
-print(f"\n  thinking is {share:.1%} of the numerator")
-without = cats["explore"] / doing if doing else 0
-print(f"  drop it and the ratio is {without:.3f}, so the axis scores"
-      f" {min(1.0, without) * g_max:.1f}/{g_max} instead of {axes['Grounding']['score']}/{g_max}")
-print("  Direction: FAITHFUL to its formula. The gap is disclosure — the payload publishes")
-print("  the ratio and never the split, and the axis is named for grounding while the")
-print("  numerator is dominated by a block the harness emits.")
+faithful = abs(ours - theirs) < 0.02
+if not faithful:
+    # The split used to print in full right here, while the control that invalidates it
+    # fired twenty lines below. A reader met a confident "the axis would score 10.0/25"
+    # and learned only afterwards not to read it. A June window exposed that: against the
+    # payload's own explore_actions and produce/execute/delegate_actions, this check counted
+    # 70 explore actions too many and 126 doing actions too few, and both errors push the
+    # ratio up. It agreed on an August window, so that agreement was a property of one
+    # window's tool mix and not of the check.
+    print(f"\n  THE SPLIT IS WITHHELD. Ours and theirs disagree by {abs(ours - theirs):.3f},")
+    print("  over the 0.02 tolerance, so the numerator this check builds is not the one the")
+    print("  axis scored and any share taken from it would describe this reimplementation")
+    print("  rather than the tool. Compare the counts above against the payload's")
+    print("  explore_actions, produce_actions, execute_actions and delegate_actions to see")
+    print("  which side drifted. Nothing below this line about Grounding is usable.")
+else:
+    share = thinking / explore if explore else 0
+    print(f"\n  thinking is {share:.1%} of the numerator")
+    without = cats["explore"] / doing if doing else 0
+    print(f"  drop it and the ratio is {without:.3f}, so the axis scores"
+          f" {min(1.0, without) * g_max:.1f}/{g_max} instead of {axes['Grounding']['score']}/{g_max}")
+    print("  Direction: FAITHFUL to its formula. The gap is disclosure — the payload publishes")
+    print("  the ratio and never the split, and the axis is named for grounding while the")
+    print("  numerator is dominated by a block the harness emits.")
 
 # ---- Model mix ---------------------------------------------------------------------------
 their_models = _models_for_scoring(stats, (stats.get("stack") or {}).get("models", []))

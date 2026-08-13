@@ -61,6 +61,18 @@ you hid.
 **Say what would close it.** For each point, the observation that would settle it either
 way. This is what makes a question answerable in one reply instead of three.
 
+## Do not copy the skeleton by hand
+
+`scripts/render-issue.py` assembles it from the run's JSON. It fills in everything the JSON
+already asserts, refuses when `findings[]` is empty or `anchor.ok` is false or a finding is
+missing a field the structure needs, and leaves visible markers where judgement is required.
+It counts the markers left and prints the count, so a half-filled draft cannot be mistaken
+for a finished one.
+
+The skeleton below is what it produces, kept here so you can see the shape and argue with it.
+Retyping it by hand is how the format degrades from one person to the next, which is the
+reason the script exists.
+
 ## The skeleton
 
 ```markdown

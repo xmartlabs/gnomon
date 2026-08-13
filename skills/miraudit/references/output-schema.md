@@ -133,6 +133,13 @@ who own the audited tool. Without this state a confirmed finding has nowhere to 
 the schema forcing a lie. `findings` is what this run is raising; `reported` is what is
 already raised, so the next reader neither re-argues it nor re-sends it.
 
+**`what_would_close_it`** — the observation that would settle a finding either way, concrete
+enough for the reader to go and get it. Optional here and required by `render-issue.py`,
+because the split is deliberate: this schema governs the audit artifact, where a finding kept
+for your own records owes nobody a closing condition, while the message that goes out does.
+A claim that cannot be closed produces three replies instead of one. Present but empty is
+rejected: leave the field out or write it.
+
 **`not_raised`** — true, survived Phase 3, and deliberately not sent. This is the third
 state the `reported` note above predicted: a run confirmed the Steering leverage disclosure
 gap on two corpora, and the owner judged it too slight to spend a maintainer's attention on.

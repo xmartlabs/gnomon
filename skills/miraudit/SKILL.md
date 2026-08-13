@@ -134,7 +134,10 @@ not depend on someone remembering.
 
 ## Phase 4 — Emit
 
-Write `miraudit-<date>.json`, then run **`scripts/render-report.py`** on it. That script
+Start the file with **`scripts/new-run.py`**, which prefills `tool`, `anchor` and
+`corpus` from the anchored run and prints the eight refutation rows you will have to
+answer. Retyping those numbers is mechanical work that fails silently. Then run
+**`scripts/render-report.py`** on it. That script
 gates the file with `emit-gate.py` and writes the markdown only if the gate exits 0, so the
 two cannot be done out of order or the second done without the first. Do not hand-write the
 markdown and do not write your own renderer: two hand-written sources drift, and a report
@@ -161,6 +164,12 @@ nowhere to put it.
 claim you make when you spend a maintainer's time. `not_raised` does not go, by definition.
 `process_friction` never goes: it is about your tooling. If `anchor.ok` is false, nothing
 goes at all.
+
+**`scripts/render-issue.py` assembles the draft** from `findings[]` and refuses when
+there is nothing to send, when the anchor failed, or when a finding lacks a field the
+structure needs. It leaves visible markers where judgement is required and counts
+them, so a half-filled draft cannot pass for a finished one. Do not hand-copy the
+skeleton: that is how the format degrades from one person to the next.
 
 `references/reporting.md` has the shape and the reasoning behind it. The short version is
 that a question about intent gets answered while a bug report gets defended, that provenance

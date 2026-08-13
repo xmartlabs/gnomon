@@ -72,6 +72,12 @@ def check(doc):
         if not f.get("not_checked"):
             fail(w, "not_checked is empty. A finding that claims complete coverage "
                     "without naming its blind spots is the failure mode to avoid.")
+        # Optional here on purpose: this gate governs the audit artifact, and a run that
+        # raises something for its own records does not owe anyone a closing condition.
+        # render-issue.py requires it, because the message that goes out does.
+        if "what_would_close_it" in f and not (f["what_would_close_it"] or "").strip():
+            fail(w, "what_would_close_it is present but empty. Either write the observation "
+                    "that would settle it either way, or leave the field out.")
 
         ref = f.get("refuted")
         if not isinstance(ref, dict):
