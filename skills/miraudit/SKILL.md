@@ -102,11 +102,13 @@ Formula-independent. Each is a `shape` key in the output; see
 from a person who clears every bar. Report it as a hypothesis until a second corpus confirms
 it; the protocol and its decision rules are in `references/second-corpus.md`.
 
-**Two corpora are on record there, and what they support is narrow.** The AQ delta was zero
-on both, but the signals cut were not the same set, so the rule's own third row applies:
-report only what is pinned on both. That is two signals, and they feed the two axes that
-scored identical maxima on both. Five other axes separate the two people by a wide margin,
-so "the score is mostly ceiling" is refuted by the same pair that establishes the narrow
+**Several corpora are on record there and what they support is narrow. How many, and which,
+comes from that file and never from this one** — a count written here goes stale the day one
+arrives, and this paragraph said "two" while five were on record. The AQ delta is zero on
+every corpus, but the signals cut are never the same set, so the rule's own third row
+applies: report only what is pinned on all of them. That is two signals, and they feed axes
+that score identical maxima everywhere. Other axes separate the same people by a wide margin,
+so "the score is mostly ceiling" is refuted by the same set that establishes the narrow
 claim. Quote the narrow one.
 
 ## Phase 3 — Refute. Gate.

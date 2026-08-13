@@ -167,40 +167,142 @@ a contract that has moved, and put new corpora in the table below.
 ### On `18:18:18`
 
 `tool.contract` must match for two corpora to be compared, so these do not go in the table
-above. Two exist so far, same window, both re-runs of a corpus that is already up there.
+above. Three exist, and **F is the first that is not a re-run of a corpus already up there**:
+a different person, their own window, and the smallest of the three.
 
-| | A | E |
-|---|---|---|
-| window | 07-12→08-11 | 07-12→08-11 |
-| contract | `18:18:18` | `18:18:18` |
-| ref | `03b87a0` | `03b87a0` |
-| schema | `comparison-2` | `comparison-2` |
-| `anchor.ok` | `null` | `null` |
-| platform | macOS | **Windows** |
-| tool calls | 40.896 | 25.573 |
-| sessions | 101 | 122 |
-| project roots | 21 | 39 |
-| sources scored | claude | claude |
-| sidechain share | 0,609 | 0,462 |
-| Bash share | 0,639 | 0,430 |
-| `explore_to_doing` | 1,080 | 1,400 |
-| ... without thinking | 0,199 | 0,493 |
-| `thinking_share` | 0,815 | 0,656 |
-| `steering.actions_per_prompt` | 7,0 | 8,7 |
-| AQ | 91 | **95** |
+| | A | E | F |
+|---|---|---|---|
+| window | 07-12→08-11 | 07-12→08-11 | 07-13→08-12 |
+| contract | `18:18:18` | `18:18:18` | `18:18:18` |
+| ref | `03b87a0` | `03b87a0` | `03b87a0` |
+| schema | `comparison-2` | `comparison-2` | `comparison-2` |
+| `anchor.ok` | `null` | `null` | `null` |
+| platform | macOS | **Windows** | macOS |
+| tool calls | 40.896 | 25.573 | 5.589 |
+| sessions | 101 | 122 | 50 |
+| project roots | 21 | 39 | **6** |
+| sources scored | claude | claude | claude |
+| sidechain share | 0,609 | 0,462 | 0,434 |
+| Bash share | 0,639 | 0,430 | 0,586 |
+| `explore_to_doing` | 1,080 | 1,400 | 1,103 |
+| ... without thinking | 0,199 | 0,493 | 0,348 |
+| `thinking_share` | 0,815 | 0,656 | 0,685 |
+| `steering.actions_per_prompt` | 7,0 | 8,7 | 8,4 |
+| AQ | 91 | **95** | 82 |
 
 **A moved 92 → 91 and that is not a decline**, it is a different window on a different
 contract: A's `17:17:17` column is 07-07→08-06 and this one is 07-12→08-11. E is the pair
 worth reading, because it is the same window on both contracts — rule 0 holds its
 before/after, and what moved was the axis PowerShell touches.
 
-**What two corpora do pin, which one could not.** `steering.axis_present_in_payload` is
-`false` on both and `band_validated` is `false` on both, so the Steering leverage axis is
-withheld for everyone rather than for one person's setup — 50 of the Efficiency pillar's 100
-base points, dropped and renormalized onto Recovery. And both sit INSIDE the unvalidated band
-[5, 20] at 7,0 and 8,7, so on this evidence the withholding costs points rather than saving
-them. What neither corpus can settle is whether any artifact a person reads says the term was
-withheld: that is a property of the renderer, and the comparison payload does not capture it.
+**F and B both score 82 and are not the same person.** The contributor says so, and the
+profile says the same thing without being asked: 6 project roots against B's 15, `Read` at
+0,216 against 0,120, `thinking_share` 0,685 against 0,802, and B's `TaskUpdate`, `TaskCreate`
+and `StructuredOutput` all absent from F's top ten. Their windows overlap on 28 of 30 days,
+so carrying that difference on the four days they do not share needs at least 895 tool calls
+and 9 project roots living exclusively inside two of them. Two people landing on the same
+total is what a score with five pinned axes looks like from outside; it is not evidence of a
+shared corpus, and it was worth ruling out rather than assuming either way.
+
+**What three corpora pin, which one could not.** `steering.axis_present_in_payload` is
+`false` on all three and `band_validated` is `false` on all three, so the Steering leverage
+axis is withheld for everyone rather than for one person's setup — 50 of the Efficiency
+pillar's 100 base points, dropped and renormalized onto Recovery. And all three sit INSIDE
+the unvalidated band [5, 20], at 7,0 / 8,7 / 8,4, so on this evidence the withholding costs
+points rather than saving them. What none of them can settle is whether any artifact a person
+reads says the term was withheld: that is a property of the renderer, and the comparison
+payload does not capture it.
+
+#### The rules, re-run inside this contract
+
+Extending the `17:17:17` findings by one column would break the admission rule this file
+opens with, so the rules are run again on the three, and what they decide here is stated
+separately from what they decided there.
+
+**Rule 1 — row 3 again, and the surviving pair is the same pair.** Delta 0 on all three
+(91→91, 95→95, 82→82), controls moved on all three (68/54, 69/55, 65/53), `not_cuttable` the
+identical list. Signals cut: 11 / 10 / 6, never the same set, so row 1 never applies and row 3
+always does. Above threshold on all three, with every anchor resolved against `03b87a0`:
+
+| señal | A | E | F | eje |
+|---|---|---|---|---|
+| `cli_calls` | 11,42× | 13,96× | **16,84×** | Token economy (`aq.py:609-610`) |
+| `evidence_eligible_sessions` | 1,67× | 1,67× | 1,67× | Context Intelligence (`aq.py:503`) |
+| `compounding_writes` | 2,67× | 18,04× | 1,40× | Compounding (`aq.py:515`) |
+| `planned_eligible_sessions` | 1,84× | 1,63× | 1,10× | Discipline (`aq.py:350`) |
+| `planning_ratio_explore_to_doing` | 1,08× | 1,37× | 1,11× | Grounding (`aq.py:484`) |
+
+**Five rows on three corpora is weaker than two rows on four, and the direction is the
+trap.** An intersection only shrinks as corpora arrive, so a longer list here means fewer
+people have been measured at this contract, not more agreement. Three of these five are on
+the list because nobody outside this group has run `18:18:18` yet. The two that also survived
+four corpora at `17:17:17` are the two that two independent sets agree on, and those are the
+ones to quote.
+
+**Rule 2 — fires again.** 1,080 / 1,400 / 1,103, all at or above the 0,90 band, all scoring
+25,0/25. The 51% spread the `17:17:17` set showed is reproduced inside this one and still
+buys nobody a point.
+
+**Rule 3 — F lands in the rule's middle row, beside E.** `thinking_share` reads 0,815 /
+0,656 / **0,685**. The composition claim holds: thinking blocks are a majority of the
+numerator on all three. The magnitude does not, and the factor between them is three:
+
+| | ratio | without thinking | Grounding | would score | loses |
+|---|---|---|---|---|---|
+| A | 1,080 | 0,199 | 25,0/25 | 5,0 | 20,0 |
+| E | 1,400 | 0,493 | 25,0/25 | 12,3 | 12,7 |
+| F | 1,103 | 0,348 | 25,0/25 | 8,7 | 16,3 |
+
+**Rule 4 — recorded, not raised**, for the third time and for the same reason: 7,0 / 8,7 /
+8,4 is a third of a band four times as wide as it is deep.
+
+#### Axis by axis, and why F is the useful one
+
+These are published scores read directly, no rule involved.
+
+| eje | A | E | F | max | spread |
+|---|---|---|---|---|---|
+| Orchestration | 33,0 | 33,0 | **20,3** | 33 | 12,7 |
+| Verification | **19,3** | 31,9 | 26,7 | 35 | 12,6 |
+| Skill fluency | 20,6 | 22,0 | **11,0** | 22 | 11,0 |
+| Tool command | 20,7 | 21,4 | **10,7** | 28 | 10,7 |
+| Recovery | 97,1 | 91,3 | 91,2 | 100 | 5,9 |
+| Discipline | 17,0 | 17,0 | 12,5 | 17 | 4,5 |
+| Compounding | 20,0 | 20,0 | 20,0 | 20 | 0,0 |
+| Context Intelligence | 20,0 | 20,0 | 20,0 | 20 | 0,0 |
+| Grounding | 25,0 | 25,0 | 25,0 | 25 | 0,0 |
+| Model mix | 50,0 | 50,0 | 50,0 | 50 | 0,0 |
+| Token economy | 50,0 | 50,0 | 50,0 | 50 | 0,0 |
+
+**Five axes worth 165 of 350 base points are identical to the decimal for all three**, and
+they are the same five the `17:17:17` set pinned. F is what makes that worth more than a
+repetition: the earlier set was five people scoring 82 to 95, where "everybody is at the
+ceiling" and "everybody here is strong" are the same sentence. F scores 10,7 of 28 on Tool
+command, 11,0 of 22 on Skill fluency and 20,3 of 33 on Orchestration — under half the axis on
+one of them — and still takes the maximum on all five. The axes that do not separate people
+do not separate them from someone the rest of the scorecard separates cleanly.
+
+**Skill fluency: the undisclosed term is disclosed now, and F is where that pays off.**
+`18:18:18` publishes `process_skills_matched` and `compounding_skills_matched` as diagnostics
+that score nothing (`aq.py:395` and `aq.py:561`); neither appears in any `17:17:17` payload in
+this file. So `skill-fluency-term.py` now has two independent routes to the same bit, and on
+all three payloads the algebra and the diagnostic agree. Its Tool command control reproduced
+0,737500 against 0,737500 published on the run that produced this table — a different value
+from the 0,654167 quoted further down, because the control is recomputed against whichever
+corpus and window the script is pointed at, and it is the equality that matters rather than
+the number. What F adds is the case the D reversal could
+not supply: F **matched** the names, so its term is 1,0, and it still scores the lowest Skill
+fluency in the set because its rate is 0,50× target. A low score is not evidence that the
+hidden term missed, which is the inference D's write-up makes easy to draw.
+
+**Context Intelligence: a sixth person at coverage 1,0.** F publishes 20 grounded sessions of
+20 eligible, against a target of 0,60. The section below now reads six for six above 98%, and
+F is the lowest-scoring corpus on record — so "everyone measured is at 100%" is no longer a
+statement about strong corpora only.
+
+**What F does not add.** macOS, `claude` only, and the smallest corpus here. It says nothing
+about the PowerShell question, which is what upstream actually asked for and is still
+unmeasured.
 
 **D is the one that was worth waiting for.** A different role, the smallest corpus of the
 four, and the only one where **Context Intelligence is missing from the payload entirely** —
@@ -255,12 +357,16 @@ method and is governed by rule 1.
 73/62, 69/55), `not_cuttable` the identical list every time. Signals cut: 10 / 5 / 11 / 7 /
 10 — never the same set, so row 1 never applies and row 3 always does.
 
-Above threshold in **all four**, and it is the same pair the two-corpus intersection found:
+Above threshold in **all five**, and it is the same pair the two-corpus intersection found.
+The anchors are resolved against `03b87a0`, the commit this skill ships, and not against the
+`17:17:17` tree the ratios were measured on — a reader can only open the first. Both moved:
+`aq.py:484` used to point here and now points at Grounding, which is the way an anchor rots
+without going missing.
 
 | señal | A | B | C | D | E | eje |
 |---|---|---|---|---|---|---|
-| `cli_calls` | 9,61× | 13,53× | 2,34× | 8,81× | 13,47× | Token economy (`aq.py:585-589`) |
-| `evidence_eligible_sessions` | 1,67× | 1,67× | 1,64× | 1,67× | 1,67× | Context Intelligence (`aq.py:484`) |
+| `cli_calls` | 9,61× | 13,53× | 2,34× | 8,81× | 13,47× | Token economy (`aq.py:609-610`) |
+| `evidence_eligible_sessions` | 1,67× | 1,67× | 1,64× | 1,67× | 1,67× | Context Intelligence (`aq.py:503`) |
 
 That second row is not headroom, and the section below takes it apart: 1,667 is exactly
 `1 / CONTEXT_INTELLIGENCE_TARGET`, so every one of those is a coverage of 1,0.
@@ -343,9 +449,9 @@ the same algebra on Tool command where every term IS disclosed: 0,654167 predict
 
 ### Context Intelligence: a 60% target that nobody scores under 98%
 
-Five corpora put `evidence_eligible_sessions` above threshold every time at a nearly constant
-multiple — 1,67 / 1,67 / **1,64** / 1,67 / 1,67. That is not five independent observations of
-headroom. `CONTEXT_INTELLIGENCE_TARGET = 0,60` (`aq.py:18`) and the axis is
+Six corpora put `evidence_eligible_sessions` above threshold every time at a nearly constant
+multiple — 1,67 / 1,67 / **1,64** / 1,67 / 1,67 / 1,67. That is not six independent
+observations of headroom. `CONTEXT_INTELLIGENCE_TARGET = 0,60` (`aq.py:18`) and the axis is
 `sat(coverage, 0,60)`, so a multiple of 1,667 is exactly **coverage = 1,0**.
 
 Three corpora publish the numbers directly. The fourth does not, and is recoverable anyway:
@@ -357,13 +463,15 @@ denominator.
 | A | 50 | 50 | 1,000 | published signals |
 | B | 15 | 15 | 1,000 | published signals |
 | C | 124 | **126** | **0,984** | derived from its bisection point, 75,6 / 0,60 |
-| D | — | — | — | axis absent from the payload |
+| D | — | — | 1,000 | axis absent from the payload; the counterfactual still cuts the signal at 1,67× |
 | E | 60 | 60 | 1,000 | published signals |
+| F | 20 | 20 | 1,000 | published signals |
 
-**Against a target of 60%, four people are at 100% and the fifth is at 98,4%.** The axis
+**Against a target of 60%, five people are at 100% and the sixth is at 98,4%.** The axis
 awards full marks from 0,60 upward, and every person measured sits in the top 2% of its
 input range. It cannot discriminate between any of them, and it would take somebody at 59%
-before it said anything at all.
+before it said anything at all. F is the corpus that stops this reading as a property of
+strong corpora: it ties for the lowest total on record and it is one of the five at 1,000.
 
 **The derivation carries a control, because otherwise it is just arithmetic that suits us.**
 Three corpora publish the denominator *and* were bisected, so the method can be checked
@@ -409,18 +517,31 @@ measured, and it is written as one.
 
 ### Not settled by this set
 
-- **Model mix**, 50/50 on all three, and this method cannot test it: its signals are in
-  `not_cuttable` on all three runs, the identical list each time (`offload_share`,
+- **Model mix**, 50/50 on every corpus in this file, and this method cannot test it: its
+  signals are in `not_cuttable` on every run, the identical list each time (`offload_share`,
   `distinct_models`, `review_skills`). They are derived, so cutting them post-hoc is not
   available. Reaching them means driving the accumulator from a transformed corpus.
-- **Whether the ceiling axes discriminate lower down.** All three of these people are at or
-  near the top of five axes. That the axes do not separate *them* is measured; that the axes
-  would not separate someone much further down is not, and nothing here should be read as
+
+  What the payloads *do* say, and it took a sixth corpus to be worth writing down: the
+  routing term reads `state: "unmeasured"` on **every payload on record that publishes it**
+  — five distinct people, both contracts, both platforms — and every one of them reads
+  `eligible_completed_substantive_pairs: 0` with `excluded_reasons: {}`. An empty exclusion
+  map beside a zero denominator says nothing was ever a candidate, which is a different thing
+  from candidates being filtered out, and it is the reading that survives when a single corpus
+  cannot tell the two apart. **This is a recorded observation and not a finding**: it has not
+  been through the Phase 3 gate, and one local attempt to name a cause for it already died on
+  row 8. What six corpora change is only that the zero is not one person's setup.
+- **Whether the ceiling axes discriminate lower down.** F moved this and did not settle it.
+  Until F arrived, every corpus here scored 82 to 95 and "these axes do not discriminate" was
+  indistinguishable from "these particular people are all strong". F reads 10,7 of 28 on Tool
+  command and 11,0 of 22 on Skill fluency, and takes the maximum on all five that never move,
+  so the plateau is not a property of strong corpora. How far below F somebody would have to
+  be before those five said anything is still unmeasured, and nothing here should be read as
   saying so.
-- **Calibration.** Four corpora are not a distribution, and people who agree to run an audit
-  are not a random sample of the graded population. All four are self-selected volunteers
-  from one workplace. The Skill fluency reversal is what that costs in practice: three of
-  them shared a branch of a binary term for reasons that had nothing to do with the term.
+- **Calibration.** Six corpora are not a distribution, and people who agree to run an audit
+  are not a random sample of the graded population. Every one is a self-selected volunteer.
+  The Skill fluency reversal is what that costs in practice: three of them shared a branch of
+  a binary term for reasons that had nothing to do with the term.
 
 ## Traps a runner actually hit
 
