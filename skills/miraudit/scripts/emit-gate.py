@@ -1,6 +1,6 @@
 """Refuses to let a run emit a finding that did not survive Phase 3.
 
-    python3 emit-gate.py <miraudit-<date>.json>
+    python3 emit-gate.py <miraudit-<date>.json> [--flags-dir <run>/checks]
 
 Phase 3 says "Nothing is reported until it survives every row" and Phase 1 says the
 per-axis scripts emit "candidates for Phase 3, never findings". Both were prose, in a
@@ -40,17 +40,58 @@ CONFIDENCE = {"fact", "hypothesis"}
 BOUNDS = {"upper", "lower"}
 
 
-def check(doc):
+FLAGS = {"grounding-diverged.json": "Grounding"}
+
+
+def find_flags(doc_path, explicit=None):
+    """Return (directory searched, {flag file: axis}) for the flags checks leave behind.
+
+    A check that says "nothing below this line is usable" is telling the run something, and
+    until now it told nobody: the message went to stdout and no gate read it. Making it a
+    file is right and the path is where it goes wrong. The first version of this wrote the
+    flag beside `--stats` and looked for it beside the run JSON, which in a real run are
+    `anchored-payload/` and the run root, so it never fired once. Two conventions is the
+    same as none, and it fails open, which is the worst direction for a gate to fail in.
+
+    So: one order, stated, and the caller is told which directory answered.
+    """
+    if explicit:
+        roots = [os.path.abspath(os.path.expanduser(explicit))]
+    else:
+        base = os.path.dirname(os.path.abspath(doc_path)) if doc_path else os.getcwd()
+        roots = [os.path.join(base, "checks"), base]
+    for root in roots:
+        found = {name: axis for name, axis in FLAGS.items()
+                 if os.path.exists(os.path.join(root, name))}
+        if found or os.path.isdir(root):
+            return root, found
+    return roots[-1], {}
+
+
+def check(doc, doc_path=None, flags_dir=None):
     bad = []
 
     def fail(where, msg):
         bad.append(f"{where}: {msg}")
+
+    searched, flagged = find_flags(doc_path, flags_dir)
 
     anchor = doc.get("anchor") or {}
     if anchor.get("ok") is False and doc.get("findings"):
         fail("anchor", "ok is false and findings[] is not empty. Phase 0 is a gate: if the "
                        "base run does not reproduce the published number, every finding is "
                        "unsafe to read and none should be emitted.")
+    # A null anchor is the common case, not an oversight: most runs have no published figure
+    # at the pinned contract to compare against, and second-corpus.md says a null is usable
+    # for composition and shape while only a false disqualifies. Demanding `true` would stop
+    # every run this skill can currently produce, and stop contributors entirely. What was
+    # missing is not the pass, it is the reason -- so the reason is what this requires.
+    elif anchor.get("ok") is not True and doc.get("findings"):
+        if not (anchor.get("note") or "").strip():
+            fail("anchor", f"ok is {anchor.get('ok')!r} and findings[] is not empty, with no "
+                           "`note` saying why. A run that never compared against a published "
+                           "number can still be worth emitting, and the reader has to be told "
+                           "which it was. Write what was gated and what was not.")
 
     for i, f in enumerate(doc.get("findings", [])):
         w = f"findings[{i}] {f.get('id', '<no id>')}"
@@ -78,6 +119,13 @@ def check(doc):
         if "what_would_close_it" in f and not (f["what_would_close_it"] or "").strip():
             fail(w, "what_would_close_it is present but empty. Either write the observation "
                     "that would settle it either way, or leave the field out.")
+
+        for flag, axis in flagged.items():
+            if any(axis in a for a in f.get("axes") or []):
+                fail(w, f"{flag} is in {searched}, so the check covering {axis} reported that "
+                        "its own re-derivation disagrees with the tool's published figure. A "
+                        "finding about that axis rests on a number this run could not "
+                        "reproduce.")
 
         ref = f.get("refuted")
         if not isinstance(ref, dict):
@@ -134,6 +182,15 @@ def check(doc):
 
 
 def main(argv):
+    flags_dir = None
+    argv = list(argv)
+    if "--flags-dir" in argv:
+        i = argv.index("--flags-dir")
+        try:
+            flags_dir = argv[i + 1]
+        except IndexError:
+            sys.exit("error: --flags-dir needs a path")
+        del argv[i:i + 2]
     if len(argv) != 2:
         sys.exit(__doc__)
     path = argv[1]
@@ -144,12 +201,18 @@ def main(argv):
         print(f"error: cannot read {path}: {exc}")
         return 2
 
-    bad = check(doc)
+    bad = check(doc, doc_path=path, flags_dir=flags_dir)
+    searched, flagged = find_flags(path, flags_dir)
     print(f"emit gate: {os.path.basename(path)}")
     print(f"  findings {len(doc.get('findings', []))}  "
           f"not_raised {len(doc.get('not_raised', []))}  "
           f"dismissed {len(doc.get('dismissed', []))}  "
           f"reported {len(doc.get('reported', []))}")
+    # Said out loud because the alternative is failing open in silence: no flag file and no
+    # directory reads exactly like a clean run, and a gate that cannot tell "nothing was
+    # wrong" from "nobody looked" is not a gate.
+    print(f"  check flags: {', '.join(flagged) if flagged else 'none'} "
+          f"(looked in {searched}{'' if os.path.isdir(searched) else ', which does not exist'})")
     if not bad:
         print("  clean. Every finding answered all eight Phase 3 rows.")
         print("  NOT CHECKED: whether the notes are true. This gate reads structure, not "

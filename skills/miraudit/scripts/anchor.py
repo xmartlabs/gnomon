@@ -18,6 +18,7 @@ shell. Nothing here needs a shell now: copying, globbing and process spawning ar
 stdlib, and the one external command is the scoring tool's own console script.
 """
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -150,8 +151,31 @@ def main(argv=None):
     if gate(stats, args.published, expect) != 0:
         return 1
 
+    # A record of what Phase 0 established, written beside the payload so the next step reads
+    # it instead of retyping it. It is state, NOT a gate: nothing requires this file to exist
+    # in order to run, because the alternative was measured and it stops the tool dead. Most
+    # runs have no published figure at the pinned contract, and second-corpus.md says a null
+    # is usable for composition and shape while only a false disqualifies. Requiring a pass
+    # here would end the contributor path, which emits its payload with `ok` null by design.
+    ref = subprocess.run(
+        [sys.executable, os.path.join(HERE, "pin-consistency.py"), "--field", "ref"],
+        capture_output=True, text=True).stdout.strip() or None
+    with open(os.path.join(os.path.dirname(stats), "anchor.json"), "w") as fp:
+        json.dump({"ref": ref, "contract": expect or None,
+                   "published": args.published or None,
+                   "reproduced": find_key(load_stats(stats), "aq_0_100"),
+                   "ok": True if args.published else None,
+                   "contract_probe": "18/18" if expect else None,
+                   "window": {"since": args.since, "until": args.until}}, fp, indent=2)
+
     print()
-    check("fingerprint.py", "--stats", stats)
+    # Read, unlike before. pin-consistency's return code is read at line 96 and this one was
+    # not, so any future failure here was invisible -- and Phase 0 asks for the fingerprint
+    # before any other number, which makes a silent absence the worst kind.
+    if check("fingerprint.py", "--stats", stats).returncode != 0:
+        print("\nerror: the fingerprint did not run. Phase 0 wants it printed before any "
+              "other number,\nso the run should not continue without it.", file=sys.stderr)
+        return 1
 
     print("\n==> anchored")
     print(f"    stats.json : {stats}")

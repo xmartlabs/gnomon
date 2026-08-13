@@ -45,6 +45,12 @@ is not evidence.
    Give `scripts/anchor.py` the `--published` and `--expect-contract` values so it stops on
    its own. Omit them and it prints the number and asks you to compare, which is where the
    gate leaks: this step read as enforced for a long time while nothing enforced it.
+   **A null anchor is normal and has to say so.** Where no published figure exists at the
+   pinned contract there is nothing to gate the number against, and `emit-gate.py` asks for
+   the reason rather than the pass: a file whose `anchor.ok` is not `true` and whose
+   `findings[]` is not empty needs a non-empty `anchor.note`. `anchor.py` leaves an
+   `anchor.json` beside the payload so Phase 4 reads what Phase 0 resolved instead of
+   deriving it again.
 4. Print the corpus fingerprint — tool calls, sessions, sidechain share, sources, window —
    before any other number. Counts compared across machines mean nothing without it. File
    and line totals are printed beside it and are **not** part of it: they count every

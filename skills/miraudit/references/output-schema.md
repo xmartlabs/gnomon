@@ -81,6 +81,27 @@ authors was explained entirely by the two sides measuring different corpora.
 gate: if the base run does not reproduce the published number, the method is wrong before
 any finding is.
 
+**`null` is the common case and it needs `anchor.note`.** Most runs have no published figure
+at the pinned contract to compare against, and `second-corpus.md` treats a null as usable for
+composition and shape while only a `false` disqualifies. So `emit-gate.py` does not demand a
+pass; it demands a reason, and refuses a file whose `ok` is not `true` while `findings[]` is
+non-empty and `note` is blank. Requiring `true` instead was tried and measured: it rejects
+every run this skill can currently produce and it ends the contributor path, which emits with
+`ok` null by design.
+
+`anchor.py` leaves an `anchor.json` beside `stats.json` carrying `ref`, `contract`,
+`published`, `reproduced`, `ok` and the probe result, and `new-run.py` reads it. That file is
+a record, not a gate: nothing requires it to exist in order to run a check. It exists so the
+skeleton stops re-deriving what Phase 0 already resolved, which is how `tool.ref` came out
+`null` on a `git archive` tree that has no `.git` for `git rev-parse` to read.
+
+**`corpus.sources`** — the sources gnomon actually SCORED, read from
+`scoring_inputs_by_source` in the payload. Not from the transcripts: this was built from an
+`event["source"]` key that no Claude Code transcript carries, so the set came out empty every
+time and a `["claude"]` fallback was the only branch that ever ran. It wrote `claude` on a
+window whose payload said claude and codex, and this is the field the cross-machine
+comparison leans on hardest.
+
 **`shape`** — one of the Phase 2 keys, never a tool-specific axis name. This is what lets
 the schema survive the tool renaming, splitting, or adding axes. Axis names go in `axes`,
 which is free text.

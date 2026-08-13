@@ -50,6 +50,11 @@ def per_script_args(name, args):
         return ["--repo", args.repo] if args.repo else None
     if name in ("axis-terms.py", "skill-fluency-term.py"):
         return comparisons
+    # A check that leaves a flag behind must leave it where emit-gate.py looks, which is the
+    # run's checks/ directory. Its own default is beside --stats, and in a real run that is
+    # the anchored payload's directory rather than this one.
+    if name == "grounding-modelmix.py":
+        return ["--flags-dir", os.path.abspath(args.out_dir)]
     return []
 
 

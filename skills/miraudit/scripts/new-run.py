@@ -40,20 +40,37 @@ args, WINDOW = parse(__doc__.strip().splitlines()[0],
 # says it counts identically to fingerprint.py on purpose; the verification for this script
 # compares the two rather than trusting that.
 tool_calls = sidechain = 0
-sessions, sources = set(), set()
+sessions = set()
 for use in iter_tool_uses(args.corpus, WINDOW):
     tool_calls += 1
     if use.event.get("isSidechain"):
         sidechain += 1
     if use.sid:
         sessions.add(use.sid)
-    if use.event.get("source"):
-        sources.add(use.event["source"])
 sessions = len(sessions)
 
 stats = load_stats(args.stats)
-ref = subprocess.run(["git", "-C", args.checkout, "rev-parse", "--short", "HEAD"],
-                     capture_output=True, text=True).stdout.strip() or None
+
+# Which sources were SCORED is the payload's answer, not the transcripts'. This read
+# `event["source"]` for a while, a key no Claude Code transcript carries: the set came out
+# empty every time and the `["claude"]` fallback was the only branch that ever ran. It wrote
+# `["claude"]` on a window whose payload said claude and codex, and this is the field the
+# cross-machine protocol leans on hardest.
+sources = sorted((stats.get("scoring_inputs_by_source") or {})) if stats else []
+
+# Phase 0 already resolved all of this. Reading it back beats deriving it again: `git
+# rev-parse` returns nothing on a `git archive` tree, which has no .git, and the empty string
+# became `tool.ref: null` with nothing saying so.
+anchored = {}
+if args.stats:
+    side = os.path.join(os.path.dirname(os.path.abspath(args.stats)), "anchor.json")
+    if os.path.exists(side):
+        with open(side) as fh:
+            anchored = json.load(fh)
+
+ref = anchored.get("ref") or subprocess.run(
+    ["git", "-C", args.checkout, "rev-parse", "--short", "HEAD"],
+    capture_output=True, text=True).stdout.strip() or None
 contract = find_key(stats, "score_contract_id") if stats else None
 reproduced = find_key(stats, "aq_0_100") if stats else None
 
@@ -65,10 +82,10 @@ skeleton = {
         "sessions": sessions,
         "sidechain_share": round(sidechain / tool_calls, 4) if tool_calls else None,
         "window": f"{args.since} -> {args.until} (fixed)",
-        "sources": sorted(sources) or ["claude"],
+        "sources": sources or ["unstated: the payload carries no per-source block"],
     },
-    "anchor": {"published": None, "reproduced": reproduced, "ok": None,
-               "note": ""},
+    "anchor": {"published": anchored.get("published"), "reproduced": reproduced,
+               "ok": anchored.get("ok"), "note": ""},
     "axes": [],
     "findings": [],
     "not_raised": [],
@@ -88,9 +105,12 @@ with open(out, "w") as fh:
     fh.write("\n")
 
 print(f"new-run: wrote {out}")
-print(f"  tool      ref {ref}  contract {contract}")
-print(f"  anchor    reproduced {reproduced}, ok null until you compare it to a published "
-      "number")
+print(f"  tool      ref {ref}  contract {contract}"
+      f"{'  (from the anchored run)' if anchored.get('ref') else ''}")
+print(f"  anchor    reproduced {reproduced}, ok {skeleton['anchor']['ok']!r}")
+if skeleton["anchor"]["ok"] is not True:
+    print("            `note` is empty and emit-gate.py will refuse this file once it "
+          "carries a\n            finding. Say what was gated and what was not.")
 print(f"  corpus    {tool_calls:,} tool calls, {sessions} sessions, "
       f"sidechain {skeleton['corpus']['sidechain_share']}, "
       f"sources {', '.join(skeleton['corpus']['sources'])}")

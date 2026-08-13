@@ -35,16 +35,33 @@ are probed the same way cli-mcp.py probes its own: rebuild the axis from THEIR p
 signals and compare against the score they published.
 """
 import collections
+import json
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import parse, header, load_stats, require, dig, iter_events, iter_tool_uses  # noqa: E402
 
-args, WINDOW = parse(__doc__.strip().splitlines()[0])
+args, WINDOW = parse(__doc__.strip().splitlines()[0], {
+    "--flags-dir": {"default": None, "metavar": "PATH",
+                    "help": "where to leave grounding-diverged.json (default: beside "
+                            "--stats). run-checks.py points this at the run's checks/ so "
+                            "emit-gate.py reads the same directory this writes."},
+})
 stats = load_stats(args.stats)
 if not stats:
     sys.exit("error: --stats is required; this reads an anchored run's payload.")
+
+# Cleared before anything is measured, so the file describes THIS run. Left from a previous
+# one it outlives its subject: a run that diverged, got fixed, and re-ran clean stayed blocked
+# by a file nothing deleted. Measured, not imagined -- the stale flag survived a re-run that
+# printed `faithful`.
+FLAG_DIR = os.path.abspath(os.path.expanduser(
+    args.flags_dir or os.path.dirname(os.path.abspath(args.stats))))
+FLAG = os.path.join(FLAG_DIR, "grounding-diverged.json")
+if os.path.exists(FLAG):
+    os.remove(FLAG)
+    print(f"  cleared a grounding-diverged.json left by an earlier run in {FLAG_DIR}\n")
 
 (classify_tool, _adjusted_doing, _models_for_scoring, score_linked_routing) = require(
     [("gnomon.taxonomy", "classify_tool"),
@@ -132,6 +149,20 @@ else:
     faithful = abs(ours - theirs) < 0.02
     print(f"  ratio ours {ours:.3f}   theirs {theirs}   -> "
           f"{'faithful' if faithful else 'DIVERGES'}")
+
+if not faithful:
+    # The print alone reached nobody: "Nothing below this line is usable" went to stdout and
+    # no gate read it. emit-gate.py refuses a Grounding finding while this file is here.
+    os.makedirs(FLAG_DIR, exist_ok=True)
+    with open(FLAG, "w") as fh:
+        json.dump({"ours": round(ours, 4), "theirs": theirs,
+                   "delta": round(abs(ours - theirs), 4) if theirs is not None else None,
+                   "sources_scored": scored,
+                   "reason": "no comparable ratio" if theirs is None
+                             else "corpus empty in this window" if not doing else "diverges"},
+                  fh, indent=2)
+    print(f"\n  wrote {FLAG}")
+    print("  emit-gate.py refuses a Grounding finding while it is there.")
 
 if theirs is not None and doing and not faithful:
     # The split used to print in full right here, while the control that invalidates it

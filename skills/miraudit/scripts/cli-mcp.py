@@ -73,7 +73,15 @@ for use in iter_tool_uses(args.corpus, WINDOW):
         mcp_servers[_canon_mcp_server(parts[1], parts[-1] if len(parts) > 2 else "")] += 1
         mcp_calls += 1
 
-t = stats.get("tools", {})
+# `tools` at the top level aggregates every source gnomon scored; this scan walks one corpus
+# of Claude Code transcripts. On a window where codex also cleared the volume threshold the
+# two describe different populations, and comparing them printed `cli_calls theirs 4689 ours
+# 4559 -> overestimates` where claude's own published 4361 reverses the sign. The per-source
+# block carries the same counters, so the comparable one is available and free.
+by_source = stats.get("scoring_inputs_by_source") or {}
+scored = sorted(by_source)
+t_all = stats.get("tools", {})
+t = ((by_source.get("claude") or {}).get("window") or {}).get("tools") or t_all
 axes = {a["name"]: a for p in (stats.get("agentic") or {}).get("pillars") or []
         for a in p.get("axes") or []}
 
@@ -86,6 +94,11 @@ def line(label, theirs, ours):
 
 
 print("TOOL COMMAND + TOKEN ECONOMY — re-measured from the corpus")
+print(f"  sources gnomon scored     {', '.join(scored) or 'unstated'}")
+if scored and scored != ["claude"] and t is not t_all:
+    print(f"  comparing against claude's own counters, not the aggregate: the aggregate "
+          f"covers\n  {', '.join(s for s in scored if s != 'claude')} too, which this scan "
+          f"does not walk. cli_calls {t.get('cli_calls')} against {t_all.get('cli_calls')}.")
 ok = []
 ok.append(line("mcp_servers_distinct", t.get("mcp_servers_distinct"), len(mcp_servers)))
 ok.append(line("clis_distinct", t.get("clis_distinct"), len(clis)))
