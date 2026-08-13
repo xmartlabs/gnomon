@@ -1,15 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import Database from "better-sqlite3";
 import {
-  initSchema, upsertPerson, upsertUpload, uploadedMonths,
+  upsertPerson, upsertUpload, uploadedMonths,
   listPeople, uploadsForPerson, latestUploads,
 } from "@/lib/db";
-
-function freshDb() {
-  const db = new Database(":memory:");
-  initSchema(db);
-  return db;
-}
+import { freshDb } from "./helpers/env";
 
 describe("db", () => {
   let db: ReturnType<typeof freshDb>;

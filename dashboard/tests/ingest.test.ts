@@ -1,14 +1,8 @@
 import { describe, it, expect } from "vitest";
-import Database from "better-sqlite3";
-import { initSchema, upsertPerson, uploadsForPerson } from "@/lib/db";
+import { upsertPerson, uploadsForPerson } from "@/lib/db";
 import { validateSummary, ingestSummary, IngestError } from "@/lib/ingest";
 import { makeSummary } from "./fixtures/summary";
-
-function freshDb() {
-  const db = new Database(":memory:");
-  initSchema(db);
-  return db;
-}
+import { freshDb } from "./helpers/env";
 
 describe("validateSummary", () => {
   it("accepts a valid summary and derives monthKey from date_range end", () => {
