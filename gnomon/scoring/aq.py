@@ -75,6 +75,12 @@ SKILLS_DISTINCT_CEILING = 40
 MCP_SERVERS_DISTINCT_CEILING = 15
 CLIS_DISTINCT_CEILING = 40
 MODELS_DISTINCT_CEILING = 3
+
+# ---- Share targets ------------------------------------------------------------
+# NOT absolute counts: both are bounded fractions, so a scoring-window change does not
+# move them the way it moves the ceilings above. They are registered for the same reason
+# -- a fitted number that moves must bump the contract -- but keeping them in their own
+# section stops the ceilings comment from claiming a property these two do not have.
 OFFLOAD_SHARE_TARGET = 0.30
 CLI_SHARE_TARGET = 0.70
 

@@ -319,12 +319,15 @@ def compute_scores(stats):
     prompts = max(v["total_prompts"], 1)
     # DIVERGENCE, deliberately preserved: this reads `vel["active_hours"]` and raises on a
     # payload that omits the key, while `score_breakdown` below reads it through `.get(_, 0.1)`
-    # and defaults instead. `gnomon/scoring/inputs.py` always emits the key, so no payload from
-    # the real pipeline reaches either branch and the two paths agree everywhere it matters.
-    # Converging them is a BEHAVIOUR change the calibration fingerprint cannot see -- it hashes
-    # constant values, not control flow -- so it does not belong in a delta-zero governance
-    # change. Note which way it would have to converge: defaulting fabricates a value AND
-    # flatters, because `out_rate = churn / 0.1` inflates Execution by ~10x.
+    # and defaults instead. `gnomon/scoring/inputs.py` always emits the key on the WRITE path,
+    # but that is not an invariant on the READ path: `profiles.py::stats_from_scoring_block`
+    # passes `velocity` through verbatim (`dict(block.get("velocity") or {})`), so a stored
+    # block written before the key existed replays into this function and raises here while
+    # `score_breakdown` silently defaults. Converging them is a BEHAVIOUR change the calibration
+    # fingerprint cannot see -- it hashes constant values, not control flow -- so it does not
+    # belong in a delta-zero governance change. Note which way it would have to converge:
+    # defaulting fabricates a value AND flatters, because `out_rate = churn / 0.1` inflates
+    # Execution by ~10x, so failing closed is the safer convergence.
     hours = max(vel["active_hours"], 0.1)
     ev = _evidence(stats)   # 0..1 confidence; gates the inverse terms so a thin corpus
                             # can't read as flawless (no-op at ev=1.0 for any real user).
