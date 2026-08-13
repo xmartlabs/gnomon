@@ -17,6 +17,19 @@ describe("validateSummary", () => {
     expect(validateSummary(makeSummary({ context: { date_range: ["bad", "worse"] } })).ok).toBe(false);
   });
 
+  it.each([
+    // What the real CLI sends: parse_window makes the bounds tz-aware and the
+    // accumulator serializes with .isoformat().
+    ["2026-06-30T00:00:00-03:00", "2026-06"],
+    ["2026-06-30T00:00:00+13:00", "2026-06"], // offset must not shift the month
+    ["2026-06-30T23:59:59.999Z", "2026-06"],
+    ["2026-06-30 00:00:00", "2026-06"],
+    ["2026-06-30", "2026-06"], // bare date still accepted
+  ])("accepts CLI timestamp %s and anchors it to %s", (end, monthKey) => {
+    const r = validateSummary(makeSummary({ context: { date_range: ["2026-01-01", end] } }));
+    expect(r).toEqual({ ok: true, monthKey, windowMonths: 6 });
+  });
+
   it("rejects non-strict and impossible calendar dates and reversed ranges", () => {
     // Date.parse would accept these; strict validation must not.
     expect(validateSummary(makeSummary({ context: { date_range: ["2026-01-01", "June 30 2026"] } })).ok).toBe(false);
@@ -66,5 +79,64 @@ describe("ingestSummary", () => {
     const rows = uploadsForPerson(db, p.id);
     expect(rows).toHaveLength(1);
     expect(rows[0].summary.context.total_sessions).toBe(999);
+  });
+});
+
+// Mirrors mirdash's ingest anti-degradation guard: Claude Code's shrinking
+// transcript retention means a later re-run legitimately sees fewer sessions,
+// and overwriting would destroy the better stored snapshot.
+describe("ingestSummary anti-degradation", () => {
+  const stored = () => makeSummary(); // complete, 171 sessions
+  const sessionsOf = (db: any, id: number) =>
+    uploadsForPerson(db, id)[0].summary.context.total_sessions;
+
+  it("keeps the stored month when the new upload has fewer sessions", () => {
+    const db = freshDb();
+    const p = upsertPerson(db, "ada@example.com", "Ada");
+    ingestSummary(db, p.id, stored());
+    const res = ingestSummary(db, p.id, makeSummary({ context: { total_sessions: 40 } }));
+    expect(res).toEqual({ reportUrl: `/p/${p.id}/2026-06`, stored: false });
+    expect(sessionsOf(db, p.id)).toBe(171);
+  });
+
+  it("keeps the stored month when coverage degrades, even with more sessions", () => {
+    const db = freshDb();
+    const p = upsertPerson(db, "ada@example.com", "Ada");
+    ingestSummary(db, p.id, stored());
+    ingestSummary(
+      db,
+      p.id,
+      makeSummary({ coverage: { flag: "partial" }, context: { total_sessions: 900 } })
+    );
+    expect(sessionsOf(db, p.id)).toBe(171);
+  });
+
+  it("accepts a degraded upload carrying the top-level force directive", () => {
+    const db = freshDb();
+    const p = upsertPerson(db, "ada@example.com", "Ada");
+    ingestSummary(db, p.id, stored());
+    const res = ingestSummary(db, p.id, makeSummary({ force: true, context: { total_sessions: 40 } }));
+    expect(res.stored).toBe(true);
+    expect(sessionsOf(db, p.id)).toBe(40);
+  });
+
+  it("accepts an improved upload without force", () => {
+    const db = freshDb();
+    const p = upsertPerson(db, "ada@example.com", "Ada");
+    ingestSummary(db, p.id, makeSummary({ context: { total_sessions: 40 } }));
+    expect(ingestSummary(db, p.id, stored()).stored).toBe(true);
+    expect(sessionsOf(db, p.id)).toBe(171);
+  });
+
+  it("treats an unknown coverage flag as incomparable and falls back to sessions", () => {
+    const db = freshDb();
+    const p = upsertPerson(db, "ada@example.com", "Ada");
+    ingestSummary(db, p.id, stored());
+    ingestSummary(
+      db,
+      p.id,
+      makeSummary({ coverage: { flag: "unknown" }, context: { total_sessions: 900 } })
+    );
+    expect(sessionsOf(db, p.id)).toBe(900);
   });
 });

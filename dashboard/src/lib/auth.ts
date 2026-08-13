@@ -42,7 +42,9 @@ function persistedSecret(): string {
 // crypto.subtle.importKey on every sign and verify.
 function jwtKey(): crypto.KeyObject {
   if (!_key) {
-    _key = crypto.createSecretKey(Buffer.from(process.env.JWT_SECRET ?? persistedSecret(), "utf8"));
+    // `||`, not `??`: an empty JWT_SECRET is an unset one. Treating "" as an
+    // explicit secret makes jose refuse to sign with a zero-length HS256 key.
+    _key = crypto.createSecretKey(Buffer.from(process.env.JWT_SECRET || persistedSecret(), "utf8"));
   }
   return _key;
 }
@@ -92,14 +94,15 @@ export async function verifyToken(
   }
 }
 
+// The two literal forms the CLI emits, with a mandatory explicit port. Matching
+// the raw string rather than the parsed hostname is deliberate: WHATWG URL
+// normalizes decimal/octal/hex IPv4 aliases (http://2130706433:8799/,
+// http://0177.0.0.1:8799/) to 127.0.0.1 and would accept credentialed forms
+// like http://evil.com@127.0.0.1:8799/ that read as another host to a human.
+// Those all reach loopback, but none is the contract's shape — and this guard
+// decides where upload tokens get sent, so it matches the contract exactly.
+const LOOPBACK_CALLBACK = /^http:\/\/(?:127\.0\.0\.1|localhost):\d{1,5}(?:[/?#]|$)/;
+
 export function isLoopbackRedirect(uri: string): boolean {
-  const u = URL.parse(uri);
-  // Require an explicit port so a bare `http://localhost/callback` (which the
-  // CLI never sends) is rejected — narrows the redirect surface.
-  return (
-    u !== null &&
-    u.protocol === "http:" &&
-    (u.hostname === "127.0.0.1" || u.hostname === "localhost") &&
-    u.port !== ""
-  );
+  return LOOPBACK_CALLBACK.test(uri) && URL.parse(uri) !== null;
 }

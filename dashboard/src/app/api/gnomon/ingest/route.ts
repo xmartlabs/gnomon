@@ -11,10 +11,11 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: "invalid or missing token" }, { status: 401 });
   }
 
-  // Backstop against non-gnomon clients only: the CLI self-rejects at 900 KiB
-  // (_INGEST_MAX_BYTES in gnomon/upload/mirdash.py), and SQLite has no document
-  // limit of its own. Read per-request so the env override stays testable.
-  const cap = Number(process.env.MAX_INGEST_BYTES) || 5 * 1024 * 1024;
+  // Matches the CLI's own pre-POST refusal (_INGEST_MAX_BYTES in
+  // gnomon/upload/mirdash.py) so a non-gnomon client cannot persist a payload
+  // the contract says the server rejects. Read per-request so the env override
+  // stays testable.
+  const cap = Number(process.env.MAX_INGEST_BYTES) || 900 * 1024;
   const tooLarge = () => NextResponse.json({ error: "payload too large" }, { status: 413 });
   if (Number(req.headers.get("content-length")) > cap) return tooLarge();
 
@@ -33,8 +34,11 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   try {
-    const result = ingestSummary(getDb(), claims.personId, body, raw);
-    return NextResponse.json(result);
+    const { reportUrl, stored } = ingestSummary(getDb(), claims.personId, body, raw);
+    if (!stored) {
+      console.info(`[ingest] kept stored month for person ${claims.personId} — upload was less complete`);
+    }
+    return NextResponse.json({ reportUrl });
   } catch (err) {
     if (err instanceof IngestError) {
       return NextResponse.json({ error: err.message }, { status: 400 });

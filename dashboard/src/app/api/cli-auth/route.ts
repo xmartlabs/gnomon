@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { checkTeamToken, issueTokens, isLoopbackRedirect } from "@/lib/auth";
 import { getDb, upsertPerson, uploadedMonths } from "@/lib/db";
+import { uploadHistory } from "@/lib/history";
 
 // In-memory failed-attempt throttle for the shared TEAM_TOKEN endpoint. Single
 // container, so a module-scope map is sufficient; keyed by client IP.
@@ -11,7 +12,16 @@ const WINDOW_MS = 60_000;
 const MAX_TRACKED_IPS = 10_000;
 const fails = new Map<string, { n: number; first: number }>();
 
+/**
+ * x-forwarded-for is client-supplied. Honoring it unconditionally lets an
+ * attacker mint a fresh throttle bucket per request and brute-force the shared
+ * TEAM_TOKEN unthrottled, so it counts only when the operator declares a proxy
+ * in front (TRUST_PROXY=1). Direct deployments — the documented default — share
+ * one bucket: a wrong-token flood can lock sign-in for 60s, which is the
+ * cheaper failure than an unlimited guessing channel.
+ */
 function clientIp(req: Request): string {
+  if (process.env.TRUST_PROXY !== "1") return "direct";
   const xff = req.headers.get("x-forwarded-for") ?? "";
   return xff.split(",")[0].trim() || req.headers.get("x-real-ip") || "unknown";
 }
@@ -91,14 +101,16 @@ export async function POST(req: Request): Promise<Response> {
   const db = getDb();
   const person = upsertPerson(db, email, name);
   const tokens = await issueTokens(person, count);
-  const months = uploadedMonths(db, person.id);
 
   const dest = new URL(redirectUri);
   dest.searchParams.set("tokens", JSON.stringify(tokens));
   // `uploaded` is the legacy alias; `uploaded_history` is the current contract
   // generation the CLI prefers (gnomon/upload/mirdash.py:_history_from_query).
   // Emitting only the alias makes the CLI fall back to its pre-contract planner.
-  dest.searchParams.set("uploaded", JSON.stringify(months));
-  dest.searchParams.set("uploaded_history", JSON.stringify({ outcome: "valid", months }));
+  dest.searchParams.set("uploaded", JSON.stringify(uploadedMonths(db, person.id)));
+  dest.searchParams.set(
+    "uploaded_history",
+    JSON.stringify({ outcome: "valid", months: uploadHistory(db, person.id) })
+  );
   return NextResponse.redirect(dest, 302);
 }

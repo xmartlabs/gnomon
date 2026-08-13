@@ -1,7 +1,16 @@
+/**
+ * NOTE: `context.date_range` here carries tz-aware ISO-8601 timestamps, which is
+ * what the REAL CLI emits — parse_window (gnomon/sources/discovery.py) makes the
+ * --since/--until bounds aware and the accumulator writes them with
+ * .isoformat(). The plan's reference block showed bare YYYY-MM-DD, which no
+ * real upload ever sends.
+ */
 export function makeSummary(overrides: Record<string, any> = {}) {
   const base = {
+    score_contract_id: "aq-v11",
+    coverage: { flag: "complete", indexed: 171, transcripts: 171 },
     context: {
-      date_range: ["2026-01-01", "2026-06-30"],
+      date_range: ["2026-01-01T00:00:00-03:00", "2026-06-30T00:00:00-03:00"],
       total_sessions: 171,
       total_prompts: 1167,
       sources: ["claude"],
