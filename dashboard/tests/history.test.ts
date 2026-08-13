@@ -1,17 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { upsertPerson, upsertUpload } from "@/lib/db";
+import { upsertPerson } from "@/lib/db";
 import { uploadHistory } from "@/lib/history";
 import { makeSummary } from "./fixtures/summary";
-import { freshDb } from "./helpers/env";
+import { freshDb, putUpload, type TestDb } from "./helpers/env";
 
-function seed(db: ReturnType<typeof freshDb>, monthKey: string, summary: unknown) {
+function seed(db: TestDb, monthKey: string, summary: unknown) {
   const p = upsertPerson(db, "ada@example.com", "Ada");
-  upsertUpload(db, {
-    personId: p.id,
-    monthKey,
-    windowMonths: 6,
-    summaryJson: JSON.stringify(summary),
-  });
+  putUpload(db, p.id, monthKey, summary);
   return p.id;
 }
 
@@ -55,12 +50,7 @@ describe("uploadHistory", () => {
   it("skips rows whose month_key could not pass the CLI validator", () => {
     const db = freshDb();
     const id = seed(db, "2026-13", makeSummary());
-    upsertUpload(db, {
-      personId: id,
-      monthKey: "2026-05",
-      windowMonths: 6,
-      summaryJson: JSON.stringify(makeSummary()),
-    });
+    putUpload(db, id, "2026-05", makeSummary());
     expect(uploadHistory(db, id).map((e) => e.monthKey)).toEqual(["2026-05"]);
   });
 

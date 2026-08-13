@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { POST, _resetRateLimitForTests } from "@/app/api/cli-auth/route";
 import { verifyToken } from "@/lib/auth";
-import { getDb, upsertPerson, upsertUpload } from "@/lib/db";
-import { useTempDbEnv, TEST_TEAM_TOKEN } from "./helpers/env";
+import { getDb, upsertPerson } from "@/lib/db";
+import { useTempDbEnv, putUpload, TEST_TEAM_TOKEN } from "./helpers/env";
 import { makeSummary } from "./fixtures/summary";
 import { postForm } from "./helpers/request";
 
@@ -30,7 +30,7 @@ describe("POST /api/cli-auth", () => {
   it("redirects to callback with N valid tokens and uploaded months", async () => {
     const db = getDb();
     const p = upsertPerson(db, "ada@example.com", "Ada");
-    upsertUpload(db, { personId: p.id, monthKey: "2026-05", windowMonths: 6, summaryJson: "{}" });
+    putUpload(db, p.id, "2026-05", {});
 
     const res = await post({ ...ok, count: "3" });
     expect(res.status).toBe(302);
@@ -50,12 +50,7 @@ describe("POST /api/cli-auth", () => {
     // a missing scoreContractId makes plan_upload re-upload every run.
     const db = getDb();
     const p = upsertPerson(db, "ada@example.com", "Ada");
-    upsertUpload(db, {
-      personId: p.id,
-      monthKey: "2026-05",
-      windowMonths: 6,
-      summaryJson: JSON.stringify(makeSummary()),
-    });
+    putUpload(db, p.id, "2026-05", makeSummary());
 
     const history = JSON.parse(callbackOf(await post(ok)).searchParams.get("uploaded_history")!);
     expect(history.outcome).toBe("valid");
