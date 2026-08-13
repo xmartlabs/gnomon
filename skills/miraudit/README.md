@@ -13,11 +13,17 @@ corpus is an anecdote; the same gap measured on five machines is a defect in the
 
 ## How a run flows
 
-The diamonds are decision points. Three of them stop the run rather than annotate it: the
-behaviour probe and the reproduction check in Phase 0, and the refutation gate in Phase 3.
-A fourth, the coverage check in Phase 4, sends the run backwards instead of forwards.
-Everything the audited tool owns is read-only: its checkout is copied before anything
-imports from it, and the transcripts are never written to at all.
+The diamonds are decision points, and most of them stop the run rather than annotate it: the
+behaviour probe and the reproduction check in Phase 0, the refutation gate in Phase 3, the
+emission gate in Phase 4, and the send rules in Phase 5. The coverage check in Phase 4 is the
+odd one out, sending the run backwards instead of forwards. Everything the audited tool owns
+is read-only: its checkout is copied before anything imports from it, and the transcripts are
+never written to at all.
+
+Two of those gates are gates because a run got past them when they were prose. The refutation
+table sat in `SKILL.md` and a run promoted a candidate that had failed one of its rows; it is
+a required field now, checked by `emit-gate.py`. Phase 5 ended at a file, and somebody holding
+a confirmed finding had nothing telling them where it went.
 
 No label below contains a `<br/>`. Mermaid wraps long node text on its own, and a hand-placed
 break renders differently in every viewer: with the tag honoured the two halves become lines,
@@ -37,7 +43,7 @@ flowchart TD
         COPY --> PROBE{{"contract-probe.py: do the predicates still BEHAVE the same?"}}
         PROBE -->|"a behaviour moved"| STOP1["STOP: names the check that leans on it"]
         PROBE -->|"18/18"| RUN["reproduce the number on the copy, over the report's own window"]
-        RUN --> FP["print the corpus fingerprint: files, lines, tool calls, sessions"]
+        RUN --> FP["print the corpus fingerprint: tool calls, sessions, sidechain share, all window-scoped"]
         FP --> GATE{{"does it reproduce the published number, on the expected contract?"}}
         GATE -->|"no"| STOP2["STOP: the method is wrong before any finding is"]
     end
@@ -57,24 +63,39 @@ flowchart TD
     end
 
     subgraph P3["Phase 3: Refutation"]
-        CAND["candidate finding"] --> ROWS{{"eight rows, each written after a real finding died on it"}}
+        CAND["candidate finding"] --> ROWS{{"eight rows, each written after a real finding died on it, answered as a required field and not from memory"}}
         ROWS -->|"survives all eight"| KEEP["finding"]
         ROWS -->|"any row kills it"| DEAD["dismissed, with the fact that killed it"]
+        KEEP --> WORTH{{"worth a maintainer's attention?"}}
+        WORTH -->|"no"| NR["not_raised: true, proven, and deliberately not sent, with the condition that would reopen it"]
     end
 
     subgraph P4["Phase 4: Emit"]
-        JSON["miraudit-DATE.json"]
+        SKEL["new-run.py: skeleton with the eight rows keyed, tool and anchor and corpus read from the anchored run"]
+        SKEL --> JSON["miraudit-DATE.json"]
         JSON --> BIND{{"axis-coverage.py --run: did the run RECORD a gap, a direction and a control for each axis?"}}
         BIND -->|"declared by a tag, never measured"| MAN
-        BIND -->|"all measured"| MD["miraudit-DATE.md, rendered FROM the json, never written beside it"]
+        BIND -->|"all measured"| EGATE{{"emit-gate.py: every row answered, no row reading fail, confidence one of two words"}}
+        EGATE -->|"a row is unanswered or fails"| BACKJ["nothing renders; fix the file"]
+        EGATE -->|"clean"| MD["render-report.py writes miraudit-DATE.md FROM the json, and only after the gate"]
+    end
+
+    subgraph P5["Phase 5: Send, optional and often correct to skip"]
+        SEND{{"render-issue.py: is there anything to send?"}}
+        SEND -->|"findings empty, or anchor.ok false"| NOSEND["refuses: an audit that raised nothing is a result, not a message"]
+        SEND -->|"a finding, with what would close it"| DRAFT["draft assembled from the json, markers left where judgement is required and counted"]
+        DRAFT --> ARG["a person writes the argument from THEIR code and THEIR comments"]
     end
 
     GATE -->|"yes"| MAN
     TERMS --> SHAPES
     SHAPES --> CAND
 
-    KEEP --> JSON
-    DEAD --> JSON
+    KEEP --> SKEL
+    DEAD --> SKEL
+    NR --> SKEL
+    WORTH -->|"yes"| SEND
+    MD -.->|"the evidence the draft cites"| SEND
 
     CORP -.->|"read"| RUN
     CORP -.->|"read"| SCR
@@ -174,6 +195,30 @@ attempt exists because it killed a real finding that was about to be sent; the w
 are in `references/refutation.md`. Findings that die are recorded in `dismissed` with the
 fact that killed them, so nobody reopens them. The gate is deterministic on purpose, and
 `references/design-rationale.md` explains why it is not a panel of reviewers.
+
+Those eight rows were prose in `SKILL.md` until a run with that file open promoted a
+candidate that had failed one of them, and nothing objected. They are a required field now:
+each finding answers every row with a verdict and the fact behind it, and `emit-gate.py`
+refuses the file when a row is unanswered or reads `fail`. `render-report.py` runs the gate
+itself and writes nothing when it refuses, so gate-then-render cannot be done in the other
+order. The gate reads structure and not honesty, and prints that limit on every clean run:
+eight verdicts of `pass` get through it, and what it removed was the failure of not
+answering at all.
+
+**A third destination for a finding.** True, survived the gate, and deliberately not sent.
+Filing that under `dismissed` would claim something killed it and filing it under `findings`
+would claim the run is raising it, so `not_raised` carries it with the reason and the
+condition that would reopen it. Without the condition the list becomes a graveyard the next
+run derives from scratch.
+
+**Sending, which is optional and often correct to skip.** `render-issue.py` assembles the
+draft from `findings[]` and refuses when there is nothing to send, when the anchor failed, or
+when a finding lacks a field the structure needs. The structure is not a guess about what
+maintainers like: it is the shape of the one report that landed on the audited tool's own
+repository, whose first line of reply was that the reproduction detail made the claims fast
+to verify. What the machine cannot supply is left as a visible marker that says what the
+section must do and what makes it fail, and the markers are counted so a half-filled draft
+cannot pass for a finished one. `references/reporting.md` has the reasoning.
 
 ## Install
 

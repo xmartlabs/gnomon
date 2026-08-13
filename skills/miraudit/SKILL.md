@@ -46,8 +46,12 @@ is not evidence.
    Give `scripts/anchor.py` the `--published` and `--expect-contract` values so it stops on
    its own. Omit them and it prints the number and asks you to compare, which is where the
    gate leaks: this step read as enforced for a long time while nothing enforced it.
-4. Print the corpus fingerprint — files, lines, tool calls, sources, window — before any
-   other number. Counts compared across machines mean nothing without it.
+4. Print the corpus fingerprint — tool calls, sessions, sidechain share, sources, window —
+   before any other number. Counts compared across machines mean nothing without it. File
+   and line totals are printed beside it and are **not** part of it: they count every
+   transcript on disk rather than the window, so they drift while you work. Two runs four
+   hours apart on one machine and one fixed window read 260,129 lines against 262,456 with
+   every windowed number identical.
 5. Pass that same end date to every check in `scripts/`, or they measure days the report
    does not.
 

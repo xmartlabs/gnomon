@@ -175,3 +175,12 @@ agent** — which is why the Phase 3 gate is a fixed checklist and not a review 
 agent asked to check an agent's finding shares its blind spot; a deterministic re-measure
 does not. The reasoning behind that choice, and the one condition under which a row gets
 added, is in `design-rationale.md`.
+
+**The rows are a field now, not a habit.** Every write-up above was produced by somebody
+remembering to run the table, and a later run with the table open promoted a candidate that
+had failed the last row: two conditions produced the same `unmeasured` state and it had
+neutralized neither. Each finding now carries a `refuted` block answering all eight rows with
+a verdict and the fact behind it, and `emit-gate.py` refuses the file when a row is
+unanswered or reads `fail`. What that removes is the failure of not asking. It cannot tell a
+real refutation from a plausible sentence, and says so on every clean run, so the write-ups
+above are still what to read before answering a row.

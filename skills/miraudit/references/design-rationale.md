@@ -101,6 +101,26 @@ That third case is the argument in miniature. The agent was indispensable for co
 probe and unreliable as a judge of its own result — which is precisely the division this
 section describes, and precisely why the verdict never comes from an opinion.
 
+## Where the division was only an argument, and now is not
+
+This document described the split for a while before anything enforced it, and two places
+kept the agent doing machine work. Both produced the mistake the division predicts.
+
+Phase 4 wrote its JSON from a blank file. That is where a candidate which had failed a
+refutation row got typed into `findings[]`, and where a sentence of prose got typed into
+`confidence`, a field the schema defines as two words. `new-run.py` writes the skeleton
+instead, with the eight rows keyed and the numbers read from the anchored run rather than
+retyped. Phase 5 had a structure in `reporting.md` and nothing to assemble it, so the one
+shape known to work was retyped by hand each time. `render-issue.py` assembles it and leaves
+markers only where the argument has to come from reading the audited tool's code.
+
+What stays with the agent is unchanged and is the harder half: conceiving the
+counter-measurement, and building the argument out of the author's own words. Following the
+argument marker on a real finding produced a stronger claim than writing it free-hand had,
+because the marker sends you to their comment first and their comment turned out to say they
+intended the measured ratio to keep being published. That is the division paying off, not a
+new use for an agent.
+
 ## What would change this
 
 If a shipped finding gets refuted by the tool's owners, write the row. If a run produces a
