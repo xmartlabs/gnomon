@@ -48,7 +48,7 @@ from gnomon.cli import local  # noqa: E402
 from gnomon.scoring import aggregate  # noqa: E402
 from gnomon.scoring.aq import DEFAULT_SCORING_WINDOW_MONTHS  # noqa: E402
 from gnomon.scoring.calibration import (  # noqa: E402
-    BLEND_CALIBRATION_CONSTANT_NAMES, CALIBRATION_FINGERPRINTS, calibration_fingerprint,
+    EXTERNAL_CALIBRATION_CONSTANT_NAMES, CALIBRATION_FINGERPRINTS, calibration_fingerprint,
 )
 from gnomon.scoring.versioning import (  # noqa: E402
     SCORE_CONTRACT_ID, SCORING_INPUTS_VERSION, SKILL_DEDUP_INPUTS_VERSION,
@@ -349,9 +349,9 @@ class TestScoreContractMovesWithTheRemoval(unittest.TestCase):
         the registry has to see it. `RECENT_WEIGHT` is registered as an ABSENT constant --
         the fingerprint records that it no longer exists, which is exactly the fact this
         contract publishes."""
-        self.assertEqual(dict(BLEND_CALIBRATION_CONSTANT_NAMES)["RECENT_WEIGHT"],
+        self.assertEqual(dict(EXTERNAL_CALIBRATION_CONSTANT_NAMES)["RECENT_WEIGHT"],
                          "gnomon.scoring.aggregate")
-        self.assertEqual(dict(BLEND_CALIBRATION_CONSTANT_NAMES)["HISTORY_WEIGHT"],
+        self.assertEqual(dict(EXTERNAL_CALIBRATION_CONSTANT_NAMES)["HISTORY_WEIGHT"],
                          "gnomon.scoring.aggregate")
 
     def test_reintroducing_a_blend_weight_moves_the_fingerprint(self):

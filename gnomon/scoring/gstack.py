@@ -15,6 +15,23 @@ from gnomon.scoring.planning_evidence import (  # noqa: F401
 )
 
 
+# ---- GStack calibration targets ---------------------------------------------------
+# These values are score-affecting yardsticks. Keep published target types stable: the
+# scoring-vector fixture records the JSON token, not only the parsed numeric value.
+EXECUTION_OUTPUT_LINES_PER_HOUR_TARGET = 1000
+DELEGATION_RUNS_PER_PROMPT_TARGET = 0.30
+PLANNING_EXPLORE_RATIO_TARGET = 0.65
+THINKING_BLOCKS_PER_SESSION_TARGET = 12.0
+ITERATION_DEPTH_MEAN_TARGET = 2.0
+ITERATION_DEPTH_MEAN_DECAY_SPAN = 8
+ITERATION_DEPTH_P90_TARGET = 3.0
+ITERATION_DEPTH_P90_DECAY_SPAN = 9
+FILES_HAMMERED_PER_SESSION_TARGET = 0.25
+QUALITY_CEREMONY_PER_SESSION_TARGET = 3.0
+ERROR_RATE_PER_100_TOOLS_TARGET = 10.0
+EVIDENCE_SATURATION_TOOL_CALLS = 2000
+
+
 REPO_URL = "https://github.com/Photobombastic/paxel-local"
 
 # Plain-language explanation shown under each score bar — what the axis measures, in
@@ -195,7 +212,7 @@ def _evidence(stats):
     as a flawless builder. (See _ev and the LOW_DATA flag in write_profile_html.)
     Saturates at ~2000 tool calls (≈15 real sessions) so the gating actually has a
     gradient across thin→mid corpora, not just sub-30-minute ones."""
-    return _clamp(stats["volume"]["tool_calls_total"] / 2000)
+    return _clamp(stats["volume"]["tool_calls_total"] / EVIDENCE_SATURATION_TOOL_CALLS)
 
 
 def _ev(credit, ev):
@@ -313,10 +330,10 @@ def compute_scores(stats):
     #   inflated git_churn (generated/lockfile/merge commits); and ship fidelity
     #   (git_churn/tool_churn) — numerator inflated + denominator under-counted →
     #   metric was not truthful.
-    _EXECUTION_OUTPUT_TARGET = 1000  # tool-authored lines per active hour
     out_rate   = vel["tool_churn_edit_write"] / hours
-    out_pct    = _clamp(out_rate / _EXECUTION_OUTPUT_TARGET)
-    deleg_pct  = _clamp((b["delegate_actions"] + b["background_tasks"]) / max(prompts * 0.3, 1))
+    out_pct    = _clamp(out_rate / EXECUTION_OUTPUT_LINES_PER_HOUR_TARGET)
+    deleg_pct  = _clamp((b["delegate_actions"] + b["background_tasks"])
+                         / max(prompts * DELEGATION_RUNS_PER_PROMPT_TARGET, 1))
     # delegation needs a source that CAN delegate; output rate is source-agnostic (no cap).
     execution = _axis_value([(0.60, out_pct, None), (0.40, deleg_pct, "delegate")], caps)
 
@@ -345,8 +362,8 @@ def compute_scores(stats):
     # reasoning depth needs a source that emits thinking blocks (Antigravity CLI doesn't);
     # explore-ratio is behavioral/source-agnostic; plan ceremony is per-session.
     planning = _axis_value([
-        (0.30, _clamp(b["planning_ratio_explore_to_doing"] / 0.65), None),
-        (0.30, _clamp((v["thinking_blocks"] / sess) / 12.0), "thinking"),
+        (0.30, _clamp(b["planning_ratio_explore_to_doing"] / PLANNING_EXPLORE_RATIO_TARGET), None),
+        (0.30, _clamp((v["thinking_blocks"] / sess) / THINKING_BLOCKS_PER_SESSION_TARGET), "thinking"),
         (plan_evidence["effective_weight"], plan_ceremony,
          "skills" if plan_legacy else "planning_signal"),
         (0.15, ordered_plan, None),
@@ -372,11 +389,17 @@ def compute_scores(stats):
                                          "retro", "learn", "cso", "karpathy", "debug")) \
         + b.get("shell_test_runs", 0)   # CLI tests (pytest/go test/…) count as quality work too
     engineering = 10 * (
-        0.30 * _ev(1 - _clamp(((b.get("iteration_depth_mean") or 0) - 2) / 8), ev)  # low rework: got files right early
-        + 0.25 * _ev(1 - _clamp(((b.get("iteration_depth_p90") or 0) - 3) / 9), ev)  # clean iteration: low typical depth
-        + 0.20 * _ev(1 - _clamp(((b.get("files_hammered_over_15x") or 0) / sess) / 0.25), ev)  # focused: few hammered files
-        + 0.15 * _clamp((eng_skills / sess) / 3.0)                       # quality ceremonies: review/qa/investigate
-        + 0.10 * _ev(1 - _clamp((b.get("error_rate_per_100_tools") or 0) / 10), ev))  # low error rate: root-cause discipline
+        0.30 * _ev(1 - _clamp(((b.get("iteration_depth_mean") or 0)
+                               - ITERATION_DEPTH_MEAN_TARGET)
+                              / ITERATION_DEPTH_MEAN_DECAY_SPAN), ev)  # low rework: got files right early
+        + 0.25 * _ev(1 - _clamp(((b.get("iteration_depth_p90") or 0)
+                                 - ITERATION_DEPTH_P90_TARGET)
+                                / ITERATION_DEPTH_P90_DECAY_SPAN), ev)  # clean iteration: low typical depth
+        + 0.20 * _ev(1 - _clamp(((b.get("files_hammered_over_15x") or 0) / sess)
+                                / FILES_HAMMERED_PER_SESSION_TARGET), ev)  # focused: few hammered files
+        + 0.15 * _clamp((eng_skills / sess) / QUALITY_CEREMONY_PER_SESSION_TARGET)  # quality ceremonies: review/qa/investigate
+        + 0.10 * _ev(1 - _clamp((b.get("error_rate_per_100_tools") or 0)
+                                / ERROR_RATE_PER_100_TOOLS_TARGET), ev))  # low error rate: root-cause discipline
 
     if v["tool_calls_total"] == 0:
         execution = engineering = 0.0
@@ -415,23 +438,32 @@ def score_breakdown(stats):
                     "axis_narrative": "No activity recorded."}
         return {
             "execution": _zero_axis("How much you ship, at AI leverage", [
-                ("Tool output rate",          1000, "tool-authored lines/hr", 0.60, "higher"),
-                ("Delegation & parallelism",  0.30, "agent-runs/prompt",  0.40, "higher"),
+                ("Tool output rate", EXECUTION_OUTPUT_LINES_PER_HOUR_TARGET,
+                 "tool-authored lines/hr", 0.60, "higher"),
+                ("Delegation & parallelism", DELEGATION_RUNS_PER_PROMPT_TARGET,
+                 "agent-runs/prompt", 0.40, "higher"),
             ]),
             "planning": _zero_axis("Think before you build", [
-                ("Explore-before-build", 0.65, "explore/doing ratio", 0.30, "higher"),
-                ("Reasoning depth",     12.0, "thinking blocks/session", 0.30, "higher"),
+                ("Explore-before-build", PLANNING_EXPLORE_RATIO_TARGET,
+                 "explore/doing ratio", 0.30, "higher"),
+                ("Reasoning depth", THINKING_BLOCKS_PER_SESSION_TARGET,
+                 "thinking blocks/session", 0.30, "higher"),
                 ("Planning practice", PLANNING_PRACTICE_TARGET,
                  "planning sessions/session", 0.25, "higher"),
                 ("Ordered planning readiness", PLANNING_TARGET,
                  "eligible-session coverage", 0.15, "higher"),
             ]),
             "engineering": _zero_axis("Craft and low rework", [
-                ("Low rework",       2.0, "mean file-edit depth", 0.30, "lower"),
-                ("Clean iteration",  3.0, "p90 file-edit depth",  0.25, "lower"),
-                ("Focus",           0.25, "hammered-files/session", 0.20, "lower"),
-                ("Quality ceremony", 3.0, "quality-skills/session", 0.15, "higher"),
-                ("Low errors",      10.0, "errors/100 tools", 0.10, "lower"),
+                ("Low rework", ITERATION_DEPTH_MEAN_TARGET,
+                 "mean file-edit depth", 0.30, "lower"),
+                ("Clean iteration", ITERATION_DEPTH_P90_TARGET,
+                 "p90 file-edit depth", 0.25, "lower"),
+                ("Focus", FILES_HAMMERED_PER_SESSION_TARGET,
+                 "hammered-files/session", 0.20, "lower"),
+                ("Quality ceremony", QUALITY_CEREMONY_PER_SESSION_TARGET,
+                 "quality-skills/session", 0.15, "higher"),
+                ("Low errors", ERROR_RATE_PER_100_TOOLS_TARGET,
+                 "errors/100 tools", 0.10, "lower"),
             ]),
         }
 
@@ -442,15 +474,16 @@ def score_breakdown(stats):
     caps = _caps_of(stats)
 
     # --- EXECUTION ---
-    _EXECUTION_OUTPUT_TARGET = 1000  # tool-authored lines per active hour
     out_rate       = vel.get("tool_churn_edit_write", 0) / hours
-    out_pct        = _clamp(out_rate / _EXECUTION_OUTPUT_TARGET)
-    deleg_raw      = (b.get("delegate_actions", 0) + b.get("background_tasks", 0)) / max(prompts * 0.3, 1)
+    out_pct        = _clamp(out_rate / EXECUTION_OUTPUT_LINES_PER_HOUR_TARGET)
+    deleg_raw      = ((b.get("delegate_actions", 0) + b.get("background_tasks", 0))
+                      / max(prompts * DELEGATION_RUNS_PER_PROMPT_TARGET, 1))
     deleg_pct      = _clamp(deleg_raw)
     execution_val  = _axis_value([(0.60, out_pct, None), (0.40, deleg_pct, "delegate")], caps)
     exec_subs = [
         {"label": "Tool output rate", "your_value": out_rate,
-         "target": _EXECUTION_OUTPUT_TARGET, "unit": "tool-authored lines/hr", "weight": 0.60,
+         "target": EXECUTION_OUTPUT_LINES_PER_HOUR_TARGET,
+         "unit": "tool-authored lines/hr", "weight": 0.60,
          "pct": out_pct, "direction": "higher", "is_drag": False, "_cap": None},
         # your_value is the raw measured agent-runs/prompt (denominator: actual prompts).
         # pct matches compute_scores' clamp (denominator: prompts*0.3) and equals
@@ -461,15 +494,17 @@ def score_breakdown(stats):
         # The UI must fill bars from pct, not recompute from your_value/target.
         {"label": "Delegation & parallelism",
          "your_value": (b.get("delegate_actions", 0) + b.get("background_tasks", 0)) / max(prompts, 1),
-         "target": 0.30, "unit": "agent-runs/prompt", "weight": 0.40, "pct": deleg_pct,
+         "target": DELEGATION_RUNS_PER_PROMPT_TARGET, "unit": "agent-runs/prompt",
+         "weight": 0.40, "pct": deleg_pct,
          "direction": "higher", "is_drag": False, "_cap": "delegate"},
     ]
     exec_subs = [_enrich_sub(s) for s in _apply_sub_caps(exec_subs, caps)]
 
     # --- PLANNING ---
-    explore_pct       = _clamp(b.get("planning_ratio_explore_to_doing", 0) / 0.65)
+    explore_pct       = _clamp(b.get("planning_ratio_explore_to_doing", 0)
+                                / PLANNING_EXPLORE_RATIO_TARGET)
     thinking_raw      = v.get("thinking_blocks", 0) / sess
-    thinking_pct      = _clamp(thinking_raw / 12.0)
+    thinking_pct      = _clamp(thinking_raw / THINKING_BLOCKS_PER_SESSION_TARGET)
     # Planning practice = fraction of eligible top-level sessions carrying a planning
     # signal (see compute_scores); per-session, so tool volume can't saturate it.
     plan_sess_raw = plan_evidence["share"]
@@ -490,10 +525,12 @@ def score_breakdown(stats):
     plan_subs = [
         {"label": "Explore-before-build",
          "your_value": b.get("planning_ratio_explore_to_doing", 0),
-         "target": 0.65, "unit": "explore/doing ratio", "weight": 0.30, "pct": explore_pct,
+         "target": PLANNING_EXPLORE_RATIO_TARGET, "unit": "explore/doing ratio",
+         "weight": 0.30, "pct": explore_pct,
          "direction": "higher", "is_drag": False, "_cap": None},
         {"label": "Reasoning depth", "your_value": thinking_raw,
-         "target": 12.0, "unit": "thinking blocks/session", "weight": 0.30, "pct": thinking_pct,
+         "target": THINKING_BLOCKS_PER_SESSION_TARGET, "unit": "thinking blocks/session",
+         "weight": 0.30, "pct": thinking_pct,
          "direction": "higher", "is_drag": False, "_cap": "thinking"},
         {"label": "Planning practice", "your_value": plan_sess_raw,
          "target": PLANNING_PRACTICE_TARGET, "unit": "planning sessions/session",
@@ -520,31 +557,42 @@ def score_breakdown(stats):
     eng_skills = _skill_uses_any(stats, ("code-review", "test", "tdd", "qa", "investigate",
                                          "retro", "learn", "cso", "karpathy", "debug")) \
         + b.get("shell_test_runs", 0)
-    rework_pct   = _ev(1 - _clamp(((b.get("iteration_depth_mean") or 0) - 2) / 8), ev)
-    iter_pct     = _ev(1 - _clamp(((b.get("iteration_depth_p90") or 0) - 3) / 9), ev)
-    focus_pct    = _ev(1 - _clamp(((b.get("files_hammered_over_15x") or 0) / sess) / 0.25), ev)
+    rework_pct   = _ev(1 - _clamp(((b.get("iteration_depth_mean") or 0)
+                                   - ITERATION_DEPTH_MEAN_TARGET)
+                                  / ITERATION_DEPTH_MEAN_DECAY_SPAN), ev)
+    iter_pct     = _ev(1 - _clamp(((b.get("iteration_depth_p90") or 0)
+                                   - ITERATION_DEPTH_P90_TARGET)
+                                  / ITERATION_DEPTH_P90_DECAY_SPAN), ev)
+    focus_pct    = _ev(1 - _clamp(((b.get("files_hammered_over_15x") or 0) / sess)
+                                  / FILES_HAMMERED_PER_SESSION_TARGET), ev)
     qual_raw     = eng_skills / sess
-    qual_pct     = _clamp(qual_raw / 3.0)
-    err_pct      = _ev(1 - _clamp((b.get("error_rate_per_100_tools") or 0) / 10), ev)
+    qual_pct     = _clamp(qual_raw / QUALITY_CEREMONY_PER_SESSION_TARGET)
+    err_pct      = _ev(1 - _clamp((b.get("error_rate_per_100_tools") or 0)
+                                  / ERROR_RATE_PER_100_TOOLS_TARGET), ev)
     engineering_val = round(10 * (0.30 * rework_pct + 0.25 * iter_pct + 0.20 * focus_pct
                                   + 0.15 * qual_pct + 0.10 * err_pct), 1)
     if v.get("tool_calls_total", 0) == 0:
         execution_val = engineering_val = 0.0
     eng_subs = [
         {"label": "Low rework", "your_value": b.get("iteration_depth_mean") or 0,
-         "target": 2.0, "unit": "mean file-edit depth", "weight": 0.30, "pct": rework_pct,
+         "target": ITERATION_DEPTH_MEAN_TARGET, "unit": "mean file-edit depth",
+         "weight": 0.30, "pct": rework_pct,
          "direction": "lower", "is_drag": False},
         {"label": "Clean iteration", "your_value": b.get("iteration_depth_p90") or 0,
-         "target": 3.0, "unit": "p90 file-edit depth", "weight": 0.25, "pct": iter_pct,
+         "target": ITERATION_DEPTH_P90_TARGET, "unit": "p90 file-edit depth",
+         "weight": 0.25, "pct": iter_pct,
          "direction": "lower", "is_drag": False},
         {"label": "Focus", "your_value": (b.get("files_hammered_over_15x") or 0) / sess,
-         "target": 0.25, "unit": "hammered-files/session", "weight": 0.20, "pct": focus_pct,
+         "target": FILES_HAMMERED_PER_SESSION_TARGET,
+         "unit": "hammered-files/session", "weight": 0.20, "pct": focus_pct,
          "direction": "lower", "is_drag": False},
         {"label": "Quality ceremony", "your_value": qual_raw,
-         "target": 3.0, "unit": "quality-skills/session", "weight": 0.15, "pct": qual_pct,
+         "target": QUALITY_CEREMONY_PER_SESSION_TARGET,
+         "unit": "quality-skills/session", "weight": 0.15, "pct": qual_pct,
          "direction": "higher", "is_drag": False},
         {"label": "Low errors", "your_value": b.get("error_rate_per_100_tools") or 0,
-         "target": 10.0, "unit": "errors/100 tools", "weight": 0.10, "pct": err_pct,
+         "target": ERROR_RATE_PER_100_TOOLS_TARGET,
+         "unit": "errors/100 tools", "weight": 0.10, "pct": err_pct,
          "direction": "lower", "is_drag": False},
     ]
     eng_subs = [_enrich_sub(s) for s in eng_subs]

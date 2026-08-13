@@ -23,6 +23,7 @@ PLANNING_PRACTICE_TARGET = 0.30
 # Moving this value is a registered calibration change (see calibration.py's
 # CALIBRATION_CONSTANT_NAMES) and needs a new contract ID and fingerprint.
 CONTEXT_INTELLIGENCE_TARGET = 0.60
+LINKED_ROUTING_SUCCESS_RATE_TARGET = 0.40
 
 # ---- Per-tool-call rate targets ---------------------------------------------------
 # Rate terms use `count / tool_calls_total`. Targets are calibration inputs and
@@ -38,6 +39,7 @@ CONTEXT_INTELLIGENCE_TARGET = 0.60
 SKILLS_TOTAL_PER_CALL_TARGET = 0.009
 REVIEW_SKILLS_PER_CALL_TARGET = 0.004
 COMPOUNDING_WRITES_PER_CALL_TARGET = 0.0018
+API_RETRIES_PER_100_TOOLS_TARGET = 2.0
 
 # ---- Rate evidence floor ------------------------------------------------------------
 # A term needs at least one expected occurrence at its target. Below this floor,
@@ -62,7 +64,7 @@ ORCHESTRATION_FREQUENCY_TARGET = 0.78  # share of orchestratable sessions that d
 ORCHESTRATION_FULL_CONFIDENCE_SESSIONS = 5
 
 # ---- Absolute count ceilings -------------------------------------------------
-# Named, not inline, because these five are the only sat() targets that read an ABSOLUTE
+# Named, not inline, because these six are the only sat() targets that read an ABSOLUTE
 # cumulative count instead of a rate, so they are the ones a scoring-window change moves:
 # `rate(x, t) = sat(x / tool_calls, t)` is window-invariant, a raw count is not. Naming them
 # puts them under the calibration fingerprint (gnomon/scoring/calibration.py), so they cannot
@@ -72,6 +74,9 @@ FANOUT_CEILING = 5  # span-of-control theory (Graicunas/Urwick) lands at 5-7
 SKILLS_DISTINCT_CEILING = 40
 MCP_SERVERS_DISTINCT_CEILING = 15
 CLIS_DISTINCT_CEILING = 40
+MODELS_DISTINCT_CEILING = 3
+OFFLOAD_SHARE_TARGET = 0.30
+CLI_SHARE_TARGET = 0.70
 
 # ---- Harness taxonomy constants (v13) ----------------------------------------
 # Names for existing values. They are registered under the calibration fingerprint
@@ -129,7 +134,9 @@ def score_linked_routing(pairs, state):
     if excluded and not eligible:
         state = "unmeasured"
     rate = successful / eligible if eligible else 0.0
-    return {"state": state, "score": min(1.0, rate / 0.40) if state == "measured" else None,
+    return {"state": state,
+            "score": (min(1.0, rate / LINKED_ROUTING_SUCCESS_RATE_TARGET)
+                      if state == "measured" else None),
             "successful_lower_tier_pairs": successful,
             "eligible_completed_substantive_pairs": eligible, "excluded_reasons": excluded}
 
@@ -584,7 +591,8 @@ def compute_aq(stats):
     # an absolute threshold penalizes volume and is window-size dependent. Target 2/100 =
     # full penalty (healthy env < 0.5/100; retry-storm / broken setup > 2/100).
     api_per_100 = 100 * b.get("api_errors_retries", 0) / tool_calls if tool_calls else 0
-    recovery = .85 * sat(b.get("error_recovery_ratio") or 0, 1.0) + .15 * (1 - sat(api_per_100, 2.0))
+    recovery = (.85 * sat(b.get("error_recovery_ratio") or 0, 1.0)
+                + .15 * (1 - sat(api_per_100, API_RETRIES_PER_100_TOOLS_TARGET)))
     eff_axes = [
         ("Steering leverage", 50, lever, {"actions_per_prompt": app}),
         ("Recovery", 50, recovery, {"recovery_ratio": b.get("error_recovery_ratio") or 0,
@@ -601,8 +609,8 @@ def compute_aq(stats):
     offload_share = (1 - top_turns / total_turns) if total_turns else 0
     routing = score_linked_routing(b.get("linked_model_pairs", []), b.get("linked_model_routing_state", "unsupported"))
     model_mix = wsum(
-        (0.35, sat(len(models), 3), None),
-        (0.35, sat(offload_share, 0.30), None),
+        (0.35, sat(len(models), MODELS_DISTINCT_CEILING), None),
+        (0.35, sat(offload_share, OFFLOAD_SHARE_TARGET), None),
         (0.30, routing["score"], None),
         axis="Model mix",
     )
@@ -610,7 +618,7 @@ def compute_aq(stats):
     cli_share = cli_calls / (cli_calls + mcp_calls) if (cli_calls + mcp_calls) else 0
     # The toolsearch rate term was removed (v17, see Tool command above); wsum renormalizes
     # the single surviving cli_share term to full weight, so Token economy is now CLI-share.
-    token_economy = wsum((.5, sat(cli_share, 0.70), None),
+    token_economy = wsum((.5, sat(cli_share, CLI_SHARE_TARGET), None),
                          axis="Token economy")
     savvy_axes = [
         # Model mix needs a real per-turn model id; a source that masks it (Antigravity IDE)

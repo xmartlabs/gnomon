@@ -53,8 +53,8 @@ directly — no external dependency). Both decode to the same normalized events.
 
 ## Uploaded summary contract
 
-Current runtime contract: **scoring inputs version 18**, **AQ version 18**, and
-**GStack version 18** (`score_contract_id = 18:18:18`). Compare scores only when
+Current runtime contract: **scoring inputs version 19**, **AQ version 19**, and
+**GStack version 19** (`score_contract_id = 19:19:19`). Compare scores only when
 contract IDs match.
 
 `PowerShell` is scored as a shell, alongside `Bash`. It was previously unclassified,

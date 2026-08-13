@@ -41,8 +41,8 @@ def _roundtrip(obj):
 
 
 class TestScoringVectorsFile(unittest.TestCase):
-    def test_scoring_contract_is_version_eighteen(self):
-        self.assertEqual(SCORING_INPUTS_VERSION, 18)
+    def test_scoring_contract_is_version_nineteen(self):
+        self.assertEqual(SCORING_INPUTS_VERSION, 19)
 
     def test_file_exists_and_has_cases(self):
         data = _load()

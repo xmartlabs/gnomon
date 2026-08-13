@@ -1,4 +1,9 @@
-# Current scoring contract (18:18:18).
+# Current scoring contract (19:19:19).
+#
+# v19 names and fingerprints every score-affecting gstack target and five AQ targets that
+# were previously inline and unregistered. The formulas and values are unchanged; the
+# contract bump records the newly governed calibration surface and makes future retunes
+# comparison-incompatible instead of silently pooling old and new semantics.
 #
 # v18 admits `PowerShell` to the shell taxonomy. It is the shell tool Claude Code emits on
 # Windows and it was absent from the codebase entirely (issue #72), so `classify_tool` fell
@@ -129,9 +134,9 @@
 #
 # Contract IDs are comparison boundaries. Calibration fingerprints are append-only:
 # a score-affecting change requires a new ID and fingerprint entry.
-SCORING_INPUTS_VERSION = 18
-AQ_VERSION = 18
-GSTACK_VERSION = 18
+SCORING_INPUTS_VERSION = 19
+AQ_VERSION = 19
+GSTACK_VERSION = 19
 # First input version with deduplicated per-session skill counters. Earlier
 # payloads use different persisted quantities and cannot be replayed against these targets.
 SKILL_DEDUP_INPUTS_VERSION = 8

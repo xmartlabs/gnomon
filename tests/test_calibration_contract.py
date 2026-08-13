@@ -11,18 +11,58 @@ calibration constant is hashed into a fingerprint, and the fingerprint is regist
 the contract ID that published it. Editing a constant without adding a NEW contract entry
 turns this file red.
 """
+import importlib
 import unittest
 from unittest import mock
 
-from gnomon.scoring import aq
+from gnomon.scoring import aq, gstack
 from gnomon.scoring.calibration import (
     CALIBRATION_CONSTANT_NAMES,
     CALIBRATION_FINGERPRINTS,
+    EXTERNAL_CALIBRATION_CONSTANT_NAMES,
     NON_CALIBRATION_CONSTANT_NAMES,
     ZERO_CALIBRATION_DELTA_CONTRACT_IDS,
     calibration_fingerprint,
 )
 from gnomon.scoring.versioning import SCORE_CONTRACT_ID
+
+
+GSTACK_CALIBRATION_CONSTANT_NAMES = (
+    "EXECUTION_OUTPUT_LINES_PER_HOUR_TARGET",
+    "DELEGATION_RUNS_PER_PROMPT_TARGET",
+    "PLANNING_EXPLORE_RATIO_TARGET",
+    "THINKING_BLOCKS_PER_SESSION_TARGET",
+    "ITERATION_DEPTH_MEAN_TARGET",
+    "ITERATION_DEPTH_MEAN_DECAY_SPAN",
+    "ITERATION_DEPTH_P90_TARGET",
+    "ITERATION_DEPTH_P90_DECAY_SPAN",
+    "FILES_HAMMERED_PER_SESSION_TARGET",
+    "QUALITY_CEREMONY_PER_SESSION_TARGET",
+    "ERROR_RATE_PER_100_TOOLS_TARGET",
+    "EVIDENCE_SATURATION_TOOL_CALLS",
+)
+AQ_REEXPORT_NAMES = (
+    "CONTEXT_INTELLIGENCE_TARGET",
+    "MIN_ELIGIBLE_SESSIONS",
+    "PLANNING_PRACTICE_TARGET",
+    "PLANNING_TARGET",
+)
+
+
+def _is_public_numeric_constant(name, value):
+    return (name.isupper() and not name.startswith("_")
+            and isinstance(value, (int, float)))
+
+
+def _unclassified_gstack_constants():
+    aq_classified = set(CALIBRATION_CONSTANT_NAMES) | set(NON_CALIBRATION_CONSTANT_NAMES)
+    external = set(EXTERNAL_CALIBRATION_CONSTANT_NAMES)
+    return {
+        name for name, value in vars(gstack).items()
+        if _is_public_numeric_constant(name, value)
+        and (name, "gnomon.scoring.gstack") not in external
+        and not (name in aq_classified and getattr(gstack, name) is getattr(aq, name))
+    }
 
 
 class TestCalibrationIsBoundToTheContract(unittest.TestCase):
@@ -87,8 +127,7 @@ class TestFingerprintActuallyCoversTheConstants(unittest.TestCase):
         # like it, be added with nothing demanding it be classified. `bool` is a subclass of
         # `int`, so this is a removed filter rather than a widened one.
         found = {name for name, value in vars(aq).items()
-                 if name.isupper() and not name.startswith("_")
-                 and isinstance(value, (int, float))}
+                 if _is_public_numeric_constant(name, value)}
         classified = set(CALIBRATION_CONSTANT_NAMES) | set(NON_CALIBRATION_CONSTANT_NAMES)
         self.assertEqual(
             found - classified, set(),
@@ -103,6 +142,73 @@ class TestFingerprintActuallyCoversTheConstants(unittest.TestCase):
 
     def test_fingerprint_is_deterministic(self):
         self.assertEqual(calibration_fingerprint(), calibration_fingerprint())
+
+
+class TestGstackCalibrationGovernance(unittest.TestCase):
+    def test_every_gstack_target_is_registered_externally(self):
+        for name in GSTACK_CALIBRATION_CONSTANT_NAMES:
+            with self.subTest(constant=name):
+                self.assertIn((name, "gnomon.scoring.gstack"),
+                              EXTERNAL_CALIBRATION_CONSTANT_NAMES)
+
+    def test_no_score_affecting_gstack_constant_is_left_unfingerprinted(self):
+        self.assertEqual(
+            _unclassified_gstack_constants(), set(),
+            "New numeric constant in gstack.py is neither fingerprinted externally nor "
+            "an identity-preserved aq re-export.")
+
+    def test_external_gstack_names_exist_and_are_unique(self):
+        external = [name for name, module_path in EXTERNAL_CALIBRATION_CONSTANT_NAMES
+                    if module_path == "gnomon.scoring.gstack"]
+        self.assertEqual(len(external), len(set(external)))
+        for name in external:
+            with self.subTest(constant=name):
+                module = importlib.import_module("gnomon.scoring.gstack")
+                self.assertTrue(hasattr(module, name))
+
+    def test_every_external_gstack_constant_changes_the_fingerprint(self):
+        baseline = calibration_fingerprint()
+        for name in GSTACK_CALIBRATION_CONSTANT_NAMES:
+            with self.subTest(constant=name):
+                current = getattr(gstack, name)
+                with mock.patch.object(gstack, name, current + 1):
+                    self.assertNotEqual(calibration_fingerprint(), baseline)
+
+    def test_reexported_aq_constants_use_identity_ownership(self):
+        external_names = set(EXTERNAL_CALIBRATION_CONSTANT_NAMES)
+        for name in AQ_REEXPORT_NAMES:
+            with self.subTest(constant=name):
+                self.assertNotIn((name, "gnomon.scoring.gstack"), external_names)
+                self.assertIs(getattr(gstack, name), getattr(aq, name))
+
+    def test_identity_exemption_rejects_a_fresh_gstack_binding(self):
+        name = "MIN_ELIGIBLE_SESSIONS"
+        with mock.patch.object(gstack, name, aq.MIN_ELIGIBLE_SESSIONS + 1):
+            self.assertIn(name, _unclassified_gstack_constants())
+
+
+class TestV19CalibrationGovernanceContract(unittest.TestCase):
+    CONTRACT_ID = "19:19:19"
+    EXPECTED_FINGERPRINT = "8359e20e5f0fce17"
+
+    def test_nineteen_is_registered(self):
+        self.assertIn(self.CONTRACT_ID, CALIBRATION_FINGERPRINTS)
+
+    def test_nineteen_fingerprint_is_pinned(self):
+        self.assertEqual(
+            CALIBRATION_FINGERPRINTS[self.CONTRACT_ID], self.EXPECTED_FINGERPRINT)
+
+    def test_nineteen_digest_is_new_and_unique(self):
+        fingerprint = CALIBRATION_FINGERPRINTS[self.CONTRACT_ID]
+        prior = [fp for cid, fp in CALIBRATION_FINGERPRINTS.items()
+                 if int(cid.split(":")[0]) < 19]
+        self.assertNotIn(fingerprint, prior)
+
+    def test_nineteen_is_not_a_zero_calibration_delta_contract(self):
+        self.assertNotIn(self.CONTRACT_ID, ZERO_CALIBRATION_DELTA_CONTRACT_IDS)
+
+    def test_nineteen_is_the_current_contract(self):
+        self.assertEqual(SCORE_CONTRACT_ID, self.CONTRACT_ID)
 
 
 class TestV16McpCompoundingContract(unittest.TestCase):
@@ -179,8 +285,8 @@ class TestV18PowerShellShellTaxonomyContract(unittest.TestCase):
     def test_eighteen_is_registered_as_zero_calibration_delta(self):
         self.assertIn("18:18:18", ZERO_CALIBRATION_DELTA_CONTRACT_IDS)
 
-    def test_eighteen_is_the_current_contract(self):
-        self.assertEqual(SCORE_CONTRACT_ID, "18:18:18")
+    def test_eighteen_is_historical_after_the_v19_governance_bump(self):
+        self.assertNotEqual(SCORE_CONTRACT_ID, "18:18:18")
 
 
 if __name__ == "__main__":
