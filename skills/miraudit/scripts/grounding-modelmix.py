@@ -20,6 +20,16 @@ public and imported. `Accumulator._is_planning_dispatch` is a private method, so
 planning-dispatch subtraction is NOT reproduced: the check reports the ratio both with their
 published subtraction and without any, and says which is which.
 
+**One corpus, several sources.** This walks `--corpus`, which is Claude Code transcripts;
+gnomon walks every source directory it finds and its `behavior` block is the aggregate. That
+was invisible while every window measured happened to be claude-only, and it produced a
+divergence with no cause: 70 explore actions too many and 126 doing too few on a June window,
+agreement on an August one. It was neither. A five-window sweep on 2026-08-13 put the June
+ratio at 1.432 against a combined 1.37 and against claude's own **1.44**, and a May window
+that gnomon scored from codex alone at 0.000 against 0.51. So the comparison target is
+`scoring_inputs_by_source[<source>]`, and `behavior` is quotable only when that source is the
+only one scored.
+
 Model mix's two targets and its weights are unnamed literals and cannot be imported, so they
 are probed the same way cli-mcp.py probes its own: rebuild the axis from THEIR published
 signals and compare against the score they published.
@@ -75,7 +85,22 @@ dispatch = dig(stats, "behavior", "planning_dispatch_actions") or 0
 doing = _adjusted_doing(raw_doing, dispatch)
 explore = cats["explore"] + thinking
 ours = explore / doing if doing else 0
-theirs = dig(stats, "behavior", "planning_ratio_explore_to_doing")
+
+# `behavior` aggregates every source gnomon found, and this check walks ONE corpus of Claude
+# Code transcripts. Where claude is the only source scored those are the same population and
+# the two agree; where codex also contributed they are different populations by construction,
+# and the gap is neither side counting wrong. Swept over five windows on 2026-08-13: the three
+# claude-only windows agreed (1.126 vs 1.12, 1.081 vs 1.08, 1.078 vs 1.06), the claude+codex
+# window read 1.432 against a combined 1.37 and against claude's own 1.44, and a codex-only
+# window read 0.000 against 0.51 because the corpus this check walks was empty in it. The
+# per-source ratio is the comparable one; `behavior` is not, and it is the field this check
+# used to quote.
+by_source = stats.get("scoring_inputs_by_source") or {}
+scored = sorted(by_source)
+theirs_all = dig(stats, "behavior", "planning_ratio_explore_to_doing")
+theirs_claude = dig(by_source, "claude", "window", "behavior",
+                    "planning_ratio_explore_to_doing")
+theirs = theirs_claude if theirs_claude is not None else theirs_all
 g_max = axes["Grounding"].get("base_weight")
 
 print("GROUNDING — sat(planning_ratio, 1.0), and what the numerator is made of")
@@ -83,24 +108,44 @@ print(f"  explore tool calls                {cats['explore']:>8}")
 print(f"  thinking blocks                   {thinking:>8}   folded into the SAME numerator")
 print(f"  numerator                         {explore:>8}")
 print(f"  denominator (their subtraction)   {doing:>8}   raw {raw_doing}, dispatch {dispatch}")
-print(f"  ratio ours {ours:.3f}   theirs {theirs}   -> "
-      f"{'faithful' if abs(ours - theirs) < 0.02 else 'DIVERGES'}")
-faithful = abs(ours - theirs) < 0.02
-if not faithful:
+print(f"  sources gnomon scored             {', '.join(scored) or 'unstated'}")
+if scored and scored != ["claude"] and theirs_claude is not None:
+    print(f"  comparing against claude's own ratio {theirs_claude}, not the aggregate "
+          f"{theirs_all}:")
+    print(f"  the aggregate covers {', '.join(s for s in scored if s != 'claude')} too, which "
+          f"this corpus does not.")
+
+if theirs is None:
+    faithful = False
+    print("\n  NO COMPARABLE RATIO IN THE PAYLOAD. Neither the per-source block nor "
+          "`behavior`\n  carries planning_ratio_explore_to_doing, so there is nothing to "
+          "check against.")
+elif not doing:
+    faithful = False
+    print(f"\n  THE CORPUS THIS CHECK WALKS IS EMPTY IN THIS WINDOW, while the payload scored "
+          f"{', '.join(scored) or 'something'}.")
+    print("  That is not a divergence in counting. gnomon reads every source directory it "
+          "finds\n  and this check reads one, so on a window where claude contributed nothing "
+          "there is\n  no population to compare. Nothing below this line about Grounding is "
+          "usable.")
+else:
+    faithful = abs(ours - theirs) < 0.02
+    print(f"  ratio ours {ours:.3f}   theirs {theirs}   -> "
+          f"{'faithful' if faithful else 'DIVERGES'}")
+
+if theirs is not None and doing and not faithful:
     # The split used to print in full right here, while the control that invalidates it
     # fired twenty lines below. A reader met a confident "the axis would score 10.0/25"
-    # and learned only afterwards not to read it. A June window exposed that: against the
-    # payload's own explore_actions and produce/execute/delegate_actions, this check counted
-    # 70 explore actions too many and 126 doing actions too few, and both errors push the
-    # ratio up. It agreed on an August window, so that agreement was a property of one
-    # window's tool mix and not of the check.
+    # and learned only afterwards not to read it.
     print(f"\n  THE SPLIT IS WITHHELD. Ours and theirs disagree by {abs(ours - theirs):.3f},")
     print("  over the 0.02 tolerance, so the numerator this check builds is not the one the")
     print("  axis scored and any share taken from it would describe this reimplementation")
-    print("  rather than the tool. Compare the counts above against the payload's")
-    print("  explore_actions, produce_actions, execute_actions and delegate_actions to see")
-    print("  which side drifted. Nothing below this line about Grounding is usable.")
-else:
+    print("  rather than the tool. The first suspect is no longer the counting: it is whether")
+    print("  the two sides cover the same sources, which the line above answers. If they do,")
+    print("  compare the counts against the payload's explore_actions, produce_actions,")
+    print("  execute_actions and delegate_actions. Nothing below this about Grounding is "
+          "usable.")
+elif faithful:
     share = thinking / explore if explore else 0
     print(f"\n  thinking is {share:.1%} of the numerator")
     without = cats["explore"] / doing if doing else 0

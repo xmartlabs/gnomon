@@ -45,17 +45,30 @@ its judgement never becomes the verdict.
    what an agent concluded. `second-corpus.md` depends on exactly this — a command carrying
    this machine's paths is not a measurement anybody else can repeat.
 
-4. **Print both numbers and the direction.** Theirs, yours, and `faithful` /
+4. **Check that "theirs" covers the same population before you compare it.** gnomon walks
+   **every source directory it finds** — `claude`, `codex`, `opencode`, `cursor` — and the
+   top-level `behavior` block is the aggregate over all of them. `--corpus` is one of those,
+   so on a window where a second source contributed, the two numbers describe different
+   populations and the difference is nobody counting wrong. The payload settles it:
+   `scoring_inputs_by_source[<source>]` publishes that source's own figures, and the run log
+   prints `sources: claude(…), codex(…)`. This cost a real diagnosis: a check reported 70
+   explore actions too many and 126 doing too few on a June window and agreed on an August
+   one, and the whole gap was 12 codex sessions. Its own `not_checked` sent the next reader
+   after a per-tool comparison, which would never have found it. **Agreement on the windows
+   you happen to have tested is not evidence** that the populations match — three of five
+   windows agreed, and all three were the claude-only ones.
+
+5. **Print both numbers and the direction.** Theirs, yours, and `faithful` /
    `overestimates` / `underestimates`. A size without a direction is how a report ends up
    arguing the opposite of what its data shows.
 
-5. **Carry a control.** Row 6 of the Phase 3 gate already demands one for synthetic
+6. **Carry a control.** Row 6 of the Phase 3 gate already demands one for synthetic
    fixtures; when the subject is a corpus measurement it means a case that **must** come out
    different — a second operationalization that should agree, or a branch of the tool's own
    arithmetic driven by its imported constants. Without one, a number here could be the scan
    misfiring rather than a measurement.
 
-6. **`not_checked`, non-empty**, like any finding. Name the question you did not ask.
+7. **`not_checked`, non-empty**, like any finding. Name the question you did not ask.
 
 ## What `_common.py` gives you
 

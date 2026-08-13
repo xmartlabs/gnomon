@@ -34,6 +34,16 @@ def _fmt_magnitude(mag):
     return f" · magnitude {mag.get('value')} {mag.get('unit')}{where}"
 
 
+def _not_checked(out, obj):
+    """Shared because an axis declares blind spots in the same field a finding does, and the
+    two used to render in only one of the two places."""
+    nc = obj.get("not_checked") or []
+    if nc:
+        out.append("**Not checked.**\n")
+        for item in nc:
+            out.append(f"- {item}\n")
+
+
 def _claim_body(out, f, kind):
     """The shared shape of a claim. A finding and a not_raised entry differ in what happens
     next, not in what was measured, so they render the same evidence in the same order."""
@@ -47,11 +57,7 @@ def _claim_body(out, f, kind):
     if kind == "not_raised":
         out.append(f"**Not raised because.** {f.get('why_not', '')}\n")
         out.append(f"**Reconsider if.** {f.get('reconsider_if', '')}\n")
-    nc = f.get("not_checked") or []
-    if nc:
-        out.append("**Not checked.**\n")
-        for item in nc:
-            out.append(f"- {item}\n")
+    _not_checked(out, f)
 
 
 def render(doc):
@@ -139,6 +145,24 @@ def render(doc):
             found = (x.get("evidence") or {}).get("output", "").replace("|", "\\|")
             out.append(f"| {x.get('name')} | {x.get('score')}/{x.get('max')} | "
                        f"{x.get('direction')} | {found} |\n")
+
+        # An axis carries the same evidence a finding does -- a command, a control, and the
+        # blind spots the person who has them declared -- and a four-column table has room for
+        # none of it. That is not cosmetic: a run whose axis recorded "which of the two counts
+        # is wrong and why" rendered a report with no not-checked section anywhere, so the one
+        # open question it produced existed only in the JSON. Withheld in the payload and
+        # absent from what a person reads is the exact shape this skill reports in other
+        # people's tools.
+        for x in doc["axes"]:
+            ev = x.get("evidence") or {}
+            if not (x.get("not_checked") or ev.get("command") or ev.get("control")):
+                continue
+            out.append(f"\n### {x.get('name')}\n")
+            if ev.get("command"):
+                out.append(f"Reproduce it with:\n\n```\n{ev['command']}\n```\n")
+            if ev.get("control"):
+                out.append(f"**Control.** {ev['control']}\n")
+            _not_checked(out, x)
 
     if reported:
         out.append("\n## Already reported\n")
