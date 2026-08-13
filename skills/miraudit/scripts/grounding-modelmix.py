@@ -133,6 +133,15 @@ else:
     print(f"  ratio ours {ours:.3f}   theirs {theirs}   -> "
           f"{'faithful' if faithful else 'DIVERGES'}")
 
+if not faithful and args.stats:
+    import json as _json
+    diverged_path = os.path.join(
+        os.path.dirname(os.path.abspath(args.stats)), "grounding-diverged.json")
+    with open(diverged_path, "w") as fp:
+        _json.dump({"ours": round(ours, 4),
+                    "theirs": theirs if theirs is not None else "absent",
+                    "delta": round(abs(ours - theirs), 4) if theirs is not None else None}, fp)
+
 if theirs is not None and doing and not faithful:
     # The split used to print in full right here, while the control that invalidates it
     # fired twenty lines below. A reader met a confident "the axis would score 10.0/25"

@@ -150,6 +150,13 @@ def main(argv=None):
     if gate(stats, args.published, expect) != 0:
         return 1
 
+    anchor_pass = os.path.join(os.path.dirname(stats), "anchor-pass.json")
+    if args.published:
+        import json as _json
+        with open(anchor_pass, "w") as fp:
+            _json.dump({"published": args.published, "reproduced": True,
+                        "contract": expect or None}, fp)
+
     print()
     check("fingerprint.py", "--stats", stats)
 

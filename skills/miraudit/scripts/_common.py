@@ -62,6 +62,17 @@ def parse(description, extra=None):
     if not os.path.isdir(args.corpus):
         sys.exit(f"error: corpus not found at {args.corpus}. Pass --corpus.")
 
+    if args.stats:
+        anchor_pass = os.path.join(
+            os.path.dirname(os.path.abspath(os.path.expanduser(args.stats))),
+            "anchor-pass.json")
+        if not os.path.exists(anchor_pass):
+            sys.exit(
+                "error: no anchor-pass.json beside stats.json. Phase 0 must pass with "
+                "--published before running any check. Run anchor.py first with "
+                "--published <your AQ>. A check without an anchored run may produce "
+                "findings that look real and are not.")
+
     sys.path.insert(0, args.checkout)
     if args.until:
         try:
