@@ -20,14 +20,13 @@ third until a run whose verdict read "11 of 11" turned out to have recorded six,
 axes never appearing in any run's `axes` block at all. With `--run` the tag goes back to
 being discovery and the run's own JSON is the proof.
 """
-import glob
 import json
 import os
 import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _common import parse, header, load_stats  # noqa: E402
+from _common import parse, header, load_stats, claims  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -94,21 +93,8 @@ if mismatched:
     raise SystemExit(1)
 
 # ---- who covers what --------------------------------------------------------------------
-# Declared by a grepped comment rather than by importing: a check with a syntax error must
-# still be visible as claiming its axis. Silence from a broken file would read as "no script
-# exists", which is the one thing this script is here to distinguish.
-COVERS_RX = re.compile(r'^#\s*miraudit-covers:\s*(.+?)\s*$', re.M)
-
-
-def claims(pattern):
-    out = {}
-    for path in sorted(glob.glob(pattern)):
-        with open(path) as fh:
-            for name in COVERS_RX.findall(fh.read()):
-                out.setdefault(name, []).append(os.path.basename(path))
-    return out
-
-
+# `claims` lives in _common.py because run-checks.py builds its work list from the same tag,
+# and two greps for one tag drift.
 committed = claims(os.path.join(args.scripts_dir, "*.py"))
 adhoc = claims(os.path.join(args.output_dir, "*.py")) if args.output_dir else {}
 

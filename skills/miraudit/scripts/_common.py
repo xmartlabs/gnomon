@@ -18,8 +18,10 @@ number that is true and meaningless.
 """
 import argparse
 import datetime
+import glob
 import json
 import os
+import re
 import sys
 
 DEFAULT_CORPUS = "~/.claude/projects"
@@ -277,3 +279,20 @@ def header(args, window):
             f"corpus:   {args.corpus}\n"
             f"window:   {window.start.date()} -> {window.end.date()} "
             f"({args.days}d, {kind})\n")
+
+
+# Declared by a grepped comment rather than by importing: a check with a syntax error must
+# still be visible as claiming its axis. Silence from a broken file would read as "no script
+# exists", which is the distinction axis-coverage.py exists to make. It lives here because
+# run-checks.py needs the same list, and two greps for the same tag would drift.
+COVERS_RX = re.compile(r'^#\s*miraudit-covers:\s*(.+?)\s*$', re.M)
+
+
+def claims(pattern):
+    """axis name -> [filename, ...] for every script under `pattern` declaring the tag."""
+    out = {}
+    for path in sorted(glob.glob(pattern)):
+        with open(path) as fh:
+            for name in COVERS_RX.findall(fh.read()):
+                out.setdefault(name, []).append(os.path.basename(path))
+    return out
