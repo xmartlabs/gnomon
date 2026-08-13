@@ -525,12 +525,25 @@ measured, and it is written as one.
   What the payloads *do* say, and it took a sixth corpus to be worth writing down: the
   routing term reads `state: "unmeasured"` on **every payload on record that publishes it**
   — five distinct people, both contracts, both platforms — and every one of them reads
-  `eligible_completed_substantive_pairs: 0` with `excluded_reasons: {}`. An empty exclusion
-  map beside a zero denominator says nothing was ever a candidate, which is a different thing
-  from candidates being filtered out, and it is the reading that survives when a single corpus
-  cannot tell the two apart. **This is a recorded observation and not a finding**: it has not
-  been through the Phase 3 gate, and one local attempt to name a cause for it already died on
-  row 8. What six corpora change is only that the zero is not one person's setup.
+  `eligible_completed_substantive_pairs: 0` with `excluded_reasons: {}`.
+
+  **That zero does not mean nothing was a candidate.** An earlier version of this paragraph
+  said it did. `score_linked_routing` (`aq.py:108-112`) returns zeros and an empty exclusion
+  map *before looking at the pairs at all* when `state != "measured"`, so the published shape
+  is identical whether there were 451 pairs or none — verified by calling their own function
+  with an empty list, which produces the same fields. On one corpus at `18:18:18` the payload
+  carries **451 pairs**, and running their function over them with only the state argument
+  changed yields **276 eligible, 59 lower-tier, score 0.534**. The gate is corpus-wide and
+  all-or-nothing: `return pairs, "unmeasured" if incomplete else "measured"`
+  (`accumulator.py:826`), where one unresolvable attempt anywhere in the window drops the term
+  for everything.
+
+  **None of this is new and none of it is reportable.** That drop is issue `#68`, reported and
+  closed, and the attempt to pin it on Workflow children died on Phase 3 row 8 because several
+  conditions set the same flag. What six corpora add is that the zero is not one person's
+  setup, and what the numbers above add is its size on this contract. The one thing that is
+  genuinely new is small: the published fields cannot distinguish "the term never ran" from
+  "there was nothing to score", which is a diagnostic nit and is recorded rather than raised.
 - **Whether the ceiling axes discriminate lower down.** F moved this and did not settle it.
   Until F arrived, every corpus here scored 82 to 95 and "these axes do not discriminate" was
   indistinguishable from "these particular people are all strong". F reads 10,7 of 28 on Tool
