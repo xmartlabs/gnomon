@@ -134,15 +134,43 @@ not depend on someone remembering.
 
 ## Phase 4 — Emit
 
-Write `miraudit-<date>.json`, **run `scripts/emit-gate.py` against it**, and render
-`miraudit-<date>.md` from it only if the gate exits 0. Two hand-written sources drift, and
-a report that drifted from its evidence is the defect this skill catches. The gate reads
-structure and not honesty — it cannot tell a real refutation from a plausible sentence, and
-it says so on every clean run.
+Write `miraudit-<date>.json`, then run **`scripts/render-report.py`** on it. That script
+gates the file with `emit-gate.py` and writes the markdown only if the gate exits 0, so the
+two cannot be done out of order or the second done without the first. Do not hand-write the
+markdown and do not write your own renderer: two hand-written sources drift, and a report
+that drifted from its evidence is the defect this skill catches. The one that shipped before
+this script existed was invented per run, which meant two people auditing the same tool
+handed its maintainers two documents with nothing in common.
+
+The gate reads structure and not honesty. It cannot tell a real refutation from a plausible
+sentence, and it says so on every clean run.
 
 Report only findings carrying a reproducible command and a control that passed. Confirmed
-but already sent goes to `reported`; what the audit itself cost you goes to
-`process_friction`. **An empty `findings` with a populated `dismissed` is a good result.**
+but already sent goes to `reported`; confirmed and deliberately not sent goes to
+`not_raised` with the reason and the condition that would reopen it; what the audit itself
+cost you goes to `process_friction`. **An empty `findings` with a populated `dismissed` is a
+good result.**
+
+## Phase 5 — Send. Optional, and often correct to skip.
+
+The report is a file. It becomes a message to a person only here, and this phase exists
+because the skill used to end at Phase 4 and leave somebody holding a confirmed finding with
+nowhere to put it.
+
+**Only `findings[]` goes.** That list already means "survived every row", which is the whole
+claim you make when you spend a maintainer's time. `not_raised` does not go, by definition.
+`process_friction` never goes: it is about your tooling. If `anchor.ok` is false, nothing
+goes at all.
+
+`references/reporting.md` has the shape and the reasoning behind it. The short version is
+that a question about intent gets answered while a bug report gets defended, that provenance
+goes before the first number, that every figure is a published field of their payload or a
+derivation you state, and that each claim carries the command that reproduces it, the
+control, the blind spots, and what would close it.
+
+**Read what you are about to publish before you publish it.** A report quotes paths, session
+ids and repository names out of your corpus, and a public issue is a poor place to find that
+out.
 
 ## Never
 
