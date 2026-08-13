@@ -39,6 +39,11 @@ CALIBRATION_CONSTANT_NAMES = (
     "PLANNING_TARGET",
     "PLANNING_PRACTICE_TARGET",
     "CONTEXT_INTELLIGENCE_TARGET",
+    "LINKED_ROUTING_SUCCESS_RATE_TARGET",
+    "API_RETRIES_PER_100_TOOLS_TARGET",
+    "MODELS_DISTINCT_CEILING",
+    "OFFLOAD_SHARE_TARGET",
+    "CLI_SHARE_TARGET",
     "CHURN_MIN",
     "WINDOW",
     "PLAN_MIN_LINES",
@@ -61,7 +66,19 @@ NON_CALIBRATION_CONSTANT_NAMES = ()
 
 # Score-affecting calibration outside aq.py. Registered absence is fingerprinted,
 # preserving compatibility for replayed payloads that use historical blend inputs.
-BLEND_CALIBRATION_CONSTANT_NAMES = (
+EXTERNAL_CALIBRATION_CONSTANT_NAMES = (
+    ("DELEGATION_RUNS_PER_PROMPT_TARGET", "gnomon.scoring.gstack"),
+    ("ERROR_RATE_PER_100_TOOLS_TARGET", "gnomon.scoring.gstack"),
+    ("EVIDENCE_SATURATION_TOOL_CALLS", "gnomon.scoring.gstack"),
+    ("EXECUTION_OUTPUT_LINES_PER_HOUR_TARGET", "gnomon.scoring.gstack"),
+    ("FILES_HAMMERED_PER_SESSION_TARGET", "gnomon.scoring.gstack"),
+    ("ITERATION_DEPTH_MEAN_DECAY_SPAN", "gnomon.scoring.gstack"),
+    ("ITERATION_DEPTH_MEAN_TARGET", "gnomon.scoring.gstack"),
+    ("ITERATION_DEPTH_P90_DECAY_SPAN", "gnomon.scoring.gstack"),
+    ("ITERATION_DEPTH_P90_TARGET", "gnomon.scoring.gstack"),
+    ("PLANNING_EXPLORE_RATIO_TARGET", "gnomon.scoring.gstack"),
+    ("QUALITY_CEREMONY_PER_SESSION_TARGET", "gnomon.scoring.gstack"),
+    ("THINKING_BLOCKS_PER_SESSION_TARGET", "gnomon.scoring.gstack"),
     ("RECENT_WEIGHT", "gnomon.scoring.aggregate"),
     ("HISTORY_WEIGHT", "gnomon.scoring.aggregate"),
 )
@@ -97,7 +114,7 @@ def calibration_fingerprint():
              for name in sorted(CALIBRATION_CONSTANT_NAMES)]
     lines += [
         f"{module_path}.{name}={_registered_value(importlib.import_module(module_path), name)}"
-        for name, module_path in sorted(BLEND_CALIBRATION_CONSTANT_NAMES)
+        for name, module_path in sorted(EXTERNAL_CALIBRATION_CONSTANT_NAMES)
     ]
     return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()[:16]
 
@@ -150,6 +167,10 @@ CALIBRATION_FINGERPRINTS = {
     # target, weight, or denominator moved. The digest is therefore unchanged from 17:17:17,
     # the same documented-duplicate template as 14/15/16 against 13:13:13.
     "18:18:18": "7fd9a230f7fb2264",
+    # v19 names the previously inline gstack and AQ score-affecting targets. Formula values
+    # remain unchanged, but the governed calibration surface is genuinely new and therefore
+    # gets a unique fingerprint rather than a documented zero-delta duplicate.
+    "19:19:19": "8359e20e5f0fce17",
 }
 
 # Contract IDs whose fingerprint is a DOCUMENTED, deliberate duplicate of the contract

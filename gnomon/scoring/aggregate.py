@@ -58,6 +58,18 @@ ONE CANONICAL COMBINED AQ:
     that. The gap stays around 5 points; publishing one answer is what retires the choice.
 """
 
+# The MODULE is imported, not the two Model mix constants by name, and
+# `blend_model_mix_components` reads them as attributes at call time. Binding the names
+# here would give this module a SEPARATE binding, which tracks a source edit but not a
+# runtime patch -- and a runtime patch is exactly how the per-constant sensitivity tests
+# prove the coupling holds. Reading through the module is the technique
+# calibration.py's `_registered_value` already uses, for the same stated reason.
+#
+# The blend is REPLAY-ONLY since v11 (see `_blend_profiles` below: a live run supplies no
+# bucket components). That lowers the stakes but does not remove them -- it still scores
+# pre-v11 payloads, so a private copy of a registered target would publish numbers that
+# disagree with the live scorer after any retune.
+from gnomon.scoring import aq as _aq
 from gnomon.scoring.aq import compute_aq
 from gnomon.scoring.gstack import (
     compute_scores, score_breakdown, _axis_verdict, _nonnegative_integral_count,
@@ -116,9 +128,11 @@ def blend_model_mix_components(components):
     if not components:
         return 0.0
     total = sum(weight for weight, _ in components) or 1.0
-    distinct = sum(weight * min(1.0, signals.get("distinct_models", 0) / 3)
+    distinct = sum(weight * min(1.0, signals.get("distinct_models", 0)
+                                / _aq.MODELS_DISTINCT_CEILING)
                    for weight, signals in components) / total
-    offload = sum(weight * min(1.0, signals.get("offload_share", 0) / 0.30)
+    offload = sum(weight * min(1.0, signals.get("offload_share", 0)
+                               / _aq.OFFLOAD_SHARE_TARGET)
                   for weight, signals in components) / total
     measured = [(weight, (signals.get("routing") or {}).get("score"))
                 for weight, signals in components

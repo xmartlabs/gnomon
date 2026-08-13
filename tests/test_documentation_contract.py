@@ -38,9 +38,9 @@ class TestPublicDocumentationContract(unittest.TestCase):
 
     def test_public_docs_publish_current_contract_only(self):
         expected = (
-            "scoring inputs version 18",
-            "AQ version 18",
-            "GStack version 18",
+            "scoring inputs version 19",
+            "AQ version 19",
+            "GStack version 19",
             SCORE_CONTRACT_ID,
         )
         for document in (self.readme, self.metrics):
@@ -102,7 +102,7 @@ class TestPublicDocumentationContract(unittest.TestCase):
             encoding="utf-8")
         calibration = (ROOT / "gnomon" / "scoring" / "calibration.py").read_text(
             encoding="utf-8")
-        self.assertEqual(SCORE_CONTRACT_ID, "18:18:18")
+        self.assertEqual(SCORE_CONTRACT_ID, "19:19:19")
         self.assertEqual(HARNESS_TEAM_SESSION_TYPES, 3)
         self.assertEqual(HARNESS_BELOW_TEAM_CREDIT, 0.6)
         self.assertIn("unmeasured delegation", source)
