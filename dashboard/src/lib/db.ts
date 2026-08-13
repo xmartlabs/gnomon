@@ -92,6 +92,11 @@ export function uploadedMonths(db: Db, personId: number) {
   ).all(personId) as { monthKey: string; uploadedAt: number }[];
 }
 
+export function getPerson(db: Db, id: number) {
+  return db.prepare(`SELECT id, email, name FROM people WHERE id = ?`)
+    .get(id) as { id: number; email: string; name: string } | undefined;
+}
+
 export function listPeople(db: Db) {
   return db.prepare(`SELECT id, email, name FROM people ORDER BY name`)
     .all() as { id: number; email: string; name: string }[];

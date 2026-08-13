@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { initSchema, _resetDbForTests } from "@/lib/db";
+import { initSchema, upsertUpload, _resetDbForTests } from "@/lib/db";
 import { _resetSecretForTests } from "@/lib/auth";
 
 export const TEST_JWT_SECRET = "test-jwt-secret-at-least-32-bytes!!";
@@ -26,4 +26,16 @@ export function freshDb() {
   const db = new Database(":memory:");
   initSchema(db);
   return db;
+}
+
+export type TestDb = ReturnType<typeof freshDb>;
+
+/** Store one month's summary for a person. windowMonths is the CLI's default. */
+export function putUpload(db: TestDb, personId: number, monthKey: string, summary: unknown) {
+  upsertUpload(db, {
+    personId,
+    monthKey,
+    windowMonths: 6,
+    summaryJson: JSON.stringify(summary),
+  });
 }

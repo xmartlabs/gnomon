@@ -5,6 +5,9 @@
  * .isoformat(). The plan's reference block showed bare YYYY-MM-DD, which no
  * real upload ever sends.
  */
+/** The 2026-06 token total the fixture encodes, asserted across metric tests. */
+export const TOTAL_TOKENS = 5_723_123_661;
+
 export function makeSummary(overrides: Record<string, any> = {}) {
   const base = {
     score_contract_id: "aq-v11",
