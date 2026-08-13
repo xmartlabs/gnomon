@@ -40,17 +40,18 @@ CONFIDENCE = {"fact", "hypothesis"}
 BOUNDS = {"upper", "lower"}
 
 
-def check(doc):
+def check(doc, doc_path=None):
     bad = []
 
     def fail(where, msg):
         bad.append(f"{where}: {msg}")
 
     anchor = doc.get("anchor") or {}
-    if anchor.get("ok") is False and doc.get("findings"):
-        fail("anchor", "ok is false and findings[] is not empty. Phase 0 is a gate: if the "
-                       "base run does not reproduce the published number, every finding is "
-                       "unsafe to read and none should be emitted.")
+    if anchor.get("ok") is not True and doc.get("findings"):
+        fail("anchor", f"ok is {anchor.get('ok')!r}, not true, and findings[] is not empty. "
+                       "Phase 0 is a gate: the anchor must explicitly pass (ok: true) before "
+                       "any finding is safe to emit. A null anchor — one that never compared "
+                       "against a published number — is not a pass.")
 
     for i, f in enumerate(doc.get("findings", [])):
         w = f"findings[{i}] {f.get('id', '<no id>')}"
@@ -78,6 +79,16 @@ def check(doc):
         if "what_would_close_it" in f and not (f["what_would_close_it"] or "").strip():
             fail(w, "what_would_close_it is present but empty. Either write the observation "
                     "that would settle it either way, or leave the field out.")
+
+        axes = f.get("axes") or []
+        if doc_path and any("Grounding" in a for a in axes):
+            diverged = os.path.join(os.path.dirname(os.path.abspath(doc_path)),
+                                    "grounding-diverged.json")
+            if os.path.exists(diverged):
+                fail(w, "grounding-modelmix.py recorded a divergence "
+                     "(grounding-diverged.json exists). A finding about Grounding built "
+                     "on a reimplementation that disagrees with the tool's own ratio is "
+                     "not evidence about the tool.")
 
         ref = f.get("refuted")
         if not isinstance(ref, dict):
@@ -144,7 +155,7 @@ def main(argv):
         print(f"error: cannot read {path}: {exc}")
         return 2
 
-    bad = check(doc)
+    bad = check(doc, doc_path=path)
     print(f"emit gate: {os.path.basename(path)}")
     print(f"  findings {len(doc.get('findings', []))}  "
           f"not_raised {len(doc.get('not_raised', []))}  "
