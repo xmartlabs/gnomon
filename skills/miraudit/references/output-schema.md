@@ -133,6 +133,24 @@ who own the audited tool. Without this state a confirmed finding has nowhere to 
 the schema forcing a lie. `findings` is what this run is raising; `reported` is what is
 already raised, so the next reader neither re-argues it nor re-sends it.
 
+**`not_raised`** — true, survived Phase 3, and deliberately not sent. This is the third
+state the `reported` note above predicted: a run confirmed the Steering leverage disclosure
+gap on two corpora, and the owner judged it too slight to spend a maintainer's attention on.
+Filing that in `dismissed` would say something killed it and filing it in `findings` would
+say the run is raising it — both false, and `dismissed` is the exact lie `reported` exists to
+prevent. Entries keep their `refuted` block, because deciding not to send something is not a
+reason to skip proving it, and add two fields:
+
+- **`why_not`** — the judgement, in the owner's terms. "Too small to send alone" is a
+  complete reason; padding it into a technical objection it is not would misrepresent a
+  scoping call as evidence.
+- **`reconsider_if`** — the condition that would change the answer, concrete enough to
+  evaluate without re-litigating. Without it this list becomes a graveyard that the next run
+  re-derives from scratch, which is the cost the whole state exists to avoid.
+
+`emit-gate.py` requires both, and requires the `refuted` block: a finding nobody proved has
+not earned the right to be remembered as true.
+
 **`process_friction`** — what the audit cost you that the audit's subject did not cause: a
 phase that hung, a command that failed silently, a flag that was accepted and ignored. A
 cold run invented this key because it had nowhere to put the four defects it had just found

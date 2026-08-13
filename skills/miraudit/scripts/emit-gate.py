@@ -94,6 +94,25 @@ def check(doc):
                 fail(w, f"refuted.{key} has no note. The verdict without the fact behind "
                         "it is the same unchecked claim in a smaller box.")
 
+    # not_raised carries the same proof burden as findings -- it is a CONFIRMED finding
+    # somebody chose not to send. Only the two judgement fields are extra.
+    for i, f in enumerate(doc.get("not_raised", [])):
+        w = f"not_raised[{i}] {f.get('id', '<no id>')}"
+        for k in ("why_not", "reconsider_if"):
+            if not (f.get(k) or "").strip():
+                fail(w, f"{k} is empty. Without it this list is a graveyard the next run "
+                        "re-derives from scratch, which is what the state exists to avoid.")
+        ref = f.get("refuted")
+        if not isinstance(ref, dict):
+            fail(w, "no `refuted` block. Deciding not to send something is not a reason to "
+                    "skip proving it: a finding nobody proved has not earned the right to "
+                    "be remembered as true.")
+        else:
+            for key, question in ROWS.items():
+                row = ref.get(key)
+                if not isinstance(row, dict) or row.get("verdict") not in VERDICTS:
+                    fail(w, f"refuted.{key} unanswered or invalid — {question}")
+
     for i, d in enumerate(doc.get("dismissed", [])):
         if not (d.get("killed_by") or "").strip():
             fail(f"dismissed[{i}] {d.get('id', '<no id>')}",
@@ -122,6 +141,7 @@ def main(argv):
     bad = check(doc)
     print(f"emit gate: {os.path.basename(path)}")
     print(f"  findings {len(doc.get('findings', []))}  "
+          f"not_raised {len(doc.get('not_raised', []))}  "
           f"dismissed {len(doc.get('dismissed', []))}  "
           f"reported {len(doc.get('reported', []))}")
     if not bad:
