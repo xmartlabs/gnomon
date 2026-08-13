@@ -68,6 +68,14 @@ its judgement never becomes the verdict.
    arithmetic driven by its imported constants. Without one, a number here could be the scan
    misfiring rather than a measurement.
 
+   When the control is a whole second pipeline run — a patched copy against an unpatched one
+   — **`scripts/run-arms.py` runs the arms at once**, and always runs `--checkout` as the arm
+   named `base`, because an A/B without its unpatched arm is not an A/B. An arm costs about
+   85 seconds, which is where a full audit's time actually goes: on one run the anchor and
+   all thirteen committed checks were finished 63 seconds in and everything after that was
+   arms. Concurrency stops at the copy rather than the arm, since `uv run --project` builds
+   `.venv` inside it, so two copies over two windows is 2x and not 4x.
+
 7. **`not_checked`, non-empty**, like any finding. Name the question you did not ask.
 
 ## What `_common.py` gives you

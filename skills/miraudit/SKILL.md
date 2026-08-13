@@ -73,6 +73,12 @@ is not evidence.
    axis from the terms in the scoring source and lists those absent from `signals`. What it
    emits are candidates for Phase 3, never findings.
 
+**`scripts/run-checks.py` runs them all at once** and writes the same `<check>.out` files,
+because they are independent read-only processes and doing them one at a time is a habit.
+It builds its list from the same `# miraudit-covers:` grep the manifest uses, so a check
+cannot be missing from the run while still looking covered, and it names what it skipped for
+want of a flag — a skipped check is not a passed one. Ad-hoc checks go in with `--also`.
+
 Use `scripts/` where a check exists, and expect the unscripted path to be normal rather
 than exceptional. **How many axes that is, and which, comes from the manifest — never from
 this file.** The list was prose once, was wrong about an axis for as long as it existed,
