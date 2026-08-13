@@ -3,6 +3,7 @@ import { POST, _resetRateLimitForTests } from "@/app/api/cli-auth/route";
 import { verifyToken } from "@/lib/auth";
 import { getDb, upsertPerson, upsertUpload } from "@/lib/db";
 import { useTempDbEnv, TEST_TEAM_TOKEN } from "./helpers/env";
+import { makeSummary } from "./fixtures/summary";
 import { postForm } from "./helpers/request";
 
 const CB = "http://127.0.0.1:8799/callback";
@@ -43,17 +44,29 @@ describe("POST /api/cli-auth", () => {
     expect(typeof uploaded[0].uploadedAt).toBe("number");
   });
 
-  it("emits uploaded_history in the current contract shape", async () => {
+  it("emits uploaded_history with the planner metadata", async () => {
     // gnomon/upload/mirdash.py:_history_from_query treats a missing
-    // uploaded_history as "legacy" and falls back to the older upload planner.
+    // uploaded_history as "legacy" and falls back to the older upload planner;
+    // a missing scoreContractId makes plan_upload re-upload every run.
     const db = getDb();
     const p = upsertPerson(db, "ada@example.com", "Ada");
-    upsertUpload(db, { personId: p.id, monthKey: "2026-05", windowMonths: 6, summaryJson: "{}" });
+    upsertUpload(db, {
+      personId: p.id,
+      monthKey: "2026-05",
+      windowMonths: 6,
+      summaryJson: JSON.stringify(makeSummary()),
+    });
 
     const history = JSON.parse(callbackOf(await post(ok)).searchParams.get("uploaded_history")!);
     expect(history.outcome).toBe("valid");
     expect(history.months).toEqual([
-      { monthKey: "2026-05", uploadedAt: expect.any(Number) },
+      {
+        monthKey: "2026-05",
+        uploadedAt: expect.any(Number),
+        scoreContractId: "aq-v11",
+        coverage: { flag: "complete", indexed: 171, transcripts: 171 },
+        totalSessions: 171,
+      },
     ]);
   });
 
@@ -91,6 +104,25 @@ describe("POST /api/cli-auth", () => {
   ])("coerces count=%j to %i tokens", async (count, expected) => {
     const loc = callbackOf(await post({ ...ok, count }));
     expect(JSON.parse(loc.searchParams.get("tokens")!)).toHaveLength(expected);
+  });
+
+  it("cannot be un-throttled by rotating x-forwarded-for", async () => {
+    // The header is client-supplied; honoring it by default would hand an
+    // attacker a fresh bucket per request against the shared TEAM_TOKEN.
+    const spoof = (i: number) =>
+      POST(
+        new Request("http://test/api/cli-auth", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "x-forwarded-for": `10.0.0.${i}`,
+          },
+          body: new URLSearchParams({ ...ok, team_token: "wrong" }).toString(),
+        })
+      );
+    let last!: Response;
+    for (let i = 1; i <= 6; i++) last = await spoof(i);
+    expect(last.status).toBe(429);
   });
 
   it("throttles repeated wrong team tokens with 429", async () => {

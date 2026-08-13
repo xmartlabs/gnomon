@@ -84,6 +84,40 @@ describe("auth", () => {
     expect(isLoopbackRedirect("http://127.0.0.1.evil.com/cb")).toBe(false);
     expect(isLoopbackRedirect("not a url")).toBe(false);
   });
+
+  it.each([
+    // Reads as evil.com to a human, as 127.0.0.1 to the parser.
+    "http://evil.com@127.0.0.1:8799/callback",
+    "http://user:pass@localhost:8799/callback",
+    "http://2130706433:8799/callback", // decimal loopback alias
+    "http://0177.0.0.1:8799/callback", // octal loopback alias
+    "http://[::1]:8799/callback", // IPv6 loopback — not a form the CLI emits
+    "http://lοcalhost:8799/callback", // Greek omicron homoglyph
+  ])("isLoopbackRedirect rejects the non-contract form %s", (uri) => {
+    expect(isLoopbackRedirect(uri)).toBe(false);
+  });
+});
+
+describe("auth with a blank JWT_SECRET", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "gnomon-auth-"));
+    process.env.DATA_DIR = dir;
+    process.env.JWT_SECRET = ""; // set-but-empty is an unset secret
+    _resetSecretForTests();
+  });
+
+  afterEach(() => {
+    delete process.env.DATA_DIR;
+    delete process.env.JWT_SECRET;
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("falls back to the persisted secret instead of signing with a zero-length key", async () => {
+    const [token] = await issueTokens({ id: 5, email: "a@b.c", name: "A" }, 1);
+    expect(await verifyToken(token)).toEqual({ personId: 5, email: "a@b.c", name: "A" });
+  });
 });
 
 describe("auth without JWT_SECRET", () => {

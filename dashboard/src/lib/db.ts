@@ -99,10 +99,26 @@ export function listPeople(db: Db) {
 
 export function uploadsForPerson(db: Db, personId: number) {
   const rows = db.prepare(
-    `SELECT month_key AS monthKey, window_months AS windowMonths, summary_json AS summaryJson
+    `SELECT month_key AS monthKey, window_months AS windowMonths,
+            uploaded_at AS uploadedAt, summary_json AS summaryJson
      FROM uploads WHERE person_id = ? ORDER BY month_key`
-  ).all(personId) as { monthKey: string; windowMonths: number; summaryJson: string }[];
-  return rows.map((r) => ({ monthKey: r.monthKey, windowMonths: r.windowMonths, summary: JSON.parse(r.summaryJson) }));
+  ).all(personId) as {
+    monthKey: string; windowMonths: number; uploadedAt: number; summaryJson: string;
+  }[];
+  return rows.map((r) => ({
+    monthKey: r.monthKey,
+    windowMonths: r.windowMonths,
+    uploadedAt: r.uploadedAt,
+    summary: JSON.parse(r.summaryJson),
+  }));
+}
+
+export function getUpload(db: Db, personId: number, monthKey: string) {
+  const row = db.prepare(
+    `SELECT window_months AS windowMonths, summary_json AS summaryJson
+     FROM uploads WHERE person_id = ? AND month_key = ?`
+  ).get(personId, monthKey) as { windowMonths: number; summaryJson: string } | undefined;
+  return row && { windowMonths: row.windowMonths, summary: JSON.parse(row.summaryJson) };
 }
 
 export function latestUploads(db: Db) {
