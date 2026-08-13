@@ -48,6 +48,11 @@ export function getDb(): Db {
   return _db;
 }
 
+/** Test-only: drop the singleton so the next getDb() honors a new GNOMON_DB_PATH. */
+export function _resetDbForTests(): void {
+  _db = null;
+}
+
 export function upsertPerson(db: Db, email: string, name: string) {
   const normEmail = email.toLowerCase().trim();
   db.prepare(

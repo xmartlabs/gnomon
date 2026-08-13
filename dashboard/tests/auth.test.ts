@@ -10,8 +10,8 @@ import {
   isLoopbackRedirect,
   _resetSecretForTests,
 } from "@/lib/auth";
+import { TEST_JWT_SECRET as JWT_SECRET } from "./helpers/env";
 
-const JWT_SECRET = "test-jwt-secret-at-least-32-bytes!!";
 const SECRET = new TextEncoder().encode(JWT_SECRET);
 
 /** Mint a token, varying only the field under test. */
