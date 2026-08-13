@@ -59,11 +59,16 @@ ONE CANONICAL COMBINED AQ:
 """
 
 # The MODULE is imported, not the two Model mix constants by name, and
-# `blend_model_mix_components` reads them as attributes at call time. `from aq import X`
-# would bind a copy of the reference here, which is correct in production but makes the
-# coupling unprovable at runtime -- patching the registered constant would move compute_aq
-# and leave the blend on the old value. Reading through the module is the same technique
-# calibration.py's `_registered_value` uses, and for the same reason: track the live module.
+# `blend_model_mix_components` reads them as attributes at call time. Binding the names
+# here would give this module a SEPARATE binding, which tracks a source edit but not a
+# runtime patch -- and a runtime patch is exactly how the per-constant sensitivity tests
+# prove the coupling holds. Reading through the module is the technique
+# calibration.py's `_registered_value` already uses, for the same stated reason.
+#
+# The blend is REPLAY-ONLY since v11 (see `_blend_profiles` below: a live run supplies no
+# bucket components). That lowers the stakes but does not remove them -- it still scores
+# pre-v11 payloads, so a private copy of a registered target would publish numbers that
+# disagree with the live scorer after any retune.
 from gnomon.scoring import aq as _aq
 from gnomon.scoring.aq import compute_aq
 from gnomon.scoring.gstack import (
