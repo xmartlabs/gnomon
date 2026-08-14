@@ -7,7 +7,9 @@ type Mix = { model: string; pct: number }[];
  * `pct` is a 0..1 fraction (summary.py rounds turns/model_total to 3 places).
  */
 export function ModelMixBar({ mix }: { mix: Mix }) {
-  const shown = mix.filter((m) => m.pct > 0);
+  // Ranked by share so the series colours mean the same thing here as they do
+  // in the usage chart, whatever order the payload listed the models in.
+  const shown = mix.filter((m) => m.pct > 0).sort((a, b) => b.pct - a.pct);
   if (!shown.length) return <div className="text-[13px] text-ink-60">No model data</div>;
 
   return (

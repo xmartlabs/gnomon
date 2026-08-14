@@ -87,7 +87,11 @@ export default function TeamOverviewPage() {
                 The people
               </h2>
               <span className="num text-xs text-ink-60">
-                Window {o.currentMonth ?? "—"} · sorted by AQ
+                {/* Only claim a single window when everyone is actually in it. */}
+                {o.coverage.withCurrentMonth === o.people.length
+                  ? `Window ${o.currentMonth ?? "—"}`
+                  : "Latest window per person"}{" "}
+                · sorted by AQ
               </span>
             </div>
             <PeopleTable rows={o.people} monthKey={o.currentMonth} />

@@ -268,7 +268,9 @@ export type PersonProfile = {
   levelOverTime: AqPoint[];
   pillars: { name: string; weight: number; score: number;
              axes: { name: string; weight: number; score: number }[] }[];
-  scorecard: { key: "execution" | "planning" | "engineering"; value: number; gloss: string;
+  // `value` is null when the summary carries no score for that key — printing
+  // 0.0 would read as a real, very low score rather than missing data.
+  scorecard: { key: "execution" | "planning" | "engineering"; value: number | null; gloss: string;
                trend: { monthKey: string; value: number }[] }[];
   explore: ExploreTile[];
   usage: { sessions: number; prompts: number; actionsPerPrompt: number };
@@ -312,7 +314,9 @@ export function buildPersonProfile(db: Db, personId: number, monthKey: string): 
 
   const scorecard = SCORE_KEYS.map((key) => ({
     key,
-    value: toNum(s?.profile?.scores?.[key]?.value),
+    value: Number.isFinite(Number(s?.profile?.scores?.[key]?.value))
+      ? Number(s.profile.scores[key].value)
+      : null,
     gloss: String(s?.profile?.scores?.[key]?.gloss ?? ""),
     trend: ups
       .map((u) => ({ monthKey: u.monthKey, value: Number(u.summary?.profile?.scores?.[key]?.value) }))
