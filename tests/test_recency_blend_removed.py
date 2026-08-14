@@ -48,7 +48,7 @@ from gnomon.cli import local  # noqa: E402
 from gnomon.scoring import aggregate  # noqa: E402
 from gnomon.scoring.aq import DEFAULT_SCORING_WINDOW_MONTHS  # noqa: E402
 from gnomon.scoring.calibration import (  # noqa: E402
-    BLEND_CALIBRATION_CONSTANT_NAMES, CALIBRATION_FINGERPRINTS, calibration_fingerprint,
+    EXTERNAL_CALIBRATION_CONSTANT_NAMES, CALIBRATION_FINGERPRINTS, calibration_fingerprint,
 )
 from gnomon.scoring.versioning import (  # noqa: E402
     SCORE_CONTRACT_ID, SCORING_INPUTS_VERSION, SKILL_DEDUP_INPUTS_VERSION,
@@ -67,15 +67,21 @@ _NO_CHURN = {"repos_seen": 0, "repos_with_commits": 0, "insertions": 0,
 _MONTH_ARGS = ["--since=2026-05-01", "--until=2026-05-31"]
 _OUTSIDE_THE_OLD_BUCKET = "2026-05-01T12:00:00Z"
 _INSIDE_THE_OLD_BUCKET = "2026-05-20T12:00:00Z"
-# Test runs authored on each of those two days -- every tool call in this corpus is one, so
-# `tool_calls_total` is their sum. The split is what makes the mixed-basis assertion
-# non-vacuous: a blend-primary reading sees only the mid-month day. Both slices are kept
-# well above the rate evidence floor (TEST_RUNS_PER_CALL_TARGET implies ~40 tool calls), so
-# the Verification axis is genuinely scored in BOTH components and the signal really is
-# published on both sides -- a thinner corpus drops the axis entirely and the comparison
-# becomes 0 == 0.
+# Test runs authored on each of those two days -- `shell_test_runs` stays a published
+# Verification diagnostic (v18 moved its SCORED half to a per-session coverage fraction,
+# which this fixture never reaches -- no Edit/Write anywhere, so eligible_change_sessions
+# is 0 and coverage is N/A). review-Skill calls are added alongside them so Verification's
+# ONE remaining per-tool-call RATE term (review_skills) is genuinely scored on both sides of
+# the old bucket boundary: `tool_calls_total` is the sum of every call below, split the same
+# way, so the mixed-basis assertion stays non-vacuous -- a blend-primary reading would see
+# only the mid-month day. Both slices are kept well above the rate evidence floor
+# (REVIEW_SKILLS_PER_CALL_TARGET implies ~250 tool calls total), so the Verification axis is
+# genuinely scored -- a thinner corpus drops the axis entirely and the comparison becomes
+# 0 == 0.
 _TEST_RUNS_OUTSIDE = 140
 _TEST_RUNS_INSIDE = 60
+_REVIEW_CALLS_OUTSIDE = 40
+_REVIEW_CALLS_INSIDE = 20
 
 
 def _prompt(sid, ts):
@@ -92,12 +98,24 @@ def _test_run(sid, ts):
                  "input": {"command": "python3 -m pytest tests/"}}]}}
 
 
+def _review_call(sid, ts):
+    return {"type": "assistant", "sessionId": sid, "timestamp": ts, "cwd": "/repo",
+            "isSidechain": False,
+            "message": {"role": "assistant", "content": [
+                {"type": "tool_use", "name": "Skill",
+                 "input": {"skill": "verify-changes"}}]}}
+
+
 def _corpus_events():
     events = []
-    for day, sid, runs in ((_OUTSIDE_THE_OLD_BUCKET, "s-first-of-month", _TEST_RUNS_OUTSIDE),
-                           (_INSIDE_THE_OLD_BUCKET, "s-mid-month", _TEST_RUNS_INSIDE)):
+    for day, sid, test_runs, review_calls in (
+            (_OUTSIDE_THE_OLD_BUCKET, "s-first-of-month",
+             _TEST_RUNS_OUTSIDE, _REVIEW_CALLS_OUTSIDE),
+            (_INSIDE_THE_OLD_BUCKET, "s-mid-month",
+             _TEST_RUNS_INSIDE, _REVIEW_CALLS_INSIDE)):
         events.append(_prompt(sid, day))
-        events.extend(_test_run(sid, day) for _ in range(runs))
+        events.extend(_test_run(sid, day) for _ in range(test_runs))
+        events.extend(_review_call(sid, day) for _ in range(review_calls))
     return events
 
 
@@ -130,7 +148,8 @@ class _RealRun(unittest.TestCase):
             CURSOR_DIR=os.path.join(empty, "cursor", "projects"),
             CURSOR_DB=os.path.join(empty, "cursor", "state.vscdb"),
         )
-        argv = ["paxel.py", "--summary", "--no-open", "--tools", *_MONTH_ARGS]
+        argv = ["paxel.py", "--include-low-volume", "--summary", "--no-open",
+                "--tools", *_MONTH_ARGS]
         captured = io.StringIO()
         with mock.patch.multiple(paxel, OUT_DIR=out, **src_dirs), \
                 mock.patch("gnomon.coverage.HISTORY_PATH",
@@ -150,23 +169,29 @@ class _RealRun(unittest.TestCase):
 
     def test_the_corpus_is_shaped_the_way_the_rest_of_this_file_assumes(self):
         """Guard against every assertion below passing for the wrong reason. If the
-        synthetic corpus stops carrying test runs on BOTH sides of the old bucket
-        boundary, the mixed-basis test cannot fail even while the bug is present."""
+        synthetic corpus stops carrying test runs / review calls on BOTH sides of the old
+        bucket boundary, the mixed-basis test cannot fail even while the bug is present."""
         self.assertEqual(self.stats["volume"]["total_sessions"], 2)
         self.assertEqual(self.stats["behavior"]["shell_test_runs"],
                          _TEST_RUNS_OUTSIDE + _TEST_RUNS_INSIDE)
         self.assertEqual(self.stats["volume"]["tool_calls_total"],
-                         _TEST_RUNS_OUTSIDE + _TEST_RUNS_INSIDE)
+                         _TEST_RUNS_OUTSIDE + _TEST_RUNS_INSIDE
+                         + _REVIEW_CALLS_OUTSIDE + _REVIEW_CALLS_INSIDE)
         # Both sides carry real weight, so a window mix-up cannot cancel out.
         self.assertGreater(_TEST_RUNS_OUTSIDE, 0)
         self.assertGreater(_TEST_RUNS_INSIDE, 0)
-        # The Verification axis must actually be scored, or `test_runs` never reaches
+        self.assertGreater(_REVIEW_CALLS_OUTSIDE, 0)
+        self.assertGreater(_REVIEW_CALLS_INSIDE, 0)
+        # The Verification axis must actually be scored, or `review_skills` never reaches
         # `signals` in either component and the mixed-basis comparison reads 0 == 0.
+        # `shell_test_runs` is a published diagnostic on the same axis (v18 dropped its
+        # scored rate term), checked here too so both signals stay reachable.
         signals = {name: axis["signals"]
                    for pillar in self.stats["agentic"]["pillars"]
                    for name, axis in ((axis["name"], axis) for axis in pillar["axes"])}
         self.assertIn("Verification", signals)
-        self.assertIn("test_runs", signals["Verification"])
+        self.assertIn("shell_test_runs", signals["Verification"])
+        self.assertIn("review_skills", signals["Verification"])
 
 
 class TestThePublishedScoreIsNoLongerBlended(_RealRun):
@@ -200,7 +225,7 @@ class TestThePublishedScoreIsNoLongerBlended(_RealRun):
         described the calendar month."""
         verification = next(axis for pillar in self.summary["profile"]["aq"]["pillars"]
                             for axis in pillar["axes"] if axis["name"] == "Verification")
-        self.assertEqual(verification["signals"]["test_runs"],
+        self.assertEqual(verification["signals"]["shell_test_runs"],
                          self.stats["behavior"]["shell_test_runs"])
         self.assertEqual(verification["signals"]["tool_calls"],
                          self.stats["volume"]["tool_calls_total"])
@@ -209,23 +234,33 @@ class TestThePublishedScoreIsNoLongerBlended(_RealRun):
 class TestToolsDiagnosticReadsOneWindow(_RealRun):
     """The live bug. `--tools` divided a `recent_30d` numerator by a full-window
     denominator, so the table under-reported every count for any month whose first day
-    fell outside the trailing 30 days -- silently, with no marker anywhere."""
+    fell outside the trailing 30 days -- silently, with no marker anywhere.
+
+    Exercised through `review_skills`: v18 dropped `shell_test_runs`'s scored per-call rate
+    from `_TOOLS_DIAG` (it moved to a per-session coverage fraction, not a per-call rate), so
+    it no longer has a `--tools` row at all. review_skills is Verification's remaining
+    per-tool-call rate and is still read straight off `stats['agentic']`, so it is exactly as
+    exposed to the recency-blend bug this class pins."""
+
+    def _verification_signals(self):
+        return next(axis["signals"] for pillar in self.stats["agentic"]["pillars"]
+                    for axis in pillar["axes"] if axis["name"] == "Verification")
 
     def test_counts_come_from_the_same_window_as_the_denominator(self):
         self.assertEqual(
-            self.tools_record["counts"]["shell_test_runs"],
-            self.stats["behavior"]["shell_test_runs"],
-            "the --tools table counted test runs over the trailing-30-day recency "
-            "bucket while dividing by the full scoring window's tool calls")
+            self.tools_record["counts"]["review_skills"],
+            self._verification_signals()["review_skills"],
+            "the --tools table counted review-skill calls over the trailing-30-day "
+            "recency bucket while dividing by the full scoring window's tool calls")
 
     def test_the_denominator_is_the_scoring_window(self):
         self.assertEqual(self.tools_record["tool_calls"],
                          self.stats["volume"]["tool_calls_total"])
 
     def test_the_reported_rate_is_that_single_ratio(self):
-        expected = round(self.stats["behavior"]["shell_test_runs"]
+        expected = round(self._verification_signals()["review_skills"]
                          / self.stats["volume"]["tool_calls_total"], 6)
-        self.assertEqual(self.tools_record["rates"]["shell_test_runs"], expected)
+        self.assertEqual(self.tools_record["rates"]["review_skills"], expected)
 
 
 class TestTheProducingSideIsGone(unittest.TestCase):
@@ -314,9 +349,9 @@ class TestScoreContractMovesWithTheRemoval(unittest.TestCase):
         the registry has to see it. `RECENT_WEIGHT` is registered as an ABSENT constant --
         the fingerprint records that it no longer exists, which is exactly the fact this
         contract publishes."""
-        self.assertEqual(dict(BLEND_CALIBRATION_CONSTANT_NAMES)["RECENT_WEIGHT"],
+        self.assertEqual(dict(EXTERNAL_CALIBRATION_CONSTANT_NAMES)["RECENT_WEIGHT"],
                          "gnomon.scoring.aggregate")
-        self.assertEqual(dict(BLEND_CALIBRATION_CONSTANT_NAMES)["HISTORY_WEIGHT"],
+        self.assertEqual(dict(EXTERNAL_CALIBRATION_CONSTANT_NAMES)["HISTORY_WEIGHT"],
                          "gnomon.scoring.aggregate")
 
     def test_reintroducing_a_blend_weight_moves_the_fingerprint(self):

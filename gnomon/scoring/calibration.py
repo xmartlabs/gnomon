@@ -13,14 +13,15 @@ from gnomon.scoring import aq
 CALIBRATION_CONSTANT_NAMES = (
     # scoring window: it determines the corpus all window-sensitive inputs score.
     "DEFAULT_SCORING_WINDOW_MONTHS",
-    # rate targets -- the six that share the tool_calls_total denominator
+    # rate targets -- the three that share the tool_calls_total denominator. (v17 removed
+    # TOOLSEARCH_PER_CALL_TARGET, TASK_CALLS_PER_CALL_TARGET (whose Discipline rate term was
+    # dropped as trivially saturated), and TEST_RUNS_PER_CALL_TARGET (whose Verification
+    # density term was replaced by a no-target per-session coverage fraction) -- all three
+    # constants left this set, the source of 17:17:17's genuinely new fingerprint.)
     "SKILLS_TOTAL_PER_CALL_TARGET",
-    "TOOLSEARCH_PER_CALL_TARGET",
-    "TASK_CALLS_PER_CALL_TARGET",
-    "TEST_RUNS_PER_CALL_TARGET",
     "REVIEW_SKILLS_PER_CALL_TARGET",
     "COMPOUNDING_WRITES_PER_CALL_TARGET",
-    # the evidence floor those six are scored through (occurrences implied by the target)
+    # the evidence floor those rate terms are scored through (occurrences implied by target)
     "RATE_MIN_EXPECTED_AT_TARGET",
     # absolute count ceilings -- the window-sensitive ones
     "SUBAGENT_TYPES_DISTINCT_CEILING",
@@ -38,6 +39,11 @@ CALIBRATION_CONSTANT_NAMES = (
     "PLANNING_TARGET",
     "PLANNING_PRACTICE_TARGET",
     "CONTEXT_INTELLIGENCE_TARGET",
+    "LINKED_ROUTING_SUCCESS_RATE_TARGET",
+    "API_RETRIES_PER_100_TOOLS_TARGET",
+    "MODELS_DISTINCT_CEILING",
+    "OFFLOAD_SHARE_TARGET",
+    "CLI_SHARE_TARGET",
     "CHURN_MIN",
     "WINDOW",
     "PLAN_MIN_LINES",
@@ -60,7 +66,19 @@ NON_CALIBRATION_CONSTANT_NAMES = ()
 
 # Score-affecting calibration outside aq.py. Registered absence is fingerprinted,
 # preserving compatibility for replayed payloads that use historical blend inputs.
-BLEND_CALIBRATION_CONSTANT_NAMES = (
+EXTERNAL_CALIBRATION_CONSTANT_NAMES = (
+    ("DELEGATION_RUNS_PER_PROMPT_TARGET", "gnomon.scoring.gstack"),
+    ("ERROR_RATE_PER_100_TOOLS_TARGET", "gnomon.scoring.gstack"),
+    ("EVIDENCE_SATURATION_TOOL_CALLS", "gnomon.scoring.gstack"),
+    ("EXECUTION_OUTPUT_LINES_PER_HOUR_TARGET", "gnomon.scoring.gstack"),
+    ("FILES_HAMMERED_PER_SESSION_TARGET", "gnomon.scoring.gstack"),
+    ("ITERATION_DEPTH_MEAN_DECAY_SPAN", "gnomon.scoring.gstack"),
+    ("ITERATION_DEPTH_MEAN_TARGET", "gnomon.scoring.gstack"),
+    ("ITERATION_DEPTH_P90_DECAY_SPAN", "gnomon.scoring.gstack"),
+    ("ITERATION_DEPTH_P90_TARGET", "gnomon.scoring.gstack"),
+    ("PLANNING_EXPLORE_RATIO_TARGET", "gnomon.scoring.gstack"),
+    ("QUALITY_CEREMONY_PER_SESSION_TARGET", "gnomon.scoring.gstack"),
+    ("THINKING_BLOCKS_PER_SESSION_TARGET", "gnomon.scoring.gstack"),
     ("RECENT_WEIGHT", "gnomon.scoring.aggregate"),
     ("HISTORY_WEIGHT", "gnomon.scoring.aggregate"),
 )
@@ -96,7 +114,7 @@ def calibration_fingerprint():
              for name in sorted(CALIBRATION_CONSTANT_NAMES)]
     lines += [
         f"{module_path}.{name}={_registered_value(importlib.import_module(module_path), name)}"
-        for name, module_path in sorted(BLEND_CALIBRATION_CONSTANT_NAMES)
+        for name, module_path in sorted(EXTERNAL_CALIBRATION_CONSTANT_NAMES)
     ]
     return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()[:16]
 
@@ -129,13 +147,38 @@ CALIBRATION_FINGERPRINTS = {
     # PER_CALL_TARGET (COMPOUNDING_WRITES_PER_CALL_TARGET stays 0.0018), weight, or
     # denominator moved -- so the digest is unchanged from 13:13:13/14:14:14/15:15:15.
     "16:16:16": "94f38d0963b1b195",
+    # v17 (scratchpad writes excluded from change-session eligibility; toolsearch rate term
+    # dropped from Tool command + Token economy; Verification per-call density -> pure-fraction
+    # per-session coverage; Discipline task-tool rate term dropped as trivially saturated): a
+    # REAL score delta (Tool command and Token economy renormalize; Verification renormalizes
+    # when coverage is N/A and reads a fraction otherwise; Discipline renormalizes to
+    # .667/.333) AND a REAL calibration delta -- TOOLSEARCH_PER_CALL_TARGET,
+    # TEST_RUNS_PER_CALL_TARGET, and TASK_CALLS_PER_CALL_TARGET were ALL removed from
+    # CALIBRATION_CONSTANT_NAMES, so three registered constants genuinely left the
+    # fingerprinted set. The digest therefore CHANGES (a unique new value), and 17:17:17 is
+    # deliberately NOT in ZERO_CALIBRATION_DELTA_CONTRACT_IDS.
+    "17:17:17": "7fd9a230f7fb2264",
+    # v18 (PowerShell admitted to the shell taxonomy): `PowerShell` joins EXEC_TOOLS and the
+    # accumulator's CLI accounting is keyed on taxonomy.SHELL_TOOLS instead of the literal
+    # `name == "Bash"`. A real score delta (Grounding, Tool command, Token economy and AQ
+    # move for any corpus with PowerShell calls -- see versioning.py's v18 note on why Token
+    # economy was an active penalty, not a neutral gap), but no registered
+    # CALIBRATION_CONSTANT_NAMES value changed: CLIS_DISTINCT_CEILING stays 40 and no rate
+    # target, weight, or denominator moved. The digest is therefore unchanged from 17:17:17,
+    # the same documented-duplicate template as 14/15/16 against 13:13:13.
+    "18:18:18": "7fd9a230f7fb2264",
+    # v19 names the previously inline gstack and AQ score-affecting targets. Formula values
+    # remain unchanged, but the governed calibration surface is genuinely new and therefore
+    # gets a unique fingerprint rather than a documented zero-delta duplicate.
+    "19:19:19": "8359e20e5f0fce17",
 }
 
 # Contract IDs whose fingerprint is a DOCUMENTED, deliberate duplicate of the contract
 # they immediately followed: the bump was score-affecting through a derivation/taxonomy
-# change (H10 active_hours union, WU4 ORCHESTRATION_TOOLS gate), not a registered
-# CALIBRATION_CONSTANT_NAMES value, so no constant moved and the digest is legitimately
-# unchanged. test_calibration_contract.py's injectivity guard excludes exactly these IDs;
-# any OTHER duplicate fingerprint remains the accidental-drift failure mode it exists to
-# catch.
-ZERO_CALIBRATION_DELTA_CONTRACT_IDS = frozenset({"14:14:14", "15:15:15", "16:16:16"})
+# change (H10 active_hours union, WU4 ORCHESTRATION_TOOLS gate, v18's PowerShell shell
+# taxonomy), not a registered CALIBRATION_CONSTANT_NAMES value, so no constant moved and the
+# digest is legitimately unchanged. test_calibration_contract.py's injectivity guard excludes
+# exactly these IDs; any OTHER duplicate fingerprint remains the accidental-drift failure
+# mode it exists to catch.
+ZERO_CALIBRATION_DELTA_CONTRACT_IDS = frozenset(
+    {"14:14:14", "15:15:15", "16:16:16", "18:18:18"})

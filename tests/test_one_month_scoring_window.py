@@ -247,7 +247,7 @@ class TestSummaryPublishesTheSelfHealSeries(unittest.TestCase):
             CURSOR_DIR=os.path.join(empty, "cursor", "projects"),
             CURSOR_DB=os.path.join(empty, "cursor", "state.vscdb"),
         )
-        argv = ["paxel.py", "--summary", "--no-open",
+        argv = ["paxel.py", "--summary", "--include-low-volume", "--no-open",
                 "--since=2026-07-01", "--until=2026-07-31"]
         with mock.patch.multiple(paxel, OUT_DIR=out, **src_dirs), \
                 mock.patch("gnomon.coverage.HISTORY_PATH",
@@ -286,6 +286,11 @@ class TestPartialScoringIsDisclosed(unittest.TestCase):
         base_behavior = {
             "planning_ratio_explore_to_doing": 0.5, "actions_per_prompt": 8,
             "shell_test_runs": 20, "ordered_facts_state": "measured",
+            # v18 Verification coverage numerator: must be explicitly present (not just
+            # implied by ordered_facts_state) for the axis to be genuinely FULLY measured
+            # -- an absent key now scores as N/A (see gnomon/scoring/inputs.py's absence
+            # fix), not a fabricated 0.
+            "test_covered_change_sessions": 20,
             "eligible_change_sessions": 40, "planned_eligible_sessions": 20,
             "evidence_eligible_sessions": 18, "orchestratable_sessions": 10,
             "delegated_orchestratable_sessions": 8,
@@ -322,18 +327,28 @@ class TestPartialScoringIsDisclosed(unittest.TestCase):
         self.assertAlmostEqual(axis["partial_terms"]["weight_scored"], 0.4)
 
     def test_an_eligibility_floor_drop_is_disclosed(self):
-        # eligible_change_sessions < MIN_ELIGIBLE_SESSIONS drops ordered_planning; the
-        # planning-practice floor drops planning_habit. Discipline collapses to the
-        # task-tool rate alone at 100% weight -- the measured 1-month failure mode.
+        # eligible_change_sessions < MIN_ELIGIBLE_SESSIONS drops ordered_planning -- the
+        # measured 1-month failure mode. v18 dropped Discipline's third term (the task-tool
+        # rate), so only two terms remain: planning_habit (.40) survives on the default
+        # 30/100 share (above its own floor), and Discipline renormalizes onto it alone.
         axis = self._axis(
             self._stats(20_000, eligible_change_sessions=3, planned_eligible_sessions=1,
                         evidence_eligible_sessions=1,
-                        planning_skill_eligible_sessions=2, planning_skill_sessions=1),
+                        # Fully qualify the planning-skill scope (all 6 fields) so
+                        # planning_habit is genuinely MEASURED rather than dropped for
+                        # incomplete evidence -- the base fixture only sets 3 of the 6
+                        # `_PLANNING_SKILL_NEW_FIELDS`, which `_planning_skill_evidence`
+                        # treats as unmeasured.
+                        planning_skill_sessions=30, planning_skill_eligible_sessions=100,
+                        planning_skill_unmeasured_sessions=0,
+                        planning_skill_session_scope_state="measured",
+                        planning_skill_session_share=0.3,
+                        planning_skill_session_coverage=1.0),
             "Breadth", "Discipline")
         self.assertIn("partial_terms", axis)
         self.assertEqual(axis["partial_terms"]["scored"], 1)
-        self.assertEqual(axis["partial_terms"]["total"], 3)
-        self.assertAlmostEqual(axis["partial_terms"]["weight_scored"], 0.4)
+        self.assertEqual(axis["partial_terms"]["total"], 2)
+        self.assertAlmostEqual(axis["partial_terms"]["weight_scored"], round(0.4 / 0.6, 4))
 
     def test_disclosure_never_moves_the_score(self):
         stats = self._stats(300)
@@ -357,8 +372,11 @@ class TestPartialScoringIsDisclosed(unittest.TestCase):
                      for axis in pillar["axes"] if "partial_terms" in axis}
         dropped = {name for pillar in profile["pillars"]
                    for name in pillar.get("not_applicable", [])}
-        wsum_axes = {"Skill fluency", "Tool command (MCP + CLI)", "Discipline",
-                     "Verification", "Compounding", "Token economy", "Orchestration"}
+        # Tool command and Token economy are intentionally absent: v17 dropped the only
+        # rate/cap term either axis carried (toolsearch), so both are now pure absolute-count
+        # wsum axes that can never lose a term and thus never disclose or drop.
+        wsum_axes = {"Skill fluency", "Discipline",
+                     "Verification", "Compounding", "Orchestration"}
         for name in wsum_axes:
             with self.subTest(axis=name):
                 self.assertTrue(

@@ -537,7 +537,7 @@ class TestContractAwareHistory(unittest.TestCase):
 
     def test_worse_stored_coverage_plans_refresh_then_current(self):
         history = {"state": "valid", "months": [
-            {"monthKey": "2025-12", "uploadedAt": 1,
+            {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": self.CONTRACT,
              "coverage": {"flag": "insufficient", "indexed": 50, "transcripts": 0}},
         ]}
         self.assertEqual(
@@ -550,7 +550,8 @@ class TestContractAwareHistory(unittest.TestCase):
 
     def test_legacy_entry_with_total_sessions_stays_current_only(self):
         history = {"state": "valid", "months": [
-            {"monthKey": "2025-12", "uploadedAt": 1, "totalSessions": 50},
+            {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": self.CONTRACT,
+             "totalSessions": 50},
         ]}
         self.assertEqual(
             plan_upload(
@@ -566,7 +567,8 @@ class TestContractAwareHistory(unittest.TestCase):
 
     def test_repeated_legacy_entry_plan_is_idempotent(self):
         history = {"state": "valid", "months": [
-            {"monthKey": "2025-12", "uploadedAt": 1, "totalSessions": 50},
+            {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": self.CONTRACT,
+             "totalSessions": 50},
         ]}
         producible = lambda mk: (COVERAGE_RANK["complete"], 51)  # noqa: E731
 
@@ -588,7 +590,7 @@ class TestContractAwareHistory(unittest.TestCase):
 
     def test_coverage_with_lower_rank_still_refreshes(self):
         history = {"state": "valid", "months": [
-            {"monthKey": "2025-12", "uploadedAt": 1,
+            {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": self.CONTRACT,
              "coverage": {"flag": "partial", "indexed": 50, "transcripts": 50}},
         ]}
         self.assertEqual(
@@ -605,7 +607,7 @@ class TestContractAwareHistory(unittest.TestCase):
 
     def test_coverage_with_same_rank_and_transcripts_stays_current_only(self):
         history = {"state": "valid", "months": [
-            {"monthKey": "2025-12", "uploadedAt": 1,
+            {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": self.CONTRACT,
              "coverage": {"flag": "complete", "indexed": 50, "transcripts": 50}},
         ]}
         self.assertEqual(
@@ -623,7 +625,7 @@ class TestContractAwareHistory(unittest.TestCase):
     def test_same_coverage_rank_with_different_transcript_estimate_stays_current_only(self):
         """The local pre-check count is mtime-based, not server session-based."""
         history = {"state": "valid", "months": [
-            {"monthKey": "2025-12", "uploadedAt": 1,
+            {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": self.CONTRACT,
              "coverage": {"flag": "complete", "indexed": 24, "transcripts": 733}},
         ]}
         producible = lambda mk: (COVERAGE_RANK["complete"], 1809)  # noqa: E731
@@ -657,14 +659,14 @@ class TestContractAwareHistory(unittest.TestCase):
         previous_at_full_coverage = {
             "state": "valid",
             "months": [
-                {"monthKey": "2025-12", "uploadedAt": 2,
+                {"monthKey": "2025-12", "uploadedAt": 2, "scoreContractId": self.CONTRACT,
                  "coverage": {"flag": "complete", "indexed": 50, "transcripts": 50}},
             ],
         }
         previous_below_producible = {
             "state": "valid",
             "months": [
-                {"monthKey": "2025-12", "uploadedAt": 1,
+                {"monthKey": "2025-12", "uploadedAt": 1, "scoreContractId": self.CONTRACT,
                  "coverage": {"flag": "partial", "indexed": 50, "transcripts": 20}},
             ],
         }
@@ -683,8 +685,8 @@ class TestContractAwareHistory(unittest.TestCase):
         )
 
     def test_client_version_is_ignored_for_compatibility(self):
-        """scoreContractId/clientVersion are irrelevant to the comparison now --
-        only stored vs. producible coverage decides refresh (design decision B)."""
+        """clientVersion is irrelevant; scoreContractId triggers contract-upgrade
+        when mismatched (design decision B extended by contract-upgrade)."""
         same_contract_old_client = {
             "state": "valid",
             "months": [
@@ -719,7 +721,7 @@ class TestContractAwareHistory(unittest.TestCase):
                 active_contract=self.CONTRACT,
                 producible_coverage_for=lambda mk: (COVERAGE_RANK["complete"], 50),
             ),
-            [("2025-12", "refresh"), ("2026-01", "current")],
+            [("2025-12", "contract-upgrade"), ("2026-01", "current")],
         )
 
     def test_legacy_and_malformed_history_stay_current_only_on_repeated_runs(self):

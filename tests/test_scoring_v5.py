@@ -654,27 +654,32 @@ class TestDisciplinePlanningHabit(unittest.TestCase):
                          self._discipline(without)["score"])
 
     def test_unavailable_share_drops_the_term_and_renormalizes(self):
-        """Unmeasured planning scope must not be scored as zero planning discipline."""
+        """Unmeasured planning scope must not be scored as zero planning discipline. v18
+        dropped the task-tool rate term that used to keep Discipline alive on its own, so
+        with BOTH surviving terms (planning habit, ordered planning) unmeasured there is no
+        term left at all -- wsum returns None and the whole axis drops (renormalized away
+        from the pillar), never falling back to some other proxy or scoring zero."""
         unmeasured = self._stats(share=None)
         unmeasured["behavior"]["ordered_facts_state"] = "unmeasured"
-        axis = self._discipline(unmeasured)
-        expected = axis["weight"] * min(
-            (unmeasured["tools"]["task_tool_calls"]
-             + 0) / max(unmeasured["volume"]["total_sessions"], 1) / 1.0, 1.0)
-        self.assertAlmostEqual(axis["score"], expected, places=6)
         breadth = next(p for p in compute_aq(unmeasured)["pillars"]
                        if p["name"] == "Breadth")
-        self.assertNotIn("Discipline", set(breadth.get("not_applicable") or []))
+        self.assertIn("Discipline", set(breadth.get("not_applicable") or []))
+        self.assertNotIn("Discipline", {a["name"] for a in breadth["axes"]})
 
     def test_below_eligible_floor_drops_the_planning_habit_term(self):
         """A 1-of-2 corpus is 0.5 share and would max the term on noise. The floor that
-        already guards ordered planning must guard this one too."""
+        already guards ordered planning must guard this one too: below the floor, a thin
+        corpus with SOME raw share and a corpus with no signal at all must be treated
+        identically -- both drop the whole Discipline axis (no term survives) rather than
+        the thin corpus scoring on its floored-out share as if it were significant."""
         thin = self._stats(share=0.5, eligible=MIN_ELIGIBLE_SESSIONS - 1)
         thin["behavior"]["ordered_facts_state"] = "unmeasured"
         unavailable = self._stats(share=None)
         unavailable["behavior"]["ordered_facts_state"] = "unmeasured"
-        self.assertAlmostEqual(self._discipline(thin)["score"],
-                               self._discipline(unavailable)["score"], places=6)
+        for stats in (thin, unavailable):
+            breadth = next(p for p in compute_aq(stats)["pillars"]
+                           if p["name"] == "Breadth")
+            self.assertIn("Discipline", set(breadth.get("not_applicable") or []))
 
     def test_source_that_cannot_emit_any_planning_signal_drops_the_term(self):
         """opencode is a MEASURED planning scope, so its eligible denominator accrues, but
@@ -945,6 +950,93 @@ class TestRouting(unittest.TestCase):
                 "input": {"file_path": "a.py", "old_string": "", "new_string": "x"},
             }]},
         }]
+
+    def test_model_mix_partial_when_routing_unmeasured(self):
+        """Model mix through wsum records partial_by_axis when routing is unavailable."""
+        stats = {"tools": {}, "stack": {"models": [("claude-sonnet-4-6", 10)]},
+                 "behavior": {"linked_model_routing_state": "unsupported"},
+                 "volume": {"total_sessions": 1, "tool_calls_total": 10},
+                 "corpus": {"sources": {"claude": True}}}
+        result = compute_aq(stats)
+        savvy = next(p for p in result["pillars"] if p["name"] == "Savvy")
+        mm_axis = next(a for a in savvy["axes"] if a["name"] == "Model mix")
+        self.assertIn("partial_terms", mm_axis)
+        self.assertEqual(mm_axis["partial_terms"]["scored"], 2)
+        self.assertEqual(mm_axis["partial_terms"]["total"], 3)
+        self.assertAlmostEqual(mm_axis["partial_terms"]["weight_scored"], 0.7, places=3)
+        self.assertAlmostEqual(mm_axis["normalized_score"],
+                               0.5 * min(1.0, 1 / 3) + 0.5 * 0.0, places=4)
+
+    def test_model_mix_no_partial_when_routing_measured(self):
+        """Model mix has no partial_terms when routing is measured."""
+        stats = {"tools": {}, "stack": {"models": [("claude-opus-4-6", 5), ("claude-sonnet-4-6", 5)]},
+                 "behavior": {"linked_model_routing_state": "measured",
+                              "linked_model_pairs": [{
+                                  "provider": "anthropic", "parent_session": "p",
+                                  "child_session": "c", "lead_model": "claude-opus-4-6",
+                                  "child_model": "claude-sonnet-4-6", "completed": True,
+                                  "substantive_calls": 5, "writes": 1}]},
+                 "volume": {"total_sessions": 1, "tool_calls_total": 10},
+                 "corpus": {"sources": {"claude": True}}}
+        result = compute_aq(stats)
+        savvy = next(p for p in result["pillars"] if p["name"] == "Savvy")
+        mm_axis = next(a for a in savvy["axes"] if a["name"] == "Model mix")
+        self.assertNotIn("partial_terms", mm_axis)
+
+    def test_workflow_fanout_child_not_orphan(self):
+        """Workflow-dispatched child with known parent should not make routing unmeasured."""
+        acc = Accumulator()
+        parent_rows = self._claude_parent()
+        fd, parent_path = tempfile.mkstemp(prefix="parent", suffix=".jsonl")
+        os.close(fd)
+        self.addCleanup(lambda: os.path.exists(parent_path) and os.unlink(parent_path))
+        with open(parent_path, "w") as f:
+            f.write("\n".join(json.dumps(r) for r in parent_rows))
+        acc.begin_file("claude", parent_path)
+        for ev in iter_events(parent_path, "claude"):
+            acc.observe(ev, None, None)
+        acc.end_file()
+
+        child_rows = self._claude_child()
+        fd, child_path = tempfile.mkstemp(prefix="child", suffix=".jsonl")
+        os.close(fd)
+        self.addCleanup(lambda: os.path.exists(child_path) and os.unlink(child_path))
+        with open(child_path, "w") as f:
+            f.write("\n".join(json.dumps(r) for r in child_rows))
+        acc.begin_file("claude", child_path)
+        for ev in iter_events(child_path, "claude"):
+            acc.observe(ev, None, None)
+        acc.end_file()
+
+        orphan_rows = self._claude_child("workflow-agent-1")
+        fd, orphan_path = tempfile.mkstemp(prefix="workflow-agent-1", suffix=".jsonl")
+        os.close(fd)
+        self.addCleanup(lambda: os.path.exists(orphan_path) and os.unlink(orphan_path))
+        with open(orphan_path, "w") as f:
+            f.write("\n".join(json.dumps(r) for r in orphan_rows))
+        acc.begin_file("claude", orphan_path)
+        for ev in iter_events(orphan_path, "claude"):
+            acc.observe(ev, None, None)
+        acc.end_file()
+
+        acc._fanout_credited_agents.add(("parent", "workflow-agent-1"))
+        stats = acc.to_source_stats("claude", None, None)
+        self.assertEqual(stats["behavior"]["linked_model_routing_state"], "measured")
+
+    def test_async_launched_no_notification_is_measured_exclusion(self):
+        """async_launched attempt without notification should be measured exclusion."""
+        parent = self._claude_parent(status="async_launched", include_result=True)
+        stats = self._claude_stats(
+            ("parent", parent),
+            ("child", self._claude_child()),
+        )
+        state = stats["behavior"]["linked_model_routing_state"]
+        self.assertEqual(state, "measured")
+        pairs = stats["behavior"]["linked_model_pairs"]
+        async_pair = [p for p in pairs if not p.get("completed")]
+        self.assertTrue(len(async_pair) >= 1)
+        scored = score_linked_routing(pairs, state)
+        self.assertEqual(scored["excluded_reasons"].get("incomplete", 0), 1)
 
     def test_claude_links_completed_lower_tier_child_from_real_fields(self):
         stats = self._claude_stats(
@@ -1523,7 +1615,7 @@ class TestV5Contract(unittest.TestCase):
     def test_compute_aq_emits_exact_contract(self):
         stats = {"corpus": {"sources": {}}, "volume": {"total_sessions": 0},
                  "tools": {}, "stack": {}, "behavior": {}}
-        self.assertEqual(SCORE_CONTRACT_ID, "16:16:16")
+        self.assertEqual(SCORE_CONTRACT_ID, "19:19:19")
         self.assertEqual(compute_aq(stats)["score_contract_id"], SCORE_CONTRACT_ID)
 
     def test_blend_rejects_missing_or_mismatched_contract(self):

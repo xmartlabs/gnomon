@@ -27,9 +27,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import paxel
 
 
-def _claude_rows(sessions, calls_per_session, test_runs_per_session, day=10):
-    """`sessions` dense Claude sessions, each running `calls_per_session` tools of which
-    `test_runs_per_session` are recognisable test invocations."""
+def _claude_rows(sessions, calls_per_session, review_calls_in_first_session, day=10):
+    """`sessions` dense Claude sessions, each running `calls_per_session` tools. The first
+    `review_calls_in_first_session` calls of session 0 invoke a review Skill
+    (`verify-changes`, recognised by `_is_review_skill_name`) instead of a plain Read, so
+    Verification's review-skill rate term (its only remaining per-tool-call rate as of v18 --
+    the test-run half is a per-session coverage fraction now, not a rate) has a real
+    numerator while every other call stays inert."""
     rows = []
     for s in range(sessions):
         sid = f"claude-{s}"
@@ -42,8 +46,8 @@ def _claude_rows(sessions, calls_per_session, test_runs_per_session, day=10):
             ts = (f"2026-03-{day:02d}T{minute_of_day // 60:02d}:"
                   f"{minute_of_day % 60:02d}:00.000Z")
             tool, tool_input = "Read", {"file_path": "/Users/demo/proj/a.py"}
-            if i < test_runs_per_session:
-                tool, tool_input = "Bash", {"command": "python3 -m pytest tests/"}
+            if s == 0 and i < review_calls_in_first_session:
+                tool, tool_input = "Skill", {"skill": "verify-changes"}
             rows.append({"type": "user", "sessionId": sid, "cwd": cwd, "timestamp": ts,
                          "message": {"role": "user", "content": "please keep going"}})
             rows.append({"type": "assistant", "sessionId": sid, "cwd": cwd, "timestamp": ts,
@@ -89,20 +93,25 @@ class TestMultiSourceCorpusAq(unittest.TestCase):
         sess_dir = os.path.join(claude_dir, "proj-x")
         os.makedirs(sess_dir, exist_ok=True)
         with open(os.path.join(sess_dir, "session.jsonl"), "w", encoding="utf-8") as fh:
-            # Three test runs per 175 tool calls keeps Claude's own rate BELOW target, so
-            # the merged reading is an unsaturated number and the arithmetic stays visible.
-            # The pooled 12/1000 is exact in the 6-decimal rounding the axis publishes, so
-            # test_merged_rate_is_not_the_pooled_session_rate's ratio identity holds exactly.
+            # v18 moved Verification's test half from a per-CALL rate to a per-SESSION
+            # coverage fraction (no rate term left to pool by tool-call volume at all --
+            # this fixture has no Edit/Write anywhere, so eligible_change_sessions stays 0
+            # and coverage is N/A for both sources). review_skills is Verification's only
+            # remaining per-tool-call rate, so it is what this fixture now exercises: 2
+            # review-Skill invocations in 700 Claude tool calls keeps Claude's own rate
+            # (2/700 ≈ 0.00286) BELOW REVIEW_SKILLS_PER_CALL_TARGET (0.004), so the merged
+            # reading is an unsaturated number and the arithmetic stays visible.
             #
             # Both sources are sized so every slice clears aq.py's rate evidence floor
             # (RATE_MIN_EXPECTED_AT_TARGET): the review-skill target implies >250 tool calls,
             # and the earlier fixture gave Claude only 200, so its (measured zero) review
             # term was dropped on the slice while the pooled corpus kept it -- comparing a
             # one-term slice against a two-term merged axis. Rates are unchanged (still one
-            # unsaturated Claude test-run rate, still no codex test runs); only the
+            # unsaturated Claude review-skill rate, still no codex review skills); only the
             # denominators grew, to 175 and 10 calls/session against the 39-179
             # calls/session real corpora span documented in aq.py.
-            for r in _claude_rows(sessions=4, calls_per_session=175, test_runs_per_session=3):
+            for r in _claude_rows(sessions=4, calls_per_session=175,
+                                  review_calls_in_first_session=2):
                 fh.write(json.dumps(r) + "\n")
         codex_dir = cls._mkdtemp("codex-")
         for i in range(30):
@@ -135,7 +144,7 @@ class TestMultiSourceCorpusAq(unittest.TestCase):
         )
         # The window is pinned in the past so the rolling recent-30d bucket is empty and the
         # published AQ is the raw full-window compute_aq, not a 65/35 blend of two of them.
-        argv = ["paxel.py", "--no-open", "--summary",
+        argv = ["paxel.py", "--include-low-volume", "--no-open", "--summary",
                 "--since=2026-03-01", "--until=2026-03-31"]
         with mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
                 mock.patch.object(sys, "argv", argv), \
@@ -172,8 +181,8 @@ class TestMultiSourceCorpusAq(unittest.TestCase):
         self.assertEqual(verification["signals"]["tool_calls"],
                          self.stats["volume"]["tool_calls_total"])
         self.assertAlmostEqual(
-            verification["signals"]["test_runs_per_call"],
-            round(verification["signals"]["test_runs"] / pooled_calls, 6), places=9)
+            verification["signals"]["review_skills_per_call"],
+            round(verification["signals"]["review_skills"] / pooled_calls, 6), places=9)
 
     def test_merged_rate_is_not_the_pooled_session_rate(self):
         """The regression this replaces: dividing the same numerator by merged SESSIONS.
@@ -186,8 +195,8 @@ class TestMultiSourceCorpusAq(unittest.TestCase):
         """
         verification = self._axis(self.stats["agentic"], "Craft", "Verification")
         sessions = self.stats["volume"]["total_sessions"]
-        per_call = verification["signals"]["test_runs_per_call"]
-        per_session = verification["signals"]["test_runs"] / sessions
+        per_call = verification["signals"]["review_skills_per_call"]
+        per_session = verification["signals"]["review_skills"] / sessions
         self.assertAlmostEqual(
             per_session / per_call,
             self.stats["volume"]["tool_calls_total"] / sessions, places=3)

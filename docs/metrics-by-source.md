@@ -53,9 +53,17 @@ directly — no external dependency). Both decode to the same normalized events.
 
 ## Uploaded summary contract
 
-Current runtime contract: **scoring inputs version 16**, **AQ version 16**, and
-**GStack version 16** (`score_contract_id = 16:16:16`). Compare scores only when
+Current runtime contract: **scoring inputs version 19**, **AQ version 19**, and
+**GStack version 19** (`score_contract_id = 19:19:19`). Compare scores only when
 contract IDs match.
+
+`PowerShell` is scored as a shell, alongside `Bash`. It was previously unclassified,
+so on Windows the calls reached neither side of the explore/doing ratio behind
+Grounding and were absent from `cli_calls`/`clis_distinct` — which understated
+Token economy rather than merely omitting the work, because `cli_share` dropped
+those calls from both sides of its fraction. Shell CLI extraction is now
+shell-agnostic; the bash-syntax heuristics behind Verification's test detection
+remain `Bash`-only.
 
 `Workflow` dispatch fan-out is sourced from the real dispatched-agent transcripts
 under `.../subagents/workflows/wf_*/agent-*.jsonl`, one credit per distinct

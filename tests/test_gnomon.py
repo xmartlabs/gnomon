@@ -1177,7 +1177,8 @@ class TestBuildSummaryPayloadFields(unittest.TestCase):
             CURSOR_DB=os.path.join(empty, "nope.vscdb"),
         )
         with mock.patch.multiple(paxel, **overrides), \
-                mock.patch.object(sys, "argv", ["paxel.py", "claude", "--no-open"]), \
+                mock.patch.object(sys, "argv", ["paxel.py", "claude",
+                                                  "--include-low-volume", "--no-open"]), \
                 contextlib.redirect_stdout(io.StringIO()):
             paxel.main()
 
@@ -1943,50 +1944,64 @@ class TestPerToolCallRates(unittest.TestCase):
     """The converted metrics score a per-TOOL-CALL rate: the same rate at different corpus
     sizes scores identically (kills the volume artifact), a denser rate scores higher, and
     re-cutting the same work into more sessions moves nothing (a session boundary is a UI
-    artifact of whichever tool produced the transcript)."""
+    artifact of whichever tool produced the transcript).
 
-    def _discipline(self, task_calls, tool_calls, sessions=100):
+    Exercised through Verification's review-skill rate term. v18 dropped Discipline's
+    task-tool rate term (the previous vehicle for this invariant) entirely -- Discipline no
+    longer has ANY per-tool-call rate term, only session-share fractions. review_skills is
+    the modern still-per-call-rate representative; leaving `ordered_facts_state`/
+    `eligible_change_sessions` unset (the `_sample_stats()` default) keeps the coverage half
+    of Verification at None, so the axis is scored 100% on the rate term, isolating it
+    exactly the way the old fixture isolated the task-tool term."""
+
+    def _verification(self, review_calls, tool_calls, sessions=100):
         s = _sample_stats()
         s["volume"] = {"total_sessions": sessions, "tool_calls_total": tool_calls}
-        s["tools"]["task_tool_calls"] = task_calls
+        s["stack"]["skills_all"] = [("verify-changes", review_calls)]
+        s["stack"]["top_skills"] = [("verify-changes", review_calls)]
         aq = paxel.compute_aq(s)
-        breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
-        return next(a for a in breadth["axes"] if a["name"] == "Discipline")["score"]
+        craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
+        return next(a for a in craft["axes"] if a["name"] == "Verification")["score"]
 
     def test_same_rate_same_score(self):
-        # 0.010 task-tool/call either way -> identical Discipline (volume artifact gone)
-        self.assertEqual(self._discipline(50, 5000), self._discipline(500, 50000))
+        # 0.010 review-skill/call either way -> identical Verification (volume artifact gone)
+        self.assertEqual(self._verification(50, 5000), self._verification(500, 50000))
 
     def test_denser_rate_beats_sparser_rate_at_equal_count(self):
-        # Same 50 task-tool calls; the corpus that spent a quarter of the tool budget
-        # getting there is the one planning more per unit of work.
-        self.assertGreater(self._discipline(50, 5000), self._discipline(50, 20000))
+        # Same 50 review-skill calls; the corpus that spent a quarter of the tool budget
+        # getting there is the one verifying more per unit of work.
+        self.assertGreater(self._verification(50, 5000), self._verification(50, 20000))
 
     def test_resegmenting_the_same_work_does_not_move_the_score(self):
-        self.assertEqual(self._discipline(50, 5000, sessions=10),
-                         self._discipline(50, 5000, sessions=1000))
+        self.assertEqual(self._verification(50, 5000, sessions=10),
+                         self._verification(50, 5000, sessions=1000))
 
     def test_zero_tool_calls_guarded(self):
-        self._discipline(10, 0)  # must not divide by zero
+        self._verification(10, 0)  # must not divide by zero
 
 
 class TestToolsDiagnostic(unittest.TestCase):
     """--tools diagnostic: per-TOOL-CALL rates read off the already-computed agentic signals."""
 
     def _stats(self, tool_calls):
+        # v18 dropped task_tool_calls (Discipline) and shell_test_runs (Verification density)
+        # from _TOOLS_DIAG's scored rates -- neither has a scored per-call % anymore. Exercise
+        # the fixture against skills_total instead, which stays a genuine per-call rate.
         return {
             "volume": {"total_sessions": 100, "total_prompts": 400,
                        "tool_calls_total": tool_calls},
             "velocity": {"active_hours": 50.0},
             "agentic": {"pillars": [
                 {"name": "Breadth", "axes": [
-                    {"name": "Discipline", "signals": {"task_tool_calls": 50}},
+                    {"name": "Skill fluency", "signals": {"skills_total": 50}},
                     {"name": "Orchestration", "signals": {"orchestratable_sessions": 200}},
-                    {"name": "Tool command", "signals": {"toolsearch": 30}},
                 ]},
                 {"name": "Craft", "axes": [
-                    {"name": "Verification", "signals": {"test_runs": 150, "review_skills": 20,
-                                                         "knowledge_calls": 10}},
+                    {"name": "Verification", "signals": {"shell_test_runs": 150,
+                                                         "review_skills": 20,
+                                                         "knowledge_calls": 10,
+                                                         "toolsearch_calls": 5,
+                                                         "task_tool_calls": 8}},
                 ]},
             ]},
         }
@@ -1996,17 +2011,33 @@ class TestToolsDiagnostic(unittest.TestCase):
         lines, rec = tools_diagnostic(self._stats(10000))
         self.assertEqual(rec["sessions"], 100)
         self.assertEqual(rec["tool_calls"], 10000)
-        self.assertEqual(rec["rates"]["task_tool_calls"], 0.005)   # 50/10000
+        self.assertEqual(rec["rates"]["skills_total"], 0.005)   # 50/10000
         self.assertEqual(rec["counts"]["orchestratable"], 200)     # absolute, not a rate
-        self.assertEqual(rec["rates"]["toolsearch_calls"], 0.003)  # 30/10000
         self.assertEqual(rec["counts"]["review_skills"], 20)
-        self.assertTrue(any("task_tool_calls" in l for l in lines))
+        self.assertTrue(any("skills_total" in l for l in lines))
 
     def test_zero_tool_calls_no_crash(self):
         from gnomon.cli.local import tools_diagnostic
         lines, rec = tools_diagnostic({"volume": {"total_sessions": 0}, "agentic": {"pillars": []}})
         self.assertEqual(rec["tool_calls"], 0)
-        self.assertEqual(rec["rates"]["task_tool_calls"], 0.0)
+        self.assertEqual(rec["rates"]["skills_total"], 0.0)
+
+    def test_toolsearch_and_task_tool_calls_are_diagnostic_rows(self):
+        """F10 — v17/v18 dropped the SCORED rate terms for toolsearch_calls and
+        task_tool_calls, but an operator auditing `--tools` must still see the raw
+        counts as non-scored diagnostic rows (no target, no per-call %), matching
+        what aq.py still republishes on Tool command / Discipline's `signals`."""
+        from gnomon.cli.local import tools_diagnostic
+        lines, rec = tools_diagnostic(self._stats(10000))
+        self.assertEqual(rec["counts"]["toolsearch_calls"], 5)
+        self.assertEqual(rec["counts"]["task_tool_calls"], 8)
+        self.assertTrue(any(l.startswith("toolsearch_calls") for l in lines))
+        self.assertTrue(any(l.startswith("task_tool_calls") for l in lines))
+        toolsearch_line = next(l for l in lines if l.startswith("toolsearch_calls"))
+        task_tool_line = next(l for l in lines if l.startswith("task_tool_calls"))
+        # Non-scored: no "%" rendered on either diagnostic row.
+        self.assertNotIn("%", toolsearch_line)
+        self.assertNotIn("%", task_tool_line)
 
     def test_percent_column_equals_what_aq_scored(self):
         """The header comment claims the % column matches AQ's scoring. Pin the claim: read
@@ -2026,6 +2057,53 @@ class TestToolsDiagnostic(unittest.TestCase):
             with self.subTest(metric=label):
                 self.assertEqual(rec["rates"][label], sig[f"{key}_per_call"])
                 self.assertEqual(target, sig[f"{key}_per_call_target"])
+
+
+class TestHasSkillDiagnosticPublished(unittest.TestCase):
+    """Issue #71 — the binary has_skill() checks on Skill fluency and Compounding must be
+    published in the axis signals dict so a reader can see why the axis scored as it did."""
+
+    @staticmethod
+    def _signals(skills_all):
+        aq = paxel.compute_aq({
+            "tools": {"mcp_servers_distinct": 3, "clis_distinct": 5, "toolsearch_calls": 0,
+                      "task_tool_calls": 0, "agent_calls": 0},
+            "stack": {"skills_distinct": len(skills_all), "skills_total": 50,
+                      "subagent_types_distinct": 2, "max_session_subagent_types": 2,
+                      "top_skills": skills_all, "skills_all": skills_all,
+                      "compounding_writes": 10,
+                      "models": [("claude-sonnet-4", 100)]},
+            "behavior": {"fanout_median": 2, "shell_test_runs": 10,
+                         "error_recovery_ratio": 0.8, "api_errors_retries": 0,
+                         "actions_per_prompt": 5},
+            "volume": {"tool_calls_total": 5000, "total_sessions": 10},
+            "corpus": {"sources": {"claude": {}}},
+        })
+        breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
+        craft = next(p for p in aq["pillars"] if p["name"] == "Craft")
+        sf = next(a for a in breadth["axes"] if a["name"] == "Skill fluency")
+        comp = next(a for a in craft["axes"] if a["name"] == "Compounding")
+        return sf["signals"], comp["signals"]
+
+    def test_process_skills_matched_true(self):
+        sf, _ = self._signals([("brainstorm", 10), ("code-review", 5)])
+        self.assertIn("process_skills_matched", sf)
+        self.assertTrue(sf["process_skills_matched"])
+
+    def test_process_skills_matched_false(self):
+        sf, _ = self._signals([("code-review", 5), ("tdd", 3)])
+        self.assertIn("process_skills_matched", sf)
+        self.assertFalse(sf["process_skills_matched"])
+
+    def test_compounding_skills_matched_true(self):
+        _, comp = self._signals([("retro", 10), ("code-review", 5)])
+        self.assertIn("compounding_skills_matched", comp)
+        self.assertTrue(comp["compounding_skills_matched"])
+
+    def test_compounding_skills_matched_false(self):
+        _, comp = self._signals([("code-review", 5), ("tdd", 3)])
+        self.assertIn("compounding_skills_matched", comp)
+        self.assertFalse(comp["compounding_skills_matched"])
 
 
 class TestAggregateKnowledgeServerUnion(unittest.TestCase):

@@ -58,7 +58,9 @@ def _run(testcase, args):
     if os.path.exists(tern):
         shutil.copy(tern, os.path.join(out, "tern.png"))
     # --no-open prevents browser windows in CI.
-    argv = ["paxel.py"] + args + ["--no-open"]
+    # These fixtures intentionally stay tiny; opt out of the production source-volume
+    # policy so the parser/metric assertions continue to exercise their data.
+    argv = ["paxel.py"] + args + ["--include-low-volume", "--no-open"]
     buf = io.StringIO()
     with mock.patch.multiple(paxel, OUT_DIR=out, **SRC_DIRS), \
             mock.patch.object(sys, "argv", argv), \
@@ -600,8 +602,10 @@ class TestCursorStatsFixes(unittest.TestCase):
 
 
 class TestCapabilityAwareScoring(unittest.TestCase):
-    """Fase 4: a signal a source CANNOT record (skills/toolsearch/tasktool on Cursor) is
-    dropped + renormalized, not scored 0. Full-capability corpora (Claude) are a no-op."""
+    """Fase 4: a signal a source CANNOT record (skills/tasktool on Cursor) is
+    dropped + renormalized, not scored 0. Full-capability corpora (Claude) are a no-op.
+    (toolsearch is no longer scored as of v17, so it is not among the capability-gated
+    terms.)"""
 
     def _stats(self, sources, **over):
         base = {
@@ -643,14 +647,15 @@ class TestCapabilityAwareScoring(unittest.TestCase):
                          {"Orchestration", "Skill fluency", "Tool command (MCP + CLI)", "Discipline"})
 
     def test_mixed_sources_union_keeps_skills(self):
-        # claude in the mix supports skills/toolsearch/tasktool -> nothing dropped
+        # claude in the mix supports skills/tasktool -> nothing dropped
         aq = paxel.compute_aq(self._stats(["claude", "cursor"]))
         breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
         self.assertNotIn("not_applicable", breadth)
 
     def test_cursor_not_penalized_below_claude_on_unmeasurable(self):
         # identical underlying behavior: cursor must not score LOWER than claude on the
-        # Savvy Token-economy axis just because it lacks ToolSearch (it gets renormalized).
+        # Savvy Token-economy axis. Since v17 Token economy is CLI-share only (toolsearch is
+        # no longer scored), so both sources are graded on the same single term.
         cur = paxel.compute_aq(self._stats(["cursor"]))
         cla = paxel.compute_aq(self._stats(["claude"]))
         def tok(aq):
@@ -1219,7 +1224,7 @@ def _run_single_source(testcase, source_name, gemini_dir=None, claude_dir=None):
     out = tempfile.mkdtemp(prefix="paxel-test-null-")
     testcase.addCleanup(shutil.rmtree, out, ignore_errors=True)
     buf = io.StringIO()
-    argv = ["paxel.py", source_name, "--no-open"]
+    argv = ["paxel.py", source_name, "--include-low-volume", "--no-open"]
     with mock.patch.multiple(paxel, OUT_DIR=out, **dirs), \
             mock.patch.object(sys, "argv", argv), \
             contextlib.redirect_stdout(buf):
@@ -1329,7 +1334,7 @@ def _run_claude_transcript(testcase, rows, extra_argv=None, spy_git_churn=None):
     )
     out = tempfile.mkdtemp(prefix="paxel-ga1-out-")
     testcase.addCleanup(shutil.rmtree, out, ignore_errors=True)
-    argv = ["paxel.py", "claude", "--no-open"] + (extra_argv or [])
+    argv = ["paxel.py", "claude", "--include-low-volume", "--no-open"] + (extra_argv or [])
     buf = io.StringIO()
     patches = [
         mock.patch.multiple(paxel, OUT_DIR=out, **dirs),

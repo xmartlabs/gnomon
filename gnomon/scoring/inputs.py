@@ -86,6 +86,19 @@ def build_scoring_inputs(stats):
             "plan_sessions": b.get("plan_sessions", 0),
             "planning_skill_sessions": b.get("planning_skill_sessions", 0),
             "eligible_change_sessions": b.get("eligible_change_sessions", 0),
+            # v18 — Verification coverage numerator. NO default here, deliberately: a
+            # payload captured before v18 (or a legacy row missing this key for any other
+            # reason) has genuinely NEVER MEASURED coverage, and that ABSENCE must stay
+            # distinguishable from a real MEASURED zero. `.get(..., 0)` used to coerce
+            # both to 0, which is indistinguishable from an idle-but-eligible corpus once
+            # it reaches aq.py — aq.py's coverage term fabricated a 0.0 for a legacy row
+            # that had `ordered_facts_state == "measured"` and `eligible_change_sessions >
+            # 0` (both pre-v18 fields), corrupting the score instead of staying N/A
+            # (renormalized onto review-skills). `b.get(...)` with NO default projects
+            # absence as None, and aq.py's `_test_covered_measured` flag reads that None
+            # to decide N/A vs a genuine measured zero -- same fail-closed rule Context
+            # Intelligence applies elsewhere in this module.
+            "test_covered_change_sessions": b.get("test_covered_change_sessions"),
             "planned_eligible_sessions": b.get("planned_eligible_sessions", 0),
             "evidence_eligible_sessions": b.get("evidence_eligible_sessions", 0),
             "ordered_facts_state": b.get("ordered_facts_state", "unmeasured"),
@@ -191,6 +204,7 @@ def build_monthly_scoring_stats(
     month_grounded_sessions=None, month_write_sessions=None,
     month_session_ordered_tools=None, month_planning_dispatch_calls=None,
     month_sidechain_tools=None, month_command_only=None,
+    tool_result_is_error=None,
 ):
     out = []
     for mk in months:
@@ -252,17 +266,27 @@ def build_monthly_scoring_stats(
         planning_ratio = (explore / doing) if doing else 0
         # C4: cross-session consume-once credit, scoped to this month's sessions
         # (a plan artifact only credits an execution in the SAME calendar month
-        # bucket — matching the existing monthly-progression scoping).
+        # bucket — matching the existing monthly-progression scoping). BLOCKER 2 —
+        # `tool_result_is_error` (the corpus-lifetime
+        # {(source, session_id, tool_use_id): is_error} map, see
+        # Accumulator._tool_result_is_error) must be threaded through here too,
+        # exactly like the corpus (`to_corpus_stats`) and per-source
+        # (`to_source_stats`) paths already do, or F7's fail-closed success check
+        # never resolves and `test_covered_change_sessions` is always 0 even for a
+        # genuinely successful post-write test. `None` on a caller with no live map
+        # (e.g. a hypothetical pure-replay path) is a safe fail-closed default —
+        # `aggregate_ordered`/`derive_session_ordered_facts` treat it as an empty map.
         from gnomon.cli.accumulator import aggregate_ordered
         _month_agg = aggregate_ordered(
-            (month_session_ordered_tools or {}).get(mk, {}).values())
+            (month_session_ordered_tools or {}).get(mk, {}).values(),
+            tool_result_is_error)
         eligible = _month_agg["eligible"]
         _month_orchestratable = _month_agg["orchestratable"]
 
         _month_delegated_orch_sids = set()
         for (src, sid), facts in (month_session_ordered_tools or {}).get(mk, {}).items():
             from gnomon.cli.accumulator import derive_session_ordered_facts
-            d = derive_session_ordered_facts(facts)
+            d = derive_session_ordered_facts(facts, tool_result_is_error)
             if d["orchestratable"] and month_fanouts.get(mk, {}).get(sid, 0) > 0:
                 _month_delegated_orch_sids.add(sid)
         _month_delegated_orchestratable = len(_month_delegated_orch_sids)
@@ -328,6 +352,7 @@ def build_monthly_scoring_stats(
                         _planning_denominator + _planning_unmeasured), 6)
                     if _planning_scope_state in {"measured", "partial"} else None),
                 "eligible_change_sessions": eligible,
+                "test_covered_change_sessions": _month_agg["test_covered"],
                 "planned_eligible_sessions": _month_agg["planned"],
                 "evidence_eligible_sessions": _month_agg["evidence"],
                 "ordered_facts_state": "measured" if m_tool_total else "unmeasured",

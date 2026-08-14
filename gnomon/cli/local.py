@@ -23,12 +23,11 @@ from gnomon.analysis.quotes import _safe_quote, _cryptic_score, _crashout_score,
 from gnomon.scoring.gstack import compute_scores
 from gnomon.scoring.aq import (
     COMPOUNDING_WRITES_PER_CALL_TARGET, REVIEW_SKILLS_PER_CALL_TARGET,
-    SKILLS_TOTAL_PER_CALL_TARGET, TASK_CALLS_PER_CALL_TARGET,
-    TEST_RUNS_PER_CALL_TARGET, TOOLSEARCH_PER_CALL_TARGET, compute_aq,
+    SKILLS_TOTAL_PER_CALL_TARGET, compute_aq,
 )
 from gnomon.scoring.archetype import pick_archetype
 from gnomon.scoring.inputs import SCORING_INPUTS_VERSION, build_scoring_inputs
-from gnomon.cli.accumulator import Accumulator
+from gnomon.cli.accumulator import Accumulator, event_in_window
 from gnomon.coverage import month_index as _coverage_month_index, coverage_for as _coverage_for
 from gnomon.output.summary import build_summary
 from gnomon.output.report import write_report
@@ -39,19 +38,25 @@ from gnomon.output.profile_html import write_profile_html
 # Tool metrics surfaced by --tools: (label, signal key in stats['agentic'], target, is_rate).
 # The rate-scored metrics import scoring/aq.py's PER-TOOL-CALL targets rather than restating
 # them, and are divided by the same tool-call denominator AQ divides by, so the % column is
-# the number AQ actually scored — not a parallel reading that can drift from it. The two
-# ToolSearch call sites in AQ share one target, hence one row here. knowledge_calls is a
-# self-check diagnostic only (it feeds the Research signature move, not an AQ axis) and
+# the number AQ actually scored — not a parallel reading that can drift from it. ToolSearch
+# is no longer scored: v17 removed its rate term from AQ. task_tool_calls and shell_test_runs
+# are likewise no longer scored: v18 dropped the Discipline task-tool rate term and replaced
+# the Verification test-run density with a per-session coverage fraction. knowledge_calls is
+# a self-check diagnostic only (it feeds the Research signature move, not an AQ axis) and
 # orchestratable is a session count, so both are reported absolute (is_rate=False).
+#
+# F10 — target=None marks a NON-SCORED diagnostic row: the count is still published (the
+# accumulator still emits it, and aq.py still republishes it on an axis's `signals`, see
+# Tool command / Discipline), but the row renders a plain count with no target/% column
+# instead of implying a scored rate that no longer exists.
 _TOOLS_DIAG = [
-    ("task_tool_calls", "task_tool_calls", TASK_CALLS_PER_CALL_TARGET, True),
-    ("toolsearch_calls", "toolsearch", TOOLSEARCH_PER_CALL_TARGET, True),
     ("skills_total", "skills_total", SKILLS_TOTAL_PER_CALL_TARGET, True),
     ("review_skills", "review_skills", REVIEW_SKILLS_PER_CALL_TARGET, True),
-    ("shell_test_runs", "test_runs", TEST_RUNS_PER_CALL_TARGET, True),
     ("compounding_writes", "compounding_writes", COMPOUNDING_WRITES_PER_CALL_TARGET, True),
     ("orchestratable", "orchestratable_sessions", 1.0, False),
     ("knowledge_calls", "knowledge_calls", 200, False),  # gated, absolute (not a rate)
+    ("toolsearch_calls", "toolsearch_calls", None, False),  # F10: diagnostic only, not scored
+    ("task_tool_calls", "task_tool_calls", None, False),    # F10: diagnostic only, not scored
 ]
 
 
@@ -94,6 +99,7 @@ _TOOLS_DIAG = [
 # every file the one-month mtime pre-filter would have skipped. That re-admitted parse is
 # the whole +95%.
 MONTHLY_SELF_HEAL_MONTHS = 6
+LOW_VOLUME_SESSION_THRESHOLD = 10
 
 
 def _self_heal_since(since_dt, months=None):
@@ -121,6 +127,117 @@ def _self_heal_since(since_dt, months=None):
     total = since_dt.year * 12 + (since_dt.month - 1) - (months - 1)
     return since_dt.replace(year=total // 12, month=total % 12 + 1, day=1,
                             hour=0, minute=0, second=0, microsecond=0)
+
+
+def _file_scan_since(since_dt):
+    """Return the earliest mtime cutoff needed by the scoring and self-heal windows."""
+    self_heal_since = _self_heal_since(since_dt)
+    if since_dt is not None and self_heal_since is not None:
+        return min(since_dt, self_heal_since)
+    return since_dt
+
+
+def _has_genuine_codex_prompt(events):
+    """Match the codex empty-seed guard used by the final accumulator."""
+    return any(
+        e.get("type") == "user"
+        and isinstance((e.get("message") or {}).get("content"), str)
+        and (e.get("message") or {}).get("content", "").strip()
+        for e in events
+    )
+
+
+def _source_session_ids(sources, since_dt, until_dt, cursor_twins):
+    """Count unique admitted session IDs per source from the canonical event stream.
+
+    This is deliberately a lightweight preflight: it uses the same event adapter,
+    timestamp admission helper, mtime reach, and Codex empty-seed guard as
+    ``_accumulate`` but does not build any scoring statistics for sources that may be
+    discarded.
+    """
+    ids_by_source = defaultdict(set)
+    scan_since = _file_scan_since(since_dt)
+    for cur_src, fp, fmt in sources:
+        if scan_since is not None:
+            try:
+                if datetime.fromtimestamp(os.path.getmtime(fp)).astimezone() < scan_since:
+                    continue
+            except OSError:
+                pass
+        try:
+            events = list(iter_events(fp, fmt, cursor_twins=cursor_twins))
+        except Exception:
+            continue
+        if fmt == "codex" and not _has_genuine_codex_prompt(events):
+            continue
+        for ev in events:
+            if ev.get("__bad__"):
+                continue
+            admitted, _dt = event_in_window(ev, since_dt, until_dt)
+            if admitted and ev.get("sessionId"):
+                ids_by_source[cur_src].add(ev["sessionId"])
+    return dict(ids_by_source)
+
+
+def _filter_low_volume_sources(sources, since_dt, until_dt, cursor_twins,
+                               include_low_volume=False):
+    """Drop sources without in-window activity or below the session threshold."""
+    ids_by_source = _source_session_ids(sources, since_dt, until_dt, cursor_twins)
+    if include_low_volume:
+        eligible = set(ids_by_source)
+    else:
+        eligible = {
+            src for src, session_ids in ids_by_source.items()
+            if len(session_ids) >= LOW_VOLUME_SESSION_THRESHOLD
+        }
+    return [entry for entry in sources if entry[0] in eligible]
+
+
+def _claude_history_preflight(argv, default_window=None):
+    """Return whether admitted Claude history exists for the requested window.
+
+    This deliberately uses the same source discovery and admission helpers as the
+    local scorer.  It is only a preflight for the parent retention offer: the real
+    local/upload analysis still performs its normal discovery and accumulation.
+    """
+    selected = [a.lower() for a in argv if not a.startswith("-")] or list(ALL_SOURCES)
+    if "claude" not in selected:
+        return False
+
+    include_low_volume = "--include-low-volume" in argv
+    since_dt, until_dt = parse_window(argv)
+    if since_dt is None and until_dt is None and default_window is not None:
+        since_dt, until_dt = default_window
+
+    import gnomon.config as _cfg
+    import gnomon.sources.discovery as _disc
+
+    previous_discovery_base = _disc.BASE
+    previous_config_base = _cfg.BASE
+    try:
+        for arg in argv:
+            match = re.match(r"--([a-z]+(?:-[a-z]+)*)-dir=(.+)$", arg)
+            if not match or match.group(1) != "claude":
+                continue
+            gname, inner = _DIR_FLAGS["claude"]
+            resolved = _resolve_source_dir(match.group(2), inner)
+            setattr(_disc, gname, resolved)
+            if gname == "BASE":
+                setattr(_cfg, "BASE", resolved)
+
+        sources = discover_sources(selected)
+    except Exception:
+        return False
+    finally:
+        _disc.BASE = previous_discovery_base
+        _cfg.BASE = previous_config_base
+
+    sources, cursor_twins = _cursor_dedup(sources)
+    claude_sources = [entry for entry in sources if entry[0] == "claude"]
+    admitted = _filter_low_volume_sources(
+        claude_sources, since_dt, until_dt, cursor_twins,
+        include_low_volume=include_low_volume)
+    return bool(admitted)
 
 
 def tools_diagnostic(stats):
@@ -156,6 +273,10 @@ def tools_diagnostic(stats):
         per_call = (c / tool_calls) if tool_calls else 0.0
         rates[label] = round(per_call, 6)
         counts[label] = c
+        if target is None:
+            # F10: non-scored diagnostic -- plain count, no target/% column.
+            lines.append(f"{label:<20}{c:>8}{'':>10}{'n/a':>10}{'n/a':>6}")
+            continue
         # % against the SAME basis AQ uses: per-tool-call rate for rate metrics, absolute otherwise
         scored = per_call if is_rate else c
         pct = min(100, round(100 * scored / target)) if target else 0
@@ -175,6 +296,8 @@ def main(argv=None, output_dir=None):
 
     if argv is None:
         argv = sys.argv[1:]
+
+    include_low_volume = "--include-low-volume" in argv
 
     if output_dir:
         _out_dir = os.path.abspath(os.path.expanduser(output_dir))
@@ -219,17 +342,24 @@ def main(argv=None, output_dir=None):
     _t0_disc = time.monotonic()
     sources = discover_sources(selected)
     since_dt, until_dt = parse_window(argv)
+    # Apply the source-volume policy to every scoring run. With no explicit window,
+    # the preflight counts the complete available history; --include-low-volume bypasses
+    # only the threshold while still requiring in-window activity.
     if since_dt or until_dt:
         print(f"  window: {since_dt.date() if since_dt else '...'} -> "
               f"{(until_dt - timedelta(days=1)).date() if until_dt else 'now'}")
-    antigravity = None if (_ide_dir_override or _ide_dir_explicit) else antigravity_summary()
+    antigravity = (None if (_ide_dir_override or _ide_dir_explicit)
+                   else antigravity_summary(since_dt, until_dt))
     # Antigravity IDE fallback: if no IDE SQLite DBs were discovered (older Antigravity
     # versions that only expose data via the Language Server), try the LS CORTEX export.
     # The LS path masks model identity but still captures volume/tools/timestamps.
     _ide_dbs_found = any(s == "antigravity-ide" for s, _, _ in sources)
     if (not _ide_dbs_found and not _ide_dir_override
             and "antigravity-ide" in selected and antigravity
-            and ide_window_overlaps(antigravity, since_dt, until_dt)):
+            and antigravity.get("conversations", 0) > 0
+            and ide_window_overlaps(antigravity, since_dt, until_dt)
+            and (include_low_volume
+                 or antigravity.get("conversations", 0) >= LOW_VOLUME_SESSION_THRESHOLD)):
         export_path = export_antigravity_ide(os.path.join(_out_dir, "_antigravity_ide"))
         if export_path:
             sources.append(("antigravity-ide", export_path, "antigravity-ide-export"))
@@ -239,18 +369,32 @@ def main(argv=None, output_dir=None):
           f"{', '.join(f'{k}:{v}' for k, v in by_src.items()) or 'no sources'}")
     sources, cursor_twins = _cursor_dedup(sources)
     _t_discovery = time.monotonic() - _t0_disc
-    if not sources:
+    discovered_source_activity = bool(sources) or bool(
+        "antigravity-ide" in selected and antigravity is not None)
+    if not sources and not discovered_source_activity:
         print("\n  No transcripts found in ~/.claude/projects, ~/.codex/sessions, "
               "~/.gemini/tmp, ~/.gemini/antigravity*/..., ~/.pi/agent/sessions, "
               "~/.local/share/opencode/(opencode.db or storage), or ~/.cursor/projects.")
         print("  Nothing to analyze -- run this where you've actually used a coding agent.")
         return
 
+    # Source admission is decided before the final corpus accumulator is built so every
+    # published aggregate, AQ signal, per-source slice, and payload share one source set.
+    sources = _filter_low_volume_sources(
+        sources, since_dt, until_dt, cursor_twins,
+        include_low_volume=include_low_volume)
+    # The read-only IDE summary is shareable metadata only when the corresponding
+    # source survived admission; otherwise it would leak omitted Antigravity activity
+    # into an otherwise empty or CLI-only payload.
+    admitted_antigravity = (
+        antigravity if any(src == "antigravity-ide" for src, _, _ in sources) else None
+    )
+
     # Whole-corpus accumulation (all sources pooled, capabilities = union) — this is
     # the legacy/primary stats dict that drives the report, HTML and `profile`.
     _t0_acc = time.monotonic()
     stats, narrative = _accumulate(
-        sources, since_dt, until_dt, cursor_twins, antigravity,
+        sources, since_dt, until_dt, cursor_twins, admitted_antigravity,
         total_file_count=len(sources), verbose=True)
     _t_accumulate_corpus = time.monotonic() - _t0_acc
     opening_prompts = narrative["opening_prompts"]
@@ -500,13 +644,7 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
     self_heal_since = _self_heal_since(since_dt)
     self_heal_corpus = Accumulator() if self_heal_since is not None else None
 
-    file_scan_since = since_dt
-    if since_dt is not None and self_heal_since is not None:
-        # The mtime pre-filter must not clip a file the WIDEST reader still needs. Until
-        # v11 the recency bucket could reach up to two days before `since_dt` and was part
-        # of this minimum; the self-heal accumulator is now the only reader that looks
-        # further back than the scoring window.
-        file_scan_since = min(since_dt, self_heal_since)
+    file_scan_since = _file_scan_since(since_dt)
 
     # ---- narrative quote candidates (corpus-only, never serialized) ----------
     phrase_counts = Counter()      # normalized short prompt -> times seen
@@ -544,12 +682,7 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
             # Codex emits ~37k empty "seed" sessions (only injected wrappers + a 2+2 probe).
             # If a codex file has no genuine human prompt after filtering, skip it entirely so
             # it doesn't inflate session counts and drag the scores.
-            if fmt == "codex" and not any(
-                e.get("type") == "user"
-                and isinstance((e.get("message") or {}).get("content"), str)
-                and (e.get("message") or {}).get("content", "").strip()
-                for e in _ev_list
-            ):
+            if fmt == "codex" and not _has_genuine_codex_prompt(_ev_list):
                 corpus.skip_file()
                 sa.skip_file()
                 if self_heal_corpus is not None:

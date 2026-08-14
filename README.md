@@ -43,6 +43,7 @@ xl-ai-insights --local claude            # Claude Code only
 xl-ai-insights --local claude codex      # Claude Code + Codex
 xl-ai-insights --local --no-open         # don't auto-open profile.html
 xl-ai-insights --local --summary         # also write summary.json
+xl-ai-insights --local --include-low-volume  # include sources with fewer than 10 sessions
 xl-ai-insights --local --output-dir=.    # write outputs to current directory
 ```
 
@@ -95,6 +96,9 @@ month. Raise it with `--window=N` if you want a point smoothed over the N months
 ending at its anchor. The window applies to normal monthly runs and to
 `--backfill`/`--force`.
 
+By default, a source contributes only when it has at least 10 unique sessions in
+the scored window. Pass `--include-low-volume` to include smaller active sources.
+
 The **per-calendar-month evidence** block (`noticed_stats_monthly`) is
 deliberately wider than the scoring window: it is shaped over a trailing
 six-month read of the same transcripts, so re-running gnomon still corrects
@@ -115,9 +119,17 @@ refused instead of being pooled with genuine one-month scores.
 
 ## Scoring contract
 
-Current runtime contract: **scoring inputs version 16**, **AQ version 16**, and
-**GStack version 16** (`score_contract_id = 16:16:16`). Compare scores only when
+Current runtime contract: **scoring inputs version 19**, **AQ version 19**, and
+**GStack version 19** (`score_contract_id = 19:19:19`). Compare scores only when
 the contract IDs match.
+
+`PowerShell` is scored as a shell, alongside `Bash`. It was previously unclassified,
+so on Windows the calls reached neither side of the explore/doing ratio behind
+Grounding and were absent from `cli_calls`/`clis_distinct` — which understated
+Token economy rather than merely omitting the work, because `cli_share` dropped
+those calls from both sides of its fraction. Shell CLI extraction is now
+shell-agnostic; the bash-syntax heuristics behind Verification's test detection
+remain `Bash`-only.
 
 `Workflow` dispatch fan-out is sourced from the real dispatched-agent transcripts
 under `.../subagents/workflows/wf_*/agent-*.jsonl`, one credit per distinct
@@ -161,13 +173,20 @@ multi-source replay reports its exactness and source-profile replay status. Uplo
 are checked before POST against the 900 KiB ingest limit and fail rather than being
 truncated.
 
-Rate terms (test runs, review skills, ToolSearch, task planning, skills,
-compounding writes) are scored **per tool call**, not per session. One session is
-not one unit of work across tools: a batch of 2-minute one-shot CLI sessions
-otherwise acts as pure denominator and collapses the rate of a habit you actually
-practise. Only the unit changes — the targets were recalibrated to match, and
-absolute volume still does not raise AQ, because both sides of the ratio grow
-together.
+Rate terms (review skills, skills, compounding writes) are scored **per tool
+call**, not per session. One session is not one unit of work across tools: a
+batch of 2-minute one-shot CLI sessions otherwise acts as pure denominator and
+collapses the rate of a habit you actually practise. Only the unit changes — the
+targets were recalibrated to match, and absolute volume still does not raise AQ,
+because both sides of the ratio grow together.
+
+Verification's test half and Discipline's task-planning term are **not** per-call
+rates. Verification scores per-SESSION test **coverage** — the share of eligible
+change-sessions that also ran a recognized shell-test command — as a pure
+fraction with no fitted target, N/A (renormalized onto review skills) when
+ordered facts aren't measured. Discipline dropped its task-tool rate term
+entirely (it saturated for virtually everyone); `task_tool_calls` remains a
+published diagnostic, not a scored term.
 
 What happens when you run it (without `--local`):
 
@@ -324,9 +343,9 @@ gnomon is multi-source, and metrics are provider-agnostic where possible:
 
 - **Provider-agnostic where telemetry allows:** git churn, MCP/CLI tool command, grounding, recovery, steering leverage, and compounding (matches `CLAUDE.md` / `AGENTS.md` / `GEMINI.md` / `memory/` / `docs/adr`). **Model mix** rewards diversity and observable lower-tier routing using explicit provider tier tables for Anthropic and OpenAI; unsupported or ambiguous linkage is N/A rather than guessed.
 - **Codex parity fixes:** the active model is read from Codex's `turn_context` (so GPT usage shows up in Model mix instead of reading as model-less), `update_plan` counts as planning (TodoWrite), and shell reads of `skills/<name>/SKILL.md` count as skill usage — Codex has no first-class Skill tool, so that's how skills are actually consumed there.
-- **Claude-Code-specific signals** (still under-read for Codex/Gemini): `attributionSkill` precision and **ToolSearch** (part of Token economy). These reflect Claude Code's ecosystem, not universal capability.
+- **Claude-Code-specific signals** (still under-read for Codex/Gemini): `attributionSkill` precision. **ToolSearch** is no longer scored — it is ~94% harness-forced `select:` tool-loading, so it is published as a raw diagnostic count on the Tool command axis but feeds neither Tool command nor Token economy. These reflect Claude Code's ecosystem, not universal capability.
 
-**Bottom line:** scores are most complete for Claude Code. Codex/Gemini profiles are valid but slightly under-read on ToolSearch-style sub-axes. We surface this rather than hide it.
+**Bottom line:** scores are most complete for Claude Code. Codex/Gemini profiles are valid; ToolSearch no longer moves any axis, so its Claude-only nature no longer under-reads other sources. We surface this rather than hide it.
 
 ---
 

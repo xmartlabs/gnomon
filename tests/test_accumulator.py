@@ -2,18 +2,32 @@ import unittest
 from datetime import datetime, timedelta
 
 from gnomon.cli.accumulator import (
-    Accumulator, derive_session_ordered_facts, aggregate_ordered,
+    Accumulator, _normalized_ordered_target, derive_session_ordered_facts,
+    aggregate_ordered,
 )
 
 
-def _fact_event(sid, timestamp, name, inp=None, attribution=None):
+def _fact_event(sid, timestamp, name, inp=None, attribution=None, tool_use_id=None):
+    block = {"type": "tool_use", "name": name, "input": inp or {}}
+    if tool_use_id is not None:
+        block["id"] = tool_use_id
     event = {"type": "assistant", "sessionId": sid, "timestamp": timestamp,
              "message": {"role": "assistant", "model": "claude-sonnet-4-6",
-                         "content": [{"type": "tool_use", "name": name,
-                                      "input": inp or {}}]}}
+                         "content": [block]}}
     if attribution:
         event["attributionSkill"] = attribution
     return event
+
+
+def _tool_result_event(sid, timestamp, tool_use_id, is_error=False):
+    """A `user`-turn event carrying the tool_result for an earlier tool_use
+    (F7: resolves that tool_use_id's success/error in Accumulator's
+    corpus-lifetime, source/session-scoped `_tool_result_is_error` map)."""
+    return {"type": "user", "sessionId": sid, "timestamp": timestamp,
+            "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": tool_use_id,
+                 "is_error": is_error, "content": "ok"},
+            ]}}
 
 
 def _workflow_agent_event(parent_sid, timestamp, agent_id):
@@ -475,6 +489,383 @@ class TestWriteFactEnrichment(unittest.TestCase):
         }), None, None)
         fact = _facts_for(acc, "claude", "s1")[0]
         self.assertFalse(fact["plan_skill"])
+
+
+class TestBashListValuedCommandSafety(unittest.TestCase):
+    """F2: some non-Claude adapters emit a Bash tool's `input.command` as an argv LIST
+    rather than a shell string. `observe()` must not crash on it (bash_runs_tests /
+    bash_runs_knowledge search a regex, which raises TypeError on a list), and a list
+    command must behave identically to the same command already joined into a string —
+    matching the join `elif name == "Bash":` accounting already applies later in the same
+    method."""
+
+    def test_list_valued_command_does_not_crash_observe(self):
+        acc = Accumulator()
+        acc.begin_file("codex", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "Bash", {
+            "command": ["python", "-m", "pytest"],
+        }), None, None)
+        fact = _facts_for(acc, "codex", "s1")[0]
+        self.assertTrue(fact["runs_tests"])
+        self.assertEqual(acc.shell_test_runs, 1)
+
+    def test_list_valued_command_matches_joined_string_equivalent(self):
+        joined = " && ".join(["python", "-m", "pytest"])
+
+        list_acc = Accumulator()
+        list_acc.begin_file("codex", "f.jsonl")
+        list_acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "Bash", {
+            "command": ["python", "-m", "pytest"],
+        }), None, None)
+
+        str_acc = Accumulator()
+        str_acc.begin_file("codex", "f.jsonl")
+        str_acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "Bash", {
+            "command": joined,
+        }), None, None)
+
+        list_fact = _facts_for(list_acc, "codex", "s1")[0]
+        str_fact = _facts_for(str_acc, "codex", "s1")[0]
+        self.assertEqual(list_fact["runs_tests"], str_fact["runs_tests"])
+        self.assertEqual(list_fact["knowledge"], str_fact["knowledge"])
+        self.assertEqual(list_acc.shell_test_runs, str_acc.shell_test_runs)
+
+    def test_list_valued_knowledge_command_does_not_crash(self):
+        """The `knowledge` field is computed BEFORE `runs_tests` in the same dict
+        literal, so it must be exercised on its own too. A single-token argv entry
+        ("graphify") survives the ' && '-join unchanged, so it still matches the
+        knowledge regex after normalization."""
+        acc = Accumulator()
+        acc.begin_file("codex", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "Bash", {
+            "command": ["graphify"],
+        }), None, None)
+        fact = _facts_for(acc, "codex", "s1")[0]
+        self.assertTrue(fact["knowledge"])
+
+
+class TestPowerShellShellAccounting(unittest.TestCase):
+    """Issue #72: the CLI accounting branch was gated on the literal `name == "Bash"`, so a
+    `PowerShell` call fed neither `cli_calls` nor `clis_distinct`. Because Token economy is
+    `sat(cli_share, 0.70)` over `cli_calls / (cli_calls + mcp_calls)` and PowerShell reached
+    NEITHER side of that fraction, a developer whose primary shell is PowerShell had their
+    CLI work scored as if it never happened -- an active penalty, not a neutral omission."""
+
+    def test_powershell_command_feeds_the_cli_counters(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "PowerShell", {
+            "command": "git status",
+        }), None, None)
+        self.assertEqual(acc.cli_counter["git"], 1)
+
+    def test_powershell_matches_bash_cli_accounting(self):
+        def _counts(tool):
+            acc = Accumulator()
+            acc.begin_file("claude", "f.jsonl")
+            acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", tool, {
+                "command": "git status && npm run build",
+            }), None, None)
+            return dict(acc.cli_counter)
+
+        self.assertEqual(_counts("PowerShell"), _counts("Bash"))
+
+    def test_powershell_list_valued_command_does_not_crash(self):
+        # Same argv-list shape non-Claude adapters emit for Bash (F2).
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "PowerShell", {
+            "command": ["git", "status"],
+        }), None, None)
+        self.assertEqual(acc.cli_counter["git"], 1)
+
+    def test_powershell_counts_on_the_doing_side_of_the_planning_ratio(self):
+        # classify_tool("PowerShell") == "execute" puts it in the ratio's DENOMINATOR;
+        # before the fix it was "other" and reached neither side.
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "PowerShell", {
+            "command": "git status",
+        }), None, None)
+        self.assertEqual(acc.cat_counter["execute"], 1)
+        self.assertEqual(acc.cat_counter.get("other", 0), 0)
+
+    def test_powershell_test_runs_stay_bash_only_for_now(self):
+        """Deliberate scope limit, recorded as a test so it cannot rot into an accident.
+        `bash_runs_tests` / `bash_runs_knowledge` / `bash_writes_file` are bash-syntax
+        heuristics (heredocs, `sed -i`, `tee`, POSIX redirection). Reusing them verbatim on
+        PowerShell text is a separate change with its own false-positive surface, so this
+        fix restores the three axes issue #72 names (Grounding, Tool command, Token economy)
+        and leaves Verification/knowledge enrichment Bash-gated pending PowerShell-aware
+        predicates."""
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "PowerShell", {
+            "command": "pytest -q",
+        }), None, None)
+        self.assertEqual(acc.shell_test_runs, 0)
+        self.assertFalse(_facts_for(acc, "claude", "s1")[0]["runs_tests"])
+
+
+class TestVerificationCoverageF7(unittest.TestCase):
+    """F7: Verification coverage requires a `runs_tests` Bash fact that ran
+    AFTER the first CODE write AND whose tool_result resolved successfully.
+    Fail-closed: an errored result or a missing result never counts, even
+    though `bash_runs_tests("pytest")` is lexically True either way."""
+
+    def _two_code_writes(self, acc, sid):
+        # >=2 distinct code files -> eligible via C2 regardless of loc/churn.
+        acc.observe(_fact_event(sid, "2026-01-01T00:00:00Z", "Write", {
+            "file_path": "src/a.py", "content": "x = 1\n"}), None, None)
+        acc.observe(_fact_event(sid, "2026-01-01T00:00:01Z", "Write", {
+            "file_path": "src/b.py", "content": "y = 2\n"}), None, None)
+
+    def test_errored_test_after_code_write_not_covered(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        sid = "s1"
+        self._two_code_writes(acc, sid)
+        acc.observe(_fact_event(sid, "2026-01-01T00:00:02Z", "Bash", {
+            "command": "pytest"}, tool_use_id="tu1"), None, None)
+        acc.observe(_tool_result_event(
+            sid, "2026-01-01T00:00:03Z", "tu1", is_error=True), None, None)
+        facts = _facts_for(acc, "claude", sid)
+        result = derive_session_ordered_facts(facts, acc._tool_result_is_error)
+        self.assertFalse(result["ran_test"])
+        agg = aggregate_ordered([facts], acc._tool_result_is_error)
+        self.assertEqual(agg["test_covered"], 0)
+
+    def test_successful_test_before_first_code_write_not_covered(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        sid = "s1"
+        acc.observe(_fact_event(sid, "2026-01-01T00:00:00Z", "Bash", {
+            "command": "pytest"}, tool_use_id="tu1"), None, None)
+        acc.observe(_tool_result_event(
+            sid, "2026-01-01T00:00:01Z", "tu1", is_error=False), None, None)
+        self._two_code_writes(acc, sid)
+        facts = _facts_for(acc, "claude", sid)
+        result = derive_session_ordered_facts(facts, acc._tool_result_is_error)
+        self.assertFalse(result["ran_test"])
+        agg = aggregate_ordered([facts], acc._tool_result_is_error)
+        self.assertEqual(agg["test_covered"], 0)
+
+    def test_successful_test_after_first_code_write_covered(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        sid = "s1"
+        self._two_code_writes(acc, sid)
+        acc.observe(_fact_event(sid, "2026-01-01T00:00:02Z", "Bash", {
+            "command": "pytest"}, tool_use_id="tu1"), None, None)
+        acc.observe(_tool_result_event(
+            sid, "2026-01-01T00:00:03Z", "tu1", is_error=False), None, None)
+        facts = _facts_for(acc, "claude", sid)
+        result = derive_session_ordered_facts(facts, acc._tool_result_is_error)
+        self.assertTrue(result["ran_test"])
+        agg = aggregate_ordered([facts], acc._tool_result_is_error)
+        self.assertEqual(agg["eligible"], 1)
+        self.assertEqual(agg["test_covered"], 1)
+
+    def test_error_then_success_for_same_result_remains_not_covered(self):
+        """A duplicate result cannot turn a known error into test coverage."""
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        sid = "s1"
+        self._two_code_writes(acc, sid)
+        acc.observe(_fact_event(sid, "2026-01-01T00:00:02Z", "Bash", {
+            "command": "pytest"}, tool_use_id="tu1"), None, None)
+        acc.observe(_tool_result_event(
+            sid, "2026-01-01T00:00:03Z", "tu1", is_error=True), None, None)
+        acc.observe(_tool_result_event(
+            sid, "2026-01-01T00:00:04Z", "tu1", is_error=False), None, None)
+
+        facts = _facts_for(acc, "claude", sid)
+        self.assertFalse(derive_session_ordered_facts(
+            facts, acc._tool_result_is_error)["ran_test"])
+
+    def test_success_then_success_for_same_result_remains_covered(self):
+        """Repeated success remains valid coverage for the scoped result."""
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        sid = "s1"
+        self._two_code_writes(acc, sid)
+        acc.observe(_fact_event(sid, "2026-01-01T00:00:02Z", "Bash", {
+            "command": "pytest"}, tool_use_id="tu1"), None, None)
+        acc.observe(_tool_result_event(
+            sid, "2026-01-01T00:00:03Z", "tu1", is_error=False), None, None)
+        acc.observe(_tool_result_event(
+            sid, "2026-01-01T00:00:04Z", "tu1", is_error=False), None, None)
+
+        facts = _facts_for(acc, "claude", sid)
+        self.assertTrue(derive_session_ordered_facts(
+            facts, acc._tool_result_is_error)["ran_test"])
+
+    def test_test_command_with_no_tool_result_not_covered(self):
+        """Fail-closed: a truncated transcript (tool_use with no matching
+        tool_result ever observed) must not count, even after a code write."""
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        sid = "s1"
+        self._two_code_writes(acc, sid)
+        acc.observe(_fact_event(sid, "2026-01-01T00:00:02Z", "Bash", {
+            "command": "pytest"}, tool_use_id="tu-missing"), None, None)
+        facts = _facts_for(acc, "claude", sid)
+        result = derive_session_ordered_facts(facts, acc._tool_result_is_error)
+        self.assertFalse(result["ran_test"])
+        agg = aggregate_ordered([facts], acc._tool_result_is_error)
+        self.assertEqual(agg["test_covered"], 0)
+
+    def test_tool_result_without_boolean_error_status_not_covered(self):
+        """Fail closed when a Claude result omits its error status."""
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        sid = "s1"
+        self._two_code_writes(acc, sid)
+        acc.observe(_fact_event(sid, "2026-01-01T00:00:02Z", "Bash", {
+            "command": "pytest"}, tool_use_id="tu-unknown"), None, None)
+        result_event = _tool_result_event(
+            sid, "2026-01-01T00:00:03Z", "tu-unknown")
+        result_event["message"]["content"][0].pop("is_error")
+        acc.observe(result_event, None, None)
+        facts = _facts_for(acc, "claude", sid)
+        self.assertNotIn(("claude", sid, "tu-unknown"), acc._tool_result_is_error)
+        agg = aggregate_ordered([facts], acc._tool_result_is_error)
+        self.assertEqual(agg["eligible"], 1)
+        self.assertEqual(agg["test_covered"], 0)
+
+    def test_reused_tool_use_id_is_scoped_to_each_session(self):
+        """A failed result in one session cannot be replaced by a later success."""
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+
+        self._two_code_writes(acc, "session-a")
+        acc.observe(_fact_event("session-a", "2026-01-01T00:00:02Z", "Bash", {
+            "command": "pytest"}, tool_use_id="reused-id"), None, None)
+        acc.observe(_tool_result_event(
+            "session-a", "2026-01-01T00:00:03Z", "reused-id", is_error=True), None, None)
+
+        self._two_code_writes(acc, "session-b")
+        acc.observe(_fact_event("session-b", "2026-01-01T00:00:02Z", "Bash", {
+            "command": "pytest"}, tool_use_id="reused-id"), None, None)
+        acc.observe(_tool_result_event(
+            "session-b", "2026-01-01T00:00:03Z", "reused-id", is_error=False), None, None)
+
+        facts_a = _facts_for(acc, "claude", "session-a")
+        facts_b = _facts_for(acc, "claude", "session-b")
+        result_a = derive_session_ordered_facts(facts_a, acc._tool_result_is_error)
+        result_b = derive_session_ordered_facts(facts_b, acc._tool_result_is_error)
+
+        self.assertFalse(result_a["ran_test"])
+        self.assertTrue(result_b["ran_test"])
+        aggregate = aggregate_ordered([facts_a, facts_b], acc._tool_result_is_error)
+        self.assertEqual(aggregate["eligible"], 2)
+        self.assertEqual(aggregate["test_covered"], 1)
+
+        corpus = acc.to_corpus_stats(None, None, False)
+        self.assertEqual(corpus["behavior"]["test_covered_change_sessions"], 1)
+        source = acc.to_source_stats("claude", None, None)
+        self.assertEqual(source["behavior"]["test_covered_change_sessions"], 1)
+        monthly = corpus["_scoring_monthly_full"]
+        self.assertEqual(monthly[0]["stats_full"]["behavior"][
+            "test_covered_change_sessions"], 1)
+
+
+class TestOrderedTargetClassification(unittest.TestCase):
+    def test_windows_absolute_scratchpad_is_other_on_posix(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        event = _fact_event("s1", "2026-01-01T00:00:00Z", "Write", {
+            "file_path": "C:/Users/u/AppData/Local/Temp/run/scratchpad/foo.py",
+            "content": "x = 1\n"})
+        event["cwd"] = "/repo"
+        acc.observe(event, None, None)
+
+        fact = _facts_for(acc, "claude", "s1")[0]
+        self.assertEqual(fact["file_class"], "other")
+        self.assertEqual(_normalized_ordered_target(fact),
+                         "C:/Users/u/AppData/Local/Temp/run/scratchpad/foo.py")
+
+    def test_relative_scratchpad_under_temp_cwd_is_other_and_not_eligible(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        event = _fact_event("s1", "2026-01-01T00:00:00Z", "Write", {
+            "file_path": "scratchpad/foo.py", "content": "x = 1\n"})
+        event["cwd"] = "/tmp/gnomon-run"
+        acc.observe(event, None, None)
+
+        facts = _facts_for(acc, "claude", "s1")
+        self.assertEqual(facts[0]["target"], "scratchpad/foo.py")
+        self.assertEqual(facts[0]["file_class"], "other")
+        self.assertEqual(_normalized_ordered_target(facts[0]),
+                         "/tmp/gnomon-run/scratchpad/foo.py")
+        self.assertFalse(derive_session_ordered_facts(facts)["eligible"])
+
+    def test_posix_absolute_target_remains_unchanged(self):
+        event = {"target": "/repo/src/a.py", "cwd": "/other"}
+        self.assertEqual(_normalized_ordered_target(event), "/repo/src/a.py")
+
+    def test_relative_code_target_under_temp_cwd_remains_code(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        event = _fact_event("s1", "2026-01-01T00:00:00Z", "Write", {
+            "file_path": "src/a.py", "content": "x = 1\n"})
+        event["cwd"] = "/tmp/gnomon-run"
+        acc.observe(event, None, None)
+
+        facts = _facts_for(acc, "claude", "s1")
+        self.assertEqual(facts[0]["target"], "src/a.py")
+        self.assertEqual(facts[0]["file_class"], "code")
+
+    def test_scratchpad_plan_file_has_no_plan_credit(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        event = _fact_event("s1", "2026-01-01T00:00:00Z", "Write", {
+            "file_path": ".claude/plans/feature.md", "content": "a\nb\nc\nd\ne\nf\ng\nh\ni\nj",
+        })
+        event["cwd"] = "/tmp/run/scratchpad"
+        acc.observe(event, None, None)
+
+        facts = _facts_for(acc, "claude", "s1")
+        self.assertFalse(facts[0]["plan_file"])
+        self.assertFalse(derive_session_ordered_facts(facts)["planned_intra"])
+
+    def test_real_claude_plan_file_still_has_plan_credit(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        acc.observe(_fact_event("s1", "2026-01-01T00:00:00Z", "Write", {
+            "file_path": ".claude/plans/feature.md", "content": "a\nb\nc\nd\ne\nf\ng\nh\ni\nj",
+        }), None, None)
+
+        facts = _facts_for(acc, "claude", "s1")
+        self.assertTrue(facts[0]["plan_file"])
+        self.assertTrue(derive_session_ordered_facts(facts)["planned_intra"])
+
+
+class TestMonthlyVerificationCoverageBlocker2(unittest.TestCase):
+    """BLOCKER 2 — `build_monthly_scoring_stats` (via `Accumulator.to_monthly`) must
+    thread the corpus-lifetime `tool_result_is_error` success map into its monthly
+    `aggregate_ordered`/`derive_session_ordered_facts` calls, exactly like the corpus
+    and per-source paths already do. Without it, a monthly bucket's
+    `test_covered_change_sessions` is always 0 even for a genuinely successful
+    post-write test."""
+
+    def test_successful_post_write_test_covers_the_month(self):
+        acc = Accumulator()
+        acc.begin_file("claude", "f.jsonl")
+        sid = "s1"
+        acc.observe(_fact_event(sid, "2026-02-15T12:00:00Z", "Write", {
+            "file_path": "src/a.py", "content": "x = 1\n"}), None, None)
+        acc.observe(_fact_event(sid, "2026-02-15T12:00:01Z", "Write", {
+            "file_path": "src/b.py", "content": "y = 2\n"}), None, None)
+        acc.observe(_fact_event(sid, "2026-02-15T12:00:02Z", "Bash", {
+            "command": "pytest"}, tool_use_id="tu1"), None, None)
+        acc.observe(_tool_result_event(
+            sid, "2026-02-15T12:00:03Z", "tu1", is_error=False), None, None)
+
+        monthly = acc.to_corpus_stats(None, None, False)["_scoring_monthly_full"]
+        by_month = {row["month"]: row["stats_full"]["behavior"] for row in monthly}
+        self.assertEqual(by_month["2026-02"]["eligible_change_sessions"], 1)
+        self.assertEqual(by_month["2026-02"]["test_covered_change_sessions"], 1)
 
 
 class TestAggregateOrderedC4(unittest.TestCase):

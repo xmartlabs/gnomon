@@ -40,6 +40,44 @@ class TestClassifyChangeTarget(unittest.TestCase):
         self.assertEqual(classify_change_target("assets/logo.png"), "other")
         self.assertEqual(classify_change_target(""), "other")
 
+    def test_ephemeral_scratchpad_writes_are_not_code(self):
+        # A scratchpad path is discardable by construction, so even a code extension there
+        # must not make the input eligible for a code change. The location check must win
+        # over the extension check. Covers every temp-root spelling, including the macOS
+        # canonical /private/var/folders and Windows %TEMP% (backslashes normalized first).
+        for path in (
+            "/private/tmp/claude-12345/myproject/8f0c-uuid/scratchpad/foo.ts",
+            "/tmp/claude-999/proj/abcd-uuid/scratchpad/bar.py",
+            "/var/folders/xy/abcd/T/claude-1/proj/uuid/scratchpad/baz.go",
+            "/private/var/folders/xy/abcd/T/claude-1/proj/uuid/scratchpad/baz.go",
+            r"C:\Users\alice\AppData\Local\Temp\claude-123\proj\uuid\scratchpad\a.py",
+            r"C:\Windows\Temp\claude-1\proj\uuid\scratchpad\b.py",
+        ):
+            self.assertEqual(classify_change_target(path), "other", path)
+
+    def test_real_project_code_still_classifies_as_code(self):
+        self.assertEqual(classify_change_target("/Users/dev/repo/src/app.py"), "code")
+
+    def test_temp_root_without_scratchpad_is_not_excluded(self):
+        # A legitimate checkout that merely lives under a temp root (no scratchpad segment)
+        # must still count as code — excluding all of /tmp would hide real work.
+        for path in ("/tmp/repo/src/app.py", "/var/folders/xy/T/repo/lib/util.ts"):
+            self.assertEqual(classify_change_target(path), "code", path)
+
+    def test_scratchpad_directly_under_temp_root_is_excluded(self):
+        # OBS 3(a) — a scratchpad with NO intermediate path segment (directly under
+        # the temp root) must still be excluded; the old `.*/scratchpad/` suffix
+        # required an intermediate `/`, so this fell through to "code".
+        self.assertEqual(classify_change_target("/tmp/scratchpad/foo.py"), "other")
+
+    def test_windows_appdata_temp_requires_a_real_drive_rooted_path(self):
+        # OBS 3(b) — the Windows AppData/Local/Temp alternative must not match a
+        # legitimate (non-drive-rooted) path that merely CONTAINS that substring,
+        # e.g. a project subfolder incidentally named appdata/local/temp.
+        self.assertEqual(
+            classify_change_target("/repo/vendor/appdata/local/temp/scratchpad/foo.py"),
+            "code")
+
 
 class TestIsPlanFileTarget(unittest.TestCase):
     def test_matches_claude_plans_markdown(self):
@@ -213,6 +251,28 @@ class TestWorkflowAgentDispatchPathParsing(unittest.TestCase):
         # Agent/Task stay 1-call==1-agent (unchanged); only Workflow fans out
         # per-call to a variable number of real dispatched agents.
         self.assertEqual(FANOUT_BY_TRANSCRIPT_TOOLS, {"Workflow"})
+
+
+class TestPowerShellIsAShell(unittest.TestCase):
+    """Issue #72: `PowerShell` is the shell tool Claude Code emits on Windows, and it was
+    unhandled everywhere `Bash` is handled. `classify_tool` fell through to `other`, which
+    sits on NEITHER side of planning_ratio_explore_to_doing, so a Windows developer's shell
+    work was invisible to Grounding, and `is_substantive_tool` excluded it from
+    actions_per_prompt. It is the same category of action as Bash and must classify as one."""
+
+    def test_powershell_classifies_as_execute(self):
+        self.assertEqual(classify_tool("PowerShell"), "execute")
+
+    def test_powershell_is_in_exec_tools(self):
+        self.assertIn("PowerShell", EXEC_TOOLS)
+
+    def test_powershell_is_substantive_work(self):
+        self.assertTrue(is_substantive_tool("PowerShell"))
+
+    def test_powershell_matches_bash_classification(self):
+        # The point of the fix: the two shells are indistinguishable to the taxonomy.
+        self.assertEqual(classify_tool("PowerShell"), classify_tool("Bash"))
+        self.assertEqual(is_substantive_tool("PowerShell"), is_substantive_tool("Bash"))
 
 
 class TestClassifyToolOtherCategoriesUnchanged(unittest.TestCase):

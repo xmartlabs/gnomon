@@ -34,7 +34,7 @@ from gnomon.taxonomy import (
     PLAN_SKILL_NEEDLES, KNOWLEDGE_SKILL_NEEDLES, ORCHESTRATION_TOOLS,
     FANOUT_BY_TRANSCRIPT_TOOLS, parse_workflow_agent_dispatch,
     classify_tool, classify_mcp_subcategory, CI_CONTEXT_SUBCATS,
-    is_substantive_tool, classify_change_target, is_plan_file_target,
+    is_substantive_tool, classify_change_target, is_plan_file_target, SHELL_TOOLS,
     bash_writes_file, bash_runs_tests, bash_runs_knowledge, _extract_clis,
     _is_compounding_path, _norm_path_seps, _SKILL_MD_RX,
     extract_skill_name_from_path, _canon_mcp_server, is_mcp_knowledge_write,
@@ -65,6 +65,22 @@ _KNOWLEDGE_NATIVE_TOOLS = frozenset({"WebFetch", "WebSearch"})
 ENABLE_WEB_CONTEXT_GROUNDING = False
 
 
+def event_in_window(ev, since_dt, until_dt):
+    """Return ``(admitted, timestamp)`` using the accumulator's window rules.
+
+    An open-ended run admits undated events for backwards compatibility. Once a
+    window is active, only timestamped events inside the inclusive ``since`` /
+    exclusive ``until`` interval are admitted.
+    """
+    dt = parse_ts(ev.get("timestamp"))
+    if (since_dt is not None or until_dt is not None) and (
+            dt is None
+            or (since_dt is not None and dt < since_dt)
+            or (until_dt is not None and dt >= until_dt)):
+        return False, dt
+    return True, dt
+
+
 def _is_local_url(url):
     if not url:
         return False
@@ -79,6 +95,21 @@ def _zero_tok():
 def _notification_tag(text, tag):
     match = re.search(rf"<{re.escape(tag)}>(.*?)</{re.escape(tag)}>", text or "", re.DOTALL)
     return match.group(1).strip() if match else None
+
+
+def _normalize_bash_command(raw):
+    """Coerce a Bash tool's `command` input to the shell-string shape every regex-based
+    classifier here (`bash_runs_tests`, `bash_runs_knowledge`, `bash_writes_file`,
+    `_extract_clis`, `_SKILL_MD_RX`) expects. Some non-Claude adapters emit `command` as
+    an argv LIST rather than a joined string; searching a list with a compiled regex
+    raises `TypeError` and aborts the whole `observe()` call. Joining with ' && ' mirrors
+    the join this module already applied ad hoc in three separate places (the per-event
+    ordered-fact enrichment, `_fact_plan_skill`, and the Bash tool-name accounting
+    branch) -- centralized here so a list-valued command is normalized ONCE and scores
+    identically everywhere, instead of crashing wherever the join was missing."""
+    if isinstance(raw, list):
+        return " && ".join(str(c) for c in raw)
+    return raw or ""
 
 
 class Accumulator:
@@ -304,6 +335,19 @@ class Accumulator:
         # payload main() consumes.
         self.gc = None
 
+        # F7 hardening — Verification coverage must fail-closed on a test whose
+        # result never resolves (truncated transcript) or that errored. Keyed
+        # by (source, session_id, tool_use_id) -> is_error, so a later
+        # `runs_tests` fact can be cross-referenced against its own result at
+        # derive time without cross-session/source contamination.
+        # derive_session_ordered_facts/aggregate_ordered only run in
+        # to_corpus_stats/to_source_stats, AFTER every file in the corpus has
+        # been observed, so this must be corpus-lifetime like
+        # _fanout_credited_agents/_mcp_compounding_credited above -- NOT reset
+        # per file like _pending_error, or results from earlier files would be
+        # lost before derive time.
+        self._tool_result_is_error = {}
+
     # ---- file lifecycle ----------------------------------------------------
     def begin_file(self, cur_src, fp):
         self._cur_src = cur_src
@@ -469,9 +513,7 @@ class Accumulator:
         if ev.get("attributionSkill") and cls._is_plan_skill(ev["attributionSkill"]):
             return True
         if name == "Bash":
-            cmd = inp.get("command", "") or ""
-            if isinstance(cmd, list):
-                cmd = " && ".join(str(c) for c in cmd)
+            cmd = _normalize_bash_command(inp.get("command"))
             for m in _SKILL_MD_RX.finditer(cmd):
                 if cls._is_plan_skill(m.group(1)):
                     return True
@@ -738,6 +780,25 @@ class Accumulator:
                         "writes": 0,
                     })
                     continue
+                async_no_notification = (
+                    attempt.get("status") == "async_launched"
+                    and attempt.get("invocation_seen")
+                    and not attempt.get("ambiguous")
+                    and attempt.get("lead_model"))
+                if async_no_notification:
+                    if agent_id:
+                        referenced_children.add(agent_id)
+                    pairs.append({
+                        "provider": "anthropic",
+                        "parent_session": attempt.get("parent_session"),
+                        "child_session": agent_id,
+                        "lead_model": attempt.get("lead_model"),
+                        "child_model": child_model,
+                        "completed": False,
+                        "substantive_calls": 0,
+                        "writes": 0,
+                    })
+                    continue
                 valid = (attempt.get("invocation_seen") and not attempt.get("ambiguous")
                          and agent_id and lifecycle_known and attempt.get("lead_model")
                          and child_model and child is not None)
@@ -756,6 +817,10 @@ class Accumulator:
                         attempt.get("substantive_calls", 0), child["substantive_calls"]),
                     "writes": max(attempt.get("writes", 0), child["writes"]),
                 })
+            # Workflow fan-out fix: children identified by parse_workflow_agent_dispatch
+            # have a known parent — they are not real orphans.
+            for _parent_sid, _child_id in self._fanout_credited_agents:
+                referenced_children.add(_child_id)
             if set(self.claude_child_facts) - referenced_children:
                 incomplete = True
         return pairs, "unmeasured" if incomplete else "measured"
@@ -785,11 +850,8 @@ class Accumulator:
         etype = ev.get("type")
         sid = ev.get("sessionId")
         cwd = ev.get("cwd")
-        dt = parse_ts(ev.get("timestamp"))
-        if (since_dt is not None or until_dt is not None) and (
-                dt is None                                   # undatable: can't
-                or (since_dt is not None and dt < since_dt)  # honor "this period
-                or (until_dt is not None and dt >= until_dt)):  # only" — drop
+        admitted, dt = event_in_window(ev, since_dt, until_dt)
+        if not admitted:                                      # honor the active window
             return None
         mkey = dt.strftime("%Y-%m") if dt is not None else None
 
@@ -960,6 +1022,16 @@ class Accumulator:
                 for b in content:
                     if isinstance(b, dict) and b.get("type") == "tool_result":
                         self._record_claude_agent_result(ev, b, sid)
+                        _tuid = b.get("tool_use_id")
+                        _is_error = b.get("is_error")
+                        if _tuid and isinstance(_is_error, bool):
+                            # F7: errors are sticky if a tool_use_id somehow
+                            # repeats within the same source/session; the map
+                            # remains corpus-lifetime so derive runs after all
+                            # files have been observed.
+                            _result_key = (self._cur_src, sid, _tuid)
+                            if self._tool_result_is_error.get(_result_key) is not True:
+                                self._tool_result_is_error[_result_key] = _is_error
                         if b.get("is_error"):
                             self.tool_errors += 1
                             if mkey:
@@ -1026,6 +1098,15 @@ class Accumulator:
                     elif bt == "tool_use":
                         name = b.get("name", "?")
                         inp = b.get("input", {}) if isinstance(b.get("input"), dict) else {}
+                        # Some non-Claude adapters emit a Bash tool's `command` as an argv
+                        # LIST rather than a shell string. Normalize ONCE, here, so every
+                        # regex-based Bash classifier below (the ordered-fact "knowledge"/
+                        # "runs_tests" enrichment AND the "elif name == 'Bash':" accounting
+                        # further down) reads the same string and a list-valued command
+                        # scores identically to its already-joined sibling instead of
+                        # raising TypeError wherever the join was missing.
+                        _bash_cmd = (_normalize_bash_command(inp.get("command"))
+                                    if name in SHELL_TOOLS else "")
                         self.tool_use_total += 1
                         # Identity is an EVENT fact, so it is read here rather than derived
                         # from the session: a parent transcript and its subagent turns share
@@ -1055,6 +1136,11 @@ class Accumulator:
                             _target = _norm_path_seps(
                                 inp.get("file_path") or inp.get("notebook_path")
                                 or inp.get("path") or inp.get("pattern") or inp.get("query") or "")
+                            _classify_target = (
+                                os.path.join(cwd, _target)
+                                if cwd and _target and not _is_abs_path(_target)
+                                else _target)
+                            _file_class = classify_change_target(_classify_target)
                             _items = (inp.get("todos") or inp.get("items") or inp.get("tasks")
                                       or inp.get("plan") or [])
                             if isinstance(_items, list):
@@ -1077,7 +1163,7 @@ class Accumulator:
                                             name.split("__")[1] if len(name.split("__")) > 1 else "",
                                             name.split("__")[-1]) in CI_CONTEXT_SUBCATS
                                         and _cat == "explore")))
-                                if name.startswith("mcp__") else bool(name == "Bash" and bash_runs_knowledge(inp.get("command", "") or "")),
+                                if name.startswith("mcp__") else bool(name == "Bash" and bash_runs_knowledge(_bash_cmd)),
                                 # C1 — write-fact enrichment (ordered-planning redesign):
                                 # file_class/plan_file are computed from the target for
                                 # every fact (harmless no-op for non-file tools); loc is
@@ -1085,10 +1171,28 @@ class Accumulator:
                                 # otherwise — a missing loc never flips
                                 # ordered_facts_complete (see the `dt is None` check below,
                                 # which is the ONLY thing that flips it).
-                                "file_class": classify_change_target(_target),
+                                "file_class": _file_class,
                                 "loc": self._write_loc(name, inp),
-                                "plan_file": is_plan_file_target(_target),
+                                "plan_file": (
+                                    _file_class != "other"
+                                    and is_plan_file_target(_classify_target)),
                                 "plan_skill": self._fact_plan_skill(name, inp, ev),
+                                # v17 — per-session Verification COVERAGE numerator: mark a
+                                # Bash fact that ran a shell test (bash_runs_tests), so
+                                # derive_session_ordered_facts/aggregate_ordered can count the
+                                # eligible change-sessions that verified, next to the raw
+                                # cumulative shell_test_runs density that fed the dropped term.
+                                "runs_tests": bool(
+                                    name == "Bash"
+                                    and bash_runs_tests(_bash_cmd)),
+                                # F7 — needed to resolve this fact's actual
+                                # tool_result (success/error/absent) at derive
+                                # time; see self._tool_result_is_error. Carry
+                                # the source/session identity because tool ids
+                                # are not corpus-global (Codex call_ids may be
+                                # reused across sessions).
+                                "tool_use_id": b.get("id"),
+                                "_session_key": _fact_sid,
                             }
                             self.session_ordered_tools[_fact_sid].append(_ordered_fact)
                             if dt is None:
@@ -1330,14 +1434,26 @@ class Accumulator:
                                 self.compounding_counter += 1
                                 if mkey:
                                     self.month_compounding[mkey] += 1
-                        elif name == "Bash":
-                            cmd = inp.get("command", "") or ""
-                            if isinstance(cmd, list):
-                                cmd = " && ".join(str(c) for c in cmd)
+                        elif name in SHELL_TOOLS:
+                            cmd = _bash_cmd
+                            # CLI accounting is shell-agnostic: `_extract_clis` reads the
+                            # command HEAD against the KNOWN_CLIS allowlist, so `git status`
+                            # extracts `git` whichever shell ran it, and a PowerShell-native
+                            # cmdlet simply misses the allowlist instead of inventing a CLI.
                             for _cli in _extract_clis(cmd):
                                 self.cli_counter[_cli] += 1
                                 if mkey:
                                     self.month_cli_counter[mkey][_cli] += 1
+                            # Everything below reads bash SYNTAX -- POSIX redirection,
+                            # heredocs, `sed -i`, `tee`, shell SKILL.md reads -- so it stays
+                            # Bash-gated. Reusing those heuristics on PowerShell text is a
+                            # separate change with its own false-positive surface, and this
+                            # one is deliberately scoped to the three axes issue #72 names
+                            # (Grounding, Tool command, Token economy). Verification's
+                            # `runs_tests` and the knowledge-grounding arm are Bash-only for
+                            # the same reason -- see their gates in the ordered-fact literal.
+                            if name != "Bash":
+                                continue
                             if self._cur_src != "claude":
                                 # Claude invokes skills via the Skill tool (counted
                                 # above); other CLIs read SKILL.md through the shell
@@ -1383,15 +1499,17 @@ class Accumulator:
         # ---- derive ----------------------------------------------------------
         # C4: aggregate_ordered applies cross-session consume-once plan credit
         # across the WHOLE corpus (not per-session derive_ordered_behavior).
-        _agg = aggregate_ordered(self.session_ordered_tools.values())
+        _agg = aggregate_ordered(
+            self.session_ordered_tools.values(), self._tool_result_is_error)
         _eligible = _agg["eligible"]
         _planned = _agg["planned"]
         _evidence = _agg["evidence"]
+        _test_covered = _agg["test_covered"]
         # Orchestratable: per-session cross-ref with agents_per_session
         _orchestratable = _agg["orchestratable"]
         _orchestratable_sids = set()
         for (src, sid), facts in self.session_ordered_tools.items():
-            d = derive_session_ordered_facts(facts)
+            d = derive_session_ordered_facts(facts, self._tool_result_is_error)
             if d["orchestratable"]:
                 _orchestratable_sids.add(sid)
         _delegated_orchestratable = sum(
@@ -1426,6 +1544,25 @@ class Accumulator:
         self.gc = gc
         git_velocity = (gc["churn"] / active_hours) if active_hours > 0 else 0
 
+        # Reasoning blocks are DELIBERATELY part of the explore numerator, and the decision
+        # is recorded here because it reads as inconsistent with the `plan` exclusion in
+        # taxonomy.classify_tool without it (issue #72).
+        #
+        # `plan` is excluded because entering plan mode or updating a todo list is CEREMONY
+        # that already pays on a separate term (Planning practice), and one action must not
+        # pay twice in one axis. A thinking block is not ceremony and pays nowhere else: it
+        # is the only observable evidence that the model reasoned about the change BEFORE
+        # committing to it, and `planning_ratio_explore_to_doing` measures exactly that
+        # precedence -- thinking-and-reading before producing -- not filesystem contact.
+        # The axis is named Grounding after the HABIT (grounding a change in prior thought)
+        # rather than after the mechanism, which is why reasoning that consults no file
+        # still belongs in the numerator.
+        #
+        # Known consequence, measured across five corpora in issue #72: reasoning blocks are
+        # 59-81% of this numerator in practice, so the term is dominated by a signal that no
+        # source other than Claude emits. Sources without per-turn thinking blocks are scored
+        # on `cat_counter["explore"]` alone and are NOT renormalized -- see the saturation
+        # note beside `grounding` in scoring/aq.py for why that is currently tolerated.
         explore = self.cat_counter.get("explore", 0) + self.thinking_blocks
         produce = self.cat_counter.get("produce", 0)
         execute = self.cat_counter.get("execute", 0)
@@ -1657,6 +1794,7 @@ class Accumulator:
                     len(self.planning_skill_eligible_sessions),
                     self._counted_planning_skill_unmeasured_sessions()),
                 "eligible_change_sessions": _eligible,
+                "test_covered_change_sessions": _test_covered,
                 "planned_eligible_sessions": _planned,
                 "evidence_eligible_sessions": _evidence,
                 "orchestratable_sessions": _orchestratable,
@@ -1815,6 +1953,9 @@ class Accumulator:
             cwds=self._git_cwds(),
             gap_cap_s=GAP_CAP_S, burst_gap_s=BURST_GAP_S,
             no_tool_activity=no_tool_activity, all_sources_no_agent=all_sources_no_agent,
+            # BLOCKER 2: thread the corpus-lifetime, session-scoped result map through the monthly
+            # slice too, matching to_corpus_stats/to_source_stats above.
+            tool_result_is_error=self._tool_result_is_error,
         )
 
     # ---- shaping: per-source stats (reduced shape for build_scoring_inputs) -----
@@ -1829,12 +1970,14 @@ class Accumulator:
         self._flush_pending_skills()
         _s_tool_total = self.tool_use_total
         # C4: cross-session consume-once credit, scoped to this source's sessions.
-        _s_agg = aggregate_ordered(self.session_ordered_tools.values())
+        _s_agg = aggregate_ordered(
+            self.session_ordered_tools.values(), self._tool_result_is_error)
         _s_eligible = _s_agg["eligible"]
+        _s_test_covered = _s_agg["test_covered"]
         _s_orchestratable = _s_agg["orchestratable"]
         _s_orchestratable_sids = set()
         for (src, sid), facts in self.session_ordered_tools.items():
-            d = derive_session_ordered_facts(facts)
+            d = derive_session_ordered_facts(facts, self._tool_result_is_error)
             if d["orchestratable"]:
                 _s_orchestratable_sids.add(sid)
         _s_delegated_orchestratable = sum(
@@ -1876,6 +2019,8 @@ class Accumulator:
         _s_norm_entropy = _s_entropy / math.log2(_s_diversity) if _s_diversity > 1 else 0
 
         _s_cats = self.cat_counter
+        # Mirrors the corpus path's explore numerator, reasoning blocks included -- see the
+        # rationale beside `explore` in to_corpus_stats above.
         _s_explore = _s_cats.get("explore", 0) + self.thinking_blocks
         _s_produce = _s_cats.get("produce", 0)
         _s_execute = _s_cats.get("execute", 0)
@@ -1936,6 +2081,7 @@ class Accumulator:
                     len(self.planning_skill_eligible_sessions),
                     self._counted_planning_skill_unmeasured_sessions()),
                 "eligible_change_sessions": _s_eligible,
+                "test_covered_change_sessions": _s_test_covered,
                 "planned_eligible_sessions": _s_agg["planned"],
                 "evidence_eligible_sessions": _s_agg["evidence"],
                 "orchestratable_sessions": _s_orchestratable,
@@ -2009,17 +2155,27 @@ _WRITE_TOOLS_V5 = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 _EVIDENCE_TOOLS_V5 = {"Read", "Grep", "Glob", "NotebookRead"}
 
 
+def _is_abs_path(path):
+    """Classify POSIX, normalized Windows-drive, and normalized UNC paths."""
+    normalized = _norm_path_seps(path)
+    return bool(
+        os.path.isabs(normalized)
+        or re.match(r"^[A-Za-z]:/", normalized)
+        or normalized.startswith("//")
+    )
+
+
 def _normalized_ordered_target(event):
     target = str(event.get("target") or "")
     if not target:
         return ""
     cwd = str(event.get("cwd") or "")
-    if cwd and not os.path.isabs(target):
+    if cwd and not _is_abs_path(target):
         target = os.path.join(cwd, target)
     return os.path.normpath(target)
 
 
-def derive_session_ordered_facts(events):
+def derive_session_ordered_facts(events, tool_result_is_error=None):
     """Rich per-session ordered-planning facts (ordered-planning redesign C2/C3/C6).
 
     Facts are expected to already carry the C1 enrichment (file_class/loc/
@@ -2040,10 +2196,22 @@ def derive_session_ordered_facts(events):
     counts (ceremony fallback); a short plan-file with no accompanying
     planning-skill does not.
 
+    F7 — `ran_test` (the Verification coverage numerator) requires a
+    `runs_tests` Bash fact that ran AFTER the first CODE write (verifying the
+    change just made, not a pre-existing/incidental test earlier in the
+    session) AND whose tool_result actually resolved successfully.
+    `tool_result_is_error` is the corpus-lifetime
+    {(source, session_id, tool_use_id): is_error} map (see
+    Accumulator._tool_result_is_error); each fact carries its own source/session
+    key. A fact whose scoped key is absent from the map (truncated transcript,
+    no result ever observed) or maps to True (the test errored) does NOT count —
+    fail-closed by construction, not by a downstream floor.
+
     Returns eligible/planned_intra/evidence plus first_write_order/cwd and
     plan_artifacts — the latter two feed aggregate_ordered's cross-session
     consume-once credit (C4), which is NOT applied here (this function is
     single-session only)."""
+    tool_result_is_error = tool_result_is_error or {}
     events = sorted(
         enumerate(events or []),
         key=lambda item: (
@@ -2063,9 +2231,27 @@ def derive_session_ordered_facts(events):
     todo_threshold_hit = None       # (cwd, order) once >=PLAN_MIN_STEPS is first reached
     plan_file_events = []           # (cwd, order, loc) for plan-file writes before the cutoff
     saw_plan_skill = False
+    # F7: a successful shell-test Bash fact that ran AFTER first_code_write
+    # (v18 counted ANY runs_tests fact, regardless of order or outcome).
+    ran_test = False
 
     for index, event in enumerate(events):
         name = str(event.get("name") or "")
+        if (event.get("runs_tests") and not ran_test
+                and first_code_write is not None and index > first_code_write):
+            # Reuse first_code_write (already resolved by the time we reach a
+            # later index, since events are time-sorted and code writes are
+            # processed below in this same ascending pass) instead of
+            # re-deriving order. Fail-closed: a tool_use_id absent from the
+            # map (no result observed) or True (errored) does not count.
+            tuid = event.get("tool_use_id")
+            session_key = event.get("_session_key")
+            if (tuid is not None and isinstance(session_key, tuple)
+                    and len(session_key) == 2):
+                result_key = (*session_key, tuid)
+                if (result_key in tool_result_is_error
+                        and not tool_result_is_error[result_key]):
+                    ran_test = True
         target = _normalized_ordered_target(event)
         is_write = name in _WRITE_TOOLS_V5
         file_class = event.get("file_class")
@@ -2135,6 +2321,7 @@ def derive_session_ordered_facts(events):
         "orchestratable": orchestratable,
         "planned_intra": planned_intra,
         "evidence": eligible and evidence_before,
+        "ran_test": ran_test,
         "first_write_order": first_write_order,
         "cwd": first_write_cwd,
         "plan_artifacts": plan_artifacts,
@@ -2166,7 +2353,7 @@ def derive_ordered_behavior(events):
     }
 
 
-def aggregate_ordered(sessions):
+def aggregate_ordered(sessions, tool_result_is_error=None):
     """C4 — cross-session consume-once plan credit. `sessions` is an iterable
     of per-session ordered-fact lists (values of session_ordered_tools, or a
     single month's bucket of the same shape). Each session is derived via
@@ -2174,8 +2361,14 @@ def aggregate_ordered(sessions):
     CODE write then consumes the earliest still-unconsumed plan artifact from
     the SAME cwd within [T - WINDOW, T]. Executions are matched in ascending
     first-code-write order so the earliest execution gets first claim on a
-    shared artifact (one plan credits exactly one execution)."""
-    derived = [derive_session_ordered_facts(facts) for facts in sessions]
+    shared artifact (one plan credits exactly one execution).
+
+    `tool_result_is_error` (F7) is forwarded to derive_session_ordered_facts
+    unchanged so each fact resolves its own `(source, session_id,
+    tool_use_id)` key and `ran_test`/`test_covered` can fail-closed on an
+    unresolved or errored test result."""
+    derived = [derive_session_ordered_facts(facts, tool_result_is_error)
+               for facts in sessions]
 
     artifacts = []
     for d in derived:
@@ -2207,5 +2400,9 @@ def aggregate_ordered(sessions):
                   if d["eligible"] and (d["planned_intra"] or d.get("planned_final")))
     evidence = sum(1 for d in derived if d["evidence"])
     orchestratable = sum(1 for d in derived if d.get("orchestratable"))
+    # v18 — Verification coverage numerator: eligible change-sessions that also ran a
+    # shell test, computed HERE beside `eligible` so the coverage ratio shares the exact
+    # same eligibility population (no duplicated eligibility logic downstream).
+    test_covered = sum(1 for d in derived if d["eligible"] and d.get("ran_test"))
     return {"eligible": eligible, "planned": planned, "evidence": evidence,
-            "orchestratable": orchestratable}
+            "orchestratable": orchestratable, "test_covered": test_covered}
