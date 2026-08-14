@@ -33,6 +33,12 @@ ROWS = {
     "tooling_reshaped_evidence": "Did your own tooling reshape the evidence first?",
     "one_condition_neutralized": "Several conditions can cause this. Does neutralizing ONE leave it unchanged?",
 }
+# The two judgement fields a not_raised entry carries beyond a finding's burden. A constant
+# because new-run.py announces them the way it already announces ROWS: a run that adds its
+# first not_raised entry had no way to learn these existed except by being refused, and it
+# paid a render cycle for that. The requirement was never the problem; not stating it was.
+NOT_RAISED_KEYS = ("why_not", "reconsider_if")
+
 VERDICTS = {"pass", "fail", "n/a"}
 SHAPES = {"dropped-term", "saturated", "contaminated-denominator",
           "signal-not-attributable-to-person", "signal-reused"}
@@ -219,7 +225,7 @@ def check(doc, doc_path=None, flags_dir=None, notes=None):
     # somebody chose not to send. Only the two judgement fields are extra.
     for i, f in enumerate(doc.get("not_raised", [])):
         w = f"not_raised[{i}] {f.get('id', '<no id>')}"
-        for k in ("why_not", "reconsider_if"):
+        for k in NOT_RAISED_KEYS:
             if not (f.get(k) or "").strip():
                 fail(w, f"{k} is empty. Without it this list is a graveyard the next run "
                         "re-derives from scratch, which is what the state exists to avoid.")
