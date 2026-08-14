@@ -29,12 +29,17 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from _common import load_stats, find_key  # noqa: E402
 
-# Line-buffered even when the output is a pipe. Python block-buffers a redirected stdout, and
-# this script's subprocesses inherit the pipe and write through immediately, so a log captured
-# with `| tee` came out in an order that contradicts the run: the fingerprint and the THEIRS
-# vs OURS table printed ABOVE the banners that produced them. Live it is worse -- the two
-# minutes the pipeline takes look like a hang, and a cold run polled the log three times to
-# find out. `python3 -u` fixes it too and depends on the caller remembering.
+# Line-buffered even when the output is a pipe. Python block-buffers a redirected stdout, so
+# a log captured with `| tee` came out in an order that contradicts the run: the fingerprint
+# and the THEIRS vs OURS table printed ABOVE the banners that produced them. `python3 -u`
+# fixes that too and depends on the caller remembering.
+#
+# On its own that is not enough, and an earlier version of this comment claimed the
+# subprocesses "write through immediately", which is wrong. They inherit the same pipe and
+# block-buffer in turn: piped, `xl-ai-insights` held its whole progress output, so the run
+# showed nothing for the minutes it takes and looked hung. A cold run polled the log four
+# times and ran `ps` to establish it had not died. The pipeline is launched with
+# PYTHONUNBUFFERED=1 for that reason -- see the env= on its subprocess.run below.
 try:
     sys.stdout.reconfigure(line_buffering=True)
 except AttributeError:  # pragma: no cover - Python < 3.7
@@ -143,7 +148,8 @@ def main(argv=None):
     rc = subprocess.run(
         ["uv", "run", "--project", copy, "xl-ai-insights", "--local", "--console",
          "--no-open", f"--since={args.since}", f"--until={args.until}",
-         f"--output-dir={out}", *dirflag], cwd=copy, check=False).returncode
+         f"--output-dir={out}", *dirflag], cwd=copy, check=False,
+        env=dict(os.environ, PYTHONUNBUFFERED="1")).returncode
     if rc != 0:
         print(f"\nerror: the scoring tool exited {rc}.", file=sys.stderr)
         return 1

@@ -46,8 +46,12 @@ ALWAYS = ("saturation-counterfactual.py", "axis-terms.py")
 def per_script_args(name, args):
     """Flags a specific check needs beyond the shared shape. Absent means it is skipped."""
     comparisons = [x for c in args.comparison for x in ("--comparison", c)]
+    # Runs either way. Without --repo it does the session-level half and prints the
+    # by-repository table you need in order to choose a repo, so skipping it was worse than
+    # useless: SKILL.md tells you to read that table first and the driver made that a walk you
+    # had to do by hand. It is additive now, and the summary says which half ran.
     if name == "verification-reality.py":
-        return ["--repo", args.repo] if args.repo else None
+        return ["--repo", args.repo] if args.repo else []
     if name in ("axis-terms.py", "skill-fluency-term.py"):
         return comparisons
     # A check that leaves a flag behind must leave it where emit-gate.py looks, which is the
@@ -125,7 +129,7 @@ def run(item):
 print(f"RUNNING {len(work)} checks, {args.jobs} at a time -> {args.out_dir}")
 if skipped:
     print(f"  skipped, missing the flag they need: {', '.join(skipped)}")
-    print("  a skipped check is not a passed one; pass --repo to include it.")
+    print("  a skipped check is not a passed one.")
 
 wall = time.monotonic()
 with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:

@@ -14,11 +14,15 @@ This splits both sides of the ratio.
     have a co-located test today. Resolved against a git ref, not the working tree, so a
     deleted worktree cannot read as "no test".
 
-**Which repo to pass, since the corpus spans many.** Run without `--repo` first: the
-by-repository table above IS the answer, and the repo at the top of its denominator is the
-one whose file level is worth reading. Pass that one. There is no representative repo and
-this does not average them, so a single `--repo` result describes that repo and nothing else,
-which is why the flag is separate rather than defaulted.
+**Which repo to pass, since the corpus spans many.** Run without `--repo` first and read the
+by-repository table. **Its rows are labels from `repo_of` below, not paths**, and an earlier
+version of this paragraph said to take the one at the top of the denominator, which sends you
+somewhere you cannot pass: on a real corpus the top row was `agent config`, meaning `~/.claude`
+and not a project, and the second was a directory holding nine repositories and seven
+worktrees. Neither is a repo. Skip `agent config`, `ephemeral (tmp)` and `other`, skip any row
+you recognise as a container rather than a checkout, and pass the path of the busiest row that
+is one repository. There is no representative repo and this does not average them, so a single
+`--repo` result describes that repo and nothing else.
 
 **Skipping it is a real gap, not a formality.** `run-checks.py` leaves this check out when
 `--repo` is absent and says so; the session-level half still runs and the manifest still goes

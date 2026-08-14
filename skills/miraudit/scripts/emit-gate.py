@@ -54,18 +54,34 @@ def find_flags(doc_path, explicit=None):
     same as none, and it fails open, which is the worst direction for a gate to fail in.
 
     So: one order, stated, and the caller is told which directory answered.
+
+    The order WALKS UP, and that is not tidiness. Fixing the two conventions left a second way
+    to miss: `new-run.py` defaults the run JSON beside `--stats`, which is the anchored
+    payload's directory, while `run-checks.py` leaves flags in the run root's `checks/`. Follow
+    both defaults and the gate searched `anchor/report/checks`, found no directory, and passed
+    a Grounding finding with a real flag two levels above it. A cold run found that, and it is
+    the same fail-open this function was written to remove, arriving through a sibling's
+    default path instead of through this one.
     """
     if explicit:
         roots = [os.path.abspath(os.path.expanduser(explicit))]
     else:
         base = os.path.dirname(os.path.abspath(doc_path)) if doc_path else os.getcwd()
-        roots = [os.path.join(base, "checks"), base]
+        roots, node = [], base
+        for _ in range(4):
+            roots.append(os.path.join(node, "checks"))
+            parent = os.path.dirname(node)
+            if parent == node:
+                break
+            node = parent
+        roots.append(base)
     for root in roots:
         found = {name: axis for name, axis in FLAGS.items()
                  if os.path.exists(os.path.join(root, name))}
-        if found or os.path.isdir(root):
+        if found:
             return root, found
-    return roots[-1], {}
+    existing = [r for r in roots if os.path.isdir(r)]
+    return (existing[0] if existing else roots[-1]), {}
 
 
 def check(doc, doc_path=None, flags_dir=None):
