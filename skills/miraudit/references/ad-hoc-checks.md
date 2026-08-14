@@ -86,6 +86,24 @@ its judgement never becomes the verdict.
    arms. Concurrency stops at the copy rather than the arm, since `uv run --project` builds
    `.venv` inside it, so two copies over two windows is 2x and not 4x.
 
+   **An arm that edits the payload in memory is cheaper and has two traps, both of which have
+   now cost a real finding.**
+
+   *The payload validates itself, fail-closed.* `_planning_skill_evidence` cross-checks six
+   `planning_skill_*` fields and returns `unmeasured` when the published share disagrees with
+   numerator over denominator by more than 1e-6. An arm that edits two of the six does not
+   score differently: the term drops out, `wsum` renormalizes onto its neighbour, and the axis
+   comes back at its **maximum**. That is a believable number and a false one. Change the
+   whole consistent set, and put the untouched payload through first as the control that must
+   reproduce what the tool published.
+
+   *Re-encoding a ratio can move it more than the correction does.* An arm that computes a
+   corrected share and pushes it back through the real integer denominator inherits that
+   denominator's granularity. `round(0.245878 * 51) = 13` reads back as 0.2549, nine tenths of
+   a point above the share being tested, which was enough to move Discipline 15.0 to 15.3 and
+   the AQ 89 to 90 — and 1 AQ was the entire claim. Scale the denominator instead, or assert
+   the round trip: re-read the share you wrote and fail if it is not the one you computed.
+
 7. **`not_checked`, non-empty**, like any finding. Name the question you did not ask.
 
 ## What `_common.py` gives you
