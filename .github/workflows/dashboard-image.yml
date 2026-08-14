@@ -1,0 +1,90 @@
+name: dashboard-image
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  # Tests gate the publish — an image never ships on a red suite.
+  dashboard-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: dashboard/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+
+  # The dashboard's top constraint is exact CLI compatibility, so the contract
+  # is exercised against the real Python modules and a real container.
+  dashboard-contract:
+    needs: dashboard-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e . pytest
+      - run: docker build -t gnomon-dashboard:ci ./dashboard
+      - name: Container must refuse to start without TEAM_TOKEN
+        run: |
+          if docker run --rm gnomon-dashboard:ci; then
+            echo "container started without TEAM_TOKEN — the boot guard is gone" >&2
+            exit 1
+          fi
+      - name: Boot the container
+        run: |
+          docker run -d --rm --name dash -p 3000:3000 \
+            -e TEAM_TOKEN=dev -e JWT_SECRET=ci-secret-32-bytes-minimum-please \
+            gnomon-dashboard:ci
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:3000/ >/dev/null && break
+            sleep 1
+          done
+      - run: TEAM_TOKEN=dev DASHBOARD_BASE=http://localhost:3000 pytest tests/dashboard_contract_test.py -v
+      - run: TEAM_TOKEN=dev BASE=http://localhost:3000 ./dashboard/scripts/smoke-e2e.sh
+      - if: always()
+        run: docker logs dash || true
+      - if: always()
+        run: docker stop dash || true
+
+  publish:
+    needs: [dashboard-tests, dashboard-contract]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/gnomon-dashboard
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./dashboard
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
