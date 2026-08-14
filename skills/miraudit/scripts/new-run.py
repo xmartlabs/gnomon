@@ -121,6 +121,13 @@ for key, question in _gate.ROWS.items():
 print("\n  A verdict is pass, fail or n/a, and each carries the fact behind it. A row that\n"
       "  reads `fail` means the finding did not survive, and what did not survive belongs\n"
       "  in dismissed[] with the fact that killed it, not in findings[].")
+print("\n  An entry in not_raised[] carries that same `refuted` block, because it is a\n"
+      "  CONFIRMED finding somebody chose not to send, plus these two:\n")
+for key in _gate.NOT_RAISED_KEYS:
+    print(f"    {key:32} {'why it was not sent' if key == 'why_not' else 'what would reopen it'}")
+print("\n  Said here for the same reason as the rows above. A run added its first\n"
+      "  not_raised entry, learned these existed by being refused at the gate, and paid a\n"
+      "  render cycle for it.")
 print("\n  NOT CHECKED: whether the window you passed is the one the report used. This "
       "reads\n  the anchored run you point it at and cannot tell a right window from a "
       "wrong one.")
