@@ -17,6 +17,16 @@ export function fmtUsd(n: number): string {
   return `$${Math.round(n).toLocaleString("en-US")}`;
 }
 
+/**
+ * Split a formatted figure into numeral and unit so a stat column can typeset
+ * them at different sizes. Slicing the last character would mangle a unitless
+ * value ("950" -> "95" + "0").
+ */
+export function splitUnit(s: string): { value: string; unit: string } {
+  const m = /^([^A-Za-z]*)([A-Za-z]*)$/.exec(s);
+  return m ? { value: m[1], unit: m[2] } : { value: s, unit: "" };
+}
+
 /** Signed delta for the inked annotations: +4 / −4 (true minus sign). */
 export function fmtDelta(n: number): string {
   return n < 0 ? `−${Math.abs(n)}` : `+${n}`;
