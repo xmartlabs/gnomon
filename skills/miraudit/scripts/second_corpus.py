@@ -1,6 +1,6 @@
 """One command, one file. This is the entire ask for someone contributing a second corpus:
 
-    uvx --from "git+https://github.com/ftrinidad/gnomon@feat/miraudit-skill#subdirectory=skills/miraudit" \
+    uvx --from "git+https://github.com/xmartlabs/gnomon#subdirectory=skills/miraudit" \
         miraudit-second-corpus
 
 Nothing is installed and nothing is left behind. From a clone, the equivalent is

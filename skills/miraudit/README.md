@@ -235,13 +235,14 @@ cp -r /tmp/miraudit-src/miraudit .claude/skills/      # this project only
 which matters because the checks are the point.
 
 ```bash
-npx skills add "ftrinidad/gnomon#feat/miraudit-skill" -a claude-code -s miraudit -y
+npx skills add xmartlabs/gnomon -a claude-code -s miraudit -y
 ```
 
-**The `#branch` suffix is not optional here.** This skill lives on a branch of a fork, and
-the bare `owner/repo` form clones the default branch and reports "No skills found", a
-message that reads like the skill is broken rather than like you are looking at the wrong
-branch. Drop the suffix once it lands on a default branch somewhere.
+**No `#branch` suffix, and no version ref.** This used to live on a branch of a fork and the
+suffix was mandatory; it is on `xmartlabs/gnomon`'s default branch now, so the bare
+`owner/repo` form is the right one. Do not reach for the `@latest` that this repo's root
+README uses for `xl-ai-insights`: that tag predates the skill and does not contain
+`skills/`, so pinning to it fails to resolve rather than installing an older copy.
 
 That installs into `.claude/skills/` for the current project. `-g` puts it in
 `~/.claude/skills/` for every project instead. **If you are the one editing this skill, do
@@ -340,7 +341,7 @@ axis saturates" from "this person clears every bar."
 **The entire ask is one command**, and it installs nothing:
 
 ```bash
-uvx --from "git+https://github.com/ftrinidad/gnomon@feat/miraudit-skill#subdirectory=skills/miraudit" \
+uvx --from "git+https://github.com/xmartlabs/gnomon#subdirectory=skills/miraudit" \
     miraudit-second-corpus
 ```
 

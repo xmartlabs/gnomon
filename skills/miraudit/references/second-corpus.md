@@ -638,7 +638,7 @@ no agent takes part, so there is no reason to put anything in somebody's config 
 for a favour.
 
 ```bash
-uvx --from "git+https://github.com/ftrinidad/gnomon@feat/miraudit-skill#subdirectory=skills/miraudit" \
+uvx --from "git+https://github.com/xmartlabs/gnomon#subdirectory=skills/miraudit" \
     miraudit-second-corpus
 ```
 
