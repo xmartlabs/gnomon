@@ -1,6 +1,7 @@
 """Do the places that state the pin still agree — with each other, and with the checkout.
 
     python3 pin-consistency.py --checkout <copy> [--offline] [--contract-only]
+    python3 pin-consistency.py --checkout <repo> --write
 
 The pin lived in three places and the refresh procedure named two. The third is a pasteable
 `--expect-contract` command in README.md, so a stale value there is executable-wrong rather
@@ -60,6 +61,9 @@ if "--field" in sys.argv:
 args, _WINDOW = parse(__doc__.strip().splitlines()[0], {
     "--offline": {"action": "store_true",
                   "help": "skip the upstream check; it is advisory either way"},
+    "--write": {"action": "store_true",
+                "help": "rewrite the block, the prose sentence and README's example from the "
+                        "contract this checkout computes. Does the typing, not the validating"},
     "--contract-only": {"action": "store_true", "dest": "contract_only",
                         "help": "skip the ref comparison and the upstream check. For CI, "
                                 "where the checkout is the repository at HEAD rather than a "
@@ -152,9 +156,50 @@ else:
     [("gnomon.scoring.versioning", "SCORE_CONTRACT_ID")],
     "The contract identifier moved. Every comparison in this skill is scoped to it, so "
     "there is nothing to scope to until it is found again.")
-if SCORE_CONTRACT_ID != block["contract"]:
+if SCORE_CONTRACT_ID != block["contract"] and not args.write:
     failures.append(f"the checkout computes contract {SCORE_CONTRACT_ID}, the block says "
                     f"{block['contract']}. This is the gate; the ref below is a hint.")
+
+# --write. The contract string lives in three places -- the block, the prose sentence a person
+# reads, and a pasteable --expect-contract example in README.md -- and a re-pin used to mean
+# typing it into all three. Measured: editing only the block leaves two failures behind, which
+# is how a re-pin half-lands. The value is not a judgement, it is whatever the checkout
+# computes, so the typing is mechanical and belongs here.
+#
+# What it deliberately does NOT do is validate. `validated:` becomes today's date because the
+# field records when somebody last looked, and this makes the looking cheaper rather than
+# optional: the anchors are not checked by anything and that is where the last stale claim
+# lived. So it says so, every time, instead of letting a green run imply otherwise.
+if args.write:
+    new_ref = subprocess.run(["git", "-C", args.checkout, "rev-parse", "--short", "HEAD"],
+                             capture_output=True, text=True).stdout.strip() or block["ref"]
+    today = subprocess.run(["date", "+%Y-%m-%d"], capture_output=True, text=True).stdout.strip()
+    updated = known_text
+    updated = re.sub(r"(^```pin\n(?:.*\n)*?)^ref: .*$", rf"\g<1>ref: {new_ref}",
+                     updated, count=1, flags=re.M)
+    updated = re.sub(r"(^```pin\n(?:.*\n)*?)^contract: .*$",
+                     rf"\g<1>contract: {SCORE_CONTRACT_ID}", updated, count=1, flags=re.M)
+    updated = re.sub(r"(^```pin\n(?:.*\n)*?)^validated: .*$", rf"\g<1>validated: {today}",
+                     updated, count=1, flags=re.M)
+    updated = re.sub(r"\*\*Validated against:\*\*\s*`[0-9a-f]{7,40}`\s*on\s*`([\w./-]+)`"
+                     r"\s*\(contract\s*`[\d:]+`\),\s*[\d-]+\.",
+                     rf"**Validated against:** `{new_ref}` on `\1` (contract "
+                     rf"`{SCORE_CONTRACT_ID}`), {today}.", updated, count=1)
+    with open(KNOWN, "w") as fh:
+        fh.write(updated)
+    if readme_text:
+        with open(README, "w") as fh:
+            fh.write(re.sub(r"--expect-contract\s+[\d:]+",
+                            f"--expect-contract {SCORE_CONTRACT_ID}", readme_text))
+    print(f"pin-consistency --write: block, prose and README now read {SCORE_CONTRACT_ID} "
+          f"at {new_ref}, validated {today}.")
+    print("\n  NOT DONE, and this is the part that matters: nothing was validated. Re-run\n"
+          "  contract-probe.py and the checks against this ref, and re-resolve every\n"
+          "  file:line anchor in references/ by symbol -- `git grep -n <sym> <ref>`, never by\n"
+          "  renumbering. The last stale claim in this skill sat on a line number that still\n"
+          "  resolved and pointed at unrelated code, so a pass that only renumbers finds\n"
+          "  nothing. Then re-run this without --write.")
+    raise SystemExit(0)
 
 # 4 -- is the checkout the commit the block names? A hint, so it is reported either way and
 # fails only when it can be resolved AND disagrees.
@@ -207,7 +252,11 @@ if failures:
     print()
     for f in failures:
         print(f"  DRIFTED: {f}")
-    print("\n  The pin is the one thing a second corpus and this run have to share. Fix the")
-    print("  ```pin block in references/known-state.md and the copies that quote it.")
+    print("\n  The pin is the one thing a second corpus and this run have to share.")
+    print("  The contract string lives in three places and editing only the block leaves two")
+    print("  of these behind. To do the typing:")
+    print(f"\n      python3 {os.path.relpath(__file__)} --checkout . --write\n")
+    print("  It rewrites all three from what this checkout computes and says what it did not")
+    print("  do, which is validate. Read that part.")
     raise SystemExit(1)
 print("  ok             every stated pin agrees with the block and with the checkout")
