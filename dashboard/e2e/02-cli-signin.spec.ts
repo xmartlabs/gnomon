@@ -4,11 +4,13 @@ import { SEEDED } from "../playwright.config";
 
 const shot = (name: string) => ({ path: `test-results/flows/${name}.png`, fullPage: true });
 
-const CALLBACK_PORT = 8799;
-const CALLBACK = `http://127.0.0.1:${CALLBACK_PORT}/callback`;
+// Bound at runtime, not hard-coded: a busy port would fail the suite before it
+// tested any behaviour, and the CLI itself picks a free one too.
+let callbackPort = 0;
+const callbackUrl = () => `http://127.0.0.1:${callbackPort}/callback`;
 /** What the CLI actually opens: gnomon/upload/auth.py starts a loopback server. */
 const signInUrl = (count = 3) =>
-  `${SEEDED}/cli-auth?redirect_uri=${encodeURIComponent(CALLBACK)}&count=${count}`;
+  `${SEEDED}/cli-auth?redirect_uri=${encodeURIComponent(callbackUrl())}&count=${count}`;
 
 /**
  * The real thing rather than a route stub: gnomon/upload/auth.py binds a
@@ -21,11 +23,12 @@ let loopback: http.Server;
 
 test.beforeAll(async () => {
   loopback = http.createServer((req, res) => {
-    received.push(new URL(req.url!, `http://127.0.0.1:${CALLBACK_PORT}`));
+    received.push(new URL(req.url!, callbackUrl()));
     res.writeHead(200, { "Content-Type": "text/html" });
     res.end("<h1>CLI got the tokens</h1>");
   });
-  await new Promise<void>((resolve) => loopback.listen(CALLBACK_PORT, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => loopback.listen(0, "127.0.0.1", resolve));
+  callbackPort = (loopback.address() as import("node:net").AddressInfo).port;
 });
 
 test.afterAll(async () => {
@@ -47,7 +50,7 @@ test.describe("Flow 2 · an engineer signs the CLI in", () => {
     // The privacy claim is the reason anyone agrees to this at all.
     await expect(page.getByText(/Only summary statistics are uploaded/)).toBeVisible();
     // The page shows which loopback port it will hand the tokens back to.
-    await expect(page.getByText(`127.0.0.1:${CALLBACK_PORT}`)).toBeVisible();
+    await expect(page.getByText(`127.0.0.1:${callbackPort}`)).toBeVisible();
 
     await page.screenshot(shot("02-cli-signin"));
   });
@@ -60,7 +63,7 @@ test.describe("Flow 2 · an engineer signs the CLI in", () => {
     await expect(page.getByText("Invalid team token")).toBeVisible();
     // The callback and count survive the bounce, so the retry still works.
     const url = new URL(page.url());
-    expect(url.searchParams.get("redirect_uri")).toBe(CALLBACK);
+    expect(url.searchParams.get("redirect_uri")).toBe(callbackUrl());
     expect(url.searchParams.get("count")).toBe("3");
 
     await page.screenshot(shot("02-cli-signin-rejected"));
