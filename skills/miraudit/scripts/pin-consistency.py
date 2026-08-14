@@ -67,7 +67,9 @@ def contract_at(ref, repo):
     if r.returncode != 0:
         return None, (f"could not read gnomon/scoring/versioning.py at {ref} from {repo}. "
                       "The contract is derived from the pinned ref, so it needs a git "
-                      "checkout that has that commit.")
+                      f"repository that HAS that commit. If {repo} is a clone, `git -C {repo} "
+                      "fetch` is usually the whole fix: a clone made before the pin moved, or "
+                      "a shallow one, simply does not have the object yet.")
     ns = {"__name__": "_pinned_versioning"}
     try:
         exec(compile(r.stdout, "versioning.py", "exec"), ns)
@@ -204,8 +206,9 @@ if PINNED_CONTRACT is None:
     # fail-open this skill exists to catch, introduced by the commit that removed the stored
     # copy. anchor.py hands its throwaway `git archive` copy to every check, so this is the
     # normal case rather than an exotic one.
-    failures.append(f"{why} Pass --pin-repo pointing at a clone that has {block['ref']}; the "
-                    f"checkout computes {SCORE_CONTRACT_ID} and nothing compared it.")
+    failures.append(f"{why} Otherwise pass --pin-repo pointing at a clone that has it. The "
+                    f"checkout computes {SCORE_CONTRACT_ID} and nothing compared it, which is "
+                    "why this is a failure rather than a note.")
 elif SCORE_CONTRACT_ID != PINNED_CONTRACT and not args.write:
     failures.append(f"the checkout computes contract {SCORE_CONTRACT_ID}, and the code at the "
                     f"pinned ref {block['ref']} computes {PINNED_CONTRACT}. This is the gate; "
