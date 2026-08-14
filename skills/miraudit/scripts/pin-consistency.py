@@ -166,11 +166,86 @@ if SCORE_CONTRACT_ID != block["contract"] and not args.write:
 # is how a re-pin half-lands. The value is not a judgement, it is whatever the checkout
 # computes, so the typing is mechanical and belongs here.
 #
-# What it deliberately does NOT do is validate. `validated:` becomes today's date because the
-# field records when somebody last looked, and this makes the looking cheaper rather than
-# optional: the anchors are not checked by anything and that is where the last stale claim
-# lived. So it says so, every time, instead of letting a green run imply otherwise.
+# It re-resolves the file:line anchors too, and BEFORE it touches the block, because the
+# resolution needs the ref the block still names. Two commands in the right order is one
+# command somebody eventually runs backwards.
+#
+# The split is the point. An anchor whose line still exists verbatim at the new ref, exactly
+# once, is a pure move: measured on the 19:19:19 re-pin, that was 9 of 9 in aq.py, and it is
+# the tedious part people either skip or do wrong. Anything else -- gone, or now ambiguous --
+# is left for a person and the run fails until they look.
+#
+# What none of it does is validate. `validated:` becomes today's date because the field records
+# when somebody last looked, and this makes the looking cheaper rather than optional. A content
+# resolver moves a line; it cannot tell whether the SENTENCE around it still describes the
+# code. The stale claim this skill carried for days was exactly that: `accumulator.py:1414`
+# resolved fine and the prose beside it named a branch the file had not contained since #75.
+# So it says so, every time, instead of letting a green run imply otherwise.
+
+
+def resolve_anchors(checkout, old_ref):
+    """Renumber `file.py:N` anchors from old_ref to the checkout. Returns (edits, unresolved)."""
+    docs = [os.path.join(SKILL, "references", n)
+            for n in sorted(os.listdir(os.path.join(SKILL, "references")))
+            if n.endswith(".md")] + [SKILL_MD]
+    paths = subprocess.run(["git", "-C", checkout, "ls-files", "*.py"],
+                           capture_output=True, text=True).stdout.split()
+    by_base = {}
+    for p in paths:
+        by_base.setdefault(os.path.basename(p), []).append(p)
+
+    old_cache, new_cache, edits, unresolved = {}, {}, [], []
+
+    def lines(cache, ref, path):
+        key = (ref, path)
+        if key not in cache:
+            r = subprocess.run(["git", "-C", checkout, "show", f"{ref}:{path}"],
+                               capture_output=True, text=True)
+            cache[key] = r.stdout.splitlines() if r.returncode == 0 else None
+        return cache[key]
+
+    for doc in docs:
+        if not os.path.exists(doc):
+            continue
+        text = original = open(doc).read()
+        for base, start, end in sorted(set(re.findall(r"([a-z_]+\.py):(\d+)(?:-(\d+))?", text))):
+            where = f"{os.path.basename(doc)} -> {base}:{start}" + (f"-{end}" if end else "")
+            cands = by_base.get(base, [])
+            if len(cands) != 1:
+                why = ("no file by that name in the checkout" if not cands
+                       else f"{len(cands)} files share that name, so it is ambiguous")
+                unresolved.append(f"{where}: {why}")
+                continue
+            old_lines = lines(old_cache, old_ref, cands[0])
+            new_lines = lines(new_cache, "HEAD", cands[0])
+            if old_lines is None or new_lines is None:
+                unresolved.append(f"{where}: could not read the file at one of the two refs")
+                continue
+            n = int(start)
+            if n > len(old_lines):
+                unresolved.append(f"{where}: the pinned ref's file has only {len(old_lines)} lines")
+                continue
+            content = old_lines[n - 1]
+            hits = [i + 1 for i, l in enumerate(new_lines) if l == content]
+            if len(hits) != 1:
+                unresolved.append(
+                    f"{where}: its line is {'gone' if not hits else f'now at {len(hits)} places'} "
+                    f"at the new ref. Read the sentence around it and resolve it by symbol.")
+                continue
+            if hits[0] == n:
+                continue
+            new_anchor = f"{base}:{hits[0]}"
+            if end:
+                new_anchor += f"-{hits[0] + (int(end) - n)}"
+            text = text.replace(f"{base}:{start}" + (f"-{end}" if end else ""), new_anchor)
+            edits.append(f"{os.path.basename(doc)}: {base}:{start}"
+                         + (f"-{end}" if end else "") + f" -> {new_anchor}")
+        if text != original:
+            with open(doc, "w") as fh:
+                fh.write(text)
+    return edits, unresolved
 if args.write:
+    anchor_edits, anchor_unresolved = resolve_anchors(args.checkout, block["ref"])
     new_ref = subprocess.run(["git", "-C", args.checkout, "rev-parse", "--short", "HEAD"],
                              capture_output=True, text=True).stdout.strip() or block["ref"]
     today = subprocess.run(["date", "+%Y-%m-%d"], capture_output=True, text=True).stdout.strip()
@@ -193,12 +268,24 @@ if args.write:
                             f"--expect-contract {SCORE_CONTRACT_ID}", readme_text))
     print(f"pin-consistency --write: block, prose and README now read {SCORE_CONTRACT_ID} "
           f"at {new_ref}, validated {today}.")
+    if anchor_edits:
+        print(f"\n  {len(anchor_edits)} anchor(s) renumbered, each because its line survived "
+              f"verbatim and exactly once:")
+        for e in anchor_edits:
+            print(f"    {e}")
+    else:
+        print("\n  No anchor moved.")
     print("\n  NOT DONE, and this is the part that matters: nothing was validated. Re-run\n"
-          "  contract-probe.py and the checks against this ref, and re-resolve every\n"
-          "  file:line anchor in references/ by symbol -- `git grep -n <sym> <ref>`, never by\n"
-          "  renumbering. The last stale claim in this skill sat on a line number that still\n"
-          "  resolved and pointed at unrelated code, so a pass that only renumbers finds\n"
-          "  nothing. Then re-run this without --write.")
+          "  contract-probe.py and the checks against this ref. Then read the sentences around\n"
+          "  the anchors above and ask whether they still describe the code -- renumbering\n"
+          "  cannot answer that, and it is where this skill's last stale claim lived for days:\n"
+          "  a line that resolved cleanly beside prose naming a branch the file no longer had.\n"
+          "  Then re-run this without --write.")
+    if anchor_unresolved:
+        print(f"\n  {len(anchor_unresolved)} anchor(s) could NOT be resolved and need a person:")
+        for u in anchor_unresolved:
+            print(f"    {u}")
+        raise SystemExit(1)
     raise SystemExit(0)
 
 # 4 -- is the checkout the commit the block names? A hint, so it is reported either way and
