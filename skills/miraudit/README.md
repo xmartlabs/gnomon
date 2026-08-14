@@ -282,7 +282,7 @@ one command and writes the `stats.json` the other checks read:
 
 ```bash
 python3 scripts/anchor.py --checkout /path/to/gnomon --since 2026-07-07 --until 2026-08-06 \
-    --published 92 --expect-contract 18:18:18
+    --published 92
 ```
 
 It copies the checkout, reproduces the published number on the copy, prints the corpus
@@ -294,8 +294,11 @@ compare it yourself, which is what it used to do, and a gate nobody is forced th
 a gate. A number that did not reproduce makes every later finding unsafe to read, so this is
 the one place worth failing loudly.
 
-`--expect-contract` **now defaults from the pin**, so the contract half is gated whether or
-not you remember the flag. The value lives once, in a ```pin block at the top of
+`--expect-contract` **defaults from the pin**, so the contract half is gated whether or not
+you remember the flag, and there is no value to paste: the pin names a ref and the contract is
+derived from the code at it. That is why this example no longer carries one. It used to, and
+the literal drifted from the block it was supposed to quote, which is the worst way for a
+pasteable command to be wrong. The pin lives once, in a ```pin block at the top of
 `references/known-state.md`, and `scripts/pin-consistency.py`, which the anchor runs beside
 the behaviour probe, checks that block against the prose beside it, against the pasteable
 command below, and against `SCORE_CONTRACT_ID` imported from the checkout. It had been

@@ -10,14 +10,15 @@ once, and code reads it: `second_corpus.py` takes `ref` and `anchor.py` defaults
 `scripts/pin-consistency.py` fails the run if they drift, and the block is the source.
 
 ```pin
-ref: 03b87a0
+ref: 2cdef30
 branch: main
-contract: 18:18:18
-validated: 2026-08-12
+validated: 2026-08-14
 upstream: https://github.com/xmartlabs/gnomon.git
 ```
 
-- **Validated against:** `03b87a0` on `main` (contract `18:18:18`), 2026-08-12.
+- **Validated against:** `2cdef30` on `main`, 2026-08-14. The contract that ref
+  implies is `19:19:19`, derived by `pin-consistency.py` rather than written here:
+  a stored copy could disagree with its own ref, and did.
 - **Why the contract moved.** `#75` scores `PowerShell` as a shell: `SHELL_TOOLS =
   {"Bash", "PowerShell"}` in `taxonomy.py`, read by the CLI counter at
   `accumulator.py:1437`, so a PowerShell call now classifies `execute` and feeds

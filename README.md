@@ -400,7 +400,7 @@ python3 scripts/anchor.py --checkout /path/to/gnomon \
 
 `--since` and `--until` are the dates from your report, and `--published` is the AQ it shows. The anchor copies the checkout, reproduces the number, and stops before any check runs when the two disagree.
 
-`--expect-contract` can be left out: it defaults to the `contract` field of the pin block in `references/known-state.md`, which is the version this skill was verified against. **Pass a value only if your report shows one, and pass the one it shows.** Those are different things, and a report published under an older contract will not match the pin.
+`--expect-contract` can be left out: it defaults to the contract implied by the pin block in `references/known-state.md`, which is the version this skill was verified against. The block names a commit and the contract is derived from the code at it, so there is no version string to copy and none to go stale. **Pass a value only if your report shows one, and pass the one it shows.** Those are different things, and a report published under an older contract will not match the pin.
 
 **A report with no AQ you can point at is the normal case, not a failure.** Leave `--published` out and the anchor gates the contract, prints the number, and records `anchor.ok: null`, which every downstream step treats as "nobody compared this" rather than as a pass. The checks still run: the gate that matters is at emit time, where a run carrying findings with `ok` other than `true` has to say in `anchor.note` what was gated and what was not.
 

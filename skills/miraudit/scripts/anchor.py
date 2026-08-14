@@ -107,10 +107,16 @@ def main(argv=None):
              "--corpus", args.corpus, "--since", args.since, "--until", args.until,
              *extra], check=False)
 
+    # pin-consistency derives the pinned contract by reading versioning.py OUT of the ref, so
+    # it needs a real repository. Every check gets `copy`, which is a `git archive` extraction
+    # with no .git, and it would have degraded to "could not derive" on every run.
+    def check_pin(*extra):
+        return check("pin-consistency.py", "--pin-repo", args.checkout, *extra)
+
     # Before the pipeline, not after: these cost milliseconds and the pipeline costs minutes,
     # and a checkout whose predicates have moved makes every later number unsafe anyway.
     print("==> checking the pin agrees with itself and with the checkout")
-    if check("pin-consistency.py").returncode != 0:
+    if check_pin().returncode != 0:
         return 1
 
     expect = args.expect
@@ -118,8 +124,13 @@ def main(argv=None):
         # Default it from the pin block rather than making the operator carry the value
         # across from a markdown file by hand. An unpassed flag used to mean no comparison
         # at all, which is how a gate ends up documented and unenforced.
+        # --checkout, because the contract is DERIVED from the pinned ref rather than stored
+        # beside it, so resolving it needs a repository that has that commit. args.checkout is
+        # the clone the operator pointed at; the throwaway copy made below would not do, since
+        # `git archive` leaves no .git behind.
         expect = subprocess.run(
-            [sys.executable, os.path.join(HERE, "pin-consistency.py"), "--field", "contract"],
+            [sys.executable, os.path.join(HERE, "pin-consistency.py"), "--field", "contract",
+             "--checkout", args.checkout],
             capture_output=True, text=True).stdout.strip()
         if expect:
             print(f"    --expect-contract defaulted to {expect} from the pin block")
