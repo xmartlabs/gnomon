@@ -1,12 +1,18 @@
 """Do the places that state the pin still agree — with each other, and with the checkout.
 
-    python3 pin-consistency.py --checkout <copy> [--offline] [--contract-only]
+    python3 pin-consistency.py --checkout <copy> [--pin-repo <repo>] [--offline]
     python3 pin-consistency.py --checkout <repo> --write
 
-The pin lived in three places and the refresh procedure named two. The third is a pasteable
-`--expect-contract` command in README.md, so a stale value there is executable-wrong rather
-than merely out of date. Nothing read any of them: known-state.md was prose for a human, and
-an operator who forgot the flag simply got no comparison.
+The pin lived in three places and the refresh procedure named two. The third was a pasteable
+`--expect-contract` command in README.md, so a stale value there was executable-wrong rather
+than merely out of date. Nothing read any of them.
+
+There is one place now. The block names a REF and the contract is derived from the code at
+it, so the two cannot disagree: a stored contract could contradict its own ref, and did. That
+derivation reads versioning.py out of the ref and executes it, because the id is computed from
+three integers and reassembling it from greps is the "rewrite a predicate you could import"
+mistake this skill reports in other people's code. It needs a repository that has the ref,
+which is what --pin-repo is for: --checkout is often a `git archive` copy with no .git.
 
 Runs beside contract-probe.py, before the pipeline, because that is the cheapest place to
 fail. Cheap enough that --since/--until/--stats are accepted and ignored, like every other
@@ -40,19 +46,55 @@ def read_block():
     for line in m.group(1).strip().splitlines():
         k, _, v = line.partition(":")
         block[k.strip()] = v.strip()
-    for required in ("ref", "contract", "branch"):
+    for required in ("ref", "branch"):
         if required not in block:
             sys.exit(f"error: the ```pin block has no `{required}`.")
     return block, text
 
 
+def contract_at(ref, repo):
+    """SCORE_CONTRACT_ID as computed by the code at `ref`. Derived, never stored.
+
+    It used to be a fourth field in the block, which meant a value that the ref already
+    determines was kept in step by hand -- and it drifted, along with the two copies quoting
+    it. Deriving it is not a shortcut: the id is COMPUTED from three integers, so grepping
+    them and reassembling the string would be this skill's own "rewrite a predicate you could
+    import" mistake. The file is read out of the ref and executed, so the arithmetic is
+    theirs.
+    """
+    r = subprocess.run(["git", "-C", repo, "show", f"{ref}:gnomon/scoring/versioning.py"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        return None, (f"could not read gnomon/scoring/versioning.py at {ref} from {repo}. "
+                      "The contract is derived from the pinned ref, so it needs a git "
+                      "checkout that has that commit.")
+    ns = {"__name__": "_pinned_versioning"}
+    try:
+        exec(compile(r.stdout, "versioning.py", "exec"), ns)
+    except Exception as exc:  # noqa: BLE001 -- their file, any failure is theirs to see
+        return None, f"versioning.py at {ref} did not execute: {exc}"
+    if "SCORE_CONTRACT_ID" not in ns:
+        return None, f"versioning.py at {ref} defines no SCORE_CONTRACT_ID."
+    return ns["SCORE_CONTRACT_ID"], None
+
+
 # --field prints one value and leaves. second_corpus.py needs `ref` and anchor.py needs
 # `contract`, and the alternative was a second copy of this parser inlined in each of them,
-# which is the same mistake as the copies it exists to remove, one level down. Handled BEFORE
-# parse(), because reading the pin must not require a checkout: `ref` is what clones one.
+# which is the same mistake as the copies it exists to remove, one level down. `ref` is
+# handled BEFORE parse(), because reading it must not require a checkout: `ref` is what clones
+# one. `contract` is derived and therefore does need a repository that has the ref, which is
+# why it takes --checkout here rather than being stored.
 if "--field" in sys.argv:
     _block, _ = read_block()
     _which = sys.argv[sys.argv.index("--field") + 1]
+    if _which == "contract":
+        _repo = (sys.argv[sys.argv.index("--checkout") + 1]
+                 if "--checkout" in sys.argv else ".")
+        _value, _why = contract_at(_block["ref"], os.path.expanduser(_repo))
+        if _value is None:
+            sys.exit(f"error: {_why}")
+        print(_value)
+        raise SystemExit(0)
     if _which not in _block:
         sys.exit(f"error: the ```pin block has no `{_which}`.")
     print(_block[_which])
@@ -64,6 +106,10 @@ args, _WINDOW = parse(__doc__.strip().splitlines()[0], {
     "--write": {"action": "store_true",
                 "help": "rewrite the block, the prose sentence and README's example from the "
                         "contract this checkout computes. Does the typing, not the validating"},
+    "--pin-repo": {"default": None, "dest": "pin_repo", "metavar": "PATH",
+                   "help": "a git repository that has the pinned ref, used only to derive the "
+                           "contract it implies. Defaults to --checkout, which is wrong "
+                           "exactly when --checkout is a `git archive` copy with no .git"},
     "--contract-only": {"action": "store_true", "dest": "contract_only",
                         "help": "skip the ref comparison and the upstream check. For CI, "
                                 "where the checkout is the repository at HEAD rather than a "
@@ -87,30 +133,22 @@ failures = []
 notes = []
 
 # 1 -- the prose sentence in known-state.md, which is what a person actually reads.
-m = re.search(r"\*\*Validated against:\*\*\s*`([0-9a-f]{7,40})`\s*on\s*`([\w./-]+)`"
-              r"\s*\(contract\s*`([\d:]+)`\)", known_text)
+m = re.search(r"\*\*Validated against:\*\*\s*`([0-9a-f]{7,40})`\s*on\s*`([\w./-]+)`", known_text)
 if not m:
     failures.append("known-state.md has no `**Validated against:**` sentence in the shape "
                     "this reads. The block and the prose can no longer be compared.")
-else:
-    if m.group(1) != block["ref"]:
-        failures.append(f"known-state.md prose says ref {m.group(1)}, the block says "
-                        f"{block['ref']}")
-    if m.group(3) != block["contract"]:
-        failures.append(f"known-state.md prose says contract {m.group(3)}, the block says "
-                        f"{block['contract']}")
+elif m.group(1) != block["ref"]:
+    failures.append(f"known-state.md prose says ref {m.group(1)}, the block says "
+                    f"{block['ref']}")
 
 # 2 -- README's pasteable command. Somebody copies this one and runs it.
 found = set(re.findall(r"--expect-contract\s+([\d:]+)", readme_text))
-if not readme_text:
-    notes.append(f"no README.md beside this script ({README}), so its pasteable "
-                 "--expect-contract example could not be compared. Expected inside a built "
-                 "wheel; a defect in a clone.")
-elif not found:
-    notes.append("README.md no longer shows an --expect-contract example; nothing to drift.")
-elif found != {block["contract"]}:
-    failures.append(f"README.md shows --expect-contract {sorted(found)}, the block says "
-                    f"{block['contract']}")
+if found:
+    failures.append(
+        f"README.md pastes a literal --expect-contract {sorted(found)}. The contract is "
+        "derived from the pinned ref now and anchor.py defaults the flag from it, so a "
+        "literal here is a copy that can only go out of date -- and it goes out of date "
+        "executable-wrong, because somebody pastes it and runs it.")
 
 # 2b -- the Phase 3 table against emit-gate.ROWS. The eight rows live in three places on
 # purpose, at three depths: ROWS is what the artifact must answer and is imported by
@@ -156,9 +194,22 @@ else:
     [("gnomon.scoring.versioning", "SCORE_CONTRACT_ID")],
     "The contract identifier moved. Every comparison in this skill is scoped to it, so "
     "there is nothing to scope to until it is found again.")
-if SCORE_CONTRACT_ID != block["contract"] and not args.write:
-    failures.append(f"the checkout computes contract {SCORE_CONTRACT_ID}, the block says "
-                    f"{block['contract']}. This is the gate; the ref below is a hint.")
+# 3 -- the checkout you are auditing against the code at the pinned ref. This is the gate,
+# and it is now a comparison between two pieces of code rather than between code and a string
+# somebody typed. The stored value could disagree with its own ref; a derived one cannot.
+PINNED_CONTRACT, why = contract_at(block["ref"], args.pin_repo or args.checkout)
+if PINNED_CONTRACT is None:
+    # Fail, not note. The comparison below IS the gate, and a run that cannot make it has not
+    # passed anything -- the first version of this printed the note and then "ok", which is the
+    # fail-open this skill exists to catch, introduced by the commit that removed the stored
+    # copy. anchor.py hands its throwaway `git archive` copy to every check, so this is the
+    # normal case rather than an exotic one.
+    failures.append(f"{why} Pass --pin-repo pointing at a clone that has {block['ref']}; the "
+                    f"checkout computes {SCORE_CONTRACT_ID} and nothing compared it.")
+elif SCORE_CONTRACT_ID != PINNED_CONTRACT and not args.write:
+    failures.append(f"the checkout computes contract {SCORE_CONTRACT_ID}, and the code at the "
+                    f"pinned ref {block['ref']} computes {PINNED_CONTRACT}. This is the gate; "
+                    "the ref below is a hint.")
 
 # --write. The contract string lives in three places -- the block, the prose sentence a person
 # reads, and a pasteable --expect-contract example in README.md -- and a re-pin used to mean
@@ -252,22 +303,16 @@ if args.write:
     updated = known_text
     updated = re.sub(r"(^```pin\n(?:.*\n)*?)^ref: .*$", rf"\g<1>ref: {new_ref}",
                      updated, count=1, flags=re.M)
-    updated = re.sub(r"(^```pin\n(?:.*\n)*?)^contract: .*$",
-                     rf"\g<1>contract: {SCORE_CONTRACT_ID}", updated, count=1, flags=re.M)
     updated = re.sub(r"(^```pin\n(?:.*\n)*?)^validated: .*$", rf"\g<1>validated: {today}",
                      updated, count=1, flags=re.M)
     updated = re.sub(r"\*\*Validated against:\*\*\s*`[0-9a-f]{7,40}`\s*on\s*`([\w./-]+)`"
-                     r"\s*\(contract\s*`[\d:]+`\),\s*[\d-]+\.",
-                     rf"**Validated against:** `{new_ref}` on `\1` (contract "
-                     rf"`{SCORE_CONTRACT_ID}`), {today}.", updated, count=1)
+                     r"[^\n]*?\.",
+                     rf"**Validated against:** `{new_ref}` on `\1`, {today}.",
+                     updated, count=1)
     with open(KNOWN, "w") as fh:
         fh.write(updated)
-    if readme_text:
-        with open(README, "w") as fh:
-            fh.write(re.sub(r"--expect-contract\s+[\d:]+",
-                            f"--expect-contract {SCORE_CONTRACT_ID}", readme_text))
-    print(f"pin-consistency --write: block, prose and README now read {SCORE_CONTRACT_ID} "
-          f"at {new_ref}, validated {today}.")
+    print(f"pin-consistency --write: the block now pins {new_ref}, validated {today}. "
+          f"The contract it implies is {SCORE_CONTRACT_ID}, derived and not written down.")
     if anchor_edits:
         print(f"\n  {len(anchor_edits)} anchor(s) renumbered, each because its line survived "
               f"verbatim and exactly once:")
@@ -312,7 +357,17 @@ elif head is None:
     notes.append("the checkout has no resolvable HEAD (a `git archive` copy has no .git), "
                  "so the ref could not be compared. The contract check above still ran.")
 elif not head.startswith(block["ref"]) and not block["ref"].startswith(head):
-    failures.append(f"the checkout is at {head}, the block pins {block['ref']}")
+    # A NOTE, not a failure, and only when the contract agrees. SKILL.md has always said "the
+    # contract string is the gate; the commit is a hint" and this line said otherwise, so a
+    # re-pin forced everyone to move their local clone to the new commit before any run would
+    # start -- for a difference the gate above already proved harmless. When the contract does
+    # NOT agree, check 3 above has already failed and this adds the commit as context.
+    where = (f"the checkout is at {head} and the block pins {block['ref']}")
+    if PINNED_CONTRACT is not None and SCORE_CONTRACT_ID == PINNED_CONTRACT:
+        notes.append(f"{where}. Not a failure: both compute {SCORE_CONTRACT_ID}, and the "
+                     "contract is the gate. Findings stay scoped to what the block names.")
+    else:
+        failures.append(where)
 
 # 5 -- has upstream moved past the pin? ADVISORY, never fatal: a second-corpus runner with
 # no network must not be blocked by a fact that changes nothing about their own run.
@@ -330,8 +385,8 @@ if not args.offline and not args.contract_only and block.get("upstream"):
         notes.append("upstream could not be reached; skipped, which is not a failure.")
 
 print("pin consistency")
-print(f"  block          ref {block['ref']}  contract {block['contract']}"
-      f"  branch {block['branch']}")
+print(f"  pinned         ref {block['ref']}  contract "
+      f"{PINNED_CONTRACT or 'underivable'}  branch {block['branch']}")
 print(f"  checkout       ref {head or 'unresolvable'}  contract {SCORE_CONTRACT_ID}")
 for n in notes:
     print(f"  note           {n}")
