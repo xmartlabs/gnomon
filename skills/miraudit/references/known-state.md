@@ -100,12 +100,12 @@ notices the drift does this, in order:
    `measure-verification-corpus.py`. Deleting a *section* is the one that gets skipped,
    because the file still runs and still looks maintained: the scratchpad half of what is
    now `recovery-reality.py` outlived its subject that way.
-5. **Edit the ```pin block at the top. That is the whole update.** `second_corpus.py` reads
-   `ref` from it and `anchor.py` reads `contract`, so there is no second place to remember.
-   Then run `scripts/pin-consistency.py`: it checks the block against the prose sentence,
-   against the `--expect-contract` example in `README.md`, and against `SCORE_CONTRACT_ID`
-   **imported from the checkout** — that one is computed from three integers in
-   `scoring/versioning.py`, so no grep can read it.
+5. **Run `scripts/pin-consistency.py --checkout <repo> --write`, then re-run it without
+   `--write` to confirm.** The block names a `ref`; the contract is DERIVED from the code at
+   that ref, not stored, so there is nothing to type by hand for it. `--write` re-points the
+   `ref`, updates the `validated` date, and renumbers every `file:line` anchor whose line
+   survived verbatim at the new ref. Anchors that vanished or turned ambiguous are left for a
+   person, and the run exits non-zero until they are resolved.
 
    This step used to say "update the pin, and also `REF` in `second-corpus.sh`", and it was
    already incomplete when it said it: the third copy is a pasteable command in `README.md`,
