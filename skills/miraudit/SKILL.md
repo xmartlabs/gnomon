@@ -31,8 +31,11 @@ is not evidence.
 
 ## Phase 0 — Anchor. Gate.
 
-1. Compare the installed version to `references/known-state.md`. **The contract string is
-   the gate; the commit is a hint.** A different contract invalidates every finding below
+1. Compare the installed version to `references/known-state.md`. `pin-consistency.py` reads
+   the pin block for you, so open the file for two things: the invocation traps, and the
+   "reviewed and dismissed" list, which is what stops a run re-raising something already
+   dead. Its refresh procedure and its version history are for re-pinning and cost a run
+   nothing. **The contract string is the gate; the commit is a hint.** A different contract invalidates every finding below
    it. A different commit with the same contract needs one look at the diff: if it misses
    scoring, taxonomy and the accumulator, say so and carry on. Invocation and traps live
    there too, because they expire and this file should not.
@@ -106,11 +109,14 @@ this file.** The list was prose once, was wrong about an axis for as long as it 
 and the fix that replaced it with a corrected count went stale the next day. Its procedure
 is `references/ad-hoc-checks.md`, with a worked example beside it; the short version is
 that you write a runnable script into the run's output directory, import the tool's own
-primitives, print both numbers with a direction, and carry a control.
+primitives, print both numbers with a direction, and carry a control. **That short version
+is enough unless you are actually writing one** — a run whose manifest already comes back
+covered has no reason to open it.
 
 An agent conceives that measurement; the machine runs it; the number decides. What leaves
 the run is a file anyone can re-run, never a verdict. `references/design-rationale.md`
-argues why that division is the only place an agent belongs in this skill.
+argues why that division is the only place an agent belongs in this skill. It is an
+argument, not a procedure: read it to challenge the design, not to follow it.
 
 ## Phase 2 — Structural shapes
 
@@ -127,7 +133,10 @@ Formula-independent. Each is a `shape` key in the output; see
 
 `saturated` is the one shape a single corpus cannot settle — it cannot separate a pinned axis
 from a person who clears every bar. Report it as a hypothesis until a second corpus confirms
-it; the protocol and its decision rules are in `references/second-corpus.md`.
+it; the protocol and its decision rules are in `references/second-corpus.md`. **The rules are
+its first section and the rest is the record of corpora**, which answers "what did other
+machines show" and not "how do I audit this one". Grep it for the rule you need rather than
+reading it through: it is the largest file here by a wide margin.
 
 **Several corpora are on record there and what they support is narrow. How many, and which,
 comes from that file and never from this one** — a count written here goes stale the day one
