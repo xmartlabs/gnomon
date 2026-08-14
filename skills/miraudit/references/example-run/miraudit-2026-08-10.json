@@ -1,0 +1,207 @@
+{
+  "schema_version": "1",
+  "run": {
+    "date": "2026-08-10",
+    "label": "run2",
+    "output_dir": "~/Desktop/gnomon-investigacion/miraudit-runs/2026-08-10-run2",
+    "purpose": "Second run of the day, after five correctness fixes to the skill, the generative Phase 1 path, the behaviour probe and a defect found in the anchor itself.",
+    "supersedes": "miraudit-2026-08-10.json, kept beside it as evidence. That report was produced by an anchor that imported gnomon from the working directory, so it measured the read-only clone rather than the copy. Its number was right because the clone is the pinned commit; the run was not what it claimed to be. Both are kept: comparing two runs of the same day is the point."
+  },
+  "tool": {
+    "name": "xl-ai-insights",
+    "ref": "c6401cc",
+    "contract": "17:17:17",
+    "invocation": "uv run --project <copy> xl-ai-insights --local --console --no-open --since --until --output-dir"
+  },
+  "corpus": {
+    "files": 3094,
+    "lines": 238962,
+    "tool_calls": 42664,
+    "sessions": 124,
+    "sidechain_share": 0.629,
+    "window": "2026-07-07 -> 2026-08-06 (30d, fixed)",
+    "sources_scored": ["claude"],
+    "note": "The corpus grew since this morning (3092 -> 3094 files, +1698 lines) and the in-window tool calls did not move, because the new sessions fall outside a window that ends 2026-08-06. That is the fixed window working. The tool counts 164 sessions and 42508 calls over the same window against this fingerprint's 124 and 42664: two populations, never mixed in one ratio."
+  },
+  "anchor": {
+    "published": 92,
+    "reproduced": 92,
+    "ok": true,
+    "tier": "Elite",
+    "gated": true,
+    "command": "scripts/anchor.sh --checkout <clone> --since 2026-07-07 --until 2026-08-06 --published 92 --expect-contract 17:17:17",
+    "contract_probe": "18/18 behaviours unchanged",
+    "note": "First run where Phase 0 was an actual gate. Passing --published and --expect-contract is what surfaced the anchor defect recorded in process_friction."
+  },
+  "axes": [
+    {
+      "name": "Steering leverage",
+      "score": null,
+      "max": 50,
+      "declared": { "actions_per_prompt": 6.4, "band": "5..20", "decay_span": 40, "state": "withheld_unvalidated_band" },
+      "remeasured": { "actions_per_prompt": 6.4, "top_level_tool_calls": 15812, "instructions": 2476 },
+      "direction": "faithful",
+      "shape": "dropped-term",
+      "evidence": {
+        "command": "python3 references/example-adhoc-check.py --checkout <copy> --since 2026-07-07 --until 2026-08-06 --stats <stats.json>",
+        "output": "ours 6.4 against theirs 6.4, gap -0.0. STEERING_LEVERAGE_BAND_VALIDATED is False, so the term is withheld and wsum renormalizes: the Efficiency pillar is Recovery alone. The axis would score 1.000 if the band went live.",
+        "control": "The band's own branch, scored at four points of its imported arithmetic: inside the band 1.000, zero 0.000, half the floor 0.500, one decay span above the ceiling 0.000."
+      },
+      "confidence": "fact",
+      "not_checked": [
+        "whether 5..20 actions per instruction is the right band - that is a calibration claim about a population and one corpus cannot test it",
+        "the numerator's sidechain labels, which the axis drops on separately"
+      ],
+      "note": "Measured, not reported. The withholding is deliberate and documented in their own code, the input is faithful, and renormalizing to Recovery alone costs about 1.5 points of the pillar here. Below the bar. It is recorded because no run had ever looked at this axis - it had no check of any kind until today."
+    },
+    {
+      "name": "Verification",
+      "score": 23.2,
+      "max": 35,
+      "declared": { "test_coverage": 0.3673, "numerator": 18, "denominator": 49 },
+      "remeasured": { "sessions_editing_code": 47, "of_those_ran_tests": 17, "ratio": 0.36,
+                      "files_touched": 53, "with_a_test_beside_or_under": 11,
+                      "same_named_test_elsewhere_not_counted": 3 },
+      "direction": "faithful",
+      "evidence": {
+        "command": "python3 scripts/verification-reality.py --checkout <copy> --since 2026-07-07 --until 2026-08-06 --stats <stats.json> --repo <BE repo> --ref origin/development",
+        "output": "session level: ours 17/47 = 36%, theirs via their own C2 eligibility 18/49 = 0.3673. File level: 11 of 53 touched files have a test beside them or under them.",
+        "control": "n/a at session level. At file level the 3 files whose only same-named test lives in another directory are reported separately and NOT counted, after an earlier version of this check paired <repo>/a/invoice.ts with <repo>/b/invoice.test.ts."
+      },
+      "confidence": "fact",
+      "not_checked": [
+        "tests run inside a git hook or in CI leave no transcript and are invisible to both sides",
+        "whether a test matching a name actually exercises that file",
+        "a repo keeping tests in a top-level tests/ tree mirroring src/ reads low here; check the layout before quoting the file-level row"
+      ]
+    },
+    {
+      "name": "Context Intelligence",
+      "score": 20.0,
+      "max": 20,
+      "declared": { "grounded_sessions": 43 },
+      "remeasured": { "armed_within_first_3_tool_calls": 12, "armed_after_position_10": 26 },
+      "direction": "faithful",
+      "evidence": {
+        "command": "python3 scripts/fidelity-audit.py --checkout <copy> --since 2026-07-07 --until 2026-08-06 --stats <stats.json>",
+        "output": "12/43 (27%) set up within the first three tool calls; 26/43 after position 10; 39 of the setups are mcp__mem0__search_memories",
+        "control": "n/a"
+      },
+      "confidence": "fact",
+      "not_checked": ["whether a late setup position means judgement rather than slower boilerplate"]
+    },
+    {
+      "name": "Compounding",
+      "score": 20.0,
+      "max": 20,
+      "declared": { "compounding_writes": 212 },
+      "remeasured": { "memory_mcp_calls": 441, "file_writes": 34, "credits_for_10_distinct_add_memory": 1 },
+      "direction": "underestimates",
+      "evidence": {
+        "command": "python3 scripts/verify-compounding-symmetry.py --checkout <copy> --since 2026-07-07 --until 2026-08-06 --stats <stats.json>",
+        "output": "10 file writes -> 10 credits; 10 distinct add_memory -> 1 credit; 10 update_memory with distinct memory_id -> 10 credits",
+        "control": "10 search_memories -> 0 and 10 delete_memory -> 0, so the fixture is not crediting everything it sees"
+      },
+      "confidence": "fact",
+      "not_checked": ["whether a backend other than mem0 omits the fields the dedup key reads"],
+      "note": "A counting error in one axis, not a structural shape. Costs nothing today: the axis is at its ceiling either way."
+    },
+    {
+      "name": "Recovery",
+      "score": 97.0,
+      "max": 100,
+      "declared": { "recovery_ratio": 0.998 },
+      "remeasured": { "failed_calls": 1394, "successful_same_tool_retry_ratio": 0.901 },
+      "direction": "overestimates",
+      "magnitude": { "unit": "ratio", "value": 0.097, "bound": "upper" },
+      "evidence": {
+        "command": "python3 scripts/recovery-reality.py --checkout <copy> --since 2026-07-07 --until 2026-08-06 --stats <stats.json>",
+        "output": "any-call-afterwards 0.998 against successful-same-tool-retry 0.901",
+        "control": "n/a"
+      },
+      "confidence": "fact",
+      "not_checked": ["changing approach is also recovering, so 0.901 is a lower bound and the gap an upper bound"],
+      "note": "Below the reporting bar; already dismissed once. The script's scratchpad half was deleted today because its subject is gone."
+    }
+  ],
+  "findings": [],
+  "reported": [
+    {
+      "id": "model-mix-drops-routing-outside-wsum",
+      "shape": "dropped-term",
+      "axes": ["Model mix"],
+      "magnitude": { "unit": "AQ", "value": -1, "note": "axis 50.0 -> 43.1" },
+      "confirmed_by": "Instrumented _routing_snapshot on a throwaway copy, plus a synthetic fixture through the real Accumulator with three cases.",
+      "evidence": {
+        "command": "python3 scripts/verify-routing-orphan-gate.py --checkout <copy> --since 2026-07-07 --until 2026-08-06 --stats <stats.json>",
+        "output": "A control: measured, pairs=1. B, +1 unreferenced child: unmeasured, pairs=1. C, background dispatch: unmeasured, pairs=0.",
+        "control": "Case A must reach `measured`, and does."
+      },
+      "state": "reported as xmartlabs/gnomon#68 on 2026-08-10; no response yet",
+      "not_checked": ["whether a real corpus with neither fan-out nor background dispatch reaches `measured`"]
+    }
+  ],
+  "hypotheses": [
+    {
+      "id": "aq-is-mostly-ceiling",
+      "shape": "saturated",
+      "axes": ["Orchestration", "Grounding", "Context Intelligence", "Compounding", "Model mix", "Token economy"],
+      "direction": "underestimates",
+      "magnitude": { "unit": "share of total on pinned axes", "value": 0.52 },
+      "confidence": "hypothesis",
+      "evidence": {
+        "command": "python3 scripts/saturation-counterfactual.py --checkout <copy> --since 2026-07-07 --until 2026-08-06 --stats <stats.json>",
+        "output": "Every saturated signal cut to exactly its threshold leaves AQ at 92, delta +0. 10 signals cut of 13 examined, 3 saturated but not cuttable. Largest gap: cli_calls 38,558 against a threshold of 4,012.",
+        "control": "50% of threshold gives AQ 69, 25% gives 55. Both move.",
+        "method_control": "The bisection validates itself against an importable threshold: compounding_writes, imported 76.5 vs discovered 76.2. They agree."
+      },
+      "why_not_a_finding": "One corpus cannot separate `the axis saturates` from `this person clears every bar`. Blocked on a second corpus; protocol and decision rule in references/second-corpus.md, written before the second run.",
+      "not_checked": [
+        "whether the thresholds are calibrated against a real population",
+        "three signals are not cut because their input is a list rather than a scalar: offload_share, distinct_models, review_skills"
+      ]
+    }
+  ],
+  "dismissed": [
+    { "id": "recovery-tautological",
+      "killed_by": "Paired tool_use with tool_result and looked for a later successful retry of the same tool: 0.901 against the 0.998 reported. Re-measured this run and it still holds." },
+    { "id": "context-intelligence-is-boilerplate",
+      "killed_by": "Only 12 of 43 grounded sessions armed within the first three tool calls; 26 armed after position 10. Re-measured this run." },
+    { "id": "routing-term-dropped-by-workflow-children",
+      "killed_by": "An arm neutralizing the orphan rule alone stayed `unmeasured`: 197 non-joinable attempts trip the same flag independently. Shipped under a name that does not assert that cause." },
+    { "id": "toolsearch-appeared-with-a-harness-rollout",
+      "killed_by": "Its start date is the corpus start date. Retention, not rollout." },
+    { "id": "invented-denominator-93-percent-coverage",
+      "killed_by": "The denominator was ours and selected only repositories that have a test suite. Under their C2 eligibility the same window gives 17/50." },
+    { "id": "bash-runs-tests-counts-a-bare-cd",
+      "killed_by": "Running the predicate on the exact string returns False. The comparison script printed cmd[:70] and the path is 69 characters long." },
+    { "id": "scratchpad-contaminates-the-eligibility-denominator",
+      "killed_by": "classify_change_target short-circuits every _EPHEMERAL_PATH_RX match to \"other\" and eligibility only admits file_class == \"code\", so a scratchpad write cannot reach the denominator. The check that reported it had loosened their predicate into `any /tmp` and was counting paths that are not scratchpads. Section deleted." }
+  ],
+  "process_friction": [
+    {
+      "phase": "0",
+      "what": "The anchor was not running the copy. `uv run --project X -- python -m gnomon.cli.insights` lets python put the working directory on sys.path first, so the module came from whatever ./gnomon/ the caller was standing in. Every earlier run was launched from the directory holding the read-only clone, so it measured the CLONE and reported the right number because the clone is the pinned commit.",
+      "cost": "every prior run of this skill was not what it claimed to be, including this morning's",
+      "how_found": "Passing --published and --expect-contract for the first time. From a directory holding a v16 fork the pipeline scored 91 / 16:16:16 while --project pointed at a v17 copy.",
+      "fix": "Invoke the packaged console script `xl-ai-insights`, which is a file and cannot be shadowed by the caller's directory. Verified with the cd removed: 92 / 17:17:17 from that same v16 directory."
+    },
+    {
+      "phase": "1",
+      "what": "The skill's own first Never - do not rewrite a predicate you could import - was violated in four scripts. The sharpest: verification-reality asked only for <base>.test.<ext> over a 7-extension list of its own, so a repo laying tests out any other way read as untested.",
+      "cost": "unknown number of past runs reporting a low coverage figure",
+      "fix": "classify_change_target for both halves. Injection test with 7 cases and 2 controls."
+    },
+    {
+      "phase": "1",
+      "what": "zsh does not word-split an unquoted parameter, and does not expand an unquoted glob in --include=*.md. Four separate verification commands this session appeared to show something broken when nothing was.",
+      "cost": "four re-runs",
+      "note": "Same shape as the `truncated-evidence` gate row: the tooling reshaping the evidence before it is read."
+    }
+  ],
+  "verdict": {
+    "anchor": "passed and gated - reproduced the published 92 on contract 17:17:17, probe 18/18",
+    "new_findings": 0,
+    "summary": "No new finding about the audited tool. The run's value is elsewhere: it is the first one whose Phase 0 was an actual gate, and passing that gate is what exposed that no previous run had been measuring what it claimed to. Steering leverage was measured for the first time and is faithful but withheld upstream, which leaves the Efficiency pillar reading as two axes and scoring as one."
+  }
+}

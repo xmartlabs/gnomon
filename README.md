@@ -359,6 +359,55 @@ totals.
 
 ---
 
+## Skills
+
+### miraudit — audit your AQ report
+
+Audits whether the AQ score reflects what you actually did in your sessions. It reproduces the published number locally, re-measures each axis from your transcripts, and reports gaps with executable proof.
+
+**Install** via the skills CLI (recommended):
+
+```bash
+# For this project
+npx skills add xmartlabs/gnomon -s miraudit -a claude-code -y
+
+# Or globally (all projects)
+npx skills add xmartlabs/gnomon -s miraudit -a claude-code -g -y
+```
+
+Or copy manually:
+
+```bash
+git clone https://github.com/xmartlabs/gnomon /tmp/gnomon-src
+cp -r /tmp/gnomon-src/skills/miraudit ~/.claude/skills/    # global
+cp -r /tmp/gnomon-src/skills/miraudit .claude/skills/      # project only
+```
+
+**Run** as a Claude Code skill:
+
+```
+/miraudit
+```
+
+Or run the anchor standalone to reproduce your published number. The path is relative to the skill directory, so run it from there:
+
+```bash
+cd ~/.claude/skills/miraudit          # or .claude/skills/miraudit
+python3 scripts/anchor.py --checkout /path/to/gnomon \
+    --since 2026-07-07 --until 2026-08-06 \
+    --published <your AQ> --expect-contract <the contract that report shows>
+```
+
+`--since` and `--until` are the dates from your report, and `--published` is the AQ it shows. The anchor copies the checkout, reproduces the number, and stops before any check runs when the two disagree.
+
+`--expect-contract` can be left out: it defaults to the `contract` field of the pin block in `references/known-state.md`, which is the version this skill was verified against. **Pass a value only if your report shows one, and pass the one it shows.** Those are different things, and a report published under an older contract will not match the pin.
+
+**A report with no AQ you can point at is the normal case, not a failure.** Leave `--published` out and the anchor gates the contract, prints the number, and records `anchor.ok: null`, which every downstream step treats as "nobody compared this" rather than as a pass. The checks still run: the gate that matters is at emit time, where a run carrying findings with `ok` other than `true` has to say in `anchor.note` what was gated and what was not.
+
+See `skills/miraudit/README.md` for the full documentation.
+
+---
+
 ## Tests
 
 ```bash
