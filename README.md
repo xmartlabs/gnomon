@@ -340,6 +340,50 @@ totals.
 
 ---
 
+## Skills
+
+### miraudit — audit your AQ report
+
+Audits whether the AQ score reflects what you actually did in your sessions. It reproduces the published number locally, re-measures each axis from your transcripts, and reports gaps with executable proof.
+
+**Install** via the skills CLI (recommended):
+
+```bash
+# For this project
+npx skills add xmartlabs/gnomon -s miraudit -a claude-code -y
+
+# Or globally (all projects)
+npx skills add xmartlabs/gnomon -s miraudit -a claude-code -g -y
+```
+
+Or copy manually:
+
+```bash
+git clone https://github.com/xmartlabs/gnomon /tmp/gnomon-src
+cp -r /tmp/gnomon-src/skills/miraudit ~/.claude/skills/    # global
+cp -r /tmp/gnomon-src/skills/miraudit .claude/skills/      # project only
+```
+
+**Run** as a Claude Code skill:
+
+```
+/miraudit
+```
+
+Or run the anchor standalone to reproduce your published number:
+
+```bash
+python3 scripts/anchor.py --checkout /path/to/gnomon \
+    --since 2026-07-07 --until 2026-08-06 \
+    --published 92 --expect-contract 18:18:18
+```
+
+Replace `--published` with your AQ, and `--since`/`--until` with the dates from your report. The anchor copies the checkout, reproduces the number, and stops the run if it doesn't match — no check runs on an unanchored base.
+
+See `skills/miraudit/README.md` for the full documentation.
+
+---
+
 ## Tests
 
 ```bash
