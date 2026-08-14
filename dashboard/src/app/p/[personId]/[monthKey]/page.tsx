@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { getDb } from "@/lib/db";
 import { buildPersonProfile } from "@/lib/metrics";
@@ -6,6 +7,7 @@ import { fmtDelta } from "@/lib/format";
 import { PillarBar } from "@/components/PillarBar";
 import { ScoreCard } from "@/components/ScoreCard";
 import { ModelMixBar } from "@/components/ModelMixBar";
+import { CoachCard } from "@/components/CoachCard";
 import {
   AqDisplay, Annotation, Colophon, REPORT_NAME, Section, SectionTitle, Sheet, TierBadge,
 } from "@/components/ui";
@@ -23,7 +25,8 @@ export default async function PersonProfilePage({
 }) {
   const { personId, monthKey } = await params;
   const id = Number(personId);
-  const p = Number.isSafeInteger(id) && id > 0 ? buildPersonProfile(getDb(), id, monthKey) : null;
+  const db = getDb();
+  const p = Number.isSafeInteger(id) && id > 0 ? buildPersonProfile(db, id, monthKey) : null;
   if (!p) notFound();
 
   const levels = p.levelOverTime.slice(-MAX_LEVEL_BARS);
@@ -145,6 +148,13 @@ export default async function PersonProfilePage({
             <ModelMixBar mix={p.modelMix} />
           </div>
         </div>
+      </Section>
+
+      {/* Streamed in: an LLM round-trip must not hold up the report itself. */}
+      <Section className="mt-3">
+        <Suspense fallback={null}>
+          <CoachCard db={db} profile={p} />
+        </Suspense>
       </Section>
 
       <Colophon right={`Window ${p.monthKey} · ${p.name}`} pad="mt-[26px] pt-4.5 pb-10" />

@@ -13,6 +13,7 @@
     "test:e2e": "rm -rf test-results/run && next build --webpack && cp -R .next/static .next/standalone/.next/ && playwright test"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.117.1",
     "better-sqlite3": "^12.11.0",
     "jose": "^6.2.0",
     "next": "^16.2.0",
@@ -20,10 +21,10 @@
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.50.0",
     "@tailwindcss/postcss": "^4.1.0",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.0",
-    "@playwright/test": "^1.50.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "postcss": "^8.5.0",
