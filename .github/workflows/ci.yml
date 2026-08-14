@@ -27,3 +27,15 @@ jobs:
 
       - name: Run tests (pipeline smoke + invariants + poster JS node --check)
         run: python3 -m unittest discover -s tests -v
+
+      # The miraudit skill states the commit and contract it was validated against in a
+      # ```pin block, and second-corpus runners clone that commit so their numbers are
+      # comparable. Nothing noticed when scoring/versioning.py moved and the block stayed
+      # behind: the pin sat four commits and one contract bump out of date until an audit
+      # tripped over it. This is the check that already existed, run where it is cheap.
+      #
+      # --contract-only because a pull request's checkout is this repository at HEAD, never
+      # the pinned commit, so the ref comparison would fail on every commit after a re-pin
+      # and bury the contract check under a permanent red.
+      - name: miraudit pin still matches the contract this tree computes
+        run: python3 skills/miraudit/scripts/pin-consistency.py --checkout . --contract-only

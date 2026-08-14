@@ -1,6 +1,6 @@
 """Do the places that state the pin still agree — with each other, and with the checkout.
 
-    python3 pin-consistency.py --checkout <copy> [--offline]
+    python3 pin-consistency.py --checkout <copy> [--offline] [--contract-only]
 
 The pin lived in three places and the refresh procedure named two. The third is a pasteable
 `--expect-contract` command in README.md, so a stale value there is executable-wrong rather
@@ -60,6 +60,10 @@ if "--field" in sys.argv:
 args, _WINDOW = parse(__doc__.strip().splitlines()[0], {
     "--offline": {"action": "store_true",
                   "help": "skip the upstream check; it is advisory either way"},
+    "--contract-only": {"action": "store_true", "dest": "contract_only",
+                        "help": "skip the ref comparison and the upstream check. For CI, "
+                                "where the checkout is the repository at HEAD rather than a "
+                                "clone of the pinned commit"},
 })
 
 block, known_text = read_block()
@@ -154,14 +158,25 @@ if SCORE_CONTRACT_ID != block["contract"]:
 
 # 4 -- is the checkout the commit the block names? A hint, so it is reported either way and
 # fails only when it can be resolved AND disagrees.
+#
+# --contract-only drops it, and the case is CI. There the checkout is the repository at the
+# HEAD of a pull request, which by construction is not the pinned commit, so this would fail
+# on every commit after a re-pin. A gate that is always red is not a gate, and it would bury
+# check 3 -- the one CI exists to run, because it catches `scoring/versioning.py` moving while
+# the block stays behind. The ref is documented as a hint everywhere else; here it is noise.
 head = None
+if args.contract_only:
+    notes.append("--contract-only: the ref comparison and the upstream check were skipped. "
+                 "The contract check above is the one that gates.")
 try:
     r = subprocess.run(["git", "-C", args.checkout, "rev-parse", "--short", "HEAD"],
                        capture_output=True, text=True, timeout=10)
     head = r.stdout.strip() or None
 except (OSError, subprocess.SubprocessError):
     head = None
-if head is None:
+if args.contract_only:
+    pass
+elif head is None:
     notes.append("the checkout has no resolvable HEAD (a `git archive` copy has no .git), "
                  "so the ref could not be compared. The contract check above still ran.")
 elif not head.startswith(block["ref"]) and not block["ref"].startswith(head):
@@ -169,7 +184,7 @@ elif not head.startswith(block["ref"]) and not block["ref"].startswith(head):
 
 # 5 -- has upstream moved past the pin? ADVISORY, never fatal: a second-corpus runner with
 # no network must not be blocked by a fact that changes nothing about their own run.
-if not args.offline and block.get("upstream"):
+if not args.offline and not args.contract_only and block.get("upstream"):
     try:
         r = subprocess.run(["git", "ls-remote", block["upstream"],
                             f"refs/heads/{block['branch']}"],

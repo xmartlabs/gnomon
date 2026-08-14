@@ -226,11 +226,11 @@ always does. Above threshold on all three, with every anchor resolved against `0
 
 | señal | A | E | F | eje |
 |---|---|---|---|---|
-| `cli_calls` | 11,42× | 13,96× | **16,84×** | Token economy (`aq.py:609-610`) |
-| `evidence_eligible_sessions` | 1,67× | 1,67× | 1,67× | Context Intelligence (`aq.py:503`) |
-| `compounding_writes` | 2,67× | 18,04× | 1,40× | Compounding (`aq.py:515`) |
-| `planned_eligible_sessions` | 1,84× | 1,63× | 1,10× | Discipline (`aq.py:350`) |
-| `planning_ratio_explore_to_doing` | 1,08× | 1,37× | 1,11× | Grounding (`aq.py:484`) |
+| `cli_calls` | 11,42× | 13,96× | **16,84×** | Token economy (`aq.py:623-624`) |
+| `evidence_eligible_sessions` | 1,67× | 1,67× | 1,67× | Context Intelligence (`aq.py:516`) |
+| `compounding_writes` | 2,67× | 18,04× | 1,40× | Compounding (`aq.py:528`) |
+| `planned_eligible_sessions` | 1,84× | 1,63× | 1,10× | Discipline (`aq.py:363`) |
+| `planning_ratio_explore_to_doing` | 1,08× | 1,37× | 1,11× | Grounding (`aq.py:497`) |
 
 **Five rows on three corpora is weaker than two rows on four, and the direction is the
 trap.** An intersection only shrinks as corpora arrive, so a longer list here means fewer
@@ -284,7 +284,7 @@ do not separate them from someone the rest of the scorecard separates cleanly.
 
 **Skill fluency: the undisclosed term is disclosed now, and F is where that pays off.**
 `18:18:18` publishes `process_skills_matched` and `compounding_skills_matched` as diagnostics
-that score nothing (`aq.py:395` and `aq.py:561`); neither appears in any `17:17:17` payload in
+that score nothing (`aq.py:408` and `aq.py:574`); neither appears in any `17:17:17` payload in
 this file. So `skill-fluency-term.py` now has two independent routes to the same bit, and on
 all three payloads the algebra and the diagnostic agree. Its Tool command control reproduced
 0,737500 against 0,737500 published on the run that produced this table — a different value
@@ -360,13 +360,13 @@ method and is governed by rule 1.
 Above threshold in **all five**, and it is the same pair the two-corpus intersection found.
 The anchors are resolved against `03b87a0`, the commit this skill ships, and not against the
 `17:17:17` tree the ratios were measured on — a reader can only open the first. Both moved:
-`aq.py:484` used to point here and now points at Grounding, which is the way an anchor rots
+`aq.py:497` used to point here and now points at Grounding, which is the way an anchor rots
 without going missing.
 
 | señal | A | B | C | D | E | eje |
 |---|---|---|---|---|---|---|
-| `cli_calls` | 9,61× | 13,53× | 2,34× | 8,81× | 13,47× | Token economy (`aq.py:609-610`) |
-| `evidence_eligible_sessions` | 1,67× | 1,67× | 1,64× | 1,67× | 1,67× | Context Intelligence (`aq.py:503`) |
+| `cli_calls` | 9,61× | 13,53× | 2,34× | 8,81× | 13,47× | Token economy (`aq.py:623-624`) |
+| `evidence_eligible_sessions` | 1,67× | 1,67× | 1,64× | 1,67× | 1,67× | Context Intelligence (`aq.py:516`) |
 
 That second row is not headroom, and the section below takes it apart: 1,667 is exactly
 `1 / CONTEXT_INTELLIGENCE_TARGET`, so every one of those is a coverage of 1,0.
@@ -502,7 +502,7 @@ population has mass below 60% is exactly what none of these five corpora can say
 At `03b87a0`, the pinned commit, gnomon's own source carries them as annotations rather than
 as something to be argued:
 
-- `aq.py:478` opens `KNOWN LIMITATION (issue #72, five corpora)` and states the range this
+- `aq.py:491` opens `KNOWN LIMITATION (issue #72, five corpora)` and states the range this
   table produced, 0.974 to 1.469, adding that above 1.0 the term carries no information and
   that whether it discriminates below parity is unmeasured. It says the target stays 1.0
   because raising it needs a production distribution rather than a re-read of the formula,
@@ -528,9 +528,18 @@ harness like the rest.
 
 What it does expose is a hole the other four could not. `classify_tool("PowerShell")` returns
 **`other`** — verified by importing it — and `other` is on **neither side** of Grounding's
-explore/doing ratio. Separately, `cli_counter` only ever increments under
-`elif name == "Bash"` (`accumulator.py:1414`), so a PowerShell call contributes nothing to
-`cli_calls` or `clis_distinct` either. A whole shell is invisible to three axes.
+explore/doing ratio.
+
+**The second half of this was fixed upstream and this paragraph did not notice.** It used to
+say `cli_counter` increments only under `elif name == "Bash"`, citing `accumulator.py:1414`,
+so a PowerShell call fed neither `cli_calls` nor `clis_distinct`. `#75` replaced that branch
+with `elif name in SHELL_TOOLS:` (`accumulator.py:1437`), and the counter one line below it at
+`accumulator.py:1444` now takes PowerShell too. The old line number kept resolving — 1414 is
+`self.month_churn[...]` and has nothing to do with any of this — which is the failure a
+re-pin that only renumbers cannot catch. `known-state.md` had recorded the fix the whole time;
+this file contradicted it and this file is the one other people read.
+
+So the shape is narrower than it was: PowerShell is invisible to Grounding, not to three axes.
 
 On E it barely matters: PowerShell is 1,45% of its tool mix, and E scores at the ceiling on
 Grounding and Token economy anyway. **The magnitude here is small and the shape is not.** For
@@ -551,7 +560,7 @@ measured, and it is written as one.
   `eligible_completed_substantive_pairs: 0` with `excluded_reasons: {}`.
 
   **That zero does not mean nothing was a candidate.** An earlier version of this paragraph
-  said it did. `score_linked_routing` (`aq.py:108-112`) returns zeros and an empty exclusion
+  said it did. `score_linked_routing` (`aq.py:119-123`) returns zeros and an empty exclusion
   map *before looking at the pairs at all* when `state != "measured"`, so the published shape
   is identical whether there were 451 pairs or none — verified by calling their own function
   with an empty list, which produces the same fields. On one corpus at `18:18:18` the payload
