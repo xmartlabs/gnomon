@@ -346,15 +346,22 @@ totals.
 
 Audits whether the AQ score reflects what you actually did in your sessions. It reproduces the published number locally, re-measures each axis from your transcripts, and reports gaps with executable proof.
 
-**Install** (copy to your Claude Code skills directory):
+**Install** via the skills CLI (recommended):
 
 ```bash
-# For all projects
-git clone https://github.com/xmartlabs/gnomon /tmp/gnomon-src
-cp -r /tmp/gnomon-src/skills/miraudit ~/.claude/skills/
+# For this project
+npx skills add xmartlabs/gnomon -s miraudit -a claude-code -y
 
-# Or for one project only
-cp -r /tmp/gnomon-src/skills/miraudit .claude/skills/
+# Or globally (all projects)
+npx skills add xmartlabs/gnomon -s miraudit -a claude-code -g -y
+```
+
+Or copy manually:
+
+```bash
+git clone https://github.com/xmartlabs/gnomon /tmp/gnomon-src
+cp -r /tmp/gnomon-src/skills/miraudit ~/.claude/skills/    # global
+cp -r /tmp/gnomon-src/skills/miraudit .claude/skills/      # project only
 ```
 
 **Run** as a Claude Code skill:
