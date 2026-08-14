@@ -10,7 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "seed": "tsx scripts/seed.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "rm -rf test-results/run && next build && playwright test"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.0",
