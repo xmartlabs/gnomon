@@ -3,8 +3,6 @@ import http from "node:http";
 import { SEEDED } from "../playwright.config";
 import { makeSummary } from "../tests/fixtures/summary";
 
-const CALLBACK_PORT = 8798;
-const CALLBACK = `http://127.0.0.1:${CALLBACK_PORT}/callback`;
 
 /**
  * Walks the CLI's actual sequence: sign in through the browser form, catch the
@@ -13,14 +11,16 @@ const CALLBACK = `http://127.0.0.1:${CALLBACK_PORT}/callback`;
  */
 async function signInForTokens(page: import("@playwright/test").Page, email: string, name: string) {
   const received: URL[] = [];
+  // Port 0: the OS picks a free one, exactly as the CLI's own listener does.
   const server = http.createServer((req, res) => {
-    received.push(new URL(req.url!, `http://127.0.0.1:${CALLBACK_PORT}`));
+    received.push(new URL(req.url!, "http://127.0.0.1"));
     res.writeHead(200, { "Content-Type": "text/html" });
     res.end("<h1>ok</h1>");
   });
-  await new Promise<void>((r) => server.listen(CALLBACK_PORT, "127.0.0.1", r));
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const callback = `http://127.0.0.1:${(server.address() as import("node:net").AddressInfo).port}/callback`;
   try {
-    await page.goto(`${SEEDED}/cli-auth?redirect_uri=${encodeURIComponent(CALLBACK)}&count=2`);
+    await page.goto(`${SEEDED}/cli-auth?redirect_uri=${encodeURIComponent(callback)}&count=2`);
     await page.getByLabel("Name").fill(name);
     await page.getByLabel("Email").fill(email);
     await page.getByLabel("Team token").fill("e2e-team-token");

@@ -56,7 +56,17 @@ def _login(count=2, email="contract@example.com"):
         assert exc.code == 302, f"expected 302, got {exc.code}"
         location = exc.headers["Location"]
 
-    return urllib.parse.parse_qs(urllib.parse.urlparse(location).query)
+    # WHERE the tokens go is half the contract: the CLI only ever reads them off
+    # its own loopback listener. A redirect carrying a perfectly-shaped tokens=
+    # query to any other host would hand credentials to a third party and leave
+    # the CLI waiting forever — and would pass every assertion below.
+    target = urllib.parse.urlparse(location)
+    expected = urllib.parse.urlparse(CALLBACK)
+    assert (target.scheme, target.netloc, target.path) == (
+        expected.scheme, expected.netloc, expected.path
+    ), f"tokens were redirected to {target.scheme}://{target.netloc}{target.path}, not {CALLBACK}"
+
+    return urllib.parse.parse_qs(target.query)
 
 
 def test_callback_query_parses_with_the_cli_parsers():

@@ -21,6 +21,9 @@ ENV NODE_ENV=production DATA_DIR=/data PORT=3000 HOSTNAME=0.0.0.0
 # looks like a working page whose buttons silently do nothing.
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+# Kept even though it is currently empty: without it, adding the first public
+# asset would 404 in Docker only, which is the worst place to notice.
+COPY --from=builder /app/public ./public
 COPY --from=builder /app/scripts/docker-entrypoint.sh ./docker-entrypoint.sh
 RUN mkdir -p /data && chown node:node /data
 USER node

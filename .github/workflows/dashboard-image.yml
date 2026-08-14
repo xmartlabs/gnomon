@@ -10,12 +10,16 @@ jobs:
   dashboard-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: dashboard
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: dashboard/package.json
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -32,6 +36,8 @@ jobs:
     needs: dashboard-tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -51,9 +57,12 @@ jobs:
             -e TEAM_TOKEN=dev -e JWT_SECRET=ci-secret-32-bytes-minimum-please \
             gnomon-dashboard:ci
           for i in $(seq 1 30); do
-            curl -fsS http://localhost:3000/ >/dev/null && break
+            curl -fsS http://localhost:3000/ >/dev/null && exit 0
             sleep 1
           done
+          echo "container never became ready" >&2
+          docker logs dash >&2 || true
+          exit 1
       - run: TEAM_TOKEN=dev DASHBOARD_BASE=http://localhost:3000 pytest tests/dashboard_contract_test.py -v
       - run: TEAM_TOKEN=dev BASE=http://localhost:3000 ./dashboard/scripts/smoke-e2e.sh
       - if: always()
