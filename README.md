@@ -370,15 +370,20 @@ cp -r /tmp/gnomon-src/skills/miraudit .claude/skills/      # project only
 /miraudit
 ```
 
-Or run the anchor standalone to reproduce your published number:
+Or run the anchor standalone to reproduce your published number. The path is relative to the skill directory, so run it from there:
 
 ```bash
+cd ~/.claude/skills/miraudit          # or .claude/skills/miraudit
 python3 scripts/anchor.py --checkout /path/to/gnomon \
     --since 2026-07-07 --until 2026-08-06 \
-    --published 92 --expect-contract 18:18:18
+    --published <your AQ> --expect-contract <the contract that report shows>
 ```
 
-Replace `--published` with your AQ, and `--since`/`--until` with the dates from your report. The anchor copies the checkout, reproduces the number, and stops the run if it doesn't match — no check runs on an unanchored base.
+`--since` and `--until` are the dates from your report, and `--published` is the AQ it shows. The anchor copies the checkout, reproduces the number, and stops before any check runs when the two disagree.
+
+`--expect-contract` can be left out: it defaults to the `contract` field of the pin block in `references/known-state.md`, which is the version this skill was verified against. **Pass a value only if your report shows one, and pass the one it shows.** Those are different things, and a report published under an older contract will not match the pin.
+
+**A report with no AQ you can point at is the normal case, not a failure.** Leave `--published` out and the anchor gates the contract, prints the number, and records `anchor.ok: null`, which every downstream step treats as "nobody compared this" rather than as a pass. The checks still run: the gate that matters is at emit time, where a run carrying findings with `ok` other than `true` has to say in `anchor.note` what was gated and what was not.
 
 See `skills/miraudit/README.md` for the full documentation.
 
