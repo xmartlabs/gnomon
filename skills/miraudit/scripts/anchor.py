@@ -29,6 +29,17 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from _common import load_stats, find_key  # noqa: E402
 
+# Line-buffered even when the output is a pipe. Python block-buffers a redirected stdout, and
+# this script's subprocesses inherit the pipe and write through immediately, so a log captured
+# with `| tee` came out in an order that contradicts the run: the fingerprint and the THEIRS
+# vs OURS table printed ABOVE the banners that produced them. Live it is worse -- the two
+# minutes the pipeline takes look like a hang, and a cold run polled the log three times to
+# find out. `python3 -u` fixes it too and depends on the caller remembering.
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+except AttributeError:  # pragma: no cover - Python < 3.7
+    pass
+
 DEFAULT_CORPUS = os.path.join(os.path.expanduser("~"), ".claude", "projects")
 
 

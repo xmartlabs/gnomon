@@ -97,12 +97,20 @@ if args.stats:
     shared += ["--stats", args.stats]
 
 
+# An ad-hoc check lives in the RUN's output directory, which is nowhere near the skill, so
+# `../scripts` cannot reach `_common.py` and neither can walking up from either end. The
+# driver is the one process that knows where the scripts are, so it says so. Without this the
+# first cold run to write an ad-hoc check invented its own convention to import the shared
+# helpers, and the second person would have invented a different one.
+ENV = dict(os.environ, MIRAUDIT_SCRIPTS=HERE)
+
+
 def run(item):
     name, path, extra = item
     out = os.path.join(args.out_dir, os.path.splitext(name)[0] + ".out")
     began = time.monotonic()
     try:
-        proc = subprocess.run([sys.executable, path] + shared + extra,
+        proc = subprocess.run([sys.executable, path] + shared + extra, env=ENV,
                               capture_output=True, text=True, timeout=args.timeout)
         text, code = proc.stdout + proc.stderr, proc.returncode
     except subprocess.TimeoutExpired as exc:

@@ -45,6 +45,16 @@ its judgement never becomes the verdict.
    what an agent concluded. `second-corpus.md` depends on exactly this — a command carrying
    this machine's paths is not a measurement anybody else can repeat.
 
+   **Run it with `run-checks.py --also <your file>`**, which puts it in the same batch as
+   everything else and exports `MIRAUDIT_SCRIPTS` so the import resolves. The run's output
+   directory is nowhere near the skill, so a relative `../scripts` cannot reach `_common.py`
+   from there and neither can walking up. `example-adhoc-check.py` carries the resolver to
+   copy: environment variable first, then a walk, then an error naming the fix. It used to
+   carry a plain `../scripts`, correct only where the example itself sits, so the file this
+   document calls "the shape to copy" could not import once it was copied where this
+   document says to put it. A cold run hit that and invented its own convention to get past
+   it, and a second person would have invented a different one.
+
 4. **Check that "theirs" covers the same population before you compare it.** gnomon walks
    **every source directory it finds** — `claude`, `codex`, `opencode`, `cursor` — and the
    top-level `behavior` block is the aggregate over all of them. `--corpus` is one of those,

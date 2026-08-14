@@ -15,11 +15,42 @@ Recovery was the only axis inside it.
 
     python3 example-adhoc-check.py --checkout <copy> \
         --since YYYY-MM-DD --until YYYY-MM-DD --stats <stats.json>
+
+`_common.py` is found by walking up from this file and then from the working directory, so
+this works both where the example lives and where a copy of it belongs. That matters because
+the two are different places: step 3 says an ad-hoc check goes in the RUN's output directory,
+and the first version of this file resolved `../scripts` relative to itself, which is right
+only in `references/`. Copied literally, as the same document instructs, it could not import.
+A cold run hit that and invented its own convention to get past it, which is the failure this
+resolver removes: two people writing two ad-hoc checks would have invented two.
+
+`MIRAUDIT_SCRIPTS` overrides it when the skill lives somewhere the walk cannot reach.
 """
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
+
+def _find_scripts():
+    env = os.environ.get("MIRAUDIT_SCRIPTS")
+    if env and os.path.exists(os.path.join(env, "_common.py")):
+        return env
+    for start in (os.path.dirname(os.path.abspath(__file__)), os.getcwd()):
+        node = start
+        while True:
+            for candidate in (os.path.join(node, "scripts"), node):
+                if os.path.exists(os.path.join(candidate, "_common.py")):
+                    return candidate
+            parent = os.path.dirname(node)
+            if parent == node:
+                break
+            node = parent
+    sys.exit("error: cannot find the skill's scripts/_common.py.\n"
+             "  Run this through `run-checks.py --also <this file>`, which sets "
+             "MIRAUDIT_SCRIPTS for you,\n"
+             "  or export it yourself: MIRAUDIT_SCRIPTS=<skill>/scripts")
+
+
+sys.path.insert(0, _find_scripts())
 from _common import parse, header, load_stats, dig, require, iter_events  # noqa: E402
 
 args, WINDOW = parse(__doc__.strip().splitlines()[0])

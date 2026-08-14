@@ -13,6 +13,18 @@ This splits both sides of the ratio.
   - and separately, at FILE level with --repo: of the code files touched there, how many
     have a co-located test today. Resolved against a git ref, not the working tree, so a
     deleted worktree cannot read as "no test".
+
+**Which repo to pass, since the corpus spans many.** Run without `--repo` first: the
+by-repository table above IS the answer, and the repo at the top of its denominator is the
+one whose file level is worth reading. Pass that one. There is no representative repo and
+this does not average them, so a single `--repo` result describes that repo and nothing else,
+which is why the flag is separate rather than defaulted.
+
+**Skipping it is a real gap, not a formality.** `run-checks.py` leaves this check out when
+`--repo` is absent and says so; the session-level half still runs and the manifest still goes
+green through it, so a run can finish with half of Verification's evidence ungathered and
+nothing red to show for it. A cold run did exactly that and had no stated basis for choosing
+otherwise, which is why this paragraph exists.
 """
 import collections
 import datetime

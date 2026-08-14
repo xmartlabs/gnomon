@@ -74,6 +74,12 @@ is not evidence.
 4. **Re-run it with `--run <your JSON>` before emitting.** A tag says a script claims an
    axis; it does not say anybody recorded a gap, a direction and a control. Reported the
    first way, a run once verdicted "11 of 11" while its own artifact held six.
+   **That JSON comes from Phase 4, and the order is: `new-run.py`, fill `axes[]`, re-run this
+   with `--run`, then render.** Read without that sentence the two phases contradict each
+   other, since `--run` wants a file only a Phase 4 script creates; a cold run lost minutes
+   deciding whether the manifest had to be green before the skeleton existed. It does not.
+   Step 0 runs on nothing and tells you what is uncovered; this step runs at the end and tells
+   you what went unrecorded.
 5. **`scripts/axis-terms.py` goes a level lower**, because an axis can be covered while a
    term inside it is invisible — which is where the one hard finding lived. It rebuilds each
    axis from the terms in the scoring source and lists those absent from `signals`. What it
@@ -83,7 +89,16 @@ is not evidence.
 because they are independent read-only processes and doing them one at a time is a habit.
 It builds its list from the same `# miraudit-covers:` grep the manifest uses, so a check
 cannot be missing from the run while still looking covered, and it names what it skipped for
-want of a flag — a skipped check is not a passed one. Ad-hoc checks go in with `--also`.
+want of a flag — a skipped check is not a passed one. Ad-hoc checks go in with `--also`, and
+it exports `MIRAUDIT_SCRIPTS` for them so their import of `_common.py` resolves from a run
+directory that sits nowhere near the skill.
+
+**The one it skips by default is `verification-reality.py`, which wants `--repo`.** Run it
+without the flag first and read its by-repository table: the repo at the top of the
+denominator is the one whose file level is worth a second pass. There is no representative
+repo and the check does not average them. Skipping it leaves half of Verification's evidence
+ungathered while the manifest stays green through `fidelity-audit.py`, so nothing turns red
+to tell you.
 
 Use `scripts/` where a check exists, and expect the unscripted path to be normal rather
 than exceptional. **How many axes that is, and which, comes from the manifest — never from
