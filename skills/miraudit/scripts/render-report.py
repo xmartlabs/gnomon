@@ -1,6 +1,7 @@
 """Renders miraudit-<date>.md from miraudit-<date>.json, after gating it.
 
     python3 render-report.py <miraudit-<date>.json> [<output.md>]
+    python3 render-report.py --check <miraudit-<date>.json> [<output.md>]
 
 Why this ships instead of being written per run: the schema said "render the markdown FROM
 it" and gave ordering rules, then shipped no renderer. A cold run wrote its own in the run
@@ -16,7 +17,16 @@ The output is deliberately plain. It goes to a person deciding whether to spend 
 a claim, and every section answers one of the three questions they will ask: what did you
 find, how do I reproduce it, and what did you not check.
 
-Exit codes: 0 rendered, 1 the gate refused the file, 2 the file could not be read.
+`--check` renders nothing and asks one question instead: does the .md on disk still match what
+this JSON renders to? Gating at render time only proves the file was clean *then*. A run
+rendered a valid skeleton, edited the JSON afterwards to add its dismissals, and never
+re-rendered -- so a gate-failing payload sat next to a report that no longer came from it, and
+the gate had passed honestly. "Two hand-written sources drift" is this skill's own charge
+against the tool it audits; this is the same defect one level up, and the renderer is
+deterministic, so re-rendering and comparing settles it exactly rather than approximately.
+
+Exit codes: 0 rendered (or, with --check, the report matches), 1 the gate refused the file or
+the report has drifted, 2 the file could not be read.
 """
 import json
 import os
@@ -188,10 +198,35 @@ def render(doc):
 
 
 def main(argv):
+    checking = "--check" in argv
+    argv = [a for a in argv if a != "--check"]
     if len(argv) not in (2, 3):
         sys.exit(__doc__)
     src = argv[1]
     dst = argv[2] if len(argv) == 3 else os.path.splitext(src)[0] + ".md"
+
+    if checking:
+        # Deliberately does NOT run the gate first. The question here is whether the report
+        # matches its source, and a payload that fails the gate is exactly when you most want
+        # that answered -- gating first would refuse to answer it.
+        try:
+            with open(src) as fh:
+                doc = json.load(fh)
+            on_disk = open(dst).read()
+        except (OSError, ValueError) as exc:
+            print(f"error: cannot read {exc}")
+            return 2
+        if render(doc) == on_disk:
+            print(f"render-report --check: {os.path.basename(dst)} still matches "
+                  f"{os.path.basename(src)}.")
+            print("  NOT CHECKED: whether either of them is right. This compares the report "
+                  "against its own source, nothing else.")
+            return 0
+        print(f"render-report --check: {os.path.basename(dst)} DOES NOT match "
+              f"{os.path.basename(src)}.")
+        print("  The JSON changed after the report was written, so the report is about an")
+        print("  earlier version of this run. Re-render it; do not edit the markdown.")
+        return 1
 
     gate = subprocess.run([sys.executable, os.path.join(HERE, "emit-gate.py"), src],
                           check=False)

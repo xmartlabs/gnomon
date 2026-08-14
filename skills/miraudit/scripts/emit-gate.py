@@ -19,6 +19,7 @@ Exit codes: 0 clean, 1 violations found, 2 the file could not be read.
 """
 import json
 import os
+import subprocess
 import sys
 
 # Keyed to the Phase 3 table in SKILL.md. Order is the table's order.
@@ -41,6 +42,25 @@ BOUNDS = {"upper", "lower"}
 
 
 FLAGS = {"grounding-diverged.json": "Grounding"}
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def pinned_ref():
+    """The ref the ```pin block names, or None when it cannot be resolved.
+
+    Asks pin-consistency.py rather than parsing known-state.md again. That file's own comment
+    says why: a second copy of the parser is the same mistake it exists to remove, one level
+    down. None is returned, not raised -- a gate that cannot find the pin should say so and
+    keep checking everything else, the way it already handles a missing SKILL.md.
+    """
+    try:
+        r = subprocess.run([sys.executable, os.path.join(HERE, "pin-consistency.py"),
+                            "--field", "ref"], capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    ref = r.stdout.strip()
+    return ref if r.returncode == 0 and ref else None
 
 
 def find_flags(doc_path, explicit=None):
@@ -84,8 +104,13 @@ def find_flags(doc_path, explicit=None):
     return (existing[0] if existing else roots[-1]), {}
 
 
-def check(doc, doc_path=None, flags_dir=None):
+def check(doc, doc_path=None, flags_dir=None, notes=None):
+    """Return the list of violations. `notes` is an optional list the caller passes in to
+    collect the things this could NOT check, which is not the same as a pass and has to be
+    printed rather than swallowed. Optional so that importing this module keeps working."""
     bad = []
+    if notes is None:
+        notes = []
 
     def fail(where, msg):
         bad.append(f"{where}: {msg}")
@@ -108,6 +133,32 @@ def check(doc, doc_path=None, flags_dir=None):
                            "`note` saying why. A run that never compared against a published "
                            "number can still be worth emitting, and the reader has to be told "
                            "which it was. Write what was gated and what was not.")
+
+    # Which ref the run measured is the frame for every number under it, so this is NOT gated
+    # on findings[] the way the anchor rules above are: a run against the wrong checkout has
+    # the wrong axes and the wrong dismissals too, and those are what an empty-findings run
+    # publishes. The case: a run pointed the pipeline at the working checkout instead of a
+    # copy of the pin, read a contract four commits ahead, gated everything on that, and said
+    # so in `anchor.note` -- so "there is a note" would have passed it. Naming the ref is the
+    # bar because a deliberate run at another ref can clear it in four words, and an accident
+    # cannot clear it at all.
+    tool_ref = ((doc.get("tool") or {}).get("ref") or "").strip()
+    pin = pinned_ref()
+    if pin is None:
+        notes.append("the ```pin block could not be read, so `tool.ref` was not compared "
+                     "against it. Everything else still ran.")
+    elif not tool_ref:
+        notes.append("the payload carries no `tool.ref`, so there was nothing to compare "
+                     "against the pin.")
+    elif not (tool_ref.startswith(pin) or pin.startswith(tool_ref)):
+        note = (anchor.get("note") or "")
+        if tool_ref not in note:
+            fail("tool.ref", f"the run measured {tool_ref} and the pin is {pin}, and "
+                             f"`anchor.note` does not name {tool_ref}. Either it measured a "
+                             "checkout it did not mean to, or it re-pinned on purpose; the "
+                             "file reads the same either way. If it was on purpose, say so in "
+                             "the note and name the ref. If it was not, the axes and the "
+                             "dismissals below are about a different version of the tool.")
 
     for i, f in enumerate(doc.get("findings", [])):
         w = f"findings[{i}] {f.get('id', '<no id>')}"
@@ -217,7 +268,8 @@ def main(argv):
         print(f"error: cannot read {path}: {exc}")
         return 2
 
-    bad = check(doc, doc_path=path, flags_dir=flags_dir)
+    notes = []
+    bad = check(doc, doc_path=path, flags_dir=flags_dir, notes=notes)
     searched, flagged = find_flags(path, flags_dir)
     print(f"emit gate: {os.path.basename(path)}")
     print(f"  findings {len(doc.get('findings', []))}  "
@@ -229,6 +281,8 @@ def main(argv):
     # wrong" from "nobody looked" is not a gate.
     print(f"  check flags: {', '.join(flagged) if flagged else 'none'} "
           f"(looked in {searched}{'' if os.path.isdir(searched) else ', which does not exist'})")
+    for n in notes:
+        print(f"  note: {n}")
     if not bad:
         print("  clean. Every finding answered all eight Phase 3 rows.")
         print("  NOT CHECKED: whether the notes are true. This gate reads structure, not "

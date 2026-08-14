@@ -44,6 +44,14 @@ is not evidence.
    express. `anchor.py` runs it before the pipeline.
 2. Reproduce the published number on a **copy** of the checkout, over **the report's own
    window**. A window ending *now* drifts daily and includes the audit session itself.
+   **Let `anchor.py` make that copy; do not run the pipeline yourself against a working
+   checkout.** A run did, read a contract four commits ahead of the pin, and gated its whole
+   audit on drift it had introduced. `emit-gate.py` compares `tool.ref` to the pin now, but
+   the cheaper place to not do this is here.
+   **Run it in the foreground and let the call return.** It takes about 90 seconds. Do not
+   background it and then wait on a notification: if you are a subagent, none arrives. A run
+   lost its entire audit that way, printing `waiting` while the `stats.json` it was waiting
+   for had already been written correctly.
 3. **If the base run does not reproduce it, stop.** The method is wrong before any finding.
    Give `scripts/anchor.py` the `--published` and `--expect-contract` values so it stops on
    its own. Omit them and it prints the number and asks you to compare, which is where the
@@ -188,6 +196,18 @@ handed its maintainers two documents with nothing in common.
 
 The gate reads structure and not honesty. It cannot tell a real refutation from a plausible
 sentence, and it says so on every clean run.
+
+**If you edit the JSON after rendering, render again.** Gating at render time proves the file
+was clean *then*, and nothing watches it afterwards. A run rendered a valid skeleton, added
+its dismissals to the JSON with a script, and never re-rendered: the report on disk was about
+an earlier version of that run, and the gate had passed honestly. `render-report.py --check`
+answers it — the renderer is deterministic, so it re-renders and compares exactly.
+
+**The gate now also reads `tool.ref` against the pin.** A run that measured a checkout other
+than the pinned one has to name that ref in `anchor.note`, because a deliberate re-pin and a
+pipeline pointed at the wrong directory produce the same file otherwise. This is not gated on
+`findings[]` like the anchor rules are: the axes and the dismissals are about that ref too,
+and an empty-findings run publishes both.
 
 Report only findings carrying a reproducible command and a control that passed. Confirmed
 but already sent goes to `reported`; confirmed and deliberately not sent goes to
