@@ -97,6 +97,15 @@ export function PeopleTable({ rows, monthKey }: { rows: PersonRow[]; monthKey: s
                 >
                   {r.name}
                 </Link>
+                {/* Rows carry each person's own latest window, so a row behind
+                    the team's current one must say so — otherwise stale AQ and
+                    tokens read as current-window numbers. */}
+                {monthKey && r.monthKey !== monthKey && (
+                  <span className="num ml-2 text-[11px] text-ink-60">
+                    <span aria-hidden>· {r.monthKey}</span>
+                    <span className="sr-only">last uploaded {r.monthKey}, not the current window</span>
+                  </span>
+                )}
               </th>
               <td className="serif num text-[22px] font-semibold">{r.aq ?? "—"}</td>
               <td>

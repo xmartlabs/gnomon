@@ -211,8 +211,10 @@ export function LegendRow({
   return (
     <div className="flex items-center gap-2.5 border-b border-hairline py-2 text-[13.5px] last:border-b-0">
       <span aria-hidden className="flex-none" style={{ width: swatch, height: swatch, background: color }} />
-      {label}
-      <span className="num ml-auto text-[12.5px] text-ink-60">{value}</span>
+      <span className="min-w-0 truncate" title={label}>
+        {label}
+      </span>
+      <span className="num ml-auto flex-none text-[12.5px] text-ink-60">{value}</span>
     </div>
   );
 }

@@ -82,9 +82,13 @@ export default async function PersonProfilePage({
         </div>
       </div>
 
-      {levels.length > 1 && (
+      {/* A first upload still gets the section — one bar is the person's whole
+          history, and hiding it drops required context from new profiles. */}
+      {levels.length > 0 && (
         <Section>
-          <SectionTitle note={`${levels.length} windows`}>Level over time</SectionTitle>
+          <SectionTitle note={`${levels.length} window${levels.length === 1 ? "" : "s"}`}>
+            Level over time
+          </SectionTitle>
           <LevelBars points={levels} current={p.monthKey} />
         </Section>
       )}

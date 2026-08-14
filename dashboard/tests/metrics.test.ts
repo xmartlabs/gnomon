@@ -234,6 +234,15 @@ describe("metrics", () => {
     expect(buildPersonProfile(db, p.id, "2026-01")).toBeNull();
   });
 
+  it("reports a missing score as null, not as a real 0.0", () => {
+    const p = upsertPerson(db, "ada@example.com", "Ada");
+    const noScores = makeSummary();
+    delete noScores.profile.scores;
+    put(db, p.id, "2026-06", noScores);
+    const scorecard = buildPersonProfile(db, p.id, "2026-06")!.scorecard;
+    expect(scorecard.map((s) => s.value)).toEqual([null, null, null]);
+  });
+
   it("survives a summary stripped of every optional block", () => {
     // Unknown/missing fields must never throw — the store is schema-proof by
     // design and old clients keep uploading.

@@ -14,8 +14,17 @@ export function ScoreCard({ score }: { score: Score }) {
       <div className="border-t-2 border-ink pt-3">
         <Eyebrow as="h3">{score.key}</Eyebrow>
         <div className="serif num mt-2 text-[38px] leading-none font-semibold">
-          {score.value.toFixed(1)}
-          <small className="text-[17px] font-medium text-ink-60">/10</small>
+          {score.value === null ? (
+            <span className="text-ink-30">
+              <span aria-hidden>—</span>
+              <span className="sr-only">not reported</span>
+            </span>
+          ) : (
+            <>
+              {score.value.toFixed(1)}
+              <small className="text-[17px] font-medium text-ink-60">/10</small>
+            </>
+          )}
         </div>
         <div className="mt-2 mb-3.5 min-h-[34px] text-[12.5px] text-ink-60">{score.gloss}</div>
         {values.length > 1 ? (

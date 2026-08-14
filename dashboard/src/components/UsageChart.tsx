@@ -45,8 +45,14 @@ export function UsageChart({ months: all }: { months: MonthUsage[] }) {
   // Leave headroom for the total label that sits above the tallest stack.
   const scale = max > 0 ? (CHART_H - 42) / max : 0;
 
-  // Model order is stable across months so a colour always means one model.
-  const order = [...new Set(months.flatMap((m) => m.byModel.map((x) => x.modelId)))];
+  // Ranked by total volume, not by arrival order: the series colours carry
+  // meaning (ink → terracotta → parchment), so the heaviest model must land on
+  // ink whichever order the payload happened to list the models in.
+  const volume = new Map<string, number>();
+  for (const m of months) {
+    for (const x of m.byModel) volume.set(x.modelId, (volume.get(x.modelId) ?? 0) + x.tokens);
+  }
+  const order = [...volume.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id);
   const labelOf = new Map(months.flatMap((m) => m.byModel.map((x) => [x.modelId, x.model] as const)));
   const last = months.at(-1);
 
