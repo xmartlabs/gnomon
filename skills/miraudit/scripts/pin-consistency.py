@@ -15,6 +15,7 @@ import os
 import re
 import subprocess
 import sys
+from importlib.machinery import SourceFileLoader
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import parse, require  # noqa: E402
@@ -24,6 +25,8 @@ SKILL = os.path.dirname(HERE)
 
 KNOWN = os.path.join(SKILL, "references", "known-state.md")
 README = os.path.join(SKILL, "README.md")
+SKILL_MD = os.path.join(SKILL, "SKILL.md")
+GATE = os.path.join(HERE, "emit-gate.py")
 
 def read_block():
     with open(KNOWN) as fh:
@@ -100,6 +103,43 @@ elif not found:
 elif found != {block["contract"]}:
     failures.append(f"README.md shows --expect-contract {sorted(found)}, the block says "
                     f"{block['contract']}")
+
+# 2b -- the Phase 3 table against emit-gate.ROWS. The eight rows live in three places on
+# purpose, at three depths: ROWS is what the artifact must answer and is imported by
+# new-run.py rather than copied; SKILL.md's table carries each question WITH the scar that
+# earned it, in the one file every run loads; refutation.md holds the full write-up for the
+# seven that came from a death. Only the first two are the same sentence twice, and nothing
+# compared them until a run asked why the rows appeared in two files. They agree today.
+skill_text = ""
+try:
+    with open(SKILL_MD) as fh:
+        skill_text = fh.read()
+except OSError:
+    pass
+_tbl = re.search(r"\| Try to refute \| The scar \|\n\|[-| ]+\|\n((?:\|.*\n)+)", skill_text)
+if not skill_text:
+    notes.append(f"no SKILL.md beside this script ({SKILL_MD}), so the Phase 3 table could "
+                 "not be compared against emit-gate.ROWS. Expected inside a built wheel, "
+                 "which ships scripts/ and references/ and not the skill file itself.")
+elif not _tbl:
+    failures.append("SKILL.md has no Phase 3 table in the shape this reads, so the rows a "
+                    "run is told to answer can no longer be compared with the rows the gate "
+                    "enforces.")
+else:
+    _gate_rows = SourceFileLoader("_pin_gate", GATE).load_module().ROWS
+    _flat = lambda s: re.sub(r"[*`]", "", s).strip().rstrip(".").lower()
+    _table = [_flat(l.split("|")[1]) for l in _tbl.group(1).strip().split("\n")]
+    _code = [_flat(v) for v in _gate_rows.values()]
+    if _table != _code:
+        _only_gate = [q for q in _code if q not in _table]
+        _only_doc = [q for q in _table if q not in _code]
+        failures.append(
+            f"SKILL.md's Phase 3 table and emit-gate.ROWS disagree: {len(_table)} rows "
+            f"against {len(_code)}."
+            + (f" Only in the gate: {_only_gate}." if _only_gate else "")
+            + (f" Only in SKILL.md: {_only_doc}." if _only_doc else "")
+            + " A row the gate enforces and the procedure never states is a row nobody "
+              "answers on purpose.")
 
 # 3 -- the checkout itself. SCORE_CONTRACT_ID is COMPUTED from three integers in
 # scoring/versioning.py, so it cannot be grepped; importing is the only honest read, and
