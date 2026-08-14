@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { POST, _resetRateLimitForTests } from "@/app/api/cli-auth/route";
+import { POST } from "@/app/api/cli-auth/route";
+import { _resetRateLimitForTests } from "@/lib/rate-limit";
 import { verifyToken } from "@/lib/auth";
 import { getDb, upsertPerson } from "@/lib/db";
 import { useTempDbEnv, putUpload, TEST_TEAM_TOKEN } from "./helpers/env";

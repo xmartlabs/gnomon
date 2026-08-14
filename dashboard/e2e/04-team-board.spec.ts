@@ -6,6 +6,19 @@ const shot = (name: string) => ({ path: `test-results/flows/${name}.png`, fullPa
 /** The people table specifically — the chart ships a second, sr-only one. */
 const board = (page: Page) => page.getByRole("table", { name: /Engineers ranked by AQ/ });
 
+/**
+ * Open the board and wait for the client bundle to take over. The sort headers
+ * and the unit toggle are client components; clicking the server-rendered HTML
+ * before hydration silently drops the event.
+ */
+async function openBoard(page: Page) {
+  await page.goto(SEEDED);
+  await page.waitForLoadState("networkidle");
+}
+
+/** Person names only — the cell may also carry a stale-window marker. */
+const names = (page: Page) => board(page).locator("tbody tr th a").allTextContents();
+
 /** The values of one column, in the order they are painted. */
 async function column(page: Page, index: number) {
   return board(page)
@@ -14,7 +27,6 @@ async function column(page: Page, index: number) {
 }
 
 const AQ = 1;
-const NAME = 0;
 const TOKENS = 6;
 
 test.describe("Flow 4 · reading the team board", () => {
@@ -37,18 +49,18 @@ test.describe("Flow 4 · reading the team board", () => {
   });
 
   test("column headers re-sort the board and announce the direction", async ({ page }) => {
-    await page.goto(SEEDED);
+    await openBoard(page);
     // Scoped to the table: "Tokens" also names the chart's unit toggle.
     const header = (name: string) => board(page).getByRole("button", { name, exact: false });
 
     await header("Name").click();
-    const names = await column(page, NAME);
-    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
+    const sorted = await names(page);
+    expect(sorted).toEqual([...sorted].sort((a, b) => a.localeCompare(b)));
     await expect(page.getByRole("columnheader", { name: "Name" })).toHaveAttribute("aria-sort", "ascending");
 
     // Clicking the active column flips it.
     await header("Name").click();
-    expect(await column(page, NAME)).toEqual([...names].reverse());
+    expect(await names(page)).toEqual([...sorted].reverse());
     await expect(page.getByRole("columnheader", { name: "Name" })).toHaveAttribute("aria-sort", "descending");
 
     // Numeric columns start at highest-first.
@@ -61,7 +73,7 @@ test.describe("Flow 4 · reading the team board", () => {
   });
 
   test("people with no previous window sort last, not first", async ({ page }) => {
-    await page.goto(SEEDED);
+    await openBoard(page);
     await board(page).getByRole("button", { name: "Delta", exact: false }).click();
 
     // Katherine has a single upload, so she has no delta at all. Whichever way
@@ -73,7 +85,7 @@ test.describe("Flow 4 · reading the team board", () => {
   });
 
   test("the unit toggle switches the chart from tokens to cost", async ({ page }) => {
-    await page.goto(SEEDED);
+    await openBoard(page);
     const chart = page.getByRole("group", { name: "Chart unit" });
     await expect(chart.getByRole("button", { name: "Tokens" })).toHaveAttribute("aria-pressed", "true");
 

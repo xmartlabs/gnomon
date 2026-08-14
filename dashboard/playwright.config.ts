@@ -29,17 +29,16 @@ export default defineConfig({
   },
   webServer: [
     {
-      // NOTE: next.config.ts asks for `output: "standalone"`, but Next 16's
-      // Turbopack build does not emit .next/standalone — Task 11's Dockerfile
-      // cannot rely on it. Serving with `next start` for now.
-      command: "pnpm start -p 3210",
+      // The standalone server is what the Docker image runs, so the suite
+      // exercises the same entrypoint rather than `next start`.
+      command: "node .next/standalone/server.js",
       url: SEEDED,
       timeout: 60_000,
       reuseExistingServer: false,
       env: env("seeded.db", "3210"),
     },
     {
-      command: "pnpm start -p 3211",
+      command: "node .next/standalone/server.js",
       url: EMPTY,
       timeout: 60_000,
       reuseExistingServer: false,

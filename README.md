@@ -117,6 +117,45 @@ window: a wider or unstated corpus produces roughly a different number of
 sessions and tool calls than the scoring targets are calibrated for, so it is
 refused instead of being pooled with genuine one-month scores.
 
+### Self-hosted team dashboard
+
+Don't have (or want) mirdash? Run your own — one container, one volume:
+
+```bash
+git clone https://github.com/xmartlabs/gnomon && cd gnomon
+cp .env.example .env          # set TEAM_TOKEN (openssl rand -hex 24)
+docker compose up -d          # dashboard at http://localhost:3000
+```
+
+The container refuses to start without `TEAM_TOKEN`, so a misconfigured deploy
+fails loudly instead of serving an open endpoint.
+
+Then point the CLI at it:
+
+```bash
+uvx --from git+https://github.com/xmartlabs/gnomon@latest \
+  xl-ai-insights --mirdash-base=http://localhost:3000
+```
+
+Or persist it: `echo '{"mirdash_base": "http://localhost:3000"}' > ~/.config/gnomon/config.json`.
+
+Each teammate signs in with the shared `TEAM_TOKEN` plus their name and email;
+the dashboard shows the team ranking, per-person AQ profiles, and usage over
+time. Only `summary.json` statistics are uploaded — prompts and file contents
+never leave each machine.
+
+This coexists with mirdash: without `--mirdash-base`, the CLI keeps its default
+behavior. Everything the dashboard shows is derived at read time from the raw
+uploaded summaries, so a newer CLI never needs a server migration.
+
+Optional settings live in `.env.example`. Two worth knowing:
+
+- `LLM_API_KEY` (Anthropic) enables the AI-coach card on profiles; the card is
+  hidden entirely when unset.
+- `TRUST_PROXY=1` only if a reverse proxy sits in front of the container. Left
+  unset, the sign-in throttle keeps one shared bucket that a client cannot spoof
+  its way around by rotating `x-forwarded-for`.
+
 ## Scoring contract
 
 Current runtime contract: **scoring inputs version 19**, **AQ version 19**, and
