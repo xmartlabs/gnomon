@@ -497,6 +497,29 @@ What remains is a calibration observation rather than a fidelity defect, and it 
 one: a 60% target on a quantity where the observed floor is 98%. Whether the graded
 population has mass below 60% is exactly what none of these five corpora can say.
 
+### Both of these are published upstream now, citing this data. Do not re-report them.
+
+At `03b87a0`, the pinned commit, gnomon's own source carries them as annotations rather than
+as something to be argued:
+
+- `aq.py:478` opens `KNOWN LIMITATION (issue #72, five corpora)` and states the range this
+  table produced, 0.974 to 1.469, adding that above 1.0 the term carries no information and
+  that whether it discriminates below parity is unmeasured. It says the target stays 1.0
+  because raising it needs a production distribution rather than a re-read of the formula,
+  and that the limitation is published instead of quietly carried.
+- `aq.py:18` marks the target `PROVISIONAL` beside the number rather than beside the axis,
+  citing five corpora at 0.984 to 1.000 coverage against a target of 0.60.
+
+**So the ceiling work is done and a run that raises it again is spending a maintainer's
+attention on something they already wrote down.** A cold run reached exactly that conclusion
+on its own, by reading their source before deciding, and it is the reason `aq-is-mostly-ceiling`
+belongs in `not_raised` rather than in `findings` from here on.
+
+What this does NOT close is the question underneath: nobody has measured the graded
+population. Their annotation says the same thing in their own words. A corpus with coverage
+below 0.60, or a ratio below parity, is still the observation that would move it, and it is
+still the one nobody here can produce.
+
 ### One Windows corpus, and one thing it makes visible
 
 E is the only non-macOS run. Nothing platform-shaped shows up where it would be easiest to
