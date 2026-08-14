@@ -64,7 +64,7 @@ args, _WINDOW = parse(__doc__.strip().splitlines()[0], {
                         "help": "skip the ref comparison and the upstream check. For CI, "
                                 "where the checkout is the repository at HEAD rather than a "
                                 "clone of the pinned commit"},
-})
+}, needs_corpus=False)
 
 block, known_text = read_block()
 # Defensive because this file is opened from two very different places. In a clone it is

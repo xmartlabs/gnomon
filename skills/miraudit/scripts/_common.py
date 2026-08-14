@@ -27,8 +27,15 @@ import sys
 DEFAULT_CORPUS = "~/.claude/projects"
 
 
-def parse(description, extra=None):
-    """Return (args, cutoff_datetime) and put the checkout on sys.path."""
+def parse(description, extra=None, needs_corpus=True):
+    """Return (args, cutoff_datetime) and put the checkout on sys.path.
+
+    `needs_corpus=False` for the checks that never open a transcript. They still ACCEPT
+    --corpus, because one command shape has to work for all of them, but they stop
+    requiring the directory to exist. pin-consistency.py compares strings and imports one
+    constant, and it died in CI on a runner with no ~/.claude at all -- refusing to run over
+    an input it does not read.
+    """
     p = argparse.ArgumentParser(description=description)
     p.add_argument("--checkout", required=True,
                    help="path to a checkout of the scoring tool (read-only)")
@@ -59,7 +66,7 @@ def parse(description, extra=None):
     if not os.path.isdir(os.path.join(args.checkout, "gnomon")):
         sys.exit(f"error: {args.checkout} does not look like a gnomon checkout "
                  "(no gnomon/ package inside). Pass --checkout.")
-    if not os.path.isdir(args.corpus):
+    if needs_corpus and not os.path.isdir(args.corpus):
         sys.exit(f"error: corpus not found at {args.corpus}. Pass --corpus.")
 
     sys.path.insert(0, args.checkout)
