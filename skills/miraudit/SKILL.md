@@ -93,12 +93,12 @@ want of a flag — a skipped check is not a passed one. Ad-hoc checks go in with
 it exports `MIRAUDIT_SCRIPTS` for them so their import of `_common.py` resolves from a run
 directory that sits nowhere near the skill.
 
-**The one it skips by default is `verification-reality.py`, which wants `--repo`.** Run it
-without the flag first and read its by-repository table: the repo at the top of the
-denominator is the one whose file level is worth a second pass. There is no representative
-repo and the check does not average them. Skipping it leaves half of Verification's evidence
-ungathered while the manifest stays green through `fidelity-audit.py`, so nothing turns red
-to tell you.
+**`verification-reality.py` runs either way, and `--repo` adds its file-level half.** Without
+the flag it does the session-level pass and prints a by-repository table. **Read that table
+before choosing**, and read `repo_of` in the script before trusting a row: they are labels,
+not paths, so the busiest one is regularly `agent config`, meaning `~/.claude`, or a directory
+holding many checkouts. Skip those and pass the busiest row that is one repository. There is
+no representative repo and the check does not average them.
 
 Use `scripts/` where a check exists, and expect the unscripted path to be normal rather
 than exceptional. **How many axes that is, and which, comes from the manifest — never from

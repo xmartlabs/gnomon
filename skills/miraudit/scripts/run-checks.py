@@ -68,7 +68,8 @@ args, WINDOW = parse(__doc__.strip().splitlines()[0], {
     "--jobs": {"type": int, "default": min(8, os.cpu_count() or 4), "metavar": "N",
                "help": "checks to run at once (default: min(8, cpu count))"},
     "--repo": {"default": None, "metavar": "PATH",
-               "help": "passed to verification-reality.py, which is skipped without it"},
+               "help": "passed to verification-reality.py, which runs either way and gains "
+                       "its file-level half with it"},
     "--comparison": {"action": "append", "default": [], "metavar": "PATH",
                      "help": "a comparison-2 payload; repeatable, passed to the checks "
                              "that read other corpora"},
