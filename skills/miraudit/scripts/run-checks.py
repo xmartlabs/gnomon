@@ -39,8 +39,11 @@ EXCLUDED = {"axis-coverage.py"}
 
 # Carry no `miraudit-covers:` tag and belong to every run anyway. fingerprint.py is not here
 # on purpose -- Phase 0 requires it printed before any other number, and a line inside a
-# parallel batch is not before anything.
-ALWAYS = ("saturation-counterfactual.py", "axis-terms.py")
+# parallel batch is not before anything. verify-repo-bucketing.py is here for a different
+# reason: it verifies OUR OWN diagnostic tooling, not gnomon's scoring, so it has no axis to
+# claim -- but two broken versions of that tooling shipped in one afternoon before anyone
+# wrote it, both caught only because a person happened to eyeball a real corpus's table.
+ALWAYS = ("saturation-counterfactual.py", "axis-terms.py", "verify-repo-bucketing.py")
 
 
 def per_script_args(name, args):
