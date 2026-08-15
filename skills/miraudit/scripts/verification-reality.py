@@ -15,12 +15,19 @@ This splits both sides of the ratio.
     deleted worktree cannot read as "no test".
 
 **Which repo to pass, since the corpus spans many.** Run without `--repo` first and read the
-by-repository table. **Its rows are labels from `repo_of` below, not paths**, and an earlier
-version of this paragraph said to take the one at the top of the denominator, which sends you
-somewhere you cannot pass: on a real corpus the top row was `agent config`, meaning `~/.claude`
-and not a project, and the second was a directory holding nine repositories and seven
-worktrees. Neither is a repo. Skip `agent config`, `ephemeral (tmp)` and `other`, skip any row
-you recognise as a container rather than a checkout, and pass the path of the busiest row that
+by-repository table. **Its rows are the session's own `cwd`, relative to $HOME** -- where the
+session was actually launched, not a guess reconstructed from an edited file's path. An
+earlier version bucketed by truncating a FILE path to two segments below $HOME instead, which
+sent you somewhere you could not pass on either side of the mistake: it fused unrelated
+repositories that merely shared a parent directory into one row (a real corpus had one such
+row holding six repositories under a client folder), and -- proven when the fix was first
+attempted and it broke this worse -- a segment-divergence heuristic fused a single repo's own
+subdirectories (`app/`, `components/`, `lib/`) into several spurious rows instead. Session
+`cwd` sidesteps both: measured across a
+real corpus, 97 of 104 sessions carry exactly one `cwd` for their whole duration, and it is
+the actual checkout root a person or agent cd'd into, not a path an internal directory
+structure can be mistaken for. Skip `agent config` (`~/.claude`) and `ephemeral (tmp)` --
+neither is a project -- and pass the path of the busiest row that
 is one repository. There is no representative repo and this does not average them, so a single
 `--repo` result describes that repo and nothing else.
 
@@ -53,14 +60,31 @@ from gnomon.taxonomy import (WRITE_TOOLS as WRITES, bash_runs_tests,  # noqa: E4
 HOME = os.path.expanduser("~")
 
 
-def repo_of(path):
-    """Label a file by the project it belongs to, without a hardcoded project list.
+def repo_of(cwd):
+    """Label a session by the directory it was actually launched from -- not a guess
+    reconstructed by truncating an edited file's path to a fixed depth.
 
-    Heuristic, and deliberately so: transcripts reference paths that may no longer exist,
-    so walking up to a .git directory is not available. Two segments below $HOME is the
-    level at which real projects sit for most layouts; everything else is bucketed.
+    Two truncation-based attempts preceded this and both broke on real corpora. A flat
+    2-segment cut fused unrelated repositories sharing a parent directory into one row (a
+    real corpus had one such row holding six repos under a client folder, no way to tell
+    them apart). Making the cut adaptive -- split deeper wherever paths diverge -- broke
+    the opposite way: a single repo's own
+    subdirectories (`app/`, `components/`, `lib/`) diverge from each other too, so it
+    fragmented ordinary repos into several spurious rows. Neither flaw is reachable from
+    `cwd`: it is not a path INSIDE a project that divergence has to reason about, it is the
+    project's own root, recorded once per tool call by the harness itself. No depth to
+    choose, so no depth to get wrong.
+
+    A third flaw only showed up once this ran: the old file-path scheme labelled a session
+    by whichever repo its MOST-EDITED file belonged to, and a session working in a real
+    project that happens to also touch files under ~/.claude -- syncing a skill, writing to
+    memory -- got filed under `agent config` whenever that side activity outweighed the
+    project work by raw edit count. On a real corpus, 13 of 18 sessions the old scheme
+    called `agent config` were launched from one real repository, one with 447 such edits
+    in a single session. `cwd` cannot make that mistake: it is where the session started,
+    not what it touched most.
     """
-    p = str(path or "")
+    p = str(cwd or "")
     if not p:
         return "other"
     if p.startswith(("/tmp/", "/private/tmp/", "/var/folders/")):
@@ -68,15 +92,12 @@ def repo_of(path):
     if p.startswith(HOME + "/.claude"):
         return "agent config"
     if p.startswith(HOME + "/"):
-        parts = p[len(HOME) + 1:].split("/")
-        if len(parts) >= 3:
-            return "/".join(parts[:2])
-        return parts[0] if parts else "other"
+        return p[len(HOME) + 1:]
     return "other"
 
 
 S = collections.defaultdict(lambda: {
-    "repos": collections.Counter(), "code": 0, "testfile": 0, "testrun": 0,
+    "repo": None, "code": 0, "testfile": 0, "testrun": 0,
     "push": 0, "day": None, "codefiles": set()})
 
 for p in sorted(glob.glob(os.path.join(ROOT, "**", "*.jsonl"), recursive=True)):
@@ -110,16 +131,20 @@ for p in sorted(glob.glob(os.path.join(ROOT, "**", "*.jsonl"), recursive=True)):
                 name, inp = b.get("name", ""), (b.get("input") or {})
                 s = S[sid]
                 s["day"] = s["day"] or dt.date()
+                # First cwd seen for the session, kept for its duration. Measured: 97 of 104
+                # sessions in a real window never change cwd at all; the few that do mostly
+                # move into a subdirectory of the same checkout (prisma/migrations) rather
+                # than a different project, so "first" is not a coin flip on those either.
+                if s["repo"] is None and e.get("cwd"):
+                    s["repo"] = repo_of(e["cwd"])
                 fp = str(inp.get("file_path") or inp.get("notebook_path") or "")
                 if name in WRITES and fp:
                     kind = classify_change_target(fp)
                     if kind == "code":
                         s["code"] += 1
-                        s["repos"][repo_of(fp)] += 1
                         s["codefiles"].add(fp)
                     elif kind == "test":
                         s["testfile"] += 1
-                        s["repos"][repo_of(fp)] += 1
                 if name == "Bash":
                     cmd = str(inp.get("command", ""))
                     if bash_runs_tests(cmd):
@@ -128,15 +153,14 @@ for p in sorted(glob.glob(os.path.join(ROOT, "**", "*.jsonl"), recursive=True)):
                         s["push"] += 1
 
 coding = {sid: s for sid, s in S.items() if s["code"] > 0}
-# dominant repo for the session
 for s in coding.values():
-    s["repo"] = s["repos"].most_common(1)[0][0] if s["repos"] else "other"
+    s["repo"] = s["repo"] or "other"
 
 # level 4: something in ANOTHER session the same day and repo
 by_day_repo = collections.defaultdict(lambda: {"testrun": 0, "push": 0})
 for s in S.values():
     if s["day"]:
-        k = (s["day"], s["repos"].most_common(1)[0][0] if s["repos"] else "other")
+        k = (s["day"], s["repo"] or "other")
         by_day_repo[k]["testrun"] += s["testrun"]
         by_day_repo[k]["push"] += s["push"]
 
