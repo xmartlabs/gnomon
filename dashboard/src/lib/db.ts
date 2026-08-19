@@ -78,10 +78,16 @@ export function upsertUpload(
          summary_json = excluded.summary_json,
          uploaded_at = unixepoch() * 1000`
     ).run(args);
-    // Re-uploading a month supersedes its metrics, so any cached AI-coach text
-    // for that (person, month) is stale — drop it so it regenerates on next view.
-    db.prepare(`DELETE FROM settings WHERE key = ?`)
-      .run(`coach:${args.personId}:${args.monthKey}`);
+    // Re-uploading a month supersedes its metrics, so cached AI-coach text for
+    // that (person, month) is stale — drop it so it regenerates on next view.
+    // Prefix match, not an exact key: coach entries are stamped with the upload
+    // they describe (lib/coach.ts), so this also collects any paragraph written
+    // by a generation that was still in flight when this upload landed.
+    // The bare key is the pre-hash format; without it, entries written by an
+    // older build would never be read again and never collected either.
+    const coachKey = `coach:${args.personId}:${args.monthKey}`;
+    db.prepare(`DELETE FROM settings WHERE key = ? OR key LIKE ? ESCAPE '\\'`)
+      .run(coachKey, `${coachKey}:%`);
   })();
 }
 

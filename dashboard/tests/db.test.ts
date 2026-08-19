@@ -28,12 +28,26 @@ describe("db", () => {
 
   it("upsertUpload invalidates the stale coach cache for that person-month", () => {
     const p = upsertPerson(db, "ada@example.com", "Ada");
+    const other = upsertPerson(db, "alan@example.com", "Alan");
     upsertUpload(db, { personId: p.id, monthKey: "2026-06", windowMonths: 6, summaryJson: '{"v":1}' });
-    db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`)
-      .run(`coach:${p.id}:2026-06`, "old coaching text");
+
+    const put = (key: string) =>
+      db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(key, "old text");
+    const has = (key: string) =>
+      db.prepare(`SELECT 1 FROM settings WHERE key = ?`).get(key) !== undefined;
+
+    put(`coach:${p.id}:2026-06`);              // pre-hash format, written by older builds
+    put(`coach:${p.id}:2026-06:deadbeefcafe`); // current format: stamped with the prompt hash
+    put(`coach:${p.id}:2026-05:deadbeefcafe`); // a month this upload does not supersede
+    put(`coach:${other.id}:2026-06:deadbeef`); // someone else's identical month
+
     upsertUpload(db, { personId: p.id, monthKey: "2026-06", windowMonths: 6, summaryJson: '{"v":2}' });
-    const cached = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(`coach:${p.id}:2026-06`);
-    expect(cached).toBeUndefined();
+
+    expect(has(`coach:${p.id}:2026-06`)).toBe(false);
+    expect(has(`coach:${p.id}:2026-06:deadbeefcafe`)).toBe(false);
+    // The prefix delete must not reach past its own (person, month).
+    expect(has(`coach:${p.id}:2026-05:deadbeefcafe`)).toBe(true);
+    expect(has(`coach:${other.id}:2026-06:deadbeef`)).toBe(true);
   });
 
   it("uploadedMonths returns monthKey + ms epoch uploadedAt", () => {
