@@ -150,12 +150,11 @@ export default async function PersonProfilePage({
         </div>
       </Section>
 
-      {/* Streamed in: an LLM round-trip must not hold up the report itself. */}
-      <Section className="mt-3">
-        <Suspense fallback={null}>
-          <CoachCard db={db} profile={p} />
-        </Suspense>
-      </Section>
+      {/* Streamed in: an LLM round-trip must not hold up the report itself.
+          CoachCard brings its own Section, so an absent coach leaves no gap. */}
+      <Suspense fallback={null}>
+        <CoachCard db={db} profile={p} />
+      </Suspense>
 
       <Colophon right={`Window ${p.monthKey} · ${p.name}`} pad="mt-[26px] pt-4.5 pb-10" />
     </Sheet>

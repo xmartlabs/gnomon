@@ -5,3 +5,10 @@ node_modules/
 *.tsbuildinfo
 test-results/
 playwright-report/
+
+# Local dev data volume (DATA_DIR=$PWD/.data). Holds the jwt signing secret and
+# the WAL sidecars, which carry the same uploaded data as the .db itself.
+.data/
+*.db-wal
+*.db-shm
+jwt-secret
