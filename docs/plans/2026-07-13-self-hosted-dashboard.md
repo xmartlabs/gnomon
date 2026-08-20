@@ -1,6 +1,20 @@
 # Self-Hosted Gnomon Dashboard Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> ## ✅ DONE — this plan is fully implemented. Do not execute it.
+>
+> All 13 tasks shipped on `feat/self-hosted-dashboard`; see
+> [Status: COMPLETE](#status-complete-2026-08-19) below for the verification
+> record, the deviations, and the handful of items deliberately left open.
+> What follows is kept as the design record of how the dashboard was built —
+> read it to understand a decision, not to pick up work.
+>
+> **It is not a description of the current code.** Where the two disagree, the
+> code wins: several tasks deviated deliberately, and at least one reference
+> block in here was outright wrong (see the `date_range` note below).
+
+> **For agentic workers (historical):** this plan was executed with
+> superpowers:subagent-driven-development, task-by-task, each task clearing the
+> per-task gate. Steps use checkbox syntax; all are now `- [x]`.
 
 **Goal:** A single-container, open-source team dashboard that the existing gnomon CLI can upload to via `--mirdash-base`, showing team ranking, aggregate cards, per-person profiles, and usage-over-time.
 
@@ -13,24 +27,86 @@
 **Spec:** `docs/specs/2026-07-13-self-hosted-dashboard-design.md`
 **UI / design system:** "The Ledger" — editorial/warm print-report look (cream paper, espresso ink, terracotta accent, Fraunces + Archivo, hairline rules). Codified in `docs/design/design-system.md` + Playwright-verified hi-fi mockups in `docs/design/mockups/` (chosen from `/design-directions`; the three explorations are kept in `docs/design/directions/`). Tasks 6/8/9 implement React to match those mockups — do not hand-invent visuals. **Note:** any inline `style`/color in the Task 6/8/9 JSX blocks is pre-redesign scaffolding for structure/logic only; the mockups + design-system tokens are authoritative for all visuals (styling is applied during each task's build, verified by the Task 13 Playwright gate).
 
-## Session handoff — start here (fresh session)
+## Status: COMPLETE (2026-08-19)
 
-This plan is self-contained; a cleared session can execute it top-to-bottom. Current state as of this handoff:
+All 13 tasks are implemented and committed on `feat/self-hosted-dashboard`.
+Nothing in this plan is outstanding; the checkboxes below are kept for the
+record rather than as work items.
 
-- **Branch:** `feat/self-hosted-dashboard`. Next action = **Task 7 (metrics derivation lib)**.
-- **Done so far (committed):** design spec, this plan (validated with Codex, all BLOCKER/HIGH folded in), the "The Ledger" design system + 3 Playwright-verified mockups (`docs/design/mockups/`), the 3 `/design-directions` explorations (`docs/design/directions/`), and **Tasks 1–6**: scaffold, SQLite layer, auth lib, ingest validation, `POST /api/gnomon/ingest`, and the `/cli-auth` page + form handler. 48 unit tests green, `pnpm build` clean, and the full CLI contract verified end-to-end against a running container-less server (sign-in → tokens → ingest → `uploaded_history` round-trip).
-- **How to execute:** invoke `superpowers:subagent-driven-development` (or `superpowers:executing-plans`) and work Task 7 → Task 13 in order. Each task ends with the **[Per-task gate](#per-task-gate-mandatory--applies-to-every-task-below)** (tests green → `/simplify` → Codex validation with zero BLOCKER/HIGH → commit). Do not advance a task until its gate is clean.
-- **Deviations from this plan already made (deliberate, in commits):** `lib/paths.ts` owns `dataDir()` for both db and auth; `issueTokens` mints a `jti` per token so the N credentials are distinct; `/cli-auth` also emits `uploaded_history` (the CLI's current contract generation — see `_history_from_query`); the palette is registered via `@theme inline` in `globals.css`, so **Tasks 8/9 should use Tailwind utilities (`text-ink-60`, `border-hairline`) rather than the inline `style` objects shown in their JSX blocks**; test bootstrap lives in `tests/helpers/`.
-- **Codex validation: done for Tasks 3–6** (job `task-msrxs1co-2thrd1`), fixes committed in `87ebe84`. It found one BLOCKER and two HIGHs, all resolved:
-  - `context.date_range` carries **tz-aware ISO-8601 timestamps**, not bare dates — the reference block above was wrong and the strict validator 400'd every real CLI upload. **The fixtures were wrong the same way, which is why the suite stayed green over a broken contract — re-check any new assumption against `gnomon/`, not against this plan.**
-  - Uploads must not silently degrade a stored month: `lib/ingest.ts` now mirrors mirdash's anti-degradation guard (coverage rank, then session count; top-level `force: true` overrides).
-  - `uploaded_history` must carry `scoreContractId`/`coverage`/`totalSessions`, else `plan_upload` re-uploads the previous month on every run forever. Built in `lib/history.ts`.
-  - Also: throttle no longer trusts `x-forwarded-for` unless `TRUST_PROXY=1`; ingest cap is 900 KiB (matching `_INGEST_MAX_BYTES`); `isLoopbackRedirect` matches the two literal CLI forms; empty `JWT_SECRET` counts as unset.
-- **New helpers Tasks 7–9 should use:** `getUpload(db, personId, monthKey)`, `uploadsForPerson` (now also returns `uploadedAt`), and `lib/history.ts`.
-- **Build system (Tasks 11–13 depend on this):** `pnpm build` passes `--webpack` deliberately. Next 16 defaults to Turbopack, which emits **no** `.next/standalone` (the whole Docker image is built around it) and skips route-export validation. Also: the standalone server reads its static manifest **once at boot**, so `.next/static` must be in place *before* the process starts — copying it later leaves every client chunk 404ing and the UI silently non-interactive.
-- **Verified against real Docker** (colima on macOS): image builds (418 MB), boot guard exits 1 without `TEAM_TOKEN`, `docker compose up -d` works from a clean state with no `--build`, the volume persists both the DB and the auto-generated `jwt-secret` (0600) across restarts, the container runs as uid 1000, and the smoke script + the real-CLI contract test both pass against it.
-- **UI:** implement Tasks 6/8/9 to match `docs/design/mockups/*.html` (The Ledger). The JSX in those tasks is structural scaffolding — the mockups + `docs/design/design-system.md` tokens are authoritative for all visuals.
-- **Verify before "done":** never claim a step passes without running it (`pnpm test`, `pnpm build`, `ppnpm test:e2e`) and pasting the output. Task 13 (seed + Playwright) is the final whole-system visual gate.
+**Verification at completion** (re-run 2026-08-19, output pasted in the session):
+
+| | |
+|---|---|
+| Unit (vitest) | 110 passed, 9 files |
+| E2E (Playwright) | 20 passed — the five user flows |
+| CLI contract (pytest) | 4 passed, driving the real `gnomon/upload/` modules |
+| `pnpm build` | clean |
+| Real Docker | image builds (418 MB), boot guard exits 1 without `TEAM_TOKEN`, volume persists DB + `jwt-secret` across restarts, smoke script passes |
+
+**Per-task gate — honest record.** The gate (tests → `/simplify` → Codex clean
+→ commit) ran for every task, but the `Gate:` commit trailer was only applied
+consistently at the start and the end, so `git log` alone does not evidence it:
+
+- Tasks 1–2: gated, trailer present.
+- Tasks 3–6: Codex validated as one batch (job `task-msrxs1co-2thrd1`); fixes
+  committed in `87ebe84`. No trailer.
+- Tasks 7–9, 11–12: gated during implementation. No trailer.
+- Task 10: shipped in `610fcd5` **without** its gate; run retroactively on
+  2026-08-19. Codex returned one HIGH (cached coach text could survive the
+  upload it described). Fixed in `d572fa4`, re-validated to `GATE: PASS`,
+  trailer present.
+
+If you need certainty about what was reviewed, run `/code-review` over the
+branch rather than reconstructing it from commit messages.
+
+**Deliberate deviations from this plan** (all in commits, all still true):
+
+- `lib/paths.ts` owns `dataDir()` for both db and auth, so a deployment cannot
+  split the DB and the JWT secret across directories.
+- `issueTokens` mints a `jti` per token so the N credentials are distinct.
+- `/cli-auth` also emits `uploaded_history` — the CLI's current contract
+  generation (`_history_from_query`); emitting only the legacy `uploaded` alias
+  makes `plan_upload` fall back to its pre-contract planner.
+- The palette is registered via `@theme inline` in `globals.css`, so Tasks 8/9
+  use Tailwind utilities (`text-ink-60`, `border-hairline`) rather than the
+  inline `style` objects shown in their JSX blocks.
+- Task 10 uses the official `@anthropic-ai/sdk` rather than hand-rolled
+  `fetch`, handles errors as a typed chain, streams the card in `<Suspense>`,
+  and defaults to the `claude-haiku-4-5` alias with an `LLM_MODEL` override
+  instead of the dated model id this plan pinned.
+- Task 10's coach cache is keyed `coach:<person>:<month>:<sha256(prompt)>`, not
+  on `(person, month)`. Keying on the numbers themselves is what makes a write
+  that outlives its own upload harmless. A timestamp cannot do this job:
+  `uploads.uploaded_at` is `unixepoch()*1000`, i.e. second granularity.
+- Test bootstrap lives in `tests/helpers/`.
+- Task 13 shipped as five flow-named specs (`e2e/01-onboarding` …
+  `05-profile-navigation`) rather than one `dashboard.spec.ts`.
+
+**Known open items, deliberately left:**
+
+- `src/app/api/gnomon/ingest/route.ts` carries a `TODO(task-11)`: a chunked
+  body with no `content-length` is fully buffered before the 900 KiB cap
+  applies. Classified MED and deferred per this plan's own gate rules — the
+  real CLI always sends `content-length`; cap request size at the proxy.
+- `tests/dashboard_contract_test.py` assumes a dashboard on `localhost:3000`
+  and does not verify that what answers there IS one. Pointed at another app it
+  reports three failures that look like regressions.
+- The dashboard has **no read authentication**: whoever reaches the port sees
+  the team board. Deployments must put it behind a VPN or a proxy auth.
+
+**Build system notes (still load-bearing):** `pnpm build` passes `--webpack`
+deliberately. Next 16 defaults to Turbopack, which emits **no**
+`.next/standalone` (the Docker image is built around it) and skips
+route-export validation. The standalone server reads its static manifest
+**once at boot**, so `.next/static` must be in place *before* the process
+starts — copying it later leaves every client chunk 404ing and the UI silently
+non-interactive.
+
+**The trap this plan set for itself:** `context.date_range` carries tz-aware
+ISO-8601 timestamps, not bare dates. The reference block below was wrong, the
+fixtures encoded the same wrong assumption, and the suite therefore stayed
+green over a validator that 400'd every real CLI upload. Check any new
+assumption against `gnomon/`, never against this document.
 
 ### ⚠️ Infra gotcha — parallel agents / teammates
 
@@ -133,7 +209,7 @@ From `gnomon/output/summary.py` (`build_summary`) — the upload body shape:
 **Interfaces:**
 - Produces: a Next.js app that builds (`pnpm build`) and tests (`pnpm test`), with Tailwind 4, the two "The Ledger" fonts (Fraunces + Archivo via `next/font`), and the design-system CSS variables later tasks use (`--paper`, `--paper-2`, `--ink`, `--ink-60`, `--ink-30`, `--hairline`, `--accent`, `--gain`, `--loss`, `--parch`). See `docs/design/design-system.md`.
 
-- [ ] **Step 1: Create package.json**
+- [x] **Step 1: Create package.json**
 
 ```json
 {
@@ -182,7 +258,7 @@ From `gnomon/output/summary.py` (`build_summary`) — the upload body shape:
 
 > **Dep notes (validated 2026-07-20):** current major lines are Next 16.2.x, better-sqlite3 12.x, jose 6.x, recharts 3.x, vitest 4.x. Next 16 needs Node ≥20.9 (we use 22, OK) and React 18.2+/19 (we use 19.2). `recharts` v3 requires a matching `react-is`; `@tailwindcss/postcss` needs a direct `postcss` dep. Review each major's migration notes on install; jose 6 and vitest 4 have breaking changes vs the previously-pinned 5/3 lines.
 
-- [ ] **Step 2: Create tsconfig.json**
+- [x] **Step 2: Create tsconfig.json**
 
 ```json
 {
@@ -208,7 +284,7 @@ From `gnomon/output/summary.py` (`build_summary`) — the upload body shape:
 }
 ```
 
-- [ ] **Step 3: Create next.config.ts**
+- [x] **Step 3: Create next.config.ts**
 
 better-sqlite3 is a native module — it must stay external to the bundler, and `standalone` output is what the Dockerfile copies.
 
@@ -223,7 +299,7 @@ const nextConfig: NextConfig = {
 export default nextConfig;
 ```
 
-- [ ] **Step 4: Create postcss config and globals.css**
+- [x] **Step 4: Create postcss config and globals.css**
 
 `dashboard/postcss.config.mjs`:
 
@@ -261,7 +337,7 @@ body {
 
 Chart / model-mix series order: **ink (Opus) → terracotta (Fable) → parchment (Haiku)**. All numerals use Fraunces + `tabular-nums`. Structure comes from hairline (`1px --hairline`) and heavy (`2px --ink`) rules, never bordered/rounded cards.
 
-- [ ] **Step 5: Create layout and placeholder page**
+- [x] **Step 5: Create layout and placeholder page**
 
 `dashboard/src/app/layout.tsx` — loads the two "The Ledger" fonts via `next/font/google` (self-hosted at build, no runtime CDN) and exposes them as `--font-display` (Fraunces) / `--font-body` (Archivo):
 
@@ -300,7 +376,7 @@ export default function Home() {
 }
 ```
 
-- [ ] **Step 6: Create vitest.config.ts and smoke test**
+- [x] **Step 6: Create vitest.config.ts and smoke test**
 
 ```ts
 import { defineConfig } from "vitest/config";
@@ -324,7 +400,7 @@ describe("smoke", () => {
 });
 ```
 
-- [ ] **Step 7: Create dashboard/.gitignore**
+- [x] **Step 7: Create dashboard/.gitignore**
 
 ```
 node_modules/
@@ -333,12 +409,12 @@ node_modules/
 .env
 ```
 
-- [ ] **Step 8: Install and verify**
+- [x] **Step 8: Install and verify**
 
 Run: `cd dashboard && pnpm install && pnpm test && pnpm build`
 Expected: smoke test PASS, build succeeds.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add dashboard
@@ -363,7 +439,7 @@ git commit -m "feat(dashboard): scaffold Next.js app with Tailwind and Vitest"
   - `uploadsForPerson(db, personId: number): { monthKey: string; windowMonths: number; summary: any }[]` (sorted ascending by monthKey)
   - `latestUploads(db): { personId: number; email: string; name: string; monthKey: string; summary: any }[]` — each person's most recent upload.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 `dashboard/tests/db.test.ts`:
 
@@ -432,12 +508,12 @@ describe("db", () => {
 });
 ```
 
-- [ ] **Step 2: Run tests, verify they fail**
+- [x] **Step 2: Run tests, verify they fail**
 
 Run: `pnpm test -- tests/db.test.ts`
 Expected: FAIL — module `@/lib/db` not found.
 
-- [ ] **Step 3: Implement db.ts**
+- [x] **Step 3: Implement db.ts**
 
 ```ts
 import Database from "better-sqlite3";
@@ -541,12 +617,12 @@ export function latestUploads(db: Db) {
 }
 ```
 
-- [ ] **Step 4: Run tests, verify pass**
+- [x] **Step 4: Run tests, verify pass**
 
 Run: `pnpm test -- tests/db.test.ts`
 Expected: 5 PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add dashboard/src/lib/db.ts dashboard/tests/db.test.ts
@@ -569,7 +645,7 @@ git commit -m "feat(dashboard): SQLite layer with people/uploads upserts"
   - `isLoopbackRedirect(uri: string): boolean` — true only for `http://127.0.0.1:PORT/...` or `http://localhost:PORT/...`, **explicit port required**.
 - JWT secret: `process.env.JWT_SECRET`, else generated once and persisted at `${DATA_DIR ?? "/data"}/jwt-secret` (tests set `JWT_SECRET`).
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 `dashboard/tests/auth.test.ts`:
 
@@ -653,12 +729,12 @@ describe("auth", () => {
 });
 ```
 
-- [ ] **Step 2: Run tests, verify fail**
+- [x] **Step 2: Run tests, verify fail**
 
 Run: `pnpm test -- tests/auth.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement auth.ts**
+- [x] **Step 3: Implement auth.ts**
 
 ```ts
 import { SignJWT, jwtVerify } from "jose";
@@ -749,12 +825,12 @@ export function isLoopbackRedirect(uri: string): boolean {
 }
 ```
 
-- [ ] **Step 4: Run tests, verify pass**
+- [x] **Step 4: Run tests, verify pass**
 
 Run: `pnpm test -- tests/auth.test.ts`
 Expected: 9 PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add dashboard/src/lib/auth.ts dashboard/tests/auth.test.ts
@@ -777,7 +853,7 @@ git commit -m "feat(dashboard): team-token check, JWT issue/verify, loopback red
   - `ingestSummary(db: Db, personId: number, body: any, rawJson?: string): { reportUrl: string }` — validates the parsed `body`, stores `rawJson` **verbatim** when provided (falls back to `JSON.stringify(body)`), returns `{ reportUrl: "/p/<personId>/<monthKey>" }`; throws `IngestError` (with `.message`) on invalid body.
   - Fixture: `makeSummary(overrides?)` returning a minimal-but-complete summary object (context, profile.aq with 4 pillars, profile.scores, progression_monthly, token_usage, metric blocks) that both ingest and metrics tests reuse.
 
-- [ ] **Step 1: Write the fixture builder**
+- [x] **Step 1: Write the fixture builder**
 
 `dashboard/tests/fixtures/summary.ts`:
 
@@ -869,7 +945,7 @@ function deepMerge(base: any, over: any): any {
 }
 ```
 
-- [ ] **Step 2: Write failing tests**
+- [x] **Step 2: Write failing tests**
 
 `dashboard/tests/ingest.test.ts`:
 
@@ -927,12 +1003,12 @@ describe("ingestSummary", () => {
 });
 ```
 
-- [ ] **Step 3: Run tests, verify fail**
+- [x] **Step 3: Run tests, verify fail**
 
 Run: `pnpm test -- tests/ingest.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 4: Implement ingest.ts**
+- [x] **Step 4: Implement ingest.ts**
 
 ```ts
 import type { Db } from "@/lib/db";
@@ -1006,12 +1082,12 @@ export function ingestSummary(
 }
 ```
 
-- [ ] **Step 5: Run tests, verify pass**
+- [x] **Step 5: Run tests, verify pass**
 
 Run: `pnpm test -- tests/ingest.test.ts`
 Expected: all PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add dashboard/src/lib/ingest.ts dashboard/tests/ingest.test.ts dashboard/tests/fixtures/summary.ts
@@ -1036,7 +1112,7 @@ git commit -m "feat(dashboard): summary validation, monthKey derivation, ingest 
   - Reads the raw request text **once**, stores it verbatim, and validates a parsed copy.
   - Matches CLI expectations in `gnomon/upload/mirdash.py:_upload_summary` (reads `data["reportUrl"]`; on HTTPError prints response body).
 
-- [ ] **Step 1: Write failing tests** (invoke the handler directly with `Request` objects; inject a test DB via `GNOMON_DB_PATH` pointing at a temp file)
+- [x] **Step 1: Write failing tests** (invoke the handler directly with `Request` objects; inject a test DB via `GNOMON_DB_PATH` pointing at a temp file)
 
 `dashboard/tests/ingest-route.test.ts`:
 
@@ -1115,12 +1191,12 @@ export function _resetDbForTests(): void { _db = null; }
 _resetDbForTests();
 ```
 
-- [ ] **Step 2: Run tests, verify fail**
+- [x] **Step 2: Run tests, verify fail**
 
 Run: `pnpm test -- tests/ingest-route.test.ts`
 Expected: FAIL — route module not found.
 
-- [ ] **Step 3: Implement route.ts**
+- [x] **Step 3: Implement route.ts**
 
 ```ts
 import { NextResponse } from "next/server";
@@ -1176,12 +1252,12 @@ export async function POST(req: Request): Promise<Response> {
 }
 ```
 
-- [ ] **Step 4: Run tests, verify pass**
+- [x] **Step 4: Run tests, verify pass**
 
 Run: `pnpm test -- tests/ingest-route.test.ts`
 Expected: 4 PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add dashboard/src/app/api/gnomon/ingest/route.ts dashboard/tests/ingest-route.test.ts dashboard/src/lib/db.ts
@@ -1204,7 +1280,7 @@ git commit -m "feat(dashboard): /api/gnomon/ingest route matching CLI contract"
 - Produces: `POST /api/cli-auth` accepting `application/x-www-form-urlencoded` fields `team_token`, `name`, `email`, `redirect_uri`, `count`. On success: `302` redirect to `redirect_uri` + `?tokens=<urlencoded JSON array>&uploaded=<urlencoded JSON array>` — the exact query shape `gnomon/upload/auth.py:_tokens_from_query` and `_uploaded_from_query` parse. On failure: `303` back to `/cli-auth?error=...&redirect_uri=...&count=...`. Failed team-token attempts are throttled per client IP (`429` after 5 fails/60s); failed-auth logging records only the outcome and IP, **never** the submitted token.
 - CLI flow reference: CLI opens `{base}/cli-auth?redirect_uri=http://127.0.0.1:PORT/callback&count=N` in a browser and waits on the localhost callback.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 `dashboard/tests/cli-auth-route.test.ts`:
 
@@ -1298,12 +1374,12 @@ describe("POST /api/cli-auth", () => {
 
 > Note: `_resetRateLimitForTests` clears the module-scope failed-attempt map between tests (all requests share the `"unknown"` IP header under a loopback callback).
 
-- [ ] **Step 2: Run tests, verify fail**
+- [x] **Step 2: Run tests, verify fail**
 
 Run: `pnpm test -- tests/cli-auth-route.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement api/cli-auth/route.ts**
+- [x] **Step 3: Implement api/cli-auth/route.ts**
 
 ```ts
 import { NextResponse } from "next/server";
@@ -1387,12 +1463,12 @@ export async function POST(req: Request): Promise<Response> {
 }
 ```
 
-- [ ] **Step 4: Run tests, verify pass**
+- [x] **Step 4: Run tests, verify pass**
 
 Run: `pnpm test -- tests/cli-auth-route.test.ts`
 Expected: 5 PASS.
 
-- [ ] **Step 5: Implement the form page** (no test — static server component; covered by smoke e2e in Task 11)
+- [x] **Step 5: Implement the form page** (no test — static server component; covered by smoke e2e in Task 11)
 
 `dashboard/src/app/cli-auth/page.tsx`:
 
@@ -1455,12 +1531,12 @@ function Field({ name, label, type, placeholder }: {
 }
 ```
 
-- [ ] **Step 6: Verify build + full test suite**
+- [x] **Step 6: Verify build + full test suite**
 
 Run: `pnpm build && pnpm test`
 Expected: build OK, all tests PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add dashboard/src/app/cli-auth dashboard/src/app/api/cli-auth dashboard/tests/cli-auth-route.test.ts
@@ -1527,7 +1603,7 @@ git commit -m "feat(dashboard): /cli-auth login flow issuing CLI tokens + upload
     ```
   - `fmtTokens(n: number): string` (e.g. `5723M`), `fmtUsd(n: number): string` (e.g. `$39,360`).
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 `dashboard/tests/metrics.test.ts`:
 
@@ -1645,12 +1721,12 @@ describe("metrics", () => {
 });
 ```
 
-- [ ] **Step 2: Run tests, verify fail**
+- [x] **Step 2: Run tests, verify fail**
 
 Run: `pnpm test -- tests/metrics.test.ts`
 Expected: FAIL — modules not found.
 
-- [ ] **Step 3: Implement pricing.ts**
+- [x] **Step 3: Implement pricing.ts**
 
 ```ts
 // Approximate list prices per MTok, USD — edit freely for your provider mix.
@@ -1686,7 +1762,7 @@ export function costUsd(
 }
 ```
 
-- [ ] **Step 4: Implement metrics.ts**
+- [x] **Step 4: Implement metrics.ts**
 
 ```ts
 // Read-time derivation over raw stored summary.json blobs.
@@ -1981,12 +2057,12 @@ export function fmtUsd(n: number): string {
 }
 ```
 
-- [ ] **Step 5: Run tests, verify pass**
+- [x] **Step 5: Run tests, verify pass**
 
 Run: `pnpm test -- tests/metrics.test.ts`
 Expected: all PASS. If the delta test fails because `makeSummary` deep-merges `profile.aq` without replacing pillars, that's fine — only `aq_0_100`/`tier` are overridden; pillars stay from base.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add dashboard/src/lib/pricing.ts dashboard/src/lib/metrics.ts dashboard/tests/metrics.test.ts
@@ -2010,7 +2086,7 @@ git commit -m "feat(dashboard): read-time metric derivation, pricing map, view m
 - Consumes: `buildTeamOverview`, `fmtTokens`, `fmtUsd`, `TeamOverview`, `PersonRow` (Task 7); `getDb` (Task 2).
 - Produces: `/` server-rendered page. `export const dynamic = "force-dynamic"` (reads DB per request).
 
-- [ ] **Step 1: Sparkline component**
+- [x] **Step 1: Sparkline component**
 
 `dashboard/src/components/Sparkline.tsx`:
 
@@ -2035,7 +2111,7 @@ export function Sparkline({ points, width = 90, height = 28 }: {
 }
 ```
 
-- [ ] **Step 2: Card component**
+- [x] **Step 2: Card component**
 
 `dashboard/src/components/Card.tsx`:
 
@@ -2053,7 +2129,7 @@ export function Card({ title, value, sub }: { title: string; value: string; sub?
 }
 ```
 
-- [ ] **Step 3: PeopleTable component**
+- [x] **Step 3: PeopleTable component**
 
 `dashboard/src/components/PeopleTable.tsx`:
 
@@ -2142,7 +2218,7 @@ export function PeopleTable({ people }: { people: PersonRow[] }) {
 }
 ```
 
-- [ ] **Step 4: UsageChart client component**
+- [x] **Step 4: UsageChart client component**
 
 `dashboard/src/components/UsageChart.tsx`:
 
@@ -2201,7 +2277,7 @@ export function UsageChart({ data }: {
 }
 ```
 
-- [ ] **Step 5: Overview page**
+- [x] **Step 5: Overview page**
 
 `dashboard/src/app/page.tsx` (replace placeholder):
 
@@ -2259,14 +2335,14 @@ export default function Home() {
 }
 ```
 
-- [ ] **Step 6: Verify build + manual smoke**
+- [x] **Step 6: Verify build + manual smoke**
 
 Run: `pnpm build && pnpm test`
 Expected: build OK, tests PASS.
 
 Manual check: `TEAM_TOKEN=dev JWT_SECRET=devsecret-32-bytes-minimum-please DATA_DIR=/tmp/gnomon-dev pnpm dev` → open `http://localhost:3000` → empty-state card renders with the CLI command.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add dashboard/src/components dashboard/src/app/page.tsx
@@ -2289,7 +2365,7 @@ git commit -m "feat(dashboard): team overview — cards, people table, usage cha
 - Consumes: `buildPersonProfile`, `fmtTokens` (Task 7); `getDb` (Task 2); `Sparkline` (Task 8).
 - Produces: `/p/<personId>/<monthKey>` server-rendered page (+ `LevelBars` for level-over-time, per design spec); `notFound()` when profile is null.
 
-- [ ] **Step 1: PillarBar component**
+- [x] **Step 1: PillarBar component**
 
 `dashboard/src/components/PillarBar.tsx`:
 
@@ -2324,7 +2400,7 @@ export function PillarBar({ name, score, weight, axes }: {
 }
 ```
 
-- [ ] **Step 2: ScoreCard component**
+- [x] **Step 2: ScoreCard component**
 
 `dashboard/src/components/ScoreCard.tsx`:
 
@@ -2349,7 +2425,7 @@ export function ScoreCard({ label, value, gloss, trend }: {
 }
 ```
 
-- [ ] **Step 3: ModelMixBar component**
+- [x] **Step 3: ModelMixBar component**
 
 `dashboard/src/components/ModelMixBar.tsx`:
 
@@ -2377,7 +2453,7 @@ export function ModelMixBar({ mix }: { mix: { model: string; pct: number }[] }) 
 }
 ```
 
-- [ ] **Step 3b: LevelBars component**
+- [x] **Step 3b: LevelBars component**
 
 The design spec calls for **level-over-time bars** on the profile (not a sparkline). One bar per uploaded month, height ∝ AQ, most recent highlighted.
 
@@ -2410,7 +2486,7 @@ export function LevelBars({ points }: { points: { monthKey: string; aq: number }
 }
 ```
 
-- [ ] **Step 4: Profile page**
+- [x] **Step 4: Profile page**
 
 `dashboard/src/app/p/[personId]/[monthKey]/page.tsx`:
 
@@ -2544,12 +2620,12 @@ export default async function ProfilePage({
 }
 ```
 
-- [ ] **Step 5: Verify build + tests**
+- [x] **Step 5: Verify build + tests**
 
 Run: `pnpm build && pnpm test`
 Expected: build OK, all tests PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add dashboard/src/app/p dashboard/src/components/PillarBar.tsx dashboard/src/components/ScoreCard.tsx dashboard/src/components/ModelMixBar.tsx dashboard/src/components/LevelBars.tsx
@@ -2572,7 +2648,7 @@ git commit -m "feat(dashboard): person profile page — AQ, pillars, scorecard, 
   - `coachEnabled(): boolean` — true iff `process.env.LLM_API_KEY` set.
   - `getCoachText(db: Db, prof: PersonProfile): Promise<string | null>` — returns cached text from `settings` key `coach:<personId>:<monthKey>`, else calls Anthropic Messages API (model `claude-haiku-4-5-20251001`, max_tokens 300) with a compact prompt built from the profile numbers, caches, returns; returns null when disabled or on API error (never throws into the page).
 
-- [ ] **Step 1: Write failing tests** (mock `fetch`; test cache hit, disabled state, API failure → null)
+- [x] **Step 1: Write failing tests** (mock `fetch`; test cache hit, disabled state, API failure → null)
 
 `dashboard/tests/coach.test.ts`:
 
@@ -2623,12 +2699,12 @@ describe("coach", () => {
 });
 ```
 
-- [ ] **Step 2: Run tests, verify fail**
+- [x] **Step 2: Run tests, verify fail**
 
 Run: `pnpm test -- tests/coach.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement coach.ts**
+- [x] **Step 3: Implement coach.ts**
 
 ```ts
 import type { Db } from "@/lib/db";
@@ -2681,12 +2757,12 @@ export async function getCoachText(db: Db, prof: PersonProfile): Promise<string 
 }
 ```
 
-- [ ] **Step 4: Run tests, verify pass**
+- [x] **Step 4: Run tests, verify pass**
 
 Run: `pnpm test -- tests/coach.test.ts`
 Expected: 3 PASS.
 
-- [ ] **Step 5: CoachCard + wire into profile page**
+- [x] **Step 5: CoachCard + wire into profile page**
 
 `dashboard/src/components/CoachCard.tsx`:
 
@@ -2714,12 +2790,12 @@ const coach = await getCoachText(getDb(), prof);
 {coach && <CoachCard text={coach} />}
 ```
 
-- [ ] **Step 6: Verify build + full suite**
+- [x] **Step 6: Verify build + full suite**
 
 Run: `pnpm build && pnpm test`
 Expected: all PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add dashboard/src/lib/coach.ts dashboard/src/components/CoachCard.tsx dashboard/src/app/p dashboard/tests/coach.test.ts
@@ -2741,7 +2817,7 @@ git commit -m "feat(dashboard): optional AI coach with DB cache, off without LLM
 - Consumes: everything above.
 - Produces: `docker compose up` serves the dashboard on `:3000` with persisted volume; smoke script exercises cli-auth → ingest → overview → profile against a running container.
 
-- [ ] **Step 1: Dockerfile** (multi-stage, standalone output; better-sqlite3 native build needs python3/make/g++ in the builder only)
+- [x] **Step 1: Dockerfile** (multi-stage, standalone output; better-sqlite3 native build needs python3/make/g++ in the builder only)
 
 ```dockerfile
 FROM node:22-bookworm-slim AS builder
@@ -2771,7 +2847,7 @@ ENTRYPOINT ["./docker-entrypoint.sh"]
 
 Note: create an empty `dashboard/public/.gitkeep` so the `COPY` doesn't fail if no public assets exist yet. The entrypoint script is created in Step 5.
 
-- [ ] **Step 2: dashboard/.dockerignore**
+- [x] **Step 2: dashboard/.dockerignore**
 
 ```
 node_modules
@@ -2780,7 +2856,7 @@ node_modules
 .env
 ```
 
-- [ ] **Step 3: docker-compose.yml (repo root)**
+- [x] **Step 3: docker-compose.yml (repo root)**
 
 ```yaml
 services:
@@ -2800,7 +2876,7 @@ volumes:
 
 (`build:` present so `docker compose up --build` works from a clone before the ghcr image exists; plain `docker compose up` pulls the published image.)
 
-- [ ] **Step 4: .env.example (repo root)**
+- [x] **Step 4: .env.example (repo root)**
 
 ```bash
 # REQUIRED — shared secret your team enters on the /cli-auth page.
@@ -2818,7 +2894,7 @@ TEAM_TOKEN=change-me
 # PUBLIC_URL=https://gnomon.your-company.com
 ```
 
-- [ ] **Step 5: TEAM_TOKEN boot guard (container entrypoint)**
+- [x] **Step 5: TEAM_TOKEN boot guard (container entrypoint)**
 
 The guard MUST NOT live in `layout.tsx`: module-scope code there is evaluated during `pnpm build`, which runs in the Docker builder **without** runtime secrets — a build-time throw would break the image build, and it is not a reliable process-start check anyway. Enforce it in a build-safe startup wrapper that runs only when the container starts.
 
@@ -2853,7 +2929,7 @@ cd dashboard && docker build -t gnomon-dashboard:local .   # must succeed
 docker run --rm gnomon-dashboard:local; echo "exit=$?"      # exit=1, logs the FATAL line
 ```
 
-- [ ] **Step 6: Smoke e2e script**
+- [x] **Step 6: Smoke e2e script**
 
 `dashboard/scripts/smoke-e2e.sh`:
 
@@ -2916,7 +2992,7 @@ echo "SMOKE OK"
 
 Run: `chmod +x dashboard/scripts/smoke-e2e.sh`
 
-- [ ] **Step 7: Build and run the smoke test**
+- [x] **Step 7: Build and run the smoke test**
 
 ```bash
 cd dashboard && docker build -t gnomon-dashboard:local .
@@ -2930,7 +3006,7 @@ docker stop gnomon-smoke
 
 Expected: `SMOKE OK`.
 
-- [ ] **Step 8: End-to-end with the real CLI (manual verification)**
+- [x] **Step 8: End-to-end with the real CLI (manual verification)**
 
 With the container still running:
 
@@ -2940,7 +3016,7 @@ cd .. && python3 -m gnomon.cli.insights --mirdash-base=http://localhost:3000 --b
 
 Browser opens `/cli-auth` → enter `dev` token + name/email → CLI uploads → prints report URL → open it, verify profile renders with your real data.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add dashboard/Dockerfile dashboard/.dockerignore dashboard/public/.gitkeep dashboard/scripts docker-compose.yml .env.example
@@ -2959,7 +3035,7 @@ git commit -m "feat(dashboard): Dockerfile, compose, env template, TEAM_TOKEN en
 - Consumes: Dockerfile (Task 11).
 - Produces: ghcr image on release tags; user-facing docs.
 
-- [ ] **Step 1: GitHub Action**
+- [x] **Step 1: GitHub Action**
 
 `.github/workflows/dashboard-image.yml`:
 
@@ -3016,7 +3092,7 @@ jobs:
 
 Both jobs live in **the same workflow** so the `needs:` gate applies on every tag push. Also add the `dashboard-tests` job to the repo's PR CI workflow (following its conventions) so the suite runs on pull requests too, not only on tags.
 
-- [ ] **Step 2b: Real Python CLI contract test (v1 — the primary constraint, not deferred)**
+- [x] **Step 2b: Real Python CLI contract test (v1 — the primary constraint, not deferred)**
 
 Exact CLI compatibility is the plan's top global constraint, so it must be exercised against the **real** `gnomon/upload/auth.py` + `mirdash.py` code — not re-implemented in TypeScript unit tests. Add a pytest that drives the actual CLI modules against a running dashboard container.
 
@@ -3101,7 +3177,7 @@ Add this job **to `dashboard-image.yml`** (same workflow as `dashboard-tests`/`p
 
 Make `publish` also `needs: [dashboard-tests, dashboard-contract]` so a contract break blocks the image too.
 
-- [ ] **Step 3: README section**
+- [x] **Step 3: README section**
 
 Append to `README.md` after the "Sharing your profile (opt-in)" section:
 
@@ -3135,12 +3211,12 @@ This coexists with mirdash: without `--mirdash-base`, the CLI keeps its default
 behavior.
 ```
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run: `cd dashboard && pnpm test && pnpm build`
 Expected: all green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add .github/workflows/dashboard-image.yml tests/dashboard_contract_test.py README.md
@@ -3163,7 +3239,7 @@ git commit -m "ci(dashboard): gated ghcr publish, real CLI contract test, docume
 - Consumes: `getDb`, `upsertPerson`, `upsertUpload` (Task 2); `makeSummary` fixture (Task 4) reused as the seed shape.
 - Produces: `pnpm seed` populates a DB at `GNOMON_DB_PATH`; `pnpm test:e2e` boots the app against that DB and asserts overview + profile + cli-auth render with the seeded data.
 
-- [ ] **Step 1: Seed script**
+- [x] **Step 1: Seed script**
 
 Reuse the test fixture so seed data and unit tests never drift. Insert several people across multiple months with varied AQ so the ranking, deltas, and usage-over-time chart all have something to show.
 
@@ -3210,7 +3286,7 @@ main();
 
 Run to sanity-check: `GNOMON_DB_PATH=$(mktemp -d)/seed.db pnpm seed` → prints `Seeded 4 people.`
 
-- [ ] **Step 2: Playwright config**
+- [x] **Step 2: Playwright config**
 
 Playwright boots the app itself (via `webServer`) against a freshly seeded temp DB, so the gate is hermetic — no leftover state.
 
@@ -3238,7 +3314,7 @@ export default defineConfig({
 
 > Requires a production build first (`pnpm build`) since `pnpm start` serves `.next`. The e2e step below runs build before Playwright.
 
-- [ ] **Step 3: Playwright spec**
+- [x] **Step 3: Playwright spec**
 
 `dashboard/e2e/dashboard.spec.ts`:
 
@@ -3283,7 +3359,7 @@ test("cli-auth page renders the sign-in form", async ({ page }) => {
 
 > Keep assertions resilient to copy tweaks — assert on stable section headings and seeded names, not on exact numbers that later tuning may shift.
 
-- [ ] **Step 4: Run the gate**
+- [x] **Step 4: Run the gate**
 
 ```bash
 cd dashboard
@@ -3293,7 +3369,7 @@ GNOMON_DB_PATH=$(mktemp -d)/e2e.db ppnpm test:e2e
 
 Expected: all Playwright tests PASS. On failure, open `playwright-report/` (`pnpm exec playwright show-report`) to see the screenshot/trace, fix, re-run. This is a hard gate — the branch is not done until it is green.
 
-- [ ] **Step 5: CI job (optional but recommended)**
+- [x] **Step 5: CI job (optional but recommended)**
 
 Add to `dashboard-image.yml`, gating publish on it too:
 
@@ -3315,7 +3391,7 @@ Add to `dashboard-image.yml`, gating publish on it too:
 
 Then extend the publish gate: `needs: [dashboard-tests, dashboard-contract, dashboard-e2e]`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add dashboard/scripts/seed.ts dashboard/playwright.config.ts dashboard/e2e dashboard/.gitignore .github/workflows/dashboard-image.yml
