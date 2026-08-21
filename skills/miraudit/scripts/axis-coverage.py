@@ -33,8 +33,17 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 args, WINDOW = parse(__doc__.strip().splitlines()[0], {
     "--run": {"metavar": "PATH", "default": None,
               "help": "the run's miraudit-<date>.json; binds coverage to what was recorded"},
+    # `--out-dir` is what run-checks.py and every other script call it. This was the only
+    # `--output-dir` in the skill, and anchor.py's copy-paste template matches neither, which
+    # cost a cold run one refused invocation. Both are accepted; the old name stays because
+    # ad-hoc-checks.md and saved run logs use it.
+    "--out-dir": {"metavar": "PATH", "default": None, "dest": "output_dir",
+                  "help": "same as --output-dir, and the name the rest of the skill uses"},
     "--output-dir": {"metavar": "PATH", "default": None,
                      "help": "the run's directory, where ad-hoc checks are written"},
+    "--terms": {"metavar": "PATH", "default": None,
+                "help": "axis-terms.py --emit output; downgrades an axis whose published "
+                        "score cannot be rebuilt from its own terms"},
     "--scripts-dir": {"metavar": "PATH", "default": HERE,
                       "help": "where the committed checks live"},
 })
@@ -122,7 +131,20 @@ if args.run:
             print(f"    {n}")
 
 # ---- report ------------------------------------------------------------------------------
-total_base = sum(a["base_weight"] or 0 for a in scored)
+# The denominator is what aq.py DECLARES, not what the payload scored. It was the scored set,
+# and that hid the largest hole in the skill: an axis withheld upstream never reaches the
+# payload, so it could never appear as uncovered, and the manifest printed `11/11 covered,
+# 0/350 base points not` while Steering leverage -- base weight 50, tied heaviest -- had no
+# check at all and no way to acquire one that this report would notice. It showed up under
+# DROPPED OR RENORMALIZED, which reads as a footnote rather than as a gap.
+#
+# Not having a check IS being uncovered, whatever upstream does with the axis afterwards. This
+# is the same correction as the gate's ref rule and contract-probe's case count: a denominator
+# drawn from the thing being measured cannot show what the thing is missing.
+total_base = sum(declared.values())
+withheld = [{"name": n, "base_weight": declared[n], "weight": None,
+             "pillar": "withheld upstream, not in the payload"}
+            for n in declared if n not in by_name]
 
 
 def heaviest(rows):
@@ -130,7 +152,7 @@ def heaviest(rows):
 
 
 measured, declared_only, uncovered = [], [], []
-for a in scored:
+for a in scored + withheld:
     where = committed.get(a["name"], []) + adhoc.get(a["name"], [])
     gaps = recorded.get(a["name"])          # [] complete, [...] incomplete, None no entry
     if gaps == []:
@@ -221,11 +243,42 @@ if unknown:
     for n in unknown:
         print(f"  {n:28}        no axis by this name. A typo here reads as coverage.")
 
+# ---- what the term decomposer said about the same axes -------------------------------------
+# Two instruments, one question, and until now nobody put their answers next to each other. An
+# axis reads COVERED here because a script tags it, and NOT DECOMPOSABLE there because the
+# published score cannot be rebuilt from its own terms. Both sentences were true at once for
+# Model mix and Orchestration, printed in two different reports, and the contradiction had to
+# be noticed by a person reading both.
+opaque = []
+if args.terms:
+    with open(os.path.expanduser(args.terms)) as fh:
+        _verdicts = (json.load(fh) or {}).get("verdicts") or {}
+    opaque = sorted((n, v) for n, v in _verdicts.items() if v == "NOT DECOMPOSABLE")
+    if opaque:
+        print("\nCOVERED BUT NOT REBUILDABLE")
+        print("  A script claims these, and axis-terms.py cannot rebuild the published score")
+        print("  from the terms. A tag over an opaque axis is the thinnest coverage there is.")
+        for n, v in opaque:
+            who = ", ".join(committed.get(n, []) + adhoc.get(n, [])) or "no script tags it"
+            print(f"  {n:28} {declared.get(n, 0):>4}  {v}   ({who})")
+
 blocked = uncovered + (declared_only if args.run else [])
 short = sum(a["base_weight"] or 0 for a, _w, _g in blocked)
 done = len(measured) if args.run else len(declared_only)
-print(f"\n  {done}/{len(scored)} scored axes {'measured' if args.run else 'covered'}."
+print(f"\n  {done}/{len(declared)} DECLARED axes {'measured' if args.run else 'covered'}."
       f"  {short}/{total_base} base points not.")
+if withheld:
+    verb = "is" if len(withheld) == 1 else "are"
+    reach = "reaches" if len(withheld) == 1 else "reach"
+    print(f"  {len(withheld)} of those {verb} withheld upstream and never {reach} the payload: "
+          f"{', '.join(a['name'] for a in withheld)}.")
+    print("  Counted here anyway. A withheld axis with no check is uncovered twice over, and")
+    print("  the scored denominator could not say so.")
+if opaque:
+    print(f"  {len(opaque)} of the covered axes cannot be rebuilt from their own terms.")
+elif not args.terms:
+    print("  NOT COMPARED: pass --terms <axis-terms --emit output> to find axes that are")
+    print("  covered by a tag while their published score cannot be rebuilt from its parts.")
 if not args.run:
     print("  A tag is all this mode can see. Pass --run <miraudit-<date>.json> to require")
     print("  that the run actually recorded a gap, a direction and a control for each.")

@@ -92,6 +92,13 @@ def render(doc):
     # while you work and two runs of one window disagree on them. They were inside the block
     # above until a second run of this skill read 262,456 lines against 260,129 with every
     # windowed number identical, which is the fingerprint failing on its own promise.
+    # A note ABOUT the corpus, rendered right under the fingerprint it qualifies. It was
+    # being carried in payloads and dropped on the floor: the shipped example run explains
+    # there why its 124 sessions and the tool's own 164 are two populations that must never
+    # be mixed in one ratio, and none of that reached the report a person reads.
+    if (c.get("note") or "").strip():
+        out.append(f"- {c['note'].strip()}\n")
+
     if c.get("files") is not None or c.get("lines") is not None:
         out.append(f"\nCorpus size, outside the fingerprint because it counts every file on "
                    f"disk and drifts as you work: {c.get('files', '?')} files, "
@@ -168,6 +175,20 @@ def render(doc):
             if not (x.get("not_checked") or ev.get("command") or ev.get("control")):
                 continue
             out.append(f"\n### {x.get('name')}\n")
+            # `declared` and `remeasured` are the two numbers the re-measurement IS -- the
+            # tool's own figure beside the one the transcripts give. The table had room for
+            # neither, so a person read the prose in evidence.output and never saw the pair
+            # it summarises. Same shape as the axes' own not-checked sections above: held in
+            # the payload, absent from what anyone reads.
+            for label, key in (("Declared", "declared"), ("Re-measured", "remeasured")):
+                block = x.get(key)
+                if isinstance(block, dict) and block:
+                    pairs = ", ".join(f"{k} {v}" for k, v in block.items())
+                    out.append(f"**{label}.** {pairs}\n")
+                elif block:
+                    out.append(f"**{label}.** {block}\n")
+            if x.get("confidence"):
+                out.append(f"**Confidence.** {x['confidence']}\n")
             if ev.get("command"):
                 out.append(f"Reproduce it with:\n\n```\n{ev['command']}\n```\n")
             if ev.get("control"):
@@ -192,7 +213,14 @@ def render(doc):
         out.append("Costs the audited tool did not cause. These improve the auditor, not "
                    "the tool.\n")
         for p in doc["process_friction"]:
-            out.append(f"- Phase {p.get('phase')}: {p.get('what')} (Cost: {p.get('cost')})\n")
+            # cost_units is the comparable half of `cost`. It was defined in the schema and
+            # validated by the gate while no code read it and no run wrote one -- a
+            # documented feature nothing implements, which reads as covered and is not.
+            units = p.get("cost_units") or {}
+            unit = (f", {units['value']} {units['unit']}"
+                    if units.get("unit") and units.get("value") is not None else "")
+            out.append(f"- Phase {p.get('phase')}: {p.get('what')} "
+                       f"(Cost: {p.get('cost')}{unit})\n")
 
     return "\n".join(out) + "\n"
 

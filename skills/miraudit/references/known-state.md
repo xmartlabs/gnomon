@@ -23,7 +23,10 @@ upstream: https://github.com/xmartlabs/gnomon.git
   {"Bash", "PowerShell"}` in `taxonomy.py`, read by the CLI counter at
   `accumulator.py:1437`, so a PowerShell call now classifies `execute` and feeds
   `cli_calls`. That is a real score delta with **no calibration delta**: no constant in
-  `aq.py` changed value, and `contract-probe.py` reads 18/18 unchanged. Measured on this
+  `aq.py` changed value, and `contract-probe.py` read every behaviour unchanged.
+  (That run reported `18/18`. The probe now carries 30 cases and also reports how many of
+  gnomon.taxonomy's public predicates have a case at all, which the old figure was read as
+  and never was: it counted its own list. Do not compare an `18/18` against a later count.) Measured on this
   corpus the bump costs nothing at all, AQ 92 either way and not one axis apart, because
   this corpus has no PowerShell in it. The people it moves are the ones we have never
   measured, which is the whole point of the change.
@@ -56,8 +59,8 @@ upstream: https://github.com/xmartlabs/gnomon.git
   **Measured, not only read (2026-08-12).** Everything above is step 1 of the refresh, which
   is a diff read; this is the arm that outranks it. Both refs were run against the same
   corpus minutes apart, fixed window, `--local --console --no-open --output-dir`: **AQ 92 on
-  both, and not one of the eleven axes differs.** `contract-probe.py` reports 18/18
-  behaviours unchanged at `ed2a645` and all eleven checks in `scripts/` exit 0 against it.
+  both, and not one of the eleven axes differs.** `contract-probe.py` reported every behaviour
+  unchanged at `ed2a645` (`18/18` under the case count of the day) and all eleven checks in `scripts/` exit 0 against it.
   Nothing needs doing, and re-pinning would buy nothing but a careful pass over every anchor.
 
   Two axes *appeared* to move — Discipline 16.3→16.5, Verification 23.2→23.0 — when the new
@@ -296,6 +299,12 @@ is not restored. Workflow-dispatched children are 97.3% of the leftover, which i
 the name plausible, but 197 invalid `Agent`/`Task` attempts trip the same gate independently:
 removing the Workflow children would not restore the measured state. A run that trusted the
 name would have shipped a mis-attributed finding to the tool's authors.
+
+**`grep steering profile.html` returns 8 hits and none of them is the AQ axis.** They are all
+gstack's unrelated "steering style / Medium leash" label. Two different fields one word apart in
+the same file, one scored and one not. A grep-and-conclude pass reads those hits as the axis
+being rendered and reopens a finding this repo deliberately closed. Read what the hit is
+attached to, not just that it matched.
 
 ## Ad-hoc checks seen once
 

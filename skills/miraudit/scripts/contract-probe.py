@@ -27,14 +27,22 @@ from _common import parse, header, require  # noqa: E402
 args, WINDOW = parse(__doc__.strip().splitlines()[0])
 
 (classify_change_target, bash_runs_tests, WRITE_TOOLS, is_mcp_knowledge_write,
- classify_mcp_subcategory, _is_compounding_path, parse_workflow_agent_dispatch) = require(
+ classify_mcp_subcategory, _is_compounding_path, parse_workflow_agent_dispatch,
+ extract_skill_name_from_path, is_plan_file_target, is_substantive_tool,
+ bash_writes_file, bash_runs_knowledge, classify_tool) = require(
     [("gnomon.taxonomy", "classify_change_target"),
      ("gnomon.taxonomy", "bash_runs_tests"),
      ("gnomon.taxonomy", "WRITE_TOOLS"),
      ("gnomon.taxonomy", "is_mcp_knowledge_write"),
      ("gnomon.taxonomy", "classify_mcp_subcategory"),
      ("gnomon.taxonomy", "_is_compounding_path"),
-     ("gnomon.taxonomy", "parse_workflow_agent_dispatch")],
+     ("gnomon.taxonomy", "parse_workflow_agent_dispatch"),
+     ("gnomon.taxonomy", "extract_skill_name_from_path"),
+     ("gnomon.taxonomy", "is_plan_file_target"),
+     ("gnomon.taxonomy", "is_substantive_tool"),
+     ("gnomon.taxonomy", "bash_writes_file"),
+     ("gnomon.taxonomy", "bash_runs_knowledge"),
+     ("gnomon.taxonomy", "classify_tool")],
     "A predicate this skill's checks are built on is gone. Every check that imported it "
     "has to be re-read before anyone quotes its output.")
 (strip_injections,) = require(
@@ -108,7 +116,75 @@ CASES = [
     ("typed text survives cleaning",
      lambda: bool(strip_injections("please fix the invoice job")), True,
      "the same denominator: if this ever returns empty, every prompt count is zero"),
+
+    # Six predicates that reached a score with nothing probing them. They were invisible for
+    # the reason everything else in this skill was invisible: the summary counted its own
+    # cases, so 18/18 read as complete coverage of a set nobody had compared against the
+    # module. Each gets its positive and its control, because a predicate that answers True
+    # to everything passes a one-sided probe.
+    ("a skills/<name>/SKILL.md path yields the skill name",
+     lambda: extract_skill_name_from_path("/x/.claude/skills/miraudit/SKILL.md"), "miraudit",
+     "Skill fluency: skills_distinct and skills_total are built on this extraction"),
+    ("an ordinary markdown path yields nothing",
+     lambda: extract_skill_name_from_path("/x/docs/README.md"), None,
+     "the same axis: if this stopped returning None every doc read would credit a skill"),
+
+    ("a file inside plans/ is a plan artifact",
+     lambda: is_plan_file_target("/x/docs/team/plans/3-migrate.md"), True,
+     "Discipline: cross-session plan credit (C3/C4) keys on this"),
+    ("an ordinary source file is not",
+     lambda: is_plan_file_target("/x/src/plans.ts"), False,
+     "the same axis: the control that separates a plans/ DIRECTORY from a filename"),
+
+    ("a tool that does project work is substantive",
+     lambda: is_substantive_tool("Edit"), True,
+     "every denominator built on substantive calls, including orchestratable sessions"),
+    ("a status poll is not",
+     lambda: is_substantive_tool("mcp__x__get_status"), False,
+     "the same denominators: this is the branch that keeps polling out of the numerator"),
+
+    ("a redirect writes a file",
+     lambda: bash_writes_file("echo hi > /x/out.txt"), True,
+     "Compounding and the writes counters, whenever a write happens through the shell"),
+    ("a redirect to /dev/null does not",
+     lambda: bash_writes_file("noisy_thing > /dev/null"), False,
+     "the same counters: the exclusion that stops every silenced command counting as a write"),
+
+    ("a knowledge command is knowledge",
+     lambda: bash_runs_knowledge("gh issue view 86"), True,
+     "Context Intelligence: the `knowledge` fact that arms a grounded session"),
+    ("an ordinary command is not",
+     lambda: bash_runs_knowledge("mkdir -p build"), False,
+     "the same axis: without this control every session is grounded"),
+
+    ("a write tool classifies as produce",
+     lambda: classify_tool("Write"), "produce",
+     "every category count: cat_counter drives Grounding's doing half"),
+    ("a read tool does not",
+     lambda: classify_tool("Read") == "produce", False,
+     "the same counter: the control that keeps reading out of the producing bucket"),
 ]
+
+# ---- what the module actually exposes ----------------------------------------------------
+# The denominator is the predicates that EXIST, derived by introspection, not the cases
+# written above. It counted its own cases and printed `18/18`, which reads as complete
+# coverage of a set nobody had ever compared against -- the same self-referential denominator
+# that let the gate compare the pin against the pin and let axis-coverage report 11/11 while
+# a 50-point axis had no check.
+#
+# Which case probes which predicate is read out of the SOURCE of the CASES list, so adding a
+# case counts automatically and deleting one stops counting. It cannot see a predicate reached
+# indirectly through another, and it would miscount a name that appears only in a comment in
+# there; both are stated rather than assumed.
+import inspect  # noqa: E402
+from gnomon import taxonomy as _tax  # noqa: E402
+
+_public = sorted(n for n, f in inspect.getmembers(_tax, inspect.isfunction)
+                 if not n.startswith("_") and getattr(f, "__module__", "") == _tax.__name__)
+_cases_src = inspect.getsource(sys.modules[__name__])
+_cases_src = _cases_src[_cases_src.index("CASES = ["):_cases_src.index("# ---- what the module")]
+_probed = [n for n in _public if n in _cases_src]
+_unprobed = [n for n in _public if n not in _probed]
 
 print(header(args, WINDOW))
 print("=" * 92)
@@ -129,6 +205,12 @@ for what, call, expected, who in CASES:
           f"{'' if good else f'expected {expected!r}'}")
 
 print(f"\n  {len(CASES) - len(failed)}/{len(CASES)} behaviours unchanged.")
+print(f"  {len(_probed)}/{len(_public)} public predicates in gnomon.taxonomy have a case.")
+if _unprobed:
+    print("  NO CASE AT ALL: " + ", ".join(_unprobed))
+    print("  Each of those can change behaviour under a check that imports it and nothing")
+    print("  here will say so. This count is derived from the module, not from the list")
+    print("  above, which is why it can be short of it.")
 if failed:
     print("\n  THESE MOVED. Each line names the check built on it; re-read those before")
     print("  quoting any output, and delete the ones whose subject is gone:")

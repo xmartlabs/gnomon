@@ -22,6 +22,7 @@ Ad-hoc checks written into the run's own directory take `--also`, because they a
 case rather than the exception and they are the slowest thing to run by hand.
 """
 import concurrent.futures
+import glob
 import os
 import subprocess
 import sys
@@ -32,9 +33,16 @@ from _common import parse, header, claims  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-# axis-coverage.py claims axes so it appears in `claims()`, but it is the manifest rather than
-# a measurement: Phase 1 runs it first to see what is uncovered and again with --run to check
-# what was recorded. Running it here would answer a question nobody asked yet.
+# axis-coverage.py is the manifest rather than a measurement: Phase 1 runs it first to see what
+# is uncovered and again with --run to check what was recorded. Running it here would answer a
+# question nobody asked yet.
+#
+# This comment used to say it "claims axes so it appears in claims()". It does not, and has not
+# for as long as anyone checked: its only `miraudit-covers:` string sits mid-sentence, and
+# COVERS_RX is line-anchored. So the subtraction below removes nothing and the guard is inert --
+# a second declaration that quietly stopped agreeing with the thing it declared. The exclusion
+# stays as a guard for the day the manifest does gain a tag, and the inertness is now REPORTED
+# rather than assumed, below.
 EXCLUDED = {"axis-coverage.py"}
 
 # Carry no `miraudit-covers:` tag and belong to every run anyway. fingerprint.py is not here
@@ -43,11 +51,18 @@ EXCLUDED = {"axis-coverage.py"}
 # reason: it verifies OUR OWN diagnostic tooling, not gnomon's scoring, so it has no axis to
 # claim -- but two broken versions of that tooling shipped in one afternoon before anyone
 # wrote it, both caught only because a person happened to eyeball a real corpus's table.
-ALWAYS = ("saturation-counterfactual.py", "axis-terms.py", "verify-repo-bucketing.py")
+ALWAYS = ("saturation-counterfactual.py", "axis-terms.py", "verify-repo-bucketing.py",
+          "unmeasured-surface.py")
 
 
 def per_script_args(name, args):
-    """Flags a specific check needs beyond the shared shape. Absent means it is skipped."""
+    """Flags a specific check needs beyond the shared shape. Every branch returns a list.
+
+    It used to say "absent means it is skipped", and the caller carried a whole skipped/
+    warning path for that -- but no branch ever returned None, so the list was always empty
+    and its "a skipped check is not a passed one" could not print. Documented behaviour that
+    nothing implements reads as covered and is not.
+    """
     comparisons = [x for c in args.comparison for x in ("--comparison", c)]
     # Runs either way. Without --repo it does the session-level half and prints the
     # by-repository table you need in order to choose a repo, so skipping it was worse than
@@ -55,13 +70,25 @@ def per_script_args(name, args):
     # had to do by hand. It is additive now, and the summary says which half ran.
     if name == "verification-reality.py":
         return ["--repo", args.repo] if args.repo else []
-    if name in ("axis-terms.py", "skill-fluency-term.py"):
+    if name == "skill-fluency-term.py":
         return comparisons
     # A check that leaves a flag behind must leave it where emit-gate.py looks, which is the
     # run's checks/ directory. Its own default is beside --stats, and in a real run that is
     # the anchored payload's directory rather than this one.
     if name == "grounding-modelmix.py":
         return ["--flags-dir", os.path.abspath(args.out_dir)]
+    # Two checks can write machine-readable output that ANOTHER check reads, and neither was
+    # ever asked to. axis-terms' verdicts let axis-coverage.py see an axis that is covered by a
+    # tag while its published score cannot be rebuilt from its own terms -- a contradiction
+    # that lived in two separate reports and had to be spotted by a person reading both.
+    # saturation-counterfactual's `above_threshold` is the single implementation of "this
+    # signal is below its target", which anything asking that question has to reuse rather
+    # than write a second time.
+    if name == "axis-terms.py":
+        return comparisons + ["--emit", os.path.join(os.path.abspath(args.out_dir),
+                                                     "axis-terms.json")]
+    if name == "saturation-counterfactual.py":
+        return ["--emit", os.path.join(os.path.abspath(args.out_dir), "saturation.json")]
     return []
 
 
@@ -84,15 +111,61 @@ args, WINDOW = parse(__doc__.strip().splitlines()[0], {
 
 print(header(args, WINDOW))
 
-covered = sorted({f for files in claims(os.path.join(HERE, "*.py")).values()
-                  for f in files} - EXCLUDED)
-work, skipped = [], []
+covered_all = {f for files in claims(os.path.join(HERE, "*.py")).values() for f in files}
+covered = sorted(covered_all - EXCLUDED)
+work = []
 for name in covered + [a for a in ALWAYS if a not in covered]:
-    extra = per_script_args(name, args)
-    if extra is None:
-        skipped.append(name)
+    work.append((name, os.path.join(HERE, name), per_script_args(name, args)))
+
+# Every check this batch is about to run must exist. A rename used to slip through: the
+# subprocess failed, its traceback landed in the .out, and the table reported it as a check
+# that FAILED rather than as wiring that broke. Different problems, different fixes, and
+# only one of them is about gnomon.
+_absent = [name for name, path, _ in work if not os.path.exists(path)]
+if _absent:
+    sys.exit(f"error: {', '.join(_absent)} is named here but not on disk. Something was "
+             "renamed and ALWAYS or its covers tag was not. Fix the wiring, not the check.")
+
+# A script with no tag and no ALWAYS entry runs NOWHERE, and nothing else reports it:
+# axis-coverage.py names uncovered AXES, never uncovered scripts. That is how a check gets
+# written, committed, and never executed once.
+#
+# Driver-or-orphan is DERIVED, never listed. A hardcoded roster of drivers would be a second
+# declaration of the same fact, drifting the day someone adds one -- the exact shape this
+# exists to catch. A file is accounted for when it claims an axis, is named in
+# ALWAYS/EXCLUDED, or some other script OR procedure file invokes it by name. The procedure
+# files have to be in there: run-arms.py is invoked by the model from ad-hoc-checks.md and
+# by no script at all, so scanning code alone reports a live driver as dead.
+_scripts = sorted(glob.glob(os.path.join(HERE, "*.py")))
+_skill = os.path.dirname(HERE)
+_callers = _scripts + sorted(glob.glob(os.path.join(_skill, "*.md"))) \
+    + sorted(glob.glob(os.path.join(_skill, "references", "*.md")))
+_named = set()
+for _caller in _callers:
+    try:
+        with open(_caller, encoding="utf-8", errors="replace") as _fh:
+            _body = _fh.read()
+    except OSError:
         continue
-    work.append((name, os.path.join(HERE, name), extra))
+    for _other in _scripts:
+        _base = os.path.basename(_other)
+        if _other != _caller and _base in _body:
+            _named.add(_base)
+# An EXCLUDED entry only does something while that file actually claims an axis. Strip the tag
+# and the exclusion becomes a no-op that still reads like a guard -- which is what happened here,
+# undetected, for the whole life of the comment above it.
+_inert = sorted(name for name in EXCLUDED if name not in covered_all)
+if _inert:
+    print(f"  INERT EXCLUSION: {', '.join(_inert)} claims no axis, so excluding it removes")
+    print("  nothing. Either it lost its `# miraudit-covers:` tag, or the exclusion is stale.")
+
+_orphans = sorted(os.path.basename(f) for f in _scripts
+                  if os.path.basename(f) not in
+                  set(covered) | set(ALWAYS) | EXCLUDED | _named | {"_common.py"})
+if _orphans:
+    print(f"  ORPHANS, named by no script and no procedure: {', '.join(_orphans)}")
+    print("  Add a `# miraudit-covers:` tag, or ALWAYS, or delete them. A check the runner")
+    print("  never calls is not coverage.")
 for path in args.also:
     work.append((os.path.basename(path), os.path.abspath(os.path.expanduser(path)), []))
 
@@ -131,9 +204,6 @@ def run(item):
 
 
 print(f"RUNNING {len(work)} checks, {args.jobs} at a time -> {args.out_dir}")
-if skipped:
-    print(f"  skipped, missing the flag they need: {', '.join(skipped)}")
-    print("  a skipped check is not a passed one.")
 
 wall = time.monotonic()
 with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
@@ -147,6 +217,17 @@ for name, code, secs, _ in sorted(results, key=lambda r: -r[2]):
 serial = sum(r[2] for r in results)
 print(f"\n  wall clock {wall:.1f}s against {serial:.1f}s of check time "
       f"({serial / wall:.1f}x)" if wall else "")
+
+# A check that ran at HALF SCOPE exits 0 and reads identically to one that ran fully. The
+# skipped/warning path this replaced could at least print a line; a reduced scope printed
+# nothing at all, so "verification-reality.py 0" meant two different things and you had to
+# remember which. Reduced coverage that announces itself is the whole point of the sentence
+# below about a skipped check.
+if not args.repo and any(n == "verification-reality.py" for n, _c, _s, _o in results):
+    print("\n  HALF SCOPE: verification-reality.py ran without --repo, so it did the "
+          "session-level\n  half and skipped the file-level pairing of test to subject. It "
+          "exits 0 either way.\n  Read its by-repository table, pick a repo, and re-run it "
+          "with --repo for the other half.")
 
 bad = [(n, c) for n, c, _s, _o in results if c != 0]
 print("\n  NOT CHECKED: whether any of these is RIGHT. This runs them and reports how they")

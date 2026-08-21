@@ -232,8 +232,29 @@ unfed = [(rule, path, always, hint) for rule, path, always, hint in RULES
          if reach(payload, path) is None]
 
 out = os.path.expanduser(args.out)
-with open(out, "w") as fh:
+
+# Validate BEFORE writing. This used to dump the file and only then exit 1 on a rule with
+# no input, so the payload the exit code condemns was already on disk -- and anyone who
+# shipped it, or any reader that did not check the exit code, consumed it in silence.
+# (saturation-counterfactual.py writes before its exit on purpose, so a broken arm still
+# leaves its evidence behind. There is no such reason here: this file is meant to be SENT.)
+_blocking = [(rule, path, hint) for rule, path, always, hint in unfed if always]
+if _blocking:
+    print("\n  decision rules left without input, and nothing was written:")
+    for rule, path, hint in _blocking:
+        where = "/" + "/".join(str(step) for step in path)
+        print(f"    rule {rule:38} needs {where}{'   -- ' + hint if hint else ''}")
+    print("\n  A rule whose field is always supposed to be here has none. The file would")
+    print("  be sent, applied, and quietly come up short on that rule -- which is how")
+    print("  rule 4 went unevaluable for a whole corpus. Fix the emitter, not the file.")
+    raise SystemExit(1)
+
+# Write through a temporary in the same directory and rename, so a crash mid-dump cannot
+# leave a half-written JSON where a whole one was.
+_tmp = out + ".partial"
+with open(_tmp, "w") as fh:
     json.dump(payload, fh, indent=2)
+os.replace(_tmp, out)
 
 print(f"wrote {out}")
 print(f"  contract       {payload['tool']['contract']}")
@@ -245,16 +266,13 @@ print(f"  ref            {payload['tool']['ref'] or 'unknown (no .git in the che
 print(f"  axes           {len(axes)} scored")
 print(f"  saturation     {'folded in' if args.saturation else 'not included, pass --saturation'}")
 
+# The blocking ones already stopped the run above; these are the optional fields, reported
+# so that "nobody fed it" is visible rather than silent.
 if unfed:
     print("\n  decision rules left without input:")
-    for rule, path, always, hint in unfed:
-        where = "/" + "/".join(str(s) for s in path)
+    for rule, path, _always, hint in unfed:
+        where = "/" + "/".join(str(step) for step in path)
         print(f"    rule {rule:38} needs {where}"
               f"{'   -- ' + hint if hint else ''}")
-    if any(always for _r, _p, always, _h in unfed):
-        print("\n  A rule whose field is always supposed to be here has none. The file would")
-        print("  be sent, applied, and quietly come up short on that rule -- which is how")
-        print("  rule 4 went unevaluable for a whole corpus. Fix the emitter, not the file.")
-        raise SystemExit(1)
 
 print("\nThis file carries counts and shares only. Read it before sending it.")

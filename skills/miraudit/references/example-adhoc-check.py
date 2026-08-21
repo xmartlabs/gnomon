@@ -16,8 +16,12 @@ Recovery was the only axis inside it.
     python3 example-adhoc-check.py --checkout <copy> \
         --since YYYY-MM-DD --until YYYY-MM-DD --stats <stats.json>
 
-`_common.py` is found by walking up from this file and then from the working directory, so
-this works both where the example lives and where a copy of it belongs. That matters because
+`_common.py` is found by walking up from this file and then from the working directory. That
+covers the example where it lives and a copy run from inside the skill tree, and it does NOT
+cover the place step 3 actually sends you: a run's output directory is nowhere near the skill,
+so walking up from it finds nothing. Run the copy through `run-checks.py --also <path>`, which
+sets `MIRAUDIT_SCRIPTS` for you, or export that variable yourself. The error message says so;
+this paragraph used to claim the copy "just works" and it does not. That matters because
 the two are different places: step 3 says an ad-hoc check goes in the RUN's output directory,
 and the first version of this file resolved `../scripts` relative to itself, which is right
 only in `references/`. Copied literally, as the same document instructs, it could not import.

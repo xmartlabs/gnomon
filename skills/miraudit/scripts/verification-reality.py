@@ -168,7 +168,7 @@ print(header(args, WINDOW))
 print("=" * 92)
 print("Sessions that edited code, by repository, with widening numerators")
 print("=" * 92)
-print(f"{'repository':<28}{'sess':>6}{'ran tests':>13}{'+push':>13}"
+print(f"{'repository':<48}{'sess':>6}{'ran tests':>13}{'+push':>13}"
       f"{'+wrote test':>13}{'+same day':>13}")
 print("-" * 92)
 
@@ -190,17 +190,49 @@ for r, _n in groups.most_common():
              if coding[sid]["testrun"] or coding[sid]["push"] or coding[sid]["testfile"]
              or by_day_repo[(coding[sid]["day"], r)]["testrun"]
              or by_day_repo[(coding[sid]["day"], r)]["push"])
-    print(f"{r[:27]:<28}{n:>6}{pct(n1, n):>13}{pct(n2, n):>13}"
+    # Truncated from the LEFT, keeping the tail. SKILL.md says to read this table before
+    # choosing which repo to pass to --repo, and at 27 characters every row under one parent
+    # directory rendered identically -- the table could not answer the question it exists to
+    # answer. The tail is what distinguishes them; the shared prefix is what does not.
+    label = r if len(r) <= 47 else "..." + r[-44:]
+    print(f"{label:<48}{n:>6}{pct(n1, n):>13}{pct(n2, n):>13}"
           f"{pct(n3, n):>13}{pct(n4, n):>13}")
     for i, v in enumerate((n, n1, n2, n3, n4)):
         tot[i] += v
 print("-" * 92)
-print(f"{'TOTAL':<28}{tot[0]:>6}{pct(tot[1], tot[0]):>13}{pct(tot[2], tot[0]):>13}"
+print(f"{'TOTAL':<48}{tot[0]:>6}{pct(tot[1], tot[0]):>13}{pct(tot[2], tot[0]):>13}"
       f"{pct(tot[3], tot[0]):>13}{pct(tot[4], tot[0]):>13}")
+# The columns are WIDENING numerators over the same denominator -- that is the whole point
+# of the table -- so each has to be >= the one before it and none may exceed the session
+# count. Until now this check had no assertion at all and exited 0 while owning the
+# Verification axis; a numerator that stopped nesting would print a table that reads as
+# evidence and is arithmetically impossible.
+FAILED = []
+if tot[0] == 0:
+    FAILED.append("no sessions edited code in this window. With a real corpus that is a "
+                  "misconfigured window, corpus or bucketing -- not a quiet month -- and "
+                  "every percentage above printed as 0/0")
+# tot[0] is the DENOMINATOR (sessions that edited code); tot[1:] are the widening
+# numerators. Starting this loop at 1 compared a numerator against the denominator and
+# fired on a perfectly healthy table -- the check was wrong, not the code.
+for _i in range(2, len(tot)):
+    if tot[_i] < tot[_i - 1]:
+        FAILED.append(f"TOTAL numerator {_i} ({tot[_i]}) is smaller than numerator "
+                      f"{_i - 1} ({tot[_i - 1]}), but each is the previous one plus more "
+                      "ways of counting. A numerator stopped nesting")
+if any(v > tot[0] for v in tot[1:]):
+    FAILED.append(f"a TOTAL numerator exceeds the {tot[0]} sessions it is a share of")
+
 print("\nOnly the first column is what the scoring tool counts. A pre-push hook that runs")
 print("the suite is invisible to it: bash_runs_tests('git push') is False.")
 
 # ---- FILE level: do the files you touched have a co-located test? ----
+if FAILED:
+    print(f"\n  {len(FAILED)} invariant(s) broken; the first is {FAILED[0]!r}.")
+    print("  Consistency, not correctness: this does not say the pairing rule is right, only")
+    print("  that the table is arithmetically possible.")
+    raise SystemExit(1)
+
 if not args.repo:
     print("\nPass --repo <path-to-a-git-repo> for the file-level co-located-test check.")
     raise SystemExit(0)
@@ -296,6 +328,13 @@ print(f"\n  {'area':<34}{'with':>6}{'without':>9}{'%':>6}")
 for area in sorted({a for a, _ in by_area}):
     y, no = by_area[(area, True)], by_area[(area, False)]
     print(f"  {area[:33]:<34}{y:>6}{no:>9}{100 * y // max(1, y + no):>5}%")
+if with_test + len(without) != n:
+    FAILED.append(f"with_test {with_test} + without {len(without)} != {n} files touched")
+_area_total = sum(by_area.values())
+if _area_total != n:
+    FAILED.append(f"the per-area breakdown sums to {_area_total} but {n} files were touched, "
+                  "so the table and its headline were built from different populations")
+
 print("\n  untested, first 12:")
 for rel in without[:12]:
     print(f"    {rel}")
@@ -309,3 +348,8 @@ print("  Pairing a test to its subject is OURS and deliberately strict, so a rep
 print("  tests in a top-level tests/ tree mirroring src/ reads LOW here. Read this as a")
 print("  lower bound, and check the layout before quoting it.")
 # miraudit-covers: Verification
+
+
+if FAILED:
+    print(f"\n  {len(FAILED)} invariant(s) broken; the first is {FAILED[0]!r}.")
+    raise SystemExit(1)

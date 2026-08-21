@@ -39,6 +39,47 @@ ROWS = {
 # paid a render cycle for that. The requirement was never the problem; not stating it was.
 NOT_RAISED_KEYS = ("why_not", "reconsider_if")
 
+# The fields fingerprint.py prints, and the buckets a filled-in run has at least one of.
+CORPUS_KEYS = ("tool_calls", "sessions", "window", "sources")
+
+# `process_friction[].cost` is prose, and it stays prose: across the saved runs it holds 74
+# distinct values and the specific ones are the valuable ones ("three separate polls of the
+# background log that showed nothing new"). A unit cannot carry that. What a unit CAN carry
+# is the part two runs can be compared on, so it is an optional companion field rather than
+# a replacement -- `none` is in the vocabulary because a friction entry with no cost is a
+# real and common case, recorded so the next run does not rediscover it.
+COST_UNITS = {"runs", "renders", "minutes", "seconds", "none"}
+BUCKETS = ("findings", "not_raised", "reported", "dismissed", "process_friction")
+
+# What the other buckets need beyond an id, hoisted for the same reason NOT_RAISED_KEYS was:
+# new-run.py prints them at the moment somebody is about to fill the file, and it has to read
+# them from here rather than carry its own copy. A cold run paid a refused render plus a grep
+# through this file and render-report.py to learn these existed -- the exact cost the printed
+# reminders exist to remove for the fields they already cover.
+REPORTED_KEYS = ("confirmed_by", "state")
+DISMISSED_KEYS = ("killed_by",)
+FRICTION_KEYS = ("phase", "what", "cost")
+
+# What a `not_checked` entry is ABOUT, so the same hole declared by two runs in two different
+# sentences lands on one key. Across the saved payloads there are 357 distinct `not_checked`
+# strings collapsing to ~228 holes, and a single hole carries SIXTEEN wordings -- nothing could
+# count them because nothing tied them to an identity.
+#
+# Seeded only from kinds that already have three or more independent wordings on record.
+# Inventing kinds for holes nobody has declared is the "plausible rows nobody validated" trap:
+# a vocabulary is a claim about what exists, and this one is meant to describe, not to suggest.
+BLIND_SPOT_KINDS = {
+    "calibration",           # is the threshold fitted against any population at all
+    "population",            # is the GRADED population representative
+    "invisible-to-corpus",   # the behaviour happens where no transcript can see it
+    "reimplementation-gap",  # their primitive is private, so our number is ours to own
+    "not-localized",         # several conditions trip one gate and none was neutralized alone
+    "bound-only",            # the figure is a bound, and the gap to theirs is unattributed
+    "renderer-not-checked",  # in the payload, absent from what a person reads
+    "other-backend",         # true here, unmeasured for anyone using a different backend
+    "not-decomposable",      # the published score cannot be rebuilt from its own terms
+}
+
 VERDICTS = {"pass", "fail", "n/a"}
 SHAPES = {"dropped-term", "saturated", "contaminated-denominator",
           "signal-not-attributable-to-person", "signal-reused"}
@@ -48,6 +89,8 @@ BOUNDS = {"upper", "lower"}
 
 
 FLAGS = {"grounding-diverged.json": "Grounding"}
+
+from importlib.machinery import SourceFileLoader  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -110,6 +153,20 @@ def find_flags(doc_path, explicit=None):
     return (existing[0] if existing else roots[-1]), {}
 
 
+def _checkout_hint():
+    """Where the scoring module is, for the one predicate that reads a constant out of it.
+
+    The gate is handed a payload, not a checkout, so this looks beside the skill -- and
+    returns None rather than guessing when it is not there, which degrades that predicate to
+    a note instead of answering wrongly.
+    """
+    for candidate in (os.path.join(os.path.dirname(os.path.dirname(HERE)), "gnomon"),
+                      os.path.join(os.path.dirname(HERE), "gnomon")):
+        if os.path.isdir(os.path.join(candidate, "gnomon", "scoring")):
+            return candidate
+    return None
+
+
 def check(doc, doc_path=None, flags_dir=None, notes=None):
     """Return the list of violations. `notes` is an optional list the caller passes in to
     collect the things this could NOT check, which is not the same as a pass and has to be
@@ -166,6 +223,54 @@ def check(doc, doc_path=None, flags_dir=None, notes=None):
                              "the note and name the ref. If it was not, the axes and the "
                              "dismissals below are about a different version of the tool.")
 
+    # The rule above compares the payload's `tool.ref` against the pin -- and for a run built
+    # by anchor.py those were the SAME VALUE, both read from the ```pin block, so it could
+    # never fail. This is the comparison that rule was always described as making. It uses
+    # `measured_ref`, the ref the pipeline actually ran against, and it is the half that can
+    # catch a pipeline pointed at the wrong directory.
+    #
+    # Absent is not a failure: a git-archive copy has no .git and cannot report a ref, and
+    # every payload written before this field existed carries none. Silence about a field
+    # nobody wrote is right; silence about a mismatch is what this closes.
+    measured = ((doc.get("tool") or {}).get("measured_ref") or "").strip()
+    if measured and pin and not (measured.startswith(pin) or pin.startswith(measured)):
+        note = (anchor.get("note") or "")
+        if measured not in note:
+            fail("tool.measured_ref",
+                 f"the pipeline ran against {measured} and the pin is {pin}, and "
+                 f"`anchor.note` does not name {measured}. This is the check `tool.ref` was "
+                 "always advertised as making: that one reads the pin on both sides and "
+                 "cannot fail. A run at another ref is fine and takes four words in the note; "
+                 "an accident reads identical and does not.")
+
+    # The fingerprint is what places every other number in this file, and output-schema.md
+    # already calls `corpus` "mandatory, emitted before any other number" -- the gate just
+    # never read it. Like the tool.ref rule above, this is NOT gated on findings[]: an
+    # empty-findings run still publishes its axes and its dismissals, and those are exactly
+    # what a reader cannot place without knowing which corpus produced them.
+    #
+    # Presence, never magnitude. A window with no activity is a legitimate measurement, and
+    # failing it would make the gate an opinion about somebody's month.
+    corpus = doc.get("corpus")
+    if not isinstance(corpus, dict) or not corpus:
+        fail("corpus", "the payload carries no corpus fingerprint. Without it the numbers "
+                       "below cannot be placed against another machine's, which is the one "
+                       "thing the JSON exists to make possible.")
+    else:
+        missing = [k for k in CORPUS_KEYS if corpus.get(k) in (None, "")]
+        if missing:
+            fail("corpus", f"the fingerprint is missing {', '.join(missing)}. Phase 0 prints "
+                           "all of it before any other number; a payload that drops a field "
+                           "reads as a comparable run and is not one.")
+
+    # An untouched skeleton has every bucket empty at once, which is not the same as a run
+    # that audited and found nothing -- that one fills `dismissed`. Distinguishing them is
+    # the difference between "clean" meaning a result and "clean" meaning nobody looked.
+    if not any(doc.get(bucket) for bucket in BUCKETS):
+        fail("buckets", f"every one of {', '.join(BUCKETS)} is empty. A run that found "
+                        "nothing still fills `dismissed` with what it killed; all of them "
+                        "empty at once is the skeleton new-run.py writes, not a result.")
+
     for i, f in enumerate(doc.get("findings", [])):
         w = f"findings[{i}] {f.get('id', '<no id>')}"
         if f.get("shape") not in SHAPES:
@@ -183,6 +288,16 @@ def check(doc, doc_path=None, flags_dir=None, notes=None):
             if not (ev.get(k) or "").strip():
                 fail(w, f"evidence.{k} is empty. Report only findings carrying a "
                         "reproducible command and a control that passed.")
+        # A finding has to say what it is ABOUT, and an axis list is not the only way. The
+        # one that forced this: token_usage is summed per transcript line, and it feeds NO
+        # axis -- naming one would have been false, and the flag logic below keys on axis
+        # names, so a made-up entry there also decides whether the finding gets blocked by
+        # some other axis's check. Either say which axes, or name the surface.
+        if not (f.get("axes") or (f.get("surface") or "").strip()):
+            fail(w, "neither `axes` nor `surface`. Say which axes this is about, or name the "
+                    "published surface it is about (a stats key, a payload field). A finding "
+                    "that names neither cannot be placed, and inventing an axis to fill the "
+                    "gap is a wrong denominator with extra steps.")
         if not f.get("not_checked"):
             fail(w, "not_checked is empty. A finding that claims complete coverage "
                     "without naming its blind spots is the failure mode to avoid.")
@@ -240,6 +355,24 @@ def check(doc, doc_path=None, flags_dir=None, notes=None):
                 if not isinstance(row, dict) or row.get("verdict") not in VERDICTS:
                     fail(w, f"refuted.{key} unanswered or invalid — {question}")
 
+    for i, f in enumerate(doc.get("process_friction", [])):
+        w = f"process_friction[{i}]"
+        units = f.get("cost_units")
+        if units is None:
+            continue
+        if not isinstance(units, dict):
+            fail(w, "cost_units is not an object. It is the comparable half of `cost`: "
+                    f"{{\"unit\": one of {sorted(COST_UNITS)}, \"value\": a number}}.")
+            continue
+        if units.get("unit") not in COST_UNITS:
+            fail(w, f"cost_units.unit {units.get('unit')!r} is not one of "
+                    f"{sorted(COST_UNITS)}. A unit nobody else emits cannot be compared, "
+                    "which is the only reason this field exists.")
+        if not isinstance(units.get("value"), (int, float)) or isinstance(units.get("value"),
+                                                                          bool):
+            fail(w, "cost_units.value is not a number. Prose belongs in `cost`, which is "
+                    "kept precisely so this field does not have to carry it.")
+
     for i, d in enumerate(doc.get("dismissed", [])):
         if not (d.get("killed_by") or "").strip():
             fail(f"dismissed[{i}] {d.get('id', '<no id>')}",
@@ -247,9 +380,47 @@ def check(doc, doc_path=None, flags_dir=None, notes=None):
                  "so nobody reopens it next month.")
 
     for i, r in enumerate(doc.get("reported", [])):
-        for k in ("confirmed_by", "state"):
+        for k in REPORTED_KEYS:
             if not (r.get(k) or "").strip():
                 fail(f"reported[{i}] {r.get('id', '<no id>')}", f"{k} is empty")
+
+    # ---- what earlier runs already declared, compared against what this one recorded --------
+    # Phase 4 only, and named nowhere in Phases 0-3. A cold run that reads a list of holes
+    # before measuring stops measuring and starts confirming; it happened here with
+    # known-state.md and the run said so itself. blind-spots.py has no browse mode for the
+    # same reason, and its registry carries keys with no prose at all.
+    try:
+        _bs = SourceFileLoader(
+            "blind_spots", os.path.join(HERE, "blind-spots.py")).load_module()
+        # The SAME directory find_flags resolved, not the caller's working directory. This
+        # read `flags_dir or os.getcwd()`, so run from the skill tree -- which is what Phase 4
+        # implies -- it looked for saturation.json where nobody writes one, evaluated 0 of 5
+        # reopening conditions, and printed "carries no row for cli_share" about a file that
+        # plainly carries it. A gate whose verdict depends on where you were standing is the
+        # exact fail-open the walk-up above exists to close, reintroduced one function later.
+        _sat = None
+        for _dir in (searched, flags_dir, os.path.dirname(os.path.abspath(doc_path or "."))):
+            if not _dir:
+                continue
+            _sat_path = os.path.join(_dir, "saturation.json")
+            if os.path.exists(_sat_path):
+                with open(_sat_path) as _fh:
+                    _sat = json.load(_fh)
+                break
+        if _sat is None:
+            notes.append("no saturation.json beside the run, so no reopening condition that "
+                         "reads a signal could be evaluated. run-checks.py writes one; a run "
+                         "that skipped it has this half of the gate switched off.")
+        _viol, _lines = _bs.report(doc, _sat, _checkout_hint())
+        for _line in _lines:
+            notes.append(_line.strip())
+        for _v in _viol:
+            fail("blind-spots", _v)
+    except Exception as exc:                                   # noqa: BLE001
+        # A comparison that cannot run is a note, never a refusal: the registry is about other
+        # runs' declarations, and a payload is not wrong because this file could not be read.
+        notes.append(f"the blind-spot comparison did not run ({type(exc).__name__}), so "
+                     "nothing was checked against what earlier runs declared")
 
     return bad
 

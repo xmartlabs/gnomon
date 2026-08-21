@@ -18,6 +18,7 @@ there arrives here without anyone remembering to. JSON carries no comments, so t
 themselves cannot sit in the file without looking like answers: they are printed instead, at
 the moment somebody is about to answer them.
 """
+import datetime
 import json
 import os
 import subprocess
@@ -74,9 +75,67 @@ ref = anchored.get("ref") or subprocess.run(
 contract = find_key(stats, "score_contract_id") if stats else None
 reproduced = find_key(stats, "aq_0_100") if stats else None
 
+# ---- how long the run actually took, from the artifacts rather than from memory ----------
+# A cold run's self-reported clock came in inflated 2.3x BOTH times it was checked against
+# reality (it said 45 minutes; the runs took 19.4 and 19.9). The payload had nowhere to put
+# the real figure, so the correction lived in a markdown file and could not stop a third one.
+#
+# mtimes are the only source here that does not have an opinion. The exclusion is not
+# optional: anchor/ holds a copy of the checkout, whose files carry the date `git archive`
+# stamped on them -- one run's raw directory span read 47 hours because of it.
+# `checkout` is the live name and `anchor` is the old one, kept because saved runs still use
+# it. Both hold a `git archive` extraction whose files carry the COMMIT's date, and one raw
+# directory span read 47 hours because of it -- excluding only `anchor` against the current
+# layout read NINE DAYS.
+#
+# The exclusion and the root below have to move together. Widening the walk to the run root
+# without this list is exactly how the 47-hour number came back, and narrowing the root to
+# dodge it is how the span became structurally zero.
+EXCLUDE_FROM_SPAN = ("checkout", "anchor", ".git", "__pycache__")
+
+
+def run_span(root):
+    """(earliest, latest, seconds) over the run's own artifacts, or None when there are
+    fewer than two to span."""
+    stamps = []
+    for here, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if d not in EXCLUDE_FROM_SPAN]
+        for name in files:
+            try:
+                stamps.append(os.path.getmtime(os.path.join(here, name)))
+            except OSError:
+                continue
+    if len(stamps) < 2:
+        return None
+    lo, hi = min(stamps), max(stamps)
+    return {
+        "started": datetime.datetime.fromtimestamp(lo, datetime.timezone.utc)
+                   .isoformat(timespec="seconds"),
+        "ended": datetime.datetime.fromtimestamp(hi, datetime.timezone.utc)
+                 .isoformat(timespec="seconds"),
+        "seconds": int(round(hi - lo)),
+        "derived_from": "mtimes of the output directory, excluding " +
+                        "/".join(EXCLUDE_FROM_SPAN) +
+                        ". NOT a self-report: an agent's own clock has been wrong by 2.3x.",
+    }
+
+
+# The directory the PAYLOAD lands in, which is the run directory by definition. This used to
+# be `dirname(--stats)`, and under anchor.py's layout that is `report/` -- five files written
+# inside one second. Every run_cost.wall it produced read `started == ended, seconds: 0`, for
+# runs whose artifacts really spanned minutes. A cold run had to compute its own by hand and
+# said so in the field's `derived_from`, which is the only reason it was caught.
+# Computed below, once `out` is resolved: the span's root is the directory the payload lands
+# in, and that is not known until the destination is.
+_span = None
+
 skeleton = {
     "schema_version": "1",
-    "tool": {"name": "xl-ai-insights", "ref": ref, "contract": contract},
+    # `ref` is the PIN and `measured_ref` is what the pipeline actually ran against. They are
+    # separate fields because they answer different questions and used to answer one: with
+    # only `ref`, emit-gate compared the pin against the pin.
+    "tool": {"name": "xl-ai-insights", "ref": ref, "contract": contract,
+             "measured_ref": anchored.get("measured_ref")},
     "corpus": {
         "tool_calls": tool_calls,
         "sessions": sessions,
@@ -86,6 +145,15 @@ skeleton = {
     },
     "anchor": {"published": anchored.get("published"), "reproduced": reproduced,
                "ok": anchored.get("ok"), "note": ""},
+    # What the audit itself cost, in units rather than in prose. `process_friction[].cost`
+    # is the only other place cost appears and it holds strings like "four re-runs", which
+    # cannot be compared between two runs.
+    "run_cost": {
+        "wall": _span,
+        "checks": None,      # fill from run-checks.py's "wall clock Ns" line
+        "arms": None,        # fill from run-arms.py's, when an A/B ran
+        "adhoc_checks": None,
+    },
     "axes": [],
     "findings": [],
     "not_raised": [],
@@ -96,6 +164,10 @@ skeleton = {
 
 out = args.out or os.path.join(os.path.dirname(os.path.abspath(args.stats or ".")),
                                f"miraudit-{args.until}.json")
+_run_dir = os.path.dirname(os.path.abspath(out))
+_span = run_span(_run_dir) if os.path.isdir(_run_dir) else None
+skeleton["run_cost"]["wall"] = _span
+
 if os.path.exists(out):
     sys.exit(f"error: {out} exists. The earlier run is evidence and comparing two runs of "
              "one day is sometimes the point, so this will not overwrite it. Pass --out.")
@@ -125,6 +197,15 @@ print("\n  An entry in not_raised[] carries that same `refuted` block, because i
       "  CONFIRMED finding somebody chose not to send, plus these two:\n")
 for key in _gate.NOT_RAISED_KEYS:
     print(f"    {key:32} {'why it was not sent' if key == 'why_not' else 'what would reopen it'}")
+print("\n  The other buckets need these beyond an id, and nothing used to say so. A cold run\n"
+      "  paid a refused render plus a grep through emit-gate.py to find out:\n")
+for _bucket, _keys in (("reported[]", _gate.REPORTED_KEYS),
+                       ("dismissed[]", _gate.DISMISSED_KEYS),
+                       ("process_friction[]", _gate.FRICTION_KEYS)):
+    print(f"    {_bucket:32} {', '.join(_keys)}")
+print("\n  process_friction is the one the gate does not enforce: those three are what\n"
+      "  render-report.py reads, so an entry missing them renders blank rather than being\n"
+      "  refused, which is worse.")
 print("\n  Said here for the same reason as the rows above. A run added its first\n"
       "  not_raised entry, learned these existed by being refused at the gate, and paid a\n"
       "  render cycle for it.")

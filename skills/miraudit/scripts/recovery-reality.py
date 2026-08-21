@@ -100,4 +100,31 @@ print(f"\n  ratio under today's definition (any tool call)  : "
 print(f"  ratio requiring a successful same-tool retry    : "
       f"{retried_ok/max(1,tot):.3f}")
 print("\n  (the second is a LOWER BOUND: changing approach is also recovering)")
+
+# Three invariants. This check owned the Recovery axis with no assertion of any kind and
+# exited 0 unconditionally, so a classification bug printed a confident table and passed.
+#
+# They are consistency, NOT correctness: none of them says the ratios are the right way to
+# measure recovery. What they say is that the table is internally coherent, which is exactly
+# what stops being true when a branch is added to the loop and the buckets stop partitioning.
+FAILED = []
+if tot == 0:
+    FAILED.append("no failed tool calls in this window at all -- with a real corpus that is "
+                  "a misconfigured window or corpus, not a clean month, and every share "
+                  "above printed as 0/0")
+_parts = retried_ok + retried_fail + other_only + nothing
+if _parts != tot:
+    FAILED.append(f"the four buckets sum to {_parts} but {tot} calls failed. They are meant "
+                  "to partition: every failure lands in exactly one, so a gap means a branch "
+                  "was added or a condition overlaps")
+# The prose above CLAIMS the strict ratio is a lower bound on the loose one. Until now that
+# was a sentence; a classification change could invert it and the sentence would still print.
+_loose, _strict = (tot - nothing) / max(1, tot), retried_ok / max(1, tot)
+if _strict > _loose:
+    FAILED.append(f"the strict ratio {_strict:.3f} EXCEEDS the loose one {_loose:.3f}, so "
+                  "the 'lower bound' the line above claims is false")
+
+if FAILED:
+    print(f"\n  {len(FAILED)} invariant(s) broken; the first is {FAILED[0]!r}.")
+    raise SystemExit(1)
 # miraudit-covers: Recovery

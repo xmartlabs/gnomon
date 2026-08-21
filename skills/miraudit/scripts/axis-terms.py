@@ -55,6 +55,9 @@ from _common import parse, header, load_stats, require  # noqa: E402
 args, WINDOW = parse(__doc__.strip().splitlines()[0], {
     "--comparison": {"action": "append", "default": [], "metavar": "PATH",
                      "help": "a comparison-2 payload; repeatable"},
+    "--emit": {"metavar": "PATH", "default": None,
+               "help": "write {axis: verdict} so axis-coverage.py can read it instead of a "
+                       "person comparing two reports by eye"},
 })
 stats = load_stats(args.stats)
 if not stats:
@@ -364,6 +367,11 @@ NOT_WSUM = {
 
 print("PER-AXIS TERM ACCOUNTING")
 undisclosed, renamed, rebuilt, reproduced, recovered = [], [], [], 0, 0
+# One verdict per axis, so axis-coverage.py can read them instead of a person comparing two
+# reports by eye. The two instruments contradicted each other in silence: Model mix and
+# Orchestration come out NOT DECOMPOSABLE here while the manifest lists them as COVERED,
+# and nothing put those two sentences side by side.
+verdicts = {}
 for name in sorted(scored, key=lambda n: -(scored[n].get("base_weight") or 0)):
     ax = scored[name]
     sig = ax.get("signals") or {}
@@ -371,6 +379,7 @@ for name in sorted(scored, key=lambda n: -(scored[n].get("base_weight") or 0)):
     entry = parsed.get(name)
     print(f"\n  {name}  ({ax.get('base_weight')} base, normalized {norm:.4f})")
     if entry is None:
+        verdicts[name] = "NOT A WSUM"
         print(f"    NOT A WSUM — {NOT_WSUM.get(name, 'no wsum found for this axis name')}")
         print("    Not a parse failure. Named so its absence never reads as coverage.")
         continue
@@ -379,6 +388,7 @@ for name in sorted(scored, key=lambda n: -(scored[n].get("base_weight") or 0)):
         print(f"    PARTIAL — {PARTIAL_AXIS[name]}")
     if skipped:
         print(f"    PARSE DROPPED {len(skipped)} argument(s): {skipped}")
+        verdicts[name] = "NOT DECOMPOSABLE"
         print("    NOT DECOMPOSABLE. A term the parse cannot read is not a term that is absent.")
         continue
     if "partial_terms" in ax:
@@ -403,6 +413,7 @@ for name in sorted(scored, key=lambda n: -(scored[n].get("base_weight") or 0)):
         # not this wsum's value. Solving it would be arithmetic on two different quantities.
         # It happened to agree on the corpus this was written against because every term was
         # 1.0, which is exactly the kind of accident a coincidence check has to refuse.
+        verdicts[name] = "NOT DECOMPOSABLE"
         print("    -> NOT DECOMPOSABLE: normalized_score is the blended axis, not this wsum,")
         print("       so neither the rebuild nor the algebra applies to it.")
         continue
@@ -410,9 +421,11 @@ for name in sorted(scored, key=lambda n: -(scored[n].get("base_weight") or 0)):
         predicted = known_sum / total if total else 0
         agree = abs(predicted - norm) < 1e-6
         reproduced += agree
+        verdicts[name] = "REPRODUCED"
         print(f"    -> REPRODUCED {predicted:.6f} vs published {norm:.6f}"
               f"  {'agree' if agree else 'DISAGREE'}")
         if not agree:
+            verdicts[name] = "NOT DECOMPOSABLE"
             print("       NOT DECOMPOSABLE — a term is missing or mismapped. Ignore the lines"
                   " above.")
     elif len(unknown) == 1 and values:
@@ -423,6 +436,7 @@ for name in sorted(scored, key=lambda n: -(scored[n].get("base_weight") or 0)):
         named = named_in_signals(full, sig)
         needs, missing = rebuildable(full)
         recovered += 1
+        verdicts[name] = "ONE UNKNOWN"
         print(f"    -> ONE UNKNOWN, determined by algebra: {x:.4f}  ({share:.0%} of the axis)")
         if named:
             print(f"       Published as the diagnostic {named}={sig[named]!r}, which scores"
@@ -440,9 +454,11 @@ for name in sorted(scored, key=lambda n: -(scored[n].get("base_weight") or 0)):
         else:
             undisclosed.append((name, share, x, short))
     elif len(unknown) == 1:
+        verdicts[name] = "NOT DECOMPOSABLE"
         print("    -> NOT DECOMPOSABLE: one unknown and NOTHING known, so the algebra returns"
               " the score itself and proves nothing.")
     else:
+        verdicts[name] = "NOT DECOMPOSABLE"
         print(f"    -> NOT DECOMPOSABLE: {len(unknown)} terms opaque, algebra underdetermined")
 
 # ---- what the run should look at ------------------------------------------------------------
@@ -509,3 +525,16 @@ for path in args.comparison:
 if args.comparison and undisclosed:
     print("     Cross-corpus: a term that never varies carries weight without discriminating;")
     print("     one that does can invert an order the published signals imply.")
+
+
+# ---- the verdicts, for the manifest ------------------------------------------------------
+# axis-coverage.py counts axes and this counts the terms inside them, and until now nothing
+# put the two answers together. An axis can be COVERED there and NOT DECOMPOSABLE here at the
+# same time -- Model mix and Orchestration both are -- which means a script claims the axis
+# while nobody can rebuild the published number from its parts. That is not coverage, and it
+# took reading two reports side by side to see it.
+if args.emit:
+    with open(os.path.expanduser(args.emit), "w") as fh:
+        json.dump({"verdicts": verdicts}, fh, indent=2)
+        fh.write("\n")
+    print(f"\n  wrote {args.emit}: {len(verdicts)} axis verdict(s) for axis-coverage.py")

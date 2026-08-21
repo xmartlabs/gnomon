@@ -97,12 +97,21 @@ def provenance(doc):
     if ok is True:
         out.append(f"The base run reproduced the published number ({a.get('published')}), "
                    "so the figures below sit on an anchored run.")
-    else:
+    elif a.get("reproduced") is not None:
         out.append(f"**`anchor.ok` is `{json.dumps(ok)}`.** The run reproduced "
-                   f"{a.get('reproduced')} locally but did not compare it against a published "
+                   f"{a['reproduced']} locally but did not compare it against a published "
                    "number, so this is evidence about composition and shape rather than a "
                    "reproduction of a figure you published. Saying so here rather than "
                    "letting you find it at the third number.")
+    else:
+        # Without this branch the sentence above interpolated a bare `reproduced`, so a run
+        # that measured no headline number published the string "The run reproduced None
+        # locally" into a public issue. A renderer that leaks a language primitive into prose
+        # is worse than one that refuses: it reads as a sentence, so nobody re-reads it.
+        out.append(f"**`anchor.ok` is `{json.dumps(ok)}`.** The run did not reproduce a "
+                   "headline number at all, so there is nothing anchored here even locally. "
+                   "The figures below are about composition and shape. Saying so here rather "
+                   "than letting you find it at the third number.")
     return "\n\n".join(out)
 
 
@@ -129,8 +138,9 @@ def render(doc, dismissed_ids):
     for i, f in enumerate(f_list, 1):
         ev = f["evidence"]
         out += [f"## {i}. {f['id']}", "",
-                f"Axes: {', '.join(f['axes'])}. Direction: **{f['direction']}**. "
-                f"Confidence: {f['confidence']}.", "",
+                (f"Axes: {', '.join(f['axes'])}. " if f.get("axes")
+                 else f"Surface: {f['surface']} (feeds no axis). ")
+                + f"Direction: **{f['direction']}**. Confidence: {f['confidence']}.", "",
                 ev["output"], "", ARGUMENT_MARK, "",
                 f"**Reproduce:** `{ev['command']}`", "",
                 f"**Control:** {ev['control']}", "",
@@ -176,10 +186,16 @@ def main(argv=None):
 
     missing = []
     for i, f in enumerate(findings):
-        for key in ("id", "axes", "direction", "confidence", "not_checked",
+        for key in ("id", "direction", "confidence", "not_checked",
                     "what_would_close_it"):
             if not f.get(key):
                 missing.append(f"findings[{i}].{key}")
+        # axes OR surface, never neither. This used to demand `axes`, which meant the
+        # reporter could only express a finding about an AXIS -- a defect in a published
+        # stat that feeds no axis had nowhere to go, and the only way to send it was to
+        # write a false axis name.
+        if not (f.get("axes") or (f.get("surface") or "").strip()):
+            missing.append(f"findings[{i}].axes-or-surface")
         for key in ("command", "control", "output"):
             if not (f.get("evidence") or {}).get(key):
                 missing.append(f"findings[{i}].evidence.{key}")

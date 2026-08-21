@@ -17,7 +17,11 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import parse, header  # noqa: E402
 
-args, WINDOW = parse(__doc__.strip().splitlines()[0])
+# needs_corpus=False: this check builds its events in memory and never opens a
+# transcript. It still ACCEPTS --corpus so run-checks.py's shared argv works, it
+# just stops refusing to run over an input it does not read -- which is what kept
+# it out of any offline tier and off a machine with no ~/.claude at all.
+args, WINDOW = parse(__doc__.strip().splitlines()[0], needs_corpus=False)
 REPO = args.checkout
 
 from gnomon.cli.accumulator import Accumulator  # noqa: E402
