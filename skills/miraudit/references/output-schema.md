@@ -23,10 +23,16 @@ anecdote; the same gap in five corpora is a defect in the axis.
 ```json
 {
   "schema_version": "1",
-  "tool":   { "name": "xl-ai-insights", "ref": "3148a96", "contract": "16:16:16" },
+  "tool":   { "name": "xl-ai-insights", "ref": "3148a96", "measured_ref": "3148a96",
+              "contract": "16:16:16" },
   "corpus": { "files": 3059, "lines": 287670, "tool_calls": 41983,
               "window": "30d", "sources": ["claude", "codex", "cursor"] },
   "anchor": { "published": 91, "reproduced": 91, "ok": true },
+  "run_cost": {
+    "wall": { "started": "2026-08-10T18:11:02+00:00", "ended": "2026-08-10T18:30:26+00:00",
+              "seconds": 1164,
+              "derived_from": "mtimes of the output directory, excluding anchor/.git/__pycache__. NOT a self-report: an agent's own clock has been wrong by 2.3x." },
+    "checks": 66.1, "arms": null, "adhoc_checks": null },
   "axes": [
     { "name": "Verification", "score": 20.1, "max": 35,
       "declared": { "test_runs_per_call": 0.004168, "target": 0.025 },
@@ -49,7 +55,44 @@ anecdote; the same gap in five corpora is a defect in the axis.
         "control": "…",
         "output": "…"
       },
-      "not_checked": ["whether other harnesses treat ToolSearch as discovery"]
+      "not_checked": [
+        {"kind": "population", "term": "toolsearch_calls",
+         "note": "whether other harnesses treat ToolSearch as discovery"}
+      ],
+      "what_would_close_it": "a run where ToolSearch is disabled and the axis does not move",
+      "refuted": {
+        "window_or_corpus":           { "verdict": "pass", "note": "Reproduces on the fixed window and on --last=30d." },
+        "denominator_theirs":         { "verdict": "pass", "note": "tool_calls_total, their field, unchanged." },
+        "fairest_operationalization": { "verdict": "pass", "note": "Scored their way, not ours; the flattering read was worse for us." },
+        "already_conceded":           { "verdict": "pass", "note": "We conceded shrinking the denominator, and this does not." },
+        "paths_and_refs_exist":       { "verdict": "pass", "note": "taxonomy.py:37 resolved against the pinned ref." },
+        "control_present":            { "verdict": "pass", "note": "A fixture that MUST score non-zero does." },
+        "tooling_reshaped_evidence":  { "verdict": "pass", "note": "Measured before our own runs entered the window." },
+        "one_condition_neutralized":  { "verdict": "pass", "note": "Neutralizing discovery alone still moves the axis." }
+      }
+    }
+  ],
+  "not_raised": [
+    {
+      "id": "steering-leverage-retained",
+      "shape": "withheld-from-the-person",
+      "axes": ["Steering leverage"],
+      "direction": "underestimates",
+      "confidence": "hypothesis",
+      "evidence": { "command": "…", "control": "…", "output": "…" },
+      "not_checked": ["whether the dashboard renders it server-side"],
+      "refuted": {
+        "window_or_corpus":           { "verdict": "pass", "note": "Present in two corpora." },
+        "denominator_theirs":         { "verdict": "n/a",  "note": "No denominator; this is a presence claim." },
+        "fairest_operationalization": { "verdict": "pass", "note": "Read their renderer, not our expectation of it." },
+        "already_conceded":           { "verdict": "fail", "note": "They called the mechanism intended in #72." },
+        "paths_and_refs_exist":       { "verdict": "pass", "note": "Resolved against the pinned ref." },
+        "control_present":            { "verdict": "pass", "note": "A field that IS rendered was checked alongside." },
+        "tooling_reshaped_evidence":  { "verdict": "pass", "note": "Read from their payload, not ours." },
+        "one_condition_neutralized":  { "verdict": "n/a",  "note": "Single condition." }
+      },
+      "why_not": "Ceiling is 0.29 AQ and half of it was already conceded upstream as intended, so it would spend attention we need for the routing term.",
+      "reconsider_if": "the dashboard starts rendering the field, or anything begins scoring with it"
     }
   ],
   "reported": [
@@ -64,7 +107,8 @@ anecdote; the same gap in five corpora is a defect in the axis.
   "process_friction": [
     { "phase": "0",
       "what": "The published number could not be reproduced until the module entry point was used; the documented script is an import shim that exits 0 silently.",
-      "cost": "one wasted run" }
+      "cost": "one wasted run",
+      "cost_units": { "unit": "runs", "value": 1 } }
   ]
 }
 ```
@@ -154,6 +198,36 @@ who own the audited tool. Without this state a confirmed finding has nowhere to 
 the schema forcing a lie. `findings` is what this run is raising; `reported` is what is
 already raised, so the next reader neither re-argues it nor re-sends it.
 
+**`measured_ref`** — the ref the pipeline actually ran against, which is not the same thing
+as `ref` and used to be conflated with it. `ref` comes from the ```pin block, so a payload
+built by `anchor.py` had the pin on both sides of `emit-gate.py`'s ref comparison: a check
+advertised as catching "a pipeline pointed at the wrong directory" was equal by construction
+and could not fail. A cold run measured the read-only reference clone twelve commits behind
+the pin, the payload read the pin, and the gate passed clean.
+
+It is allowed to be absent: a `git archive` copy has no `.git` and cannot report a ref, and
+every payload written before the field existed carries none. What is not allowed is a
+mismatch nobody discloses. When it differs from the pin, `anchor.note` has to name it, the
+same four-word bar the `ref` rule sets, because a deliberate run at another ref and an
+accident read identically in the file.
+
+**`kind`** — the optional companion on a `not_checked` entry, and the thing that lets two
+runs declaring one hole be counted as one hole. An entry may stay a bare string forever; 29
+payloads on record are, including the example run above. When it is an object, `kind` comes
+from the closed vocabulary in `emit-gate.py` (`BLIND_SPOT_KINDS`) and `term` names the signal
+or constant it is about. The identity is then DERIVED as `<axis>/<kind>/<term>` — nobody types
+an id, because across the saved runs one hole carries sixteen wordings and one finding carries
+five different hand-typed ids, so neither the prose nor the `id` field could ever key them.
+
+Same call the schema already made for `process_friction[].cost`: the prose stays and a
+comparable companion is added beside it, rather than the prose being replaced by a code.
+
+The comparison against `references/blind-spots.json` happens at Phase 4 and nowhere earlier.
+That registry carries keys and no sentences, and `scripts/blind-spots.py` has no browse mode:
+you can ask it what your finished payload missed, and you cannot ask it what the known holes
+are. A cold run that read a list of holes during Phase 0 reported that it anchored the whole
+investigation before a single measurement existed.
+
 **`what_would_close_it`** — the observation that would settle a finding either way, concrete
 enough for the reader to go and get it. Optional here and required by `render-issue.py`,
 because the split is deliberate: this schema governs the audit artifact, where a finding kept
@@ -184,6 +258,51 @@ phase that hung, a command that failed silently, a flag that was accepted and ig
 cold run invented this key because it had nowhere to put the four defects it had just found
 in the skill itself, and those were the most valuable output of the run. It is part of the
 contract now. Findings improve the audited tool; this improves the auditor.
+
+`cost` is prose and stays prose: across the saved runs it holds 74 distinct values, and the
+specific ones are the valuable ones -- *"three separate polls of the background log that
+showed nothing new"* is worth more than any number. What prose cannot do is let two runs be
+compared, so there is an **optional** companion:
+
+```json
+  { "phase": "0", "what": "...", "cost": "four re-runs",
+    "cost_units": { "unit": "runs", "value": 4 } }
+```
+
+`unit` is one of `runs`, `renders`, `minutes`, `seconds`, `none`, and `value` is a number.
+`emit-gate.py` validates it when present and ignores it when absent -- omitting it is always
+allowed, because inventing a number for a cost nobody measured is worse than having none.
+`none` is in the vocabulary on purpose: an entry recorded so the next run does not rediscover
+something, at no cost, is a real and common case.
+
+**`run_cost`** — what the audit cost, in units. `process_friction[].cost` is the only other
+place cost appears and it holds prose (`"four re-runs"`, `"unknown number of past runs"`),
+which cannot be compared between two runs.
+
+```json
+  "run_cost": {
+    "wall":    {"started": "...", "ended": "...", "seconds": 900, "derived_from": "..."},
+    "checks":  null,
+    "arms":    null,
+    "adhoc_checks": null
+  }
+```
+
+`wall` is **derived**, never reported. `new-run.py` takes it from the mtimes of the run's own
+output directory, which is the one source here without an opinion: a cold run's self-reported
+clock came in inflated **2.3x both times** anyone compared it against reality, saying 45
+minutes for runs that took 19.4 and 19.9. `derived_from` says so in the payload so a reader
+does not mistake it for a self-report.
+
+The walk excludes `anchor/`, and that is load-bearing rather than tidy: `anchor/` holds a copy
+of the checkout whose files carry the date `git archive` stamped on them, and one real run's
+raw directory span read **47 hours** because of it. `selfcheck/replay-run-cost.py` builds that
+exact trap and fails without the exclusion.
+
+`null` is the honest answer when there is nothing to span -- a single artifact spans no time,
+and reporting `0` would be a measurement. `checks` and `arms` are filled from the wall-clock
+lines `run-checks.py` and `run-arms.py` already print; report the mechanism's own counters
+beside the money number, never the money number alone.
 
 ## Rendering the markdown
 

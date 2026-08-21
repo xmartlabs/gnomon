@@ -31,6 +31,20 @@ is not evidence.
 
 ## Phase 0 — Anchor. Gate.
 
+0. **Run the self-check first.** It is offline, needs no corpus, costs no tokens and takes
+   seconds, and it is the only thing that tells you the tooling you are about to audit *with*
+   is intact:
+
+   ```
+   python3 selfcheck/run.py --checkout <a checkout of the audited tool>
+   ```
+
+   It prints its own totals and names anything it skipped; without `--checkout` the tier that
+   needs one is skipped, and a skipped check is not a passed one. No count is written down
+   anywhere on purpose — the battery grows, and a number in a document is a second declaration
+   that goes stale and then cannot tell a grown battery from a half-skipped one. Any failure
+   stops the run: a red here means a finding you produce later is about your own tool.
+
 1. Compare the installed version to `references/known-state.md`. `pin-consistency.py` reads
    the pin block for you, so open the file for two things: the invocation traps, and the
    "reviewed and dismissed" list, which is what stops a run re-raising something already
@@ -46,12 +60,22 @@ is not evidence.
    window**. A window ending *now* drifts daily and includes the audit session itself.
    **Let `anchor.py` make that copy; do not run the pipeline yourself against a working
    checkout.** A run did, read a contract four commits ahead of the pin, and gated its whole
-   audit on drift it had introduced. `emit-gate.py` compares `tool.ref` to the pin now, but
-   the cheaper place to not do this is here.
+   audit on drift it had introduced. `emit-gate.py` compares `tool.measured_ref` --
+   the ref the pipeline actually ran against -- to the pin now, but the cheaper place to not
+   do this is here. Note which field: the older `tool.ref` rule reads the pin on **both**
+   sides, because `anchor.py` filled that field from the pin block, so it was equal by
+   construction and never caught anything. A cold run measured a clone twelve commits behind
+   the pin and passed clean.
    **Run it in the foreground and let the call return.** It takes about 90 seconds. Do not
    background it and then wait on a notification: if you are a subagent, none arrives. A run
    lost its entire audit that way, printing `waiting` while the `stats.json` it was waiting
    for had already been written correctly.
+
+   This is about backgrounding a **shell command**, and it is not the rule about dispatching
+   a **child agent** -- there, ending your turn is correct and the child's result is
+   delivered back to you. Two different mechanisms; neither refutes the other. Nothing in
+   this skill dispatches an agent anyway: `allowed-tools` grants Bash and nothing else, and
+   the parallelism lives inside the Python.
 3. **If the base run does not reproduce it, stop.** The method is wrong before any finding.
    Give `scripts/anchor.py` the `--published` and `--expect-contract` values so it stops on
    its own. Omit them and it prints the number and asks you to compare, which is where the
@@ -214,6 +238,16 @@ but already sent goes to `reported`; confirmed and deliberately not sent goes to
 `not_raised` with the reason and the condition that would reopen it; what the audit itself
 cost you goes to `process_friction`. **An empty `findings` with a populated `dismissed` is a
 good result.**
+
+6. **Read what earlier runs already declared, and only now.** `emit-gate.py` compares this
+   payload against `references/blind-spots.json` and prints what you did not touch. It refuses
+   the run when an entry names a reopening condition your own corpus already meets: sixteen
+   runs re-declared one hole as open while carrying the observation that would have closed it.
+
+   **Phase 4 and nowhere earlier, on purpose.** A cold run that read a list of holes during
+   Phase 0 reported that it anchored the whole investigation before a single measurement
+   existed. `scripts/blind-spots.py` has no browse mode for the same reason — it answers what
+   your finished payload missed, and cannot be asked what the holes are.
 
 ## Phase 5 — Send. Optional, and often correct to skip.
 

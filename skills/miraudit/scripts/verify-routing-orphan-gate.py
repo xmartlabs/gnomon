@@ -18,7 +18,11 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import parse, header, require  # noqa: E402
 
-args, WINDOW = parse(__doc__.strip().splitlines()[0])
+# needs_corpus=False: this check builds its events in memory and never opens a
+# transcript. It still ACCEPTS --corpus so run-checks.py's shared argv works, it
+# just stops refusing to run over an input it does not read -- which is what kept
+# it out of any offline tier and off a machine with no ~/.claude at all.
+args, WINDOW = parse(__doc__.strip().splitlines()[0], needs_corpus=False)
 
 (Accumulator,) = require(
     [("gnomon.cli.accumulator", "Accumulator")], "This checkout has no Accumulator.")
@@ -126,4 +130,8 @@ print("  not how often the condition arises in anyone's actual transcripts.")
 # stops agreeing with a broken fixture.
 if not ok:
     raise SystemExit(1)
-# miraudit-covers: Orchestration
+# The routing term lives in MODEL MIX, not Orchestration: aq.py computes it at :616 and
+# weights it 0.30 inside the Model mix wsum at :620. This said Orchestration, which sent the
+# coverage to the wrong axis in both directions -- Orchestration read as covered by two
+# scripts when it has one, and Model mix lost a claim it had earned.
+# miraudit-covers: Model mix

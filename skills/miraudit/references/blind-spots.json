@@ -1,0 +1,145 @@
+{
+  "_": "Keys only. No `what`, no `why`, no sentence -- see scripts/blind-spots.py for why that is the schema and not an omission. Rows are seeded from kinds with 3+ independent wordings across the saved runs. `runs`/`first_seen`/`last_seen` are written by --update, never by hand.",
+  "entries": [
+    {
+      "id": "Model mix/not-localized/linked_model_routing_state",
+      "anchor": "Model mix",
+      "kind": "not-localized",
+      "term": "linked_model_routing_state",
+      "runs": 13,
+      "first_seen": "2026-08-10",
+      "last_seen": "2026-08-20",
+      "reopens_when": null
+    },
+    {
+      "id": "Model mix/not-decomposable/wsum",
+      "anchor": "Model mix",
+      "kind": "not-decomposable",
+      "term": "wsum",
+      "runs": 5,
+      "first_seen": "2026-08-12",
+      "last_seen": "2026-08-20",
+      "reopens_when": null
+    },
+    {
+      "id": "Orchestration/not-decomposable/wsum",
+      "anchor": "Orchestration",
+      "kind": "not-decomposable",
+      "term": "wsum",
+      "runs": 5,
+      "first_seen": "2026-08-12",
+      "last_seen": "2026-08-20",
+      "reopens_when": null
+    },
+    {
+      "id": "Tool command (MCP + CLI)/reimplementation-gap/clis_distinct",
+      "anchor": "Tool command (MCP + CLI)",
+      "kind": "reimplementation-gap",
+      "term": "clis_distinct",
+      "runs": 15,
+      "first_seen": "2026-08-10",
+      "last_seen": "2026-08-20",
+      "reopens_when": null
+    },
+    {
+      "id": "Skill fluency/calibration/skills_total_per_call",
+      "anchor": "Skill fluency",
+      "kind": "calibration",
+      "term": "skills_total_per_call",
+      "runs": 15,
+      "first_seen": "2026-08-10",
+      "last_seen": "2026-08-20",
+      "reopens_when": {
+        "kind": "signal_below_threshold",
+        "signal": "skills_distinct",
+        "threshold": "SKILLS_TOTAL_PER_CALL_TARGET"
+      }
+    },
+    {
+      "id": "Token economy/calibration/cli_share",
+      "anchor": "Token economy",
+      "kind": "calibration",
+      "term": "cli_share",
+      "runs": 11,
+      "first_seen": "2026-08-10",
+      "last_seen": "2026-08-20",
+      "reopens_when": {
+        "kind": "signal_below_threshold",
+        "signal": "cli_share",
+        "threshold": "CLI_SHARE_TARGET"
+      }
+    },
+    {
+      "id": "Compounding/calibration/compounding_writes_per_call",
+      "anchor": "Compounding",
+      "kind": "calibration",
+      "term": "compounding_writes_per_call",
+      "runs": 4,
+      "first_seen": "2026-08-12",
+      "last_seen": "2026-08-20",
+      "reopens_when": {
+        "kind": "signal_below_threshold",
+        "signal": "compounding_writes",
+        "threshold": "COMPOUNDING_WRITES_PER_CALL_TARGET"
+      }
+    },
+    {
+      "id": "Verification/calibration/review_skills_per_call",
+      "anchor": "Verification",
+      "kind": "calibration",
+      "term": "review_skills_per_call",
+      "runs": 9,
+      "first_seen": "2026-08-12",
+      "last_seen": "2026-08-20",
+      "reopens_when": {
+        "kind": "signal_below_threshold",
+        "signal": "review_skills_per_call",
+        "threshold": "REVIEW_SKILLS_PER_CALL_TARGET"
+      }
+    },
+    {
+      "id": "Steering leverage/renderer-not-checked/actions_per_prompt",
+      "anchor": "Steering leverage",
+      "kind": "renderer-not-checked",
+      "term": "actions_per_prompt",
+      "runs": 15,
+      "first_seen": "2026-08-10",
+      "last_seen": "2026-08-20",
+      "reopens_when": {
+        "kind": "constant_equals",
+        "constant": "STEERING_LEVERAGE_BAND_VALIDATED",
+        "value": true
+      }
+    },
+    {
+      "id": "Verification/invisible-to-corpus/shell_test_runs",
+      "anchor": "Verification",
+      "kind": "invisible-to-corpus",
+      "term": "shell_test_runs",
+      "runs": 3,
+      "first_seen": "2026-08-12",
+      "last_seen": "2026-08-20",
+      "reopens_when": null
+    },
+    {
+      "id": "Compounding/other-backend/add_memory",
+      "anchor": "Compounding",
+      "kind": "other-backend",
+      "term": "add_memory",
+      "runs": 3,
+      "first_seen": "2026-08-12",
+      "last_seen": "2026-08-20",
+      "reopens_when": null
+    },
+    {
+      "id": "Recovery/bound-only/error_recovery_ratio",
+      "anchor": "Recovery",
+      "kind": "bound-only",
+      "term": "error_recovery_ratio",
+      "runs": 5,
+      "first_seen": "2026-08-12",
+      "last_seen": "2026-08-20",
+      "reopens_when": null
+    }
+  ]
+}

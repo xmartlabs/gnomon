@@ -148,6 +148,20 @@ def main(argv=None):
         print(probe.stderr, file=sys.stderr)
         return 1
 
+    # Read out of the probe's own output rather than typed here. The payload used to record a
+    # LITERAL "18/18", so the field said the same thing whatever the probe did -- and it kept
+    # saying it after the case list grew. Two numbers, because they answer different questions:
+    # how many behaviours are unchanged is the gate, and how many predicates have a case at all
+    # is the coverage that "18/18" was being read as and never was.
+    def _probe_figure(needle):
+        for line in probe.stdout.splitlines():
+            if needle in line:
+                return line.strip().split()[0]
+        return None
+
+    probe_behaviours = _probe_figure("behaviours unchanged")
+    probe_predicates = _probe_figure("public predicates in gnomon.taxonomy")
+
     print(f"\n==> reproducing the published number: {args.since} -> {args.until}")
     # `xl-ai-insights`, the packaged console script -- NOT `python -m gnomon.cli.insights`.
     # `-m` puts the CURRENT DIRECTORY on sys.path first, so it imports whatever ./gnomon/ the
@@ -188,12 +202,33 @@ def main(argv=None):
     ref = subprocess.run(
         [sys.executable, os.path.join(HERE, "pin-consistency.py"), "--field", "ref"],
         capture_output=True, text=True).stdout.strip() or None
+
+    # The ref THIS RUN ACTUALLY MEASURED, which is not the same thing as `ref` above and used
+    # to be conflated with it. `--field ref` reads the ```pin block and deliberately ignores
+    # --checkout -- correctly, because that value is what CLONES a checkout and so cannot
+    # require one. Recording it as the run's ref made both sides of emit-gate's tool.ref rule
+    # come out of one constant, so a comparison advertised as catching "a pipeline pointed at
+    # the wrong directory" was equal by construction and could not fail. A cold run hit it for
+    # real: it measured the reference clone twelve commits behind the pin, the payload read
+    # the pin, and the gate passed.
+    #
+    # None is recorded with its reason rather than silently: `git rev-parse` returns nothing
+    # on a `git archive` tree, which has no .git, and an empty string once became a null ref
+    # with nothing saying why.
+    measured = subprocess.run(
+        ["git", "-C", args.checkout, "rev-parse", "--short", "HEAD"],
+        capture_output=True, text=True).stdout.strip() or None
     with open(os.path.join(os.path.dirname(stats), "anchor.json"), "w") as fp:
-        json.dump({"ref": ref, "contract": expect or None,
+        json.dump({"ref": ref, "measured_ref": measured,
+                   "measured_ref_note": (None if measured else
+                                         "no .git in the checkout, which is normal for a "
+                                         "git-archive copy: the ref could not be read"),
+                   "contract": expect or None,
                    "published": args.published or None,
                    "reproduced": find_key(load_stats(stats), "aq_0_100"),
                    "ok": True if args.published else None,
-                   "contract_probe": "18/18" if expect else None,
+                   "contract_probe": (f"{probe_behaviours} behaviours, "
+                                      f"{probe_predicates} predicates") if expect else None,
                    "window": {"since": args.since, "until": args.until}}, fp, indent=2)
 
     print()
@@ -276,6 +311,15 @@ def gate(stats_path, published, expect):
     if not expect:
         print("\n  The CONTRACT was not gated. Pass --expect-contract <X>; the value is the")
         print("  `contract` field of the block at the top of references/known-state.md.")
+    # Repeated LAST, because everything Phase 0 exists to produce was being buried under ~40
+    # lines of guidance -- and a run piping this through `tail` lost the two numbers entirely,
+    # recoverable only from report/anchor.json by somebody who knew that file existed.
+    print("\n" + "=" * 72)
+    print(f"  PHASE 0 RESULT   AQ {find_key(load_stats(stats), 'aq_0_100')}   "
+          f"contract {expect or contract or '?'}   ref {measured or ref or '?'}")
+    print(f"  payload          {os.path.join(os.path.dirname(stats), 'anchor.json')}")
+    print("=" * 72)
+
     return 0
 
 

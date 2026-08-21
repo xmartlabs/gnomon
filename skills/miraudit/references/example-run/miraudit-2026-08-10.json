@@ -20,7 +20,9 @@
     "sessions": 124,
     "sidechain_share": 0.629,
     "window": "2026-07-07 -> 2026-08-06 (30d, fixed)",
-    "sources_scored": ["claude"],
+    "sources": [
+      "claude"
+    ],
     "note": "The corpus grew since this morning (3092 -> 3094 files, +1698 lines) and the in-window tool calls did not move, because the new sessions fall outside a window that ends 2026-08-06. That is the fixed window working. The tool counts 164 sessions and 42508 calls over the same window against this fingerprint's 124 and 42664: two populations, never mixed in one ratio."
   },
   "anchor": {
@@ -31,15 +33,24 @@
     "gated": true,
     "command": "scripts/anchor.sh --checkout <clone> --since 2026-07-07 --until 2026-08-06 --published 92 --expect-contract 17:17:17",
     "contract_probe": "18/18 behaviours unchanged",
-    "note": "First run where Phase 0 was an actual gate. Passing --published and --expect-contract is what surfaced the anchor defect recorded in process_friction."
+    "note": "First run where Phase 0 was an actual gate. Passing --published and --expect-contract is what surfaced the anchor defect recorded in process_friction. This run measured c6401cc, which was the pin at the time; the block has since moved on, and the axes and dismissals below are about that commit."
   },
   "axes": [
     {
       "name": "Steering leverage",
       "score": null,
       "max": 50,
-      "declared": { "actions_per_prompt": 6.4, "band": "5..20", "decay_span": 40, "state": "withheld_unvalidated_band" },
-      "remeasured": { "actions_per_prompt": 6.4, "top_level_tool_calls": 15812, "instructions": 2476 },
+      "declared": {
+        "actions_per_prompt": 6.4,
+        "band": "5..20",
+        "decay_span": 40,
+        "state": "withheld_unvalidated_band"
+      },
+      "remeasured": {
+        "actions_per_prompt": 6.4,
+        "top_level_tool_calls": 15812,
+        "instructions": 2476
+      },
       "direction": "faithful",
       "shape": "dropped-term",
       "evidence": {
@@ -58,10 +69,19 @@
       "name": "Verification",
       "score": 23.2,
       "max": 35,
-      "declared": { "test_coverage": 0.3673, "numerator": 18, "denominator": 49 },
-      "remeasured": { "sessions_editing_code": 47, "of_those_ran_tests": 17, "ratio": 0.36,
-                      "files_touched": 53, "with_a_test_beside_or_under": 11,
-                      "same_named_test_elsewhere_not_counted": 3 },
+      "declared": {
+        "test_coverage": 0.3673,
+        "numerator": 18,
+        "denominator": 49
+      },
+      "remeasured": {
+        "sessions_editing_code": 47,
+        "of_those_ran_tests": 17,
+        "ratio": 0.36,
+        "files_touched": 53,
+        "with_a_test_beside_or_under": 11,
+        "same_named_test_elsewhere_not_counted": 3
+      },
       "direction": "faithful",
       "evidence": {
         "command": "python3 scripts/verification-reality.py --checkout <copy> --since 2026-07-07 --until 2026-08-06 --stats <stats.json> --repo <BE repo> --ref origin/development",
@@ -79,8 +99,13 @@
       "name": "Context Intelligence",
       "score": 20.0,
       "max": 20,
-      "declared": { "grounded_sessions": 43 },
-      "remeasured": { "armed_within_first_3_tool_calls": 12, "armed_after_position_10": 26 },
+      "declared": {
+        "grounded_sessions": 43
+      },
+      "remeasured": {
+        "armed_within_first_3_tool_calls": 12,
+        "armed_after_position_10": 26
+      },
       "direction": "faithful",
       "evidence": {
         "command": "python3 scripts/fidelity-audit.py --checkout <copy> --since 2026-07-07 --until 2026-08-06 --stats <stats.json>",
@@ -88,14 +113,22 @@
         "control": "n/a"
       },
       "confidence": "fact",
-      "not_checked": ["whether a late setup position means judgement rather than slower boilerplate"]
+      "not_checked": [
+        "whether a late setup position means judgement rather than slower boilerplate"
+      ]
     },
     {
       "name": "Compounding",
       "score": 20.0,
       "max": 20,
-      "declared": { "compounding_writes": 212 },
-      "remeasured": { "memory_mcp_calls": 441, "file_writes": 34, "credits_for_10_distinct_add_memory": 1 },
+      "declared": {
+        "compounding_writes": 212
+      },
+      "remeasured": {
+        "memory_mcp_calls": 441,
+        "file_writes": 34,
+        "credits_for_10_distinct_add_memory": 1
+      },
       "direction": "underestimates",
       "evidence": {
         "command": "python3 scripts/verify-compounding-symmetry.py --checkout <copy> --since 2026-07-07 --until 2026-08-06 --stats <stats.json>",
@@ -103,24 +136,37 @@
         "control": "10 search_memories -> 0 and 10 delete_memory -> 0, so the fixture is not crediting everything it sees"
       },
       "confidence": "fact",
-      "not_checked": ["whether a backend other than mem0 omits the fields the dedup key reads"],
+      "not_checked": [
+        "whether a backend other than mem0 omits the fields the dedup key reads"
+      ],
       "note": "A counting error in one axis, not a structural shape. Costs nothing today: the axis is at its ceiling either way."
     },
     {
       "name": "Recovery",
       "score": 97.0,
       "max": 100,
-      "declared": { "recovery_ratio": 0.998 },
-      "remeasured": { "failed_calls": 1394, "successful_same_tool_retry_ratio": 0.901 },
+      "declared": {
+        "recovery_ratio": 0.998
+      },
+      "remeasured": {
+        "failed_calls": 1394,
+        "successful_same_tool_retry_ratio": 0.901
+      },
       "direction": "overestimates",
-      "magnitude": { "unit": "ratio", "value": 0.097, "bound": "upper" },
+      "magnitude": {
+        "unit": "ratio",
+        "value": 0.097,
+        "bound": "upper"
+      },
       "evidence": {
         "command": "python3 scripts/recovery-reality.py --checkout <copy> --since 2026-07-07 --until 2026-08-06 --stats <stats.json>",
         "output": "any-call-afterwards 0.998 against successful-same-tool-retry 0.901",
         "control": "n/a"
       },
       "confidence": "fact",
-      "not_checked": ["changing approach is also recovering, so 0.901 is a lower bound and the gap an upper bound"],
+      "not_checked": [
+        "changing approach is also recovering, so 0.901 is a lower bound and the gap an upper bound"
+      ],
       "note": "Below the reporting bar; already dismissed once. The script's scratchpad half was deleted today because its subject is gone."
     }
   ],
@@ -129,8 +175,14 @@
     {
       "id": "model-mix-drops-routing-outside-wsum",
       "shape": "dropped-term",
-      "axes": ["Model mix"],
-      "magnitude": { "unit": "AQ", "value": -1, "note": "axis 50.0 -> 43.1" },
+      "axes": [
+        "Model mix"
+      ],
+      "magnitude": {
+        "unit": "AQ",
+        "value": -1,
+        "note": "axis 50.0 -> 43.1"
+      },
       "confirmed_by": "Instrumented _routing_snapshot on a throwaway copy, plus a synthetic fixture through the real Accumulator with three cases.",
       "evidence": {
         "command": "python3 scripts/verify-routing-orphan-gate.py --checkout <copy> --since 2026-07-07 --until 2026-08-06 --stats <stats.json>",
@@ -138,16 +190,28 @@
         "control": "Case A must reach `measured`, and does."
       },
       "state": "reported as xmartlabs/gnomon#68 on 2026-08-10; no response yet",
-      "not_checked": ["whether a real corpus with neither fan-out nor background dispatch reaches `measured`"]
+      "not_checked": [
+        "whether a real corpus with neither fan-out nor background dispatch reaches `measured`"
+      ]
     }
   ],
   "hypotheses": [
     {
       "id": "aq-is-mostly-ceiling",
       "shape": "saturated",
-      "axes": ["Orchestration", "Grounding", "Context Intelligence", "Compounding", "Model mix", "Token economy"],
+      "axes": [
+        "Orchestration",
+        "Grounding",
+        "Context Intelligence",
+        "Compounding",
+        "Model mix",
+        "Token economy"
+      ],
       "direction": "underestimates",
-      "magnitude": { "unit": "share of total on pinned axes", "value": 0.52 },
+      "magnitude": {
+        "unit": "share of total on pinned axes",
+        "value": 0.52
+      },
       "confidence": "hypothesis",
       "evidence": {
         "command": "python3 scripts/saturation-counterfactual.py --checkout <copy> --since 2026-07-07 --until 2026-08-06 --stats <stats.json>",
@@ -163,20 +227,34 @@
     }
   ],
   "dismissed": [
-    { "id": "recovery-tautological",
-      "killed_by": "Paired tool_use with tool_result and looked for a later successful retry of the same tool: 0.901 against the 0.998 reported. Re-measured this run and it still holds." },
-    { "id": "context-intelligence-is-boilerplate",
-      "killed_by": "Only 12 of 43 grounded sessions armed within the first three tool calls; 26 armed after position 10. Re-measured this run." },
-    { "id": "routing-term-dropped-by-workflow-children",
-      "killed_by": "An arm neutralizing the orphan rule alone stayed `unmeasured`: 197 non-joinable attempts trip the same flag independently. Shipped under a name that does not assert that cause." },
-    { "id": "toolsearch-appeared-with-a-harness-rollout",
-      "killed_by": "Its start date is the corpus start date. Retention, not rollout." },
-    { "id": "invented-denominator-93-percent-coverage",
-      "killed_by": "The denominator was ours and selected only repositories that have a test suite. Under their C2 eligibility the same window gives 17/50." },
-    { "id": "bash-runs-tests-counts-a-bare-cd",
-      "killed_by": "Running the predicate on the exact string returns False. The comparison script printed cmd[:70] and the path is 69 characters long." },
-    { "id": "scratchpad-contaminates-the-eligibility-denominator",
-      "killed_by": "classify_change_target short-circuits every _EPHEMERAL_PATH_RX match to \"other\" and eligibility only admits file_class == \"code\", so a scratchpad write cannot reach the denominator. The check that reported it had loosened their predicate into `any /tmp` and was counting paths that are not scratchpads. Section deleted." }
+    {
+      "id": "recovery-tautological",
+      "killed_by": "Paired tool_use with tool_result and looked for a later successful retry of the same tool: 0.901 against the 0.998 reported. Re-measured this run and it still holds."
+    },
+    {
+      "id": "context-intelligence-is-boilerplate",
+      "killed_by": "Only 12 of 43 grounded sessions armed within the first three tool calls; 26 armed after position 10. Re-measured this run."
+    },
+    {
+      "id": "routing-term-dropped-by-workflow-children",
+      "killed_by": "An arm neutralizing the orphan rule alone stayed `unmeasured`: 197 non-joinable attempts trip the same flag independently. Shipped under a name that does not assert that cause."
+    },
+    {
+      "id": "toolsearch-appeared-with-a-harness-rollout",
+      "killed_by": "Its start date is the corpus start date. Retention, not rollout."
+    },
+    {
+      "id": "invented-denominator-93-percent-coverage",
+      "killed_by": "The denominator was ours and selected only repositories that have a test suite. Under their C2 eligibility the same window gives 17/50."
+    },
+    {
+      "id": "bash-runs-tests-counts-a-bare-cd",
+      "killed_by": "Running the predicate on the exact string returns False. The comparison script printed cmd[:70] and the path is 69 characters long."
+    },
+    {
+      "id": "scratchpad-contaminates-the-eligibility-denominator",
+      "killed_by": "classify_change_target short-circuits every _EPHEMERAL_PATH_RX match to \"other\" and eligibility only admits file_class == \"code\", so a scratchpad write cannot reach the denominator. The check that reported it had loosened their predicate into `any /tmp` and was counting paths that are not scratchpads. Section deleted."
+    }
   ],
   "process_friction": [
     {

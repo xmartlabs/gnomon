@@ -60,9 +60,14 @@ def write_transcript(root, sid, events):
 
 def run_table(corpus_root):
     """Invoke the real script and return {label: sessions} parsed from its printed table.
-    Fixed-width slicing matching verification-reality.py's own print format exactly --
-    `f"{r[:27]:<28}{n:>6}..."` -- rather than a looser split that a label containing spaces
-    could fool.
+
+    Fixed-width slicing, because a repository label can contain spaces and a looser split
+    would be fooled by one. But the width is DERIVED from the header row rather than written
+    down: it used to hardcode 28, matching `f"{r[:27]:<28}{n:>6}"` in the source, and the day
+    that column was widened -- to make rows under a shared parent directory distinguishable,
+    which SKILL.md asks a reader to do -- all six cases went red at once against a script that
+    was working correctly. A copy of another file's format string is a second declaration of
+    it, and this is the file whose whole job is to catch two declarations drifting.
     """
     p = subprocess.run(
         [sys.executable, SCRIPT, "--checkout", args.checkout, "--corpus", corpus_root,
@@ -73,13 +78,17 @@ def run_table(corpus_root):
                  f"{p.stdout}\n{p.stderr}")
     rows = {}
     in_table = False
+    edge = None
     for line in p.stdout.splitlines():
         if line.startswith("repository"):
             in_table = True
+            # The `sess` column is right-aligned in six characters, so where its header ends
+            # is where its field ends, and the label field is everything before that field.
+            edge = line.index("sess") + len("sess")
             continue
         if not in_table or line.startswith("-") or line.startswith("TOTAL"):
             continue
-        label, sess = line[:28].strip(), line[28:34].strip()
+        label, sess = line[:edge - 6].strip(), line[edge - 6:edge].strip()
         if label and sess.isdigit():
             rows[label] = int(sess)
     return rows

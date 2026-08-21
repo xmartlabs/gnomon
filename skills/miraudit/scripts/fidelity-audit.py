@@ -88,6 +88,18 @@ for sid in events:
 print(header(args, WINDOW))
 print(f"sessions with activity in window: {len(events)}\n")
 
+# CONTROL. Every number below is a share of this population, so a zero here is not a finding
+# about a quiet month -- it means the window, the corpus path or the source filter is wrong,
+# and the histograms underneath would all read 0/0 and print as if they had measured. This
+# check used to have no assertion of any kind and exited 0 unconditionally while claiming
+# four axes.
+FAILED = []
+if not events:
+    print("  CONTROL FAILED: no sessions in this window at all. That is a misconfigured "
+          "window or corpus,\n  not a measurement -- every share below would be 0/0 and "
+          "print as though it had counted.")
+    raise SystemExit(1)
+
 
 def is_knowledge_mcp(name):
     if not name.startswith("mcp__"):
@@ -122,6 +134,16 @@ for pos in sorted(pos_hist):
     lbl = f"{pos}" if pos <= 10 else ">10"
     bar = "#" * pos_hist[pos]
     print(f"    position {lbl:>3}: {pos_hist[pos]:>3}  {bar}")
+# The histogram and the headline it sits under have to be the same population. When they
+# drift, both numbers still print and neither says so -- which is the shape of the defect
+# this skill reports in other people's tools.
+if sum(pos_hist.values()) != grounded:
+    FAILED.append(f"section A: the position histogram sums to {sum(pos_hist.values())} but "
+                  f"the headline says {grounded} grounded sessions")
+if sum(first_tool.values()) != grounded:
+    FAILED.append(f"section A: the setup-tool histogram sums to {sum(first_tool.values())} "
+                  f"but the headline says {grounded} grounded sessions")
+
 early = sum(v for k, v in pos_hist.items() if k <= 3)
 print(f"  -> {early}/{grounded} ({100*early//max(1,grounded)}%) were set up within the "
       f"first 3 tool calls")
@@ -201,6 +223,10 @@ for sid, evs in events.items():
             code_sess.add(sid)
         if n == "Bash" and bash_runs_tests(str(i.get("command", ""))):
             tested_sess.add(sid)
+if not code_sess <= set(events):
+    FAILED.append("section F: code_sess contains sessions that are not in the window's "
+                  "population, so the two halves of the coverage ratio were built from "
+                  "different sets")
 print(f"  sessions that edited code         : {len(code_sess)}")
 print(f"  of those, ran tests               : {len(code_sess & tested_sess)}"
       f"  ({100*len(code_sess & tested_sess)//max(1,len(code_sess))}%)")
@@ -224,3 +250,10 @@ else:
 # miraudit-covers: Discipline
 # miraudit-covers: Compounding
 # miraudit-covers: Verification
+
+if FAILED:
+    print(f"\n  {len(FAILED)} internal inconsistency(ies); the first is {FAILED[0]!r}.")
+    print("  These are consistency invariants, NOT a claim that the numbers are right -- a")
+    print("  histogram that disagrees with its own headline means one of the two was built")
+    print("  from a different population, and both printed anyway.")
+    raise SystemExit(1)

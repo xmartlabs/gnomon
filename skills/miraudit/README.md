@@ -272,10 +272,17 @@ for whoever owns that repository.
 Or describe the symptom and let the agent pick it up: "my score dropped four points and I
 did not change how I work."
 
-**Give it room to run.** Phase 0 copies a checkout and reproduces the published number, and
-the counterfactual checks read the whole transcript corpus. That is minutes, not seconds. A
-subagent with a watchdog will kill it partway and report nothing useful, so run it in the
-background or in a session that can wait.
+**Give it room to run, in the foreground.** Phase 0 copies a checkout and reproduces the
+published number, and the counterfactual checks read the whole transcript corpus. That is
+minutes, not seconds, so run it where nothing will cut it short: a subagent with a watchdog
+kills it partway and reports nothing useful.
+
+Do NOT background it and wait. This paragraph used to say "run it in the background", which
+is the opposite of what `SKILL.md` tells the model and the opposite of what works: a run
+that backgrounded the pipeline and waited for a notification lost its entire audit, printing
+`waiting` while the `stats.json` it was waiting for had already been written. If it looks
+hung, it is not -- `anchor.py` launches the pipeline with `PYTHONUNBUFFERED=1` precisely so
+a foreground call streams instead of going silent for minutes.
 
 The checks in `scripts/` also run standalone. Start with the anchor, which does Phase 0 in
 one command and writes the `stats.json` the other checks read:
