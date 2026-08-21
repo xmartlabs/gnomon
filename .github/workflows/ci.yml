@@ -9,6 +9,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -27,3 +29,40 @@ jobs:
 
       - name: Run tests (pipeline smoke + invariants + poster JS node --check)
         run: python3 -m unittest discover -s tests -v
+
+  # The self-hosted dashboard ships from this repo too, so its suite gates PRs
+  # rather than only tag pushes (see .github/workflows/dashboard-image.yml).
+  dashboard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: dashboard/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: dashboard/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Unit tests
+        run: pnpm test
+
+      # The e2e suite runs against the standalone build the Docker image serves;
+      # it is where build-output regressions (missing static assets, dead client
+      # bundles) actually surface.
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Flow tests
+        run: pnpm test:e2e

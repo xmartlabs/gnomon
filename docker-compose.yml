@@ -1,0 +1,15 @@
+services:
+  dashboard:
+    image: ghcr.io/xmartlabs/gnomon-dashboard:latest
+    # `build:` is here so a fresh clone can `docker compose up --build` before
+    # the published image exists; a plain `up` pulls it.
+    build: ./dashboard
+    ports:
+      - "3000:3000"
+    env_file: .env
+    volumes:
+      - gnomon-data:/data
+    restart: unless-stopped
+
+volumes:
+  gnomon-data:

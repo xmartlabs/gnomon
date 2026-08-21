@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+:root {
+  --paper: #F6F1E6;     /* ground — cream stock */
+  --paper-2: #EFE8D8;   /* recessed panel / track wells */
+  --ink: #262016;       /* espresso ink — text, primary button, dark bars */
+  --ink-60: #6E655A;    /* secondary text */
+  --ink-30: #B4AA9A;    /* tertiary text / strong rule */
+  --hairline: #D8CFBC;  /* hairline rules — the primary structural device */
+  --accent: #B4451F;    /* terracotta — the one accent */
+  --gain: #4A6A45;      /* moss — positive deltas */
+  --loss: #9A3B22;      /* burnt — negative deltas */
+  --parch: #C9B99A;     /* parchment — 3rd chart series / older level bars */
+}
+
+/* Register the palette with Tailwind so the tokens are reachable as utilities
+   (text-ink-60, border-hairline, bg-paper …) instead of inline style objects. */
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-ink: var(--ink);
+  --color-ink-60: var(--ink-60);
+  --color-ink-30: var(--ink-30);
+  --color-hairline: var(--hairline);
+  --color-accent: var(--accent);
+  --color-gain: var(--gain);
+  --color-loss: var(--loss);
+  --color-parch: var(--parch);
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+}
+
+html { background: #E9E2D2; }  /* gutter outside the sheet */
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body), system-ui, sans-serif;
+  /* The mockups are typeset at 15px; Tailwind's preflight leaves the browser
+     default of 16px, which pushes every unsized run one step too large. */
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+.serif { font-family: var(--font-display), Georgia, serif; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* The UA default focus ring is low-contrast on cream paper, and this UI is
+   driven by keyboard from the sort headers and the unit toggle. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

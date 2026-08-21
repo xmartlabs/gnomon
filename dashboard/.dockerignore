@@ -1,0 +1,13 @@
+node_modules
+.next
+test-results
+playwright-report
+
+# Never ship a developer's local state into the build context. The WAL/SHM
+# sidecars carry the same uploaded summary data as the .db itself, and .env.*
+# variants hold the team token.
+.env
+.env.*
+*.db
+*.db-wal
+*.db-shm

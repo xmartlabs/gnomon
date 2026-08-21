@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>gnomon — Proposal C · Obsidian Meridian</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ground:#0C0906;
+  --surface:#141008;
+  --raised:#1C160C;
+  --line:#2A2213;
+  --line-soft:#211A0E;
+  --ivory:#F4ECDB;
+  --muted:#9A8D74;
+  --faint:#5E543F;
+  --gold:#F2B33D;
+  --gold-deep:#8F6A1E;
+  --gold-glow:rgba(242,179,61,.14);
+  --up:#8FCE9B;
+  --down:#D96C5B;
+  --bar-opus:#F2B33D;
+  --bar-fable:#E4D5AE;
+  --bar-haiku:#6E5426;
+  --display:'Fraunces',serif;
+  --body:'Instrument Sans',sans-serif;
+  --mono:'IBM Plex Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{background:var(--ground)}
+body{
+  font-family:var(--body);
+  color:var(--ivory);
+  background:
+    radial-gradient(1200px 600px at 70% -10%, rgba(242,179,61,.06), transparent 60%),
+    var(--ground);
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+}
+/* grain */
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:999;opacity:.05;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+}
+.frame{max-width:1440px;margin:0 auto;padding:0 48px}
+
+/* ============ SECTION LABELS ============ */
+.section-tag{
+  font-family:var(--mono);font-size:11px;letter-spacing:.28em;text-transform:uppercase;
+  color:var(--gold);display:flex;align-items:center;gap:14px;margin-bottom:28px;
+}
+.section-tag::after{content:"";height:1px;flex:1;background:linear-gradient(90deg,var(--line),transparent)}
+
+/* ============ DESIGN SYSTEM ============ */
+.ds{padding:72px 0 64px;border-bottom:1px solid var(--line-soft)}
+.ds h1{
+  font-family:var(--display);font-weight:300;font-size:44px;letter-spacing:-.01em;margin-bottom:6px;
+}
+.ds h1 em{font-style:italic;color:var(--gold)}
+.ds .sub{color:var(--muted);font-size:14px;margin-bottom:48px}
+
+.ds-grid{display:grid;grid-template-columns:1fr 1fr;gap:56px 64px}
+.ds-block h3{
+  font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:18px;font-weight:400;
+}
+
+/* swatches */
+.swatches{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.swatch{border:1px solid var(--line);background:var(--surface)}
+.swatch .chip{height:56px}
+.swatch .meta{padding:8px 10px 10px}
+.swatch .role{font-size:11px;font-weight:600;letter-spacing:.02em}
+.swatch .hex{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:2px}
+
+/* type specimen */
+.spec-display{font-family:var(--display);font-weight:300;font-size:56px;line-height:1.02;letter-spacing:-.015em}
+.spec-display em{font-style:italic;color:var(--gold)}
+.spec-caption{font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:.14em;text-transform:uppercase;margin:6px 0 18px}
+.spec-body{font-size:15px;line-height:1.6;color:var(--muted);max-width:44ch}
+.scale{margin-top:22px;display:flex;align-items:baseline;gap:22px;border-top:1px solid var(--line-soft);padding-top:16px}
+.scale span{font-family:var(--display);font-weight:400;color:var(--ivory)}
+.scale i{font-family:var(--mono);font-style:normal;font-size:9px;color:var(--faint);display:block;margin-top:4px;text-align:center}
+
+/* atoms */
+.atom-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:22px}
+.btn{
+  font-family:var(--body);font-size:13px;font-weight:600;letter-spacing:.04em;
+  padding:11px 22px;cursor:pointer;border:1px solid transparent;transition:all .18s;
+}
+.btn-primary{
+  background:var(--gold);color:#1A1204;
+  box-shadow:0 0 24px rgba(242,179,61,.25);
+}
+.btn-primary:hover{background:#FFC85A}
+.btn-secondary{background:transparent;color:var(--ivory);border-color:var(--line)}
+.btn-secondary:hover{border-color:var(--gold-deep);color:var(--gold)}
+.btn-ghost{background:transparent;color:var(--muted);padding:11px 14px}
+.btn-ghost:hover{color:var(--gold)}
+
+.tier{
+  font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;
+  padding:5px 12px 4px;border:1px solid var(--line);color:var(--muted);
+  display:inline-flex;align-items:center;gap:8px;
+}
+.tier::before{content:"";width:5px;height:5px;transform:rotate(45deg);background:currentColor}
+.tier-elite{color:var(--gold);border-color:var(--gold-deep);background:var(--gold-glow);text-shadow:0 0 12px rgba(242,179,61,.5)}
+.tier-advanced{color:#D8CBA8;border-color:#4A3E22}
+.tier-proficient{color:var(--muted)}
+
+.atom-card{
+  background:var(--surface);border:1px solid var(--line);padding:22px 24px;max-width:340px;
+  position:relative;
+}
+.atom-card::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,var(--gold-deep),transparent 60%)}
+.atom-card h4{font-family:var(--display);font-weight:400;font-size:19px;margin-bottom:6px}
+.atom-card p{font-size:13px;color:var(--muted);line-height:1.5}
+
+.input{
+  background:var(--ground);border:1px solid var(--line);color:var(--ivory);
+  font-family:var(--body);font-size:13px;padding:11px 14px;width:260px;outline:none;
+  transition:border-color .18s;
+}
+.input::placeholder{color:var(--faint)}
+.input:focus{border-color:var(--gold-deep);box-shadow:0 0 0 3px rgba(242,179,61,.08)}
+.input-label{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:8px}
+
+.atom-stat{
+  background:var(--surface);border:1px solid var(--line);padding:20px 22px;width:220px;
+}
+.atom-stat .k{font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+.atom-stat .v{font-family:var(--display);font-weight:400;font-size:40px;line-height:1.1;margin-top:8px}
+.atom-stat .d{font-size:12px;color:var(--up);margin-top:4px}
+
+.atom-tablerow{max-width:560px;border:1px solid var(--line);background:var(--surface)}
+.atom-tablerow .tr{
+  display:grid;grid-template-columns:1.6fr .7fr 1fr .8fr;align-items:center;
+  padding:13px 18px;font-size:13px;border-top:1px solid var(--line-soft);
+}
+.atom-tablerow .tr:first-child{border-top:none;font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);padding:10px 18px}
+.atom-tablerow .num{font-family:var(--mono);font-size:13px}
+
+/* ============ DASHBOARD ============ */
+.dash{padding:64px 0 96px}
+header.bar{
+  display:flex;align-items:baseline;justify-content:space-between;
+  padding-bottom:26px;border-bottom:1px solid var(--line);margin-bottom:44px;
+}
+.brand{display:flex;align-items:baseline;gap:16px}
+.brand .logo{
+  font-family:var(--display);font-weight:500;font-style:italic;font-size:30px;letter-spacing:-.01em;
+}
+.brand .logo::first-letter{color:var(--gold)}
+.brand .sep{width:1px;height:20px;background:var(--line);align-self:center}
+.brand .ctx{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted)}
+.window{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.window b{color:var(--ivory);font-weight:500}
+
+/* stat band */
+.stats{display:grid;grid-template-columns:1.35fr 1fr 1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);margin-bottom:52px}
+.stat{background:var(--surface);padding:26px 28px 24px;position:relative;overflow:hidden}
+.stat .k{font-family:var(--mono);font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted)}
+.stat .v{font-family:var(--display);font-weight:300;font-size:52px;line-height:1.05;margin-top:14px;letter-spacing:-.01em}
+.stat .v small{font-size:22px;color:var(--faint);font-weight:300}
+.stat .d{font-size:12.5px;color:var(--muted);margin-top:8px}
+.stat .d.up{color:var(--up)}
+
+/* HERO stat — the 120% moment */
+.stat-hero{
+  background:
+    radial-gradient(340px 220px at 78% 46%, rgba(242,179,61,.13), transparent 70%),
+    var(--raised);
+  display:flex;align-items:center;gap:26px;
+}
+.stat-hero .gauge{position:relative;width:148px;height:148px;flex-shrink:0}
+.stat-hero .gauge svg{position:absolute;inset:0;transform:rotate(-90deg)}
+.stat-hero .gauge .aq{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+}
+.stat-hero .gauge .aq b{
+  font-family:var(--display);font-weight:400;font-size:56px;line-height:1;
+  color:var(--gold);text-shadow:0 0 34px rgba(242,179,61,.55);
+}
+.stat-hero .gauge .aq i{font-family:var(--mono);font-style:normal;font-size:9px;letter-spacing:.26em;color:var(--faint);margin-top:4px}
+@keyframes ringIn{from{stroke-dashoffset:396}}
+.ring-fg{animation:ringIn 1.3s cubic-bezier(.22,.9,.3,1) both}
+@keyframes tickPulse{0%,100%{opacity:.35}50%{opacity:1}}
+.stat-hero .info .k{color:var(--gold)}
+.stat-hero .info .d{margin-top:10px}
+.stat-hero .info .headline{font-family:var(--display);font-weight:300;font-size:22px;margin-top:12px;line-height:1.25;max-width:15ch}
+.stat-hero .info .headline em{font-style:italic;color:var(--gold)}
+
+/* people table */
+.panel-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:18px}
+.panel-head h2{font-family:var(--display);font-weight:400;font-size:24px;letter-spacing:-.005em}
+.panel-head .note{font-family:var(--mono);font-size:11px;color:var(--faint)}
+
+table.people{width:100%;border-collapse:collapse;border:1px solid var(--line);background:var(--surface);margin-bottom:56px}
+.people thead th{
+  font-family:var(--mono);font-size:10px;font-weight:400;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--faint);text-align:left;padding:13px 18px;border-bottom:1px solid var(--line);
+  background:var(--ground);
+}
+.people th.r,.people td.r{text-align:right}
+.people tbody td{padding:16px 18px;border-bottom:1px solid var(--line-soft);font-size:14px;vertical-align:middle}
+.people tbody tr:last-child td{border-bottom:none}
+.people tbody tr{transition:background .15s}
+.people tbody tr:hover{background:rgba(242,179,61,.03)}
+.people .name{font-weight:600;letter-spacing:.01em}
+.people .aq{
+  font-family:var(--display);font-weight:400;font-size:30px;line-height:1;
+}
+.people tr.top .aq{color:var(--gold);text-shadow:0 0 18px rgba(242,179,61,.4)}
+.people .mono{font-family:var(--mono);font-size:13px;color:var(--muted)}
+.people .delta{font-family:var(--mono);font-size:13px}
+.delta.up{color:var(--up)}
+.delta.down{color:var(--down)}
+.delta.flat{color:var(--faint)}
+.pillar{font-size:13px;color:var(--ivory)}
+.spark{display:block}
+
+/* usage chart */
+.usage{border:1px solid var(--line);background:var(--surface);padding:30px 32px 26px}
+.usage-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:30px}
+.usage-head h2{font-family:var(--display);font-weight:400;font-size:24px}
+.toggle{display:flex;border:1px solid var(--line)}
+.toggle button{
+  font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  background:transparent;border:none;color:var(--muted);padding:9px 20px;cursor:pointer;
+}
+.toggle button.active{background:var(--gold);color:#1A1204;font-weight:500}
+.chart{display:flex;gap:0;align-items:stretch}
+.chart .yaxis{
+  display:flex;flex-direction:column;justify-content:space-between;align-items:flex-end;
+  padding-right:14px;padding-bottom:30px;
+  font-family:var(--mono);font-size:10px;color:var(--faint);
+}
+.chart .plot{flex:1;position:relative}
+.gridlines{position:absolute;inset:0 0 30px 0;display:flex;flex-direction:column;justify-content:space-between}
+.gridlines i{height:1px;background:var(--line-soft)}
+.months{position:relative;display:flex;justify-content:space-around;align-items:flex-end;height:280px;padding:0 40px}
+.month{display:flex;flex-direction:column;align-items:center;width:120px}
+.bars{display:flex;flex-direction:column-reverse;width:64px}
+.seg{position:relative;transition:filter .15s}
+.seg.opus{background:var(--bar-opus)}
+.seg.fable{background:var(--bar-fable)}
+.seg.haiku{background:var(--bar-haiku)}
+.seg.opus{box-shadow:0 0 20px rgba(242,179,61,.18)}
+.month:hover .seg{filter:brightness(1.12)}
+.month .total{font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:10px}
+.month .label{font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.12em;margin-top:12px;height:18px;display:flex;align-items:center}
+.month.current .label{color:var(--gold)}
+.legend{display:flex;gap:26px;margin-top:22px;padding-top:18px;border-top:1px solid var(--line-soft)}
+.legend span{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--muted)}
+.legend i{width:10px;height:10px;display:inline-block}
+.legend .l-opus{background:var(--bar-opus)}
+.legend .l-fable{background:var(--bar-fable)}
+.legend .l-haiku{background:var(--bar-haiku)}
+
+footer{padding:34px 0 44px;color:var(--faint);font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase}
+</style>
+</head>
+<body>
+<div class="frame">
+
+  <!-- ================= MINI DESIGN SYSTEM ================= -->
+  <section class="ds">
+    <h1>Obsidian <em>Meridian</em></h1>
+    <p class="sub">Proposal C · dark-luxe command center — warm obsidian ground, one luminous gold signal, Fraunces numerals.</p>
+
+    <div class="ds-grid">
+
+      <div class="ds-block">
+        <h3>Palette</h3>
+        <div class="swatches">
+          <div class="swatch"><div class="chip" style="background:#0C0906;border-bottom:1px solid var(--line)"></div><div class="meta"><div class="role">Ground</div><div class="hex">#0C0906</div></div></div>
+          <div class="swatch"><div class="chip" style="background:#141008"></div><div class="meta"><div class="role">Surface</div><div class="hex">#141008</div></div></div>
+          <div class="swatch"><div class="chip" style="background:#F2B33D"></div><div class="meta"><div class="role">Gold signal</div><div class="hex">#F2B33D</div></div></div>
+          <div class="swatch"><div class="chip" style="background:#F4ECDB"></div><div class="meta"><div class="role">Ivory text</div><div class="hex">#F4ECDB</div></div></div>
+          <div class="swatch"><div class="chip" style="background:#9A8D74"></div><div class="meta"><div class="role">Muted</div><div class="hex">#9A8D74</div></div></div>
+          <div class="swatch"><div class="chip" style="background:#2A2213"></div><div class="meta"><div class="role">Line</div><div class="hex">#2A2213</div></div></div>
+          <div class="swatch"><div class="chip" style="background:#8FCE9B"></div><div class="meta"><div class="role">Up</div><div class="hex">#8FCE9B</div></div></div>
+          <div class="swatch"><div class="chip" style="background:#D96C5B"></div><div class="meta"><div class="role">Down</div><div class="hex">#D96C5B</div></div></div>
+          <div class="swatch"><div class="chip" style="background:#E4D5AE"></div><div class="meta"><div class="role">Chart · Fable</div><div class="hex">#E4D5AE</div></div></div>
+          <div class="swatch"><div class="chip" style="background:#6E5426"></div><div class="meta"><div class="role">Chart · Haiku</div><div class="hex">#6E5426</div></div></div>
+        </div>
+      </div>
+
+      <div class="ds-block">
+        <h3>Typography</h3>
+        <div class="spec-display">Signal over <em>noise.</em></div>
+        <div class="spec-caption">Fraunces · display 300 / italic accent</div>
+        <p class="spec-body">Instrument Sans carries body copy and interface labels; IBM Plex Mono handles data, axes, and metadata. Numerals set in Fraunces at display sizes are the product's voice.</p>
+        <div class="scale">
+          <span style="font-size:52px">Aa<i>52 stat</i></span>
+          <span style="font-size:30px">Aa<i>30 row</i></span>
+          <span style="font-size:24px">Aa<i>24 panel</i></span>
+          <span style="font-family:var(--body);font-size:14px">Aa<i>14 body</i></span>
+          <span style="font-family:var(--mono);font-size:11px">AA<i>11 meta</i></span>
+        </div>
+      </div>
+
+      <div class="ds-block">
+        <h3>Buttons &amp; Tier badges</h3>
+        <div class="atom-row">
+          <button class="btn btn-primary">Upload report</button>
+          <button class="btn btn-secondary">Export CSV</button>
+          <button class="btn btn-ghost">View history</button>
+        </div>
+        <div class="atom-row">
+          <span class="tier tier-elite">Elite</span>
+          <span class="tier tier-advanced">Advanced</span>
+          <span class="tier tier-proficient">Proficient</span>
+        </div>
+        <div class="atom-row" style="margin-top:26px">
+          <div>
+            <label class="input-label" for="ds-input">Cost per 1M tokens</label>
+            <input id="ds-input" class="input" placeholder="$ 15.00" value="$ 15.00">
+          </div>
+        </div>
+      </div>
+
+      <div class="ds-block">
+        <h3>Card · Stat · Table row</h3>
+        <div class="atom-row" style="align-items:flex-start">
+          <div class="atom-card">
+            <h4>Main card</h4>
+            <p>Hairline border, gold seam on the top edge, warm surface one step above ground.</p>
+          </div>
+          <div class="atom-stat">
+            <div class="k">Team avg AQ</div>
+            <div class="v">81</div>
+            <div class="d">+4 vs last month</div>
+          </div>
+        </div>
+        <div class="atom-tablerow" style="margin-top:8px">
+          <div class="tr"><span>Name</span><span>AQ</span><span>Tier</span><span style="text-align:right">Cost</span></div>
+          <div class="tr"><span style="font-weight:600">Ada Lovelace</span><span class="num" style="color:var(--gold)">93</span><span class="tier tier-elite">Elite</span><span class="num" style="text-align:right">$392</span></div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ================= TEAM OVERVIEW ================= -->
+  <section class="dash">
+    <div class="section-tag">Team overview · 02</div>
+
+    <header class="bar">
+      <div class="brand">
+        <span class="logo">gnomon</span>
+        <span class="sep"></span>
+        <span class="ctx">team dashboard</span>
+      </div>
+      <div class="window">4 engineers · current window <b>2026-06</b></div>
+    </header>
+
+    <div class="stats">
+      <!-- HERO — the 120% moment -->
+      <div class="stat stat-hero">
+        <div class="gauge">
+          <svg viewBox="0 0 148 148" width="148" height="148">
+            <circle cx="74" cy="74" r="63" fill="none" stroke="#2A2213" stroke-width="3"/>
+            <circle class="ring-fg" cx="74" cy="74" r="63" fill="none" stroke="#F2B33D" stroke-width="3"
+              stroke-linecap="butt" stroke-dasharray="320.6 395.8" stroke-dashoffset="0"
+              style="filter:drop-shadow(0 0 6px rgba(242,179,61,.6))"/>
+            <g stroke="#5E543F" stroke-width="1">
+              <line x1="74" y1="2" x2="74" y2="9"/>
+              <line x1="146" y1="74" x2="139" y2="74"/>
+              <line x1="74" y1="146" x2="74" y2="139"/>
+              <line x1="2" y1="74" x2="9" y2="74"/>
+            </g>
+          </svg>
+          <div class="aq"><b>81</b><i>/ 100</i></div>
+        </div>
+        <div class="info">
+          <div class="k">Team avg AQ</div>
+          <div class="headline">Four engineers, <em>climbing.</em></div>
+          <div class="d up">▲ +4 vs last month</div>
+        </div>
+      </div>
+
+      <div class="stat">
+        <div class="k">Ingest coverage</div>
+        <div class="v">4<small>/4</small></div>
+        <div class="d">people with a 2026-06 upload</div>
+      </div>
+      <div class="stat">
+        <div class="k">Tokens / mo</div>
+        <div class="v">18.9<small>B</small></div>
+        <div class="d">across all models</div>
+      </div>
+      <div class="stat">
+        <div class="k">Est. cost / mo</div>
+        <div class="v"><small>$</small>1,284</div>
+        <div class="d">list prices · editable</div>
+      </div>
+    </div>
+
+    <div class="panel-head">
+      <h2>People</h2>
+      <span class="note">sorted by AQ · window 2026-06</span>
+    </div>
+
+    <table class="people">
+      <thead>
+        <tr>
+          <th>Name</th><th>AQ</th><th>Tier</th><th>Trend</th><th>Delta</th><th>Top pillar</th><th class="r">Tokens</th><th class="r">Cost</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="top">
+          <td class="name">Ada Lovelace</td>
+          <td><span class="aq">93</span></td>
+          <td><span class="tier tier-elite">Elite</span></td>
+          <td><svg class="spark" width="84" height="26" viewBox="0 0 84 26"><polyline points="2,21 16,19 30,20 44,14 58,12 72,7 82,4" fill="none" stroke="#F2B33D" stroke-width="1.5"/><circle cx="82" cy="4" r="2.2" fill="#F2B33D"/></svg></td>
+          <td><span class="delta up">+14</span></td>
+          <td class="pillar">Craft</td>
+          <td class="mono r">5.7B</td>
+          <td class="mono r">$392</td>
+        </tr>
+        <tr>
+          <td class="name">Alan Turing</td>
+          <td><span class="aq">85</span></td>
+          <td><span class="tier tier-advanced">Advanced</span></td>
+          <td><svg class="spark" width="84" height="26" viewBox="0 0 84 26"><polyline points="2,8 16,6 30,10 44,9 58,13 72,15 82,17" fill="none" stroke="#9A8D74" stroke-width="1.5"/><circle cx="82" cy="17" r="2.2" fill="#9A8D74"/></svg></td>
+          <td><span class="delta down">−3</span></td>
+          <td class="pillar">Efficiency</td>
+          <td class="mono r">4.9B</td>
+          <td class="mono r">$338</td>
+        </tr>
+        <tr>
+          <td class="name">Grace Hopper</td>
+          <td><span class="aq">81</span></td>
+          <td><span class="tier tier-advanced">Advanced</span></td>
+          <td><svg class="spark" width="84" height="26" viewBox="0 0 84 26"><polyline points="2,20 16,21 30,17 44,18 58,13 72,11 82,8" fill="none" stroke="#9A8D74" stroke-width="1.5"/><circle cx="82" cy="8" r="2.2" fill="#9A8D74"/></svg></td>
+          <td><span class="delta up">+7</span></td>
+          <td class="pillar">Breadth</td>
+          <td class="mono r">4.6B</td>
+          <td class="mono r">$318</td>
+        </tr>
+        <tr>
+          <td class="name">Katherine J.</td>
+          <td><span class="aq">66</span></td>
+          <td><span class="tier tier-proficient">Proficient</span></td>
+          <td><svg class="spark" width="84" height="26" viewBox="0 0 84 26"><polyline points="2,14 16,13 30,15 44,13 58,14 72,13 82,14" fill="none" stroke="#5E543F" stroke-width="1.5"/><circle cx="82" cy="14" r="2.2" fill="#5E543F"/></svg></td>
+          <td><span class="delta flat">--</span></td>
+          <td class="pillar">Savvy</td>
+          <td class="mono r">3.7B</td>
+          <td class="mono r">$236</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="usage">
+      <div class="usage-head">
+        <h2>Company usage over time</h2>
+        <div class="toggle">
+          <button class="active">Tokens</button>
+          <button>Cost</button>
+        </div>
+      </div>
+      <div class="chart">
+        <div class="yaxis"><span>20B</span><span>15B</span><span>10B</span><span>5B</span><span>0</span></div>
+        <div class="plot">
+          <div class="gridlines"><i></i><i></i><i></i><i></i><i style="background:var(--line)"></i></div>
+          <div class="months">
+            <div class="month">
+              <div class="total">14.2B</div>
+              <div class="bars">
+                <div class="seg opus" style="height:99px"></div>
+                <div class="seg fable" style="height:68px"></div>
+                <div class="seg haiku" style="height:32px"></div>
+              </div>
+              <div class="label">2026-04</div>
+            </div>
+            <div class="month">
+              <div class="total">16.5B</div>
+              <div class="bars">
+                <div class="seg opus" style="height:107px"></div>
+                <div class="seg fable" style="height:84px"></div>
+                <div class="seg haiku" style="height:40px"></div>
+              </div>
+              <div class="label">2026-05</div>
+            </div>
+            <div class="month current">
+              <div class="total">18.9B</div>
+              <div class="bars">
+                <div class="seg opus" style="height:123px"></div>
+                <div class="seg fable" style="height:100px"></div>
+                <div class="seg haiku" style="height:42px"></div>
+              </div>
+              <div class="label">2026-06</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="legend">
+        <span><i class="l-opus"></i>Opus 4.8</span>
+        <span><i class="l-fable"></i>Fable 5</span>
+        <span><i class="l-haiku"></i>Haiku 4.5</span>
+      </div>
+    </div>
+
+    <footer>gnomon · proposal c · obsidian meridian</footer>
+  </section>
+
+</div>
+</body>
+</html>

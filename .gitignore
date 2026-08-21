@@ -12,6 +12,14 @@ _antigravity_ide/
 # which is never cloned and so protects exactly one checkout.
 .context/
 
+# Self-hosted dashboard deployment config. The README tells you to copy
+# .env.example here and put TEAM_TOKEN in it — that is the shared secret that
+# gates every upload, so it must never be committable. .env.example stays
+# tracked; the real one never is.
+.env
+.env.*
+!.env.example
+
 # Python
 __pycache__/
 *.pyc

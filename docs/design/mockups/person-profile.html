@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>gnomon — Profile · The Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Archivo:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F6F1E6; --paper-2:#EFE8D8; --ink:#262016; --ink-60:#6E655A; --ink-30:#B4AA9A;
+    --hairline:#D8CFBC; --accent:#B4451F; --gain:#4A6A45; --loss:#9A3B22; --parch:#C9B99A;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html{background:#E9E2D2;}
+  body{font-family:'Archivo',sans-serif;color:var(--ink);background:var(--paper);-webkit-font-smoothing:antialiased;font-size:15px;line-height:1.5;}
+  .sheet{max-width:1200px;margin:0 auto;background:var(--paper);}
+  .pad{padding:0 72px;}
+  .serif{font-family:'Fraunces',serif;}
+  .num{font-variant-numeric:tabular-nums;}
+  .rule{border:0;border-top:1px solid var(--hairline);}
+  .rule-heavy{border:0;border-top:2px solid var(--ink);}
+  .eyebrow{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-60);font-weight:600;}
+  .screen{border-top:4px solid var(--ink);}
+
+  /* nav */
+  .topnav{display:flex;align-items:baseline;justify-content:space-between;padding:22px 72px 18px;}
+  .back{font-size:13px;color:var(--ink-60);text-decoration:none;}
+  .back:hover{color:var(--accent);}
+  .monthnav{display:flex;align-items:center;gap:16px;font-size:13px;}
+  .monthnav a{color:var(--ink);text-decoration:none;font-family:'Fraunces',serif;font-size:18px;}
+  .monthnav .cur{font-family:'Fraunces',serif;font-weight:600;font-variant-numeric:tabular-nums;}
+  .monthnav .off{color:var(--ink-30);}
+
+  /* header drop-stat */
+  .head{display:grid;grid-template-columns:1.5fr 1fr;gap:0;padding:24px 72px 20px;}
+  .who .logo{font-family:'Fraunces',serif;font-weight:600;font-size:15px;color:var(--ink-60);}
+  .who h1{font-family:'Fraunces',serif;font-weight:600;font-size:52px;line-height:1;letter-spacing:-0.02em;margin:6px 0 6px;font-variation-settings:'opsz' 110;}
+  .who .email{font-size:13px;color:var(--ink-60);font-variant-numeric:tabular-nums;}
+  .who .arch{margin-top:16px;font-family:'Fraunces',serif;font-style:italic;font-size:17px;color:var(--ink);max-width:34ch;}
+  .who .arch b{color:var(--accent);font-style:normal;font-weight:600;}
+  .aq-drop{border-left:1px solid var(--hairline);padding-left:44px;display:flex;align-items:flex-start;gap:16px;}
+  .aq-drop .big{font-family:'Fraunces',serif;font-weight:600;font-size:120px;line-height:.9;letter-spacing:-0.04em;font-variant-numeric:tabular-nums;font-variation-settings:'opsz' 144;}
+  .aq-drop .aside{padding-top:16px;}
+  .aq-drop .of{font-family:'Fraunces',serif;font-style:italic;font-size:17px;color:var(--ink-60);}
+  .aq-drop .tier{margin-top:10px;font-family:'Fraunces',serif;font-weight:600;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink);display:flex;align-items:center;gap:7px;}
+  .aq-drop .tier::before{content:'';width:7px;height:7px;border-radius:50%;background:currentColor;}
+  .aq-drop .annot{margin-top:8px;font-family:'Fraunces',serif;font-style:italic;font-size:15px;color:var(--gain);border-bottom:1px solid var(--gain);padding-bottom:2px;display:inline-block;}
+
+  /* section */
+  .sec{padding:8px 72px;}
+  .sec-title{display:flex;align-items:baseline;justify-content:space-between;margin:26px 0 14px;}
+  .sec-title h2{font-family:'Fraunces',serif;font-weight:600;font-size:22px;font-variation-settings:'opsz' 60;}
+  .sec-title .note{font-size:12px;color:var(--ink-60);}
+
+  /* level over time — ruled bars */
+  .levels{display:grid;grid-template-columns:repeat(3,140px);gap:56px;align-items:end;height:150px;border-bottom:2px solid var(--ink);padding-bottom:0;}
+  .lvcol{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;}
+  .lvval{font-family:'Fraunces',serif;font-weight:600;font-size:18px;margin-bottom:8px;font-variant-numeric:tabular-nums;}
+  .lvbar{width:100%;}
+  .lv-old{background:var(--parch);}
+  .lv-cur{background:var(--ink);}
+  .lvlabels{display:grid;grid-template-columns:repeat(3,140px);gap:56px;padding-top:10px;}
+  .lvlabels div{text-align:center;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-60);font-weight:600;}
+
+  /* pillars — 4 ruled columns */
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);}
+  .pillar{padding:0 26px;border-right:1px solid var(--hairline);}
+  .pillar:first-child{padding-left:0;} .pillar:last-child{border-right:0;padding-right:0;}
+  .pillar .ptop{display:flex;align-items:baseline;justify-content:space-between;border-top:2px solid var(--ink);padding-top:12px;}
+  .pillar .pn{font-family:'Fraunces',serif;font-weight:600;font-size:16px;}
+  .pillar .ps{font-family:'Fraunces',serif;font-weight:600;font-size:18px;font-variant-numeric:tabular-nums;}
+  .pillar .ps small{font-size:12px;color:var(--ink-60);font-weight:500;}
+  .track{height:4px;background:var(--paper-2);margin-top:12px;}
+  .fill{height:4px;background:var(--accent);}
+  .axes{margin-top:14px;}
+  .axis{display:flex;justify-content:space-between;font-size:12.5px;color:var(--ink-60);padding:6px 0;border-bottom:1px solid var(--hairline);}
+  .axis:last-child{border-bottom:0;}
+  .axis .av{font-variant-numeric:tabular-nums;color:var(--ink);}
+
+  /* scorecard — 3 ruled columns */
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);}
+  .scard{padding:0 32px;border-right:1px solid var(--hairline);}
+  .scard:first-child{padding-left:0;} .scard:last-child{border-right:0;padding-right:0;}
+  .scard .stop{border-top:2px solid var(--ink);padding-top:12px;}
+  .scard .val{font-family:'Fraunces',serif;font-weight:600;font-size:38px;line-height:1;font-variant-numeric:tabular-nums;}
+  .scard .val small{font-size:17px;color:var(--ink-60);font-weight:500;}
+  .scard .gloss{font-size:12.5px;color:var(--ink-60);margin:8px 0 14px;min-height:34px;}
+
+  /* explore grid */
+  .grid-explore{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--hairline);border-left:1px solid var(--hairline);}
+  .metric{padding:16px 18px;border-right:1px solid var(--hairline);border-bottom:1px solid var(--hairline);}
+  .metric .ml{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-60);font-weight:600;margin-bottom:8px;}
+  .metric .mv{font-family:'Fraunces',serif;font-weight:600;font-size:26px;font-variant-numeric:tabular-nums;}
+  .metric .mv small{font-size:13px;color:var(--ink-60);font-weight:500;}
+
+  /* usage */
+  .usage{display:grid;grid-template-columns:1fr 1fr;gap:56px;}
+  .u3{display:grid;grid-template-columns:repeat(3,1fr);border-top:2px solid var(--ink);}
+  .u3 .ucell{padding:14px 0;}
+  .u3 .ul{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-60);font-weight:600;}
+  .u3 .uv{font-family:'Fraunces',serif;font-weight:600;font-size:32px;font-variant-numeric:tabular-nums;margin-top:6px;}
+  .mix .ul{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-60);font-weight:600;border-top:2px solid var(--ink);padding-top:12px;}
+  .mixbar{display:flex;height:14px;margin:12px 0 14px;}
+  .mixbar span + span{border-left:2px solid var(--paper);}
+  .mixleg{font-size:13px;}
+  .mixleg .li{display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--hairline);}
+  .mixleg .li:last-child{border-bottom:0;}
+  .mixleg .k{width:13px;height:13px;flex:none;}
+  .mixleg .sh{margin-left:auto;color:var(--ink-60);font-variant-numeric:tabular-nums;}
+
+  /* coach */
+  .coach{border-top:2px solid var(--accent);padding:16px 0 4px;}
+  .coach .ch{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+  .coach .ch .lbl{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);font-weight:600;}
+  .coach .ch .badge{font-size:10.5px;color:var(--ink-60);border:1px solid var(--hairline);padding:2px 8px;letter-spacing:.06em;}
+  .coach p{font-size:14.5px;color:var(--ink);line-height:1.65;max-width:70ch;font-family:'Fraunces',serif;}
+  .coach p b{color:var(--accent);font-weight:600;}
+
+  .colophon{padding:18px 72px 40px;border-top:1px solid var(--hairline);display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-60);letter-spacing:.04em;margin-top:26px;}
+</style>
+</head>
+<body>
+<div class="sheet"><div class="screen">
+
+  <div class="topnav">
+    <a class="back" href="#">← The people</a>
+    <div class="monthnav">
+      <a href="#">‹</a>
+      <span class="cur">2026-06</span>
+      <span class="off">›</span>
+    </div>
+  </div>
+  <div class="pad"><hr class="rule-heavy"></div>
+
+  <!-- HEADER DROP-STAT -->
+  <div class="head">
+    <div class="who">
+      <div class="logo">gnomon · the AQ report</div>
+      <h1>Grace Hopper</h1>
+      <div class="email">grace@example.com</div>
+      <div class="arch"><b>Blueprint, then bulldozer</b> — “Plan wide, then grind narrow.”</div>
+    </div>
+    <div class="aq-drop">
+      <span class="big num">81</span>
+      <span class="aside">
+        <div class="of">/ 100</div>
+        <div class="tier">Advanced</div>
+        <div class="annot">↗ +7 pts vs May</div>
+      </span>
+    </div>
+  </div>
+
+  <!-- LEVEL OVER TIME -->
+  <div class="sec">
+    <div class="sec-title"><h2>Level over time</h2><span class="note num">3 windows</span></div>
+    <div class="levels">
+      <div class="lvcol"><span class="lvval">70</span><div class="lvbar lv-old" style="height:56%"></div></div>
+      <div class="lvcol"><span class="lvval">74</span><div class="lvbar lv-old" style="height:64%"></div></div>
+      <div class="lvcol"><span class="lvval">81</span><div class="lvbar lv-cur" style="height:78%"></div></div>
+    </div>
+    <div class="lvlabels"><div>2026-04</div><div>2026-05</div><div>2026-06</div></div>
+  </div>
+
+  <!-- PILLARS -->
+  <div class="sec">
+    <div class="sec-title"><h2>How you operate agents</h2><span class="note">four pillars</span></div>
+    <div class="grid4">
+      <div class="pillar">
+        <div class="ptop"><span class="pn">Breadth</span><span class="ps">24<small>/30</small></span></div>
+        <div class="track"><div class="fill" style="width:80%"></div></div>
+        <div class="axes">
+          <div class="axis"><span>Tool range</span><span class="av">8.2</span></div>
+          <div class="axis"><span>Skill use</span><span class="av">7.9</span></div>
+          <div class="axis"><span>MCP reach</span><span class="av">7.6</span></div>
+        </div>
+      </div>
+      <div class="pillar">
+        <div class="ptop"><span class="pn">Craft</span><span class="ps">29<small>/35</small></span></div>
+        <div class="track"><div class="fill" style="width:83%"></div></div>
+        <div class="axes">
+          <div class="axis"><span>Verification</span><span class="av">8.6</span></div>
+          <div class="axis"><span>Error recovery</span><span class="av">9.1</span></div>
+          <div class="axis"><span>Iteration</span><span class="av">7.4</span></div>
+        </div>
+      </div>
+      <div class="pillar">
+        <div class="ptop"><span class="pn">Efficiency</span><span class="ps">16<small>/20</small></span></div>
+        <div class="track"><div class="fill" style="width:80%"></div></div>
+        <div class="axes">
+          <div class="axis"><span>Actions/prompt</span><span class="av">7.8</span></div>
+          <div class="axis"><span>Fanout</span><span class="av">8.3</span></div>
+        </div>
+      </div>
+      <div class="pillar">
+        <div class="ptop"><span class="pn">Savvy</span><span class="ps">12<small>/15</small></span></div>
+        <div class="track"><div class="fill" style="width:80%"></div></div>
+        <div class="axes">
+          <div class="axis"><span>Planning</span><span class="av">8.0</span></div>
+          <div class="axis"><span>Compounding</span><span class="av">7.7</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCORECARD -->
+  <div class="sec">
+    <div class="sec-title"><h2>Scorecard</h2></div>
+    <div class="grid3">
+      <div class="scard">
+        <div class="stop"><div class="eyebrow">Execution</div>
+          <div class="val" style="margin-top:8px">8.5<small>/10</small></div>
+          <div class="gloss">How much you ship, how fast</div>
+          <svg width="100%" height="34" viewBox="0 0 200 34" preserveAspectRatio="none"><polyline points="0,26 66,22 133,17 200,11" fill="none" stroke="#B4451F" stroke-width="1.6"/></svg>
+        </div>
+      </div>
+      <div class="scard">
+        <div class="stop"><div class="eyebrow">Planning</div>
+          <div class="val" style="margin-top:8px">9.2<small>/10</small></div>
+          <div class="gloss">Think before you build</div>
+          <svg width="100%" height="34" viewBox="0 0 200 34" preserveAspectRatio="none"><polyline points="0,20 66,15 133,13 200,6" fill="none" stroke="#B4451F" stroke-width="1.6"/></svg>
+        </div>
+      </div>
+      <div class="scard">
+        <div class="stop"><div class="eyebrow">Engineering</div>
+          <div class="val" style="margin-top:8px">7.9<small>/10</small></div>
+          <div class="gloss">How clean your work is</div>
+          <svg width="100%" height="34" viewBox="0 0 200 34" preserveAspectRatio="none"><polyline points="0,17 66,19 133,14 200,13" fill="none" stroke="#6E655A" stroke-width="1.6"/></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EXPLORE -->
+  <div class="sec">
+    <div class="sec-title"><h2>Explore</h2></div>
+    <div class="grid-explore">
+      <div class="metric"><div class="ml">Planning ratio</div><div class="mv">82<small>%</small></div></div>
+      <div class="metric"><div class="ml">Error recovery</div><div class="mv">98<small>%</small></div></div>
+      <div class="metric"><div class="ml">Error rate</div><div class="mv">2.6<small>/100</small></div></div>
+      <div class="metric"><div class="ml">Iter depth</div><div class="mv">2.3<small>×</small></div></div>
+      <div class="metric"><div class="ml">Git churn</div><div class="mv">8.2<small>M lines</small></div></div>
+      <div class="metric"><div class="ml">Fanout median</div><div class="mv">3.5<small> tasks</small></div></div>
+      <div class="metric"><div class="ml">Compounding writes</div><div class="mv">91</div></div>
+      <div class="metric"><div class="ml">Active days</div><div class="mv">14</div></div>
+    </div>
+  </div>
+
+  <!-- USAGE -->
+  <div class="sec">
+    <div class="sec-title"><h2>Usage</h2></div>
+    <div class="usage">
+      <div class="u3">
+        <div class="ucell"><div class="ul">Sessions</div><div class="uv">157</div></div>
+        <div class="ucell"><div class="ul">Prompts</div><div class="uv num">1,077</div></div>
+        <div class="ucell"><div class="ul">Actions / prompt</div><div class="uv">14</div></div>
+      </div>
+      <div class="mix">
+        <div class="ul">Model mix</div>
+        <div class="mixbar">
+          <span style="width:80%;background:#262016"></span>
+          <span style="width:14%;background:#B4451F"></span>
+          <span style="width:6%;background:#C9B99A"></span>
+        </div>
+        <div class="mixleg">
+          <div class="li"><span class="k" style="background:#262016"></span>Opus 4.8<span class="sh">80%</span></div>
+          <div class="li"><span class="k" style="background:#B4451F"></span>Fable 5<span class="sh">14%</span></div>
+          <div class="li"><span class="k" style="background:#C9B99A"></span>Haiku 4.5<span class="sh">6%</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COACH -->
+  <div class="sec" style="margin-top:12px">
+    <div class="coach">
+      <div class="ch"><span class="lbl">AI coach</span><span class="badge">optional · LLM_API_KEY</span></div>
+      <p>Your strongest area is <b>Craft</b> — error recovery at 9.1 shows you rarely leave a broken state behind. The highest-leverage move is iteration depth: you re-touch a handful of files 15×+, so tightening your plan-before-edit loop would convert raw churn into shipped work faster.</p>
+    </div>
+  </div>
+
+  <div class="colophon">
+    <span>gnomon · the AQ report · self-hosted</span>
+    <span class="num">Window 2026-06 · Grace Hopper</span>
+  </div>
+
+</div></div>
+</body>
+</html>
