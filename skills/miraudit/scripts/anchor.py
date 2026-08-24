@@ -23,6 +23,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -170,11 +171,18 @@ def main(argv=None):
     # --project pointed at a v17 copy. A console script is a FILE, so sys.path starts at its
     # own directory and the caller's location cannot shadow the package. cwd=copy is belt and
     # braces against anyone restoring the `-m` form.
+    # The only large script in this skill with zero internal timing before this. Two saved
+    # cold runs measured the orchestrating session at 767s and 1163s total, and run_cost.wall
+    # (new-run.py, mtimes of the output directory) only covers 578s and 933s of that -- the
+    # gap, ~190-230s both times, is this exact shell-out, and nothing recorded it. monotonic()
+    # because it cannot go backwards under a clock adjustment, unlike time.time().
+    pipeline_started = time.monotonic()
     rc = subprocess.run(
         ["uv", "run", "--project", copy, "xl-ai-insights", "--local", "--console",
          "--no-open", f"--since={args.since}", f"--until={args.until}",
          f"--output-dir={out}", *dirflag], cwd=copy, check=False,
         env=dict(os.environ, PYTHONUNBUFFERED="1")).returncode
+    pipeline_seconds = round(time.monotonic() - pipeline_started, 1)
     if rc != 0:
         print(f"\nerror: the scoring tool exited {rc}.", file=sys.stderr)
         return 1
@@ -229,7 +237,13 @@ def main(argv=None):
                    "ok": True if args.published else None,
                    "contract_probe": (f"{probe_behaviours} behaviours, "
                                       f"{probe_predicates} predicates") if expect else None,
-                   "window": {"since": args.since, "until": args.until}}, fp, indent=2)
+                   "window": {"since": args.since, "until": args.until},
+                   # Wall-clock seconds around the `uv run ... xl-ai-insights` call above,
+                   # and only that call -- not the pin check, the probe or fingerprint.py,
+                   # which are separate, cheap concerns. new-run.py reads this key to fill
+                   # run_cost.phases["0_anchor"]; a payload built from an older anchor.json
+                   # (before this key existed) reads it back as None, not a fabricated 0.
+                   "pipeline_seconds": pipeline_seconds}, fp, indent=2)
 
     print()
     # Read, unlike before. pin-consistency's return code is read at line 96 and this one was
@@ -315,9 +329,8 @@ def gate(stats_path, published, expect):
     # lines of guidance -- and a run piping this through `tail` lost the two numbers entirely,
     # recoverable only from report/anchor.json by somebody who knew that file existed.
     print("\n" + "=" * 72)
-    print(f"  PHASE 0 RESULT   AQ {find_key(load_stats(stats), 'aq_0_100')}   "
-          f"contract {expect or contract or '?'}   ref {measured or ref or '?'}")
-    print(f"  payload          {os.path.join(os.path.dirname(stats), 'anchor.json')}")
+    print(f"  PHASE 0 RESULT   AQ {aq}   contract {expect or contract or '?'}")
+    print(f"  payload          {os.path.join(os.path.dirname(stats_path), 'anchor.json')}")
     print("=" * 72)
 
     return 0

@@ -8,15 +8,32 @@ a same-length edit must be caught, and a field the renderer does not read must N
 hash of the source file passes the first and fails the second.
 """
 import contextlib
+import importlib.util
 import io
 import json
 import os
+import shutil
+import subprocess
+import sys
 import harness
 
 NEEDS = ()
 
 rr = harness.load("render-report.py")
 gate = harness.load("emit-gate.py")
+
+
+def _load_path(path, name):
+    """Like harness.load(), but for a file that is not sitting in scripts/ -- used to run the
+    pre-patch-then-gate render-report.py fetched from HEAD, beside a throwaway copy of it."""
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _repo_root():
+    return os.path.dirname(os.path.dirname(harness.SKILL))
 
 
 def _pair(root, doc, rendered=None):
@@ -184,3 +201,308 @@ def check_files_and_lines_render_outside_the_fingerprint(t):
     where_size = text.find("outside the fingerprint")
     t.equal(where_sources != -1 and where_size > where_sources, True,
             "and it comes AFTER the fingerprint lines, never before them")
+
+
+# ---- patch-then-gate: reconciling run_cost from run-checks.py/run-arms.py --emit files ----
+# render-report.py used to gate a file it never wrote and never read `run_cost` back in --
+# so nothing gated ever inspected what a later patch would add. These prove the reversal: the
+# patched value reaches disk only through the SAME gate as everything else, a genuine
+# violation elsewhere in the payload still refuses (and leaves `src` provably untouched), and
+# --check's contract of zero side effects survives the reversal unchanged.
+
+
+def _write_checks_emit(run_dir, battery_seconds, adhoc_count):
+    checks_dir = os.path.join(run_dir, "checks")
+    os.makedirs(checks_dir, exist_ok=True)
+    with open(os.path.join(checks_dir, "run-checks-emit.json"), "w") as fh:
+        json.dump({"battery": {"count": 3, "seconds": battery_seconds},
+                   "adhoc": {"count": adhoc_count, "seconds": 0}}, fh)
+
+
+def check_a_stale_run_cost_is_patched_from_the_emit_file_on_disk_and_in_check_mode(t):
+    with harness.tmpdir() as d:
+        doc = harness.payload(findings=[harness.finding()],
+                              run_cost={"checks": {"unit": "seconds", "value": 999.0}})
+        src, dst = _pair(d, doc)
+        _write_checks_emit(d, battery_seconds=42.5, adhoc_count=2)
+
+        code, _out = _main(["render-report.py", src, dst])
+        t.equal(code, 0, "a clean payload with a fresh --emit file still renders")
+
+        with open(src) as fh:
+            on_disk = json.load(fh)
+        t.equal(on_disk["run_cost"]["checks"], {"unit": "seconds", "value": 42.5},
+                "the stale value on disk is replaced by the --emit file's, not merged or kept")
+        t.equal(on_disk["run_cost"]["adhoc_checks"], {"unit": "count", "value": 2},
+                "adhoc_checks is filled the same pass, from the same file's adhoc.count")
+
+        check_code, _check_out = _main(["render-report.py", "--check", src, dst])
+        t.equal(check_code, 0,
+                "and --check on the now-patched pair agrees the .md still matches its JSON")
+
+
+def check_no_emit_files_leaves_checks_arms_adhoc_untouched_but_still_adds_gate_retries(t):
+    # `_patch_run_cost` itself is still a true no-op here: absent --emit output, it must not
+    # add checks/arms/adhoc_checks that were not there. gate_retries is a SEPARATE mechanism
+    # (see check_gate_retries_is_zero_on_a_first_try_pass below) and it always fires on a real
+    # invocation, which is why `run_cost` as a whole is no longer absent the way it used to be
+    # before gate_retries existed -- that was this check's old assertion, and it is exactly
+    # the behaviour this feature was built to change.
+    with harness.tmpdir() as d:
+        doc = harness.payload(findings=[harness.finding()])
+        t.equal("run_cost" in doc, False, "vacuity guard: this fixture starts without run_cost")
+        src, dst = _pair(d, doc)
+        code, _out = _main(["render-report.py", src, dst])
+        t.equal(code, 0, "CONTROL: the payload still renders")
+        with open(src) as fh:
+            on_disk = json.load(fh)
+        t.equal(set(on_disk.get("run_cost", {})), {"gate_retries"},
+                "no --emit files next to the run means checks/arms/adhoc_checks/wall/phases "
+                "are never added, and the only key present is the one gate_retries itself "
+                "always writes")
+
+
+def check_a_genuine_gate_violation_is_still_refused_with_a_valid_emit_file_present(t):
+    with harness.tmpdir() as d:
+        doc = harness.payload(findings=[harness.finding()])
+        doc["tool"]["ref"] = "deadbeef0"                       # will not match the real pin
+        t.equal(bool(gate.check(doc, doc_path=None, flags_dir=d)), True,
+                "CONTROL: this tool.ref fails the gate on its own, before any run_cost patch")
+        src, dst = _pair(d, doc)
+        _write_checks_emit(d, battery_seconds=12.3, adhoc_count=0)
+        before = open(src, "rb").read()
+        dst_before = open(dst, "rb").read()
+
+        code, out = _main(["render-report.py", src, dst])
+        t.equal(code, 1,
+                "a genuine gate violation is still refused with a valid --emit file present")
+        t.contains(out, "the gate refused this file", "and says so the way it always did")
+
+        after = open(src, "rb").read()
+        t.equal(after, before,
+                "src is byte-for-byte unmutated by the failed attempt -- the patch never "
+                "reaches src unless the gate, run on the patched content, agrees")
+        t.equal(os.path.exists(src + ".partial"), False,
+                "and the temp file the patch was gated through does not survive a refusal")
+        t.equal(open(dst, "rb").read(), dst_before,
+                "a refused run leaves whatever report was already there untouched")
+
+
+def check_the_gate_target_is_the_patched_content_not_the_stale_original(t):
+    """The point of gating AFTER the patch: a payload whose ONLY violation was in run_cost's
+    own shape (the bare-number form emit-gate.py now refuses) must pass once --emit files
+    replace it with the valid {"unit", "value"} shape -- which only happens if the subprocess
+    is actually gating the patched temp file and not the stale `src`."""
+    with harness.tmpdir() as d:
+        doc = harness.payload(findings=[harness.finding()], run_cost={"checks": 13})
+        t.equal(bool(gate.check(doc, doc_path=None, flags_dir=d)), True,
+                "CONTROL: the bare-number run_cost.checks fails the gate by itself")
+        src, dst = _pair(d, doc)
+        _write_checks_emit(d, battery_seconds=7.0, adhoc_count=0)
+
+        code, _out = _main(["render-report.py", src, dst])
+        t.equal(code, 0,
+                "the patch replaces the violating field before gating, so this now passes -- "
+                "proof the gate ran against the patched content, not the stale original")
+        with open(src) as fh:
+            on_disk = json.load(fh)
+        t.equal(on_disk["run_cost"]["checks"], {"unit": "seconds", "value": 7.0},
+                "and the promoted src carries the patched value")
+
+
+def check_check_mode_does_not_patch_even_with_an_emit_file_present(t):
+    with harness.tmpdir() as d:
+        doc = harness.payload(findings=[harness.finding()],
+                              run_cost={"checks": {"unit": "seconds", "value": 999.0}})
+        src, dst = _pair(d, doc)
+        _write_checks_emit(d, battery_seconds=42.5, adhoc_count=2)
+        before = open(src, "rb").read()
+
+        code, _out = _main(["render-report.py", "--check", src, dst])
+
+        after = open(src, "rb").read()
+        t.equal(before, after,
+                "--check leaves src untouched even though a valid --emit file sits right "
+                "there -- its contract is comparing the report to its source, not patching it")
+        with open(src) as fh:
+            on_disk = json.load(fh)
+        t.equal(on_disk["run_cost"]["checks"], {"unit": "seconds", "value": 999.0},
+                "the stale value survives --check, because --check never reads --emit files")
+        t.equal(code, 0,
+                "and it still answers correctly: the .md was rendered from the stale doc, "
+                "which is exactly what is still on disk")
+
+
+def check_check_mode_is_unaffected_by_the_patch_then_gate_reversal(t):
+    """Runs the PRE-reversal render-report.py, fetched from HEAD, and the current one against
+    the same fixture -- proof by execution, not by reading the checking branch and asserting
+    it looks untouched. Skips gracefully (a note, not a failure) if git is unavailable, which
+    it is not expected to be here but a replay in this tier must never hard-fail on tooling
+    outside the skill.
+    """
+    with harness.tmpdir() as d:
+        proc = subprocess.run(
+            ["git", "show", "HEAD:skills/miraudit/scripts/render-report.py"],
+            cwd=_repo_root(), capture_output=True, text=True, timeout=20)
+        if proc.returncode != 0 or not proc.stdout.strip():
+            t.note("git show HEAD:...render-report.py failed; skipping the before/after "
+                   "comparison rather than failing on missing tooling")
+            return
+        original_path = os.path.join(d, "render-report-original.py")
+        with open(original_path, "w") as fh:
+            fh.write(proc.stdout)
+        shutil.copy2(os.path.join(harness.SCRIPTS, "emit-gate.py"),
+                    os.path.join(d, "emit-gate.py"))
+        original = _load_path(original_path, "miraudit_rr_original")
+
+        run_dir = os.path.join(d, "run")
+        os.makedirs(run_dir, exist_ok=True)
+        doc = harness.payload(findings=[harness.finding()])
+        src = os.path.join(run_dir, "miraudit-probe.json")
+        dst = os.path.join(run_dir, "miraudit-probe.md")
+        with open(src, "w") as fh:
+            json.dump(doc, fh, indent=2)
+        with open(dst, "w") as fh:
+            fh.write(rr.render(doc))
+        _write_checks_emit(run_dir, battery_seconds=55.0, adhoc_count=1)
+
+        def run_check(module):
+            buf = io.StringIO()
+            with harness.quiet():
+                with contextlib.redirect_stdout(buf):
+                    code = module.main(["render-report.py", "--check", src, dst])
+            return code, buf.getvalue()
+
+        before_code, before_text = run_check(original)
+        mid_bytes = open(src, "rb").read()
+        after_code, after_text = run_check(rr)
+        after_bytes = open(src, "rb").read()
+
+        t.equal(before_code, after_code,
+                "--check returns the same code before and after the reversal")
+        t.equal(mid_bytes, after_bytes,
+                "and src is untouched by --check either way, even with a valid --emit file "
+                "sitting beside it -- the reversal did not teach --check to patch anything")
+
+
+# ---- run_cost.gate_retries: how many times the REAL submission gate failed for THIS run ----
+# The only place a real submission attempt happens is the `gate = subprocess.run(...)` call
+# inside main() itself, so the log has to live here rather than inside emit-gate.py -- a
+# standalone diagnostic run of that file (confirmed in a saved transcript, invoked twice on
+# purpose from two working directories to compare behaviour) must never be mistaken for one.
+
+
+def check_gate_retries_is_zero_on_a_first_try_pass(t):
+    """CONTROL: zero is a real measurement (first-try success), not the same thing as the
+    field being absent."""
+    with harness.tmpdir() as d:
+        doc = harness.payload(findings=[harness.finding()])
+        src, dst = _pair(d, doc)
+        code, _out = _main(["render-report.py", src, dst])
+        t.equal(code, 0, "CONTROL: this payload passes the gate on the first try")
+        with open(src) as fh:
+            on_disk = json.load(fh)
+        t.equal(on_disk["run_cost"]["gate_retries"], {"unit": "count", "value": 0},
+                "no prior fails on record, patched in before this attempt's own outcome was "
+                "known")
+
+
+def check_gate_retries_persists_across_invocations_after_a_real_failure(t):
+    """Proves the count is read from the log BEFORE the attempt's own result, by forcing a
+    genuine gate failure first and then a second, successful invocation against the SAME src
+    path -- the second attempt's gate_retries has to already reflect the first attempt's
+    failure, which only the log (not this attempt's own outcome) can supply."""
+    with harness.tmpdir() as d:
+        src = os.path.join(d, "run.json")
+        dst = os.path.join(d, "run.md")
+        with open(src, "w") as fh:
+            json.dump(harness.skeleton(), fh, indent=2)          # every bucket empty: fails
+        code1, _out1 = _main(["render-report.py", src, dst])
+        t.equal(code1, 1, "CONTROL: the first attempt genuinely fails the gate")
+
+        good = harness.payload(findings=[harness.finding()])
+        with open(src, "w") as fh:
+            json.dump(good, fh, indent=2)
+        code2, _out2 = _main(["render-report.py", src, dst])
+        t.equal(code2, 0, "the second attempt, against the same src path, passes")
+
+        with open(src) as fh:
+            on_disk = json.load(fh)
+        t.equal(on_disk["run_cost"]["gate_retries"], {"unit": "count", "value": 1},
+                "the one real failure already on record, read before this attempt's own pass")
+
+
+def check_standalone_emit_gate_runs_do_not_touch_the_log(t):
+    """The single most important correctness property here: emit-gate.py gets invoked
+    directly all the time for diagnosis, and none of that is a submission. Only main()'s own
+    subprocess.run() call may write this log."""
+    with harness.tmpdir() as d:
+        doc = harness.payload(findings=[harness.finding()])
+        src, dst = _pair(d, doc)
+        log_path = rr._gate_log_path(src)
+        t.equal(os.path.exists(log_path), False,
+                "no log yet -- nothing has gone through render-report.py")
+
+        for _ in range(3):
+            subprocess.run(
+                [sys.executable, os.path.join(harness.SCRIPTS, "emit-gate.py"), src],
+                check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        t.equal(os.path.exists(log_path), False,
+                "three standalone emit-gate.py runs against the same file wrote no log at all")
+
+        code, _out = _main(["render-report.py", src, dst])
+        t.equal(code, 0, "the real submission through render-report.py still passes")
+        with open(src) as fh:
+            on_disk = json.load(fh)
+        t.equal(on_disk["run_cost"]["gate_retries"], {"unit": "count", "value": 0},
+                "unaffected by the three standalone diagnostic runs that preceded it")
+
+
+def check_check_mode_never_touches_the_gate_log(t):
+    """--check's contract is zero side effects, proven by bytes and mtime rather than assumed
+    -- both before any log exists, and again once a real run has created one."""
+    with harness.tmpdir() as d:
+        doc = harness.payload(findings=[harness.finding()])
+        src, dst = _pair(d, doc)
+        log_path = rr._gate_log_path(src)
+        t.equal(os.path.exists(log_path), False, "CONTROL: no log before any --check call")
+
+        code, _out = _main(["render-report.py", "--check", src, dst])
+        t.equal(code, 0, "CONTROL: the check itself succeeds")
+        t.equal(os.path.exists(log_path), False,
+                "--check never creates the gate log -- it has no submission to record")
+
+        _main(["render-report.py", src, dst])
+        t.equal(os.path.exists(log_path), True, "a real run does create the log")
+        before_bytes = open(log_path, "rb").read()
+        before_mtime = os.path.getmtime(log_path)
+
+        _main(["render-report.py", "--check", src, dst])
+        t.equal(open(log_path, "rb").read(), before_bytes,
+                "and --check does not modify an existing log's bytes")
+        t.equal(os.path.getmtime(log_path), before_mtime,
+                "or its mtime")
+
+        with open(src) as fh:
+            on_disk = json.load(fh)
+        t.equal(on_disk["run_cost"]["gate_retries"], {"unit": "count", "value": 0},
+                "and --check never re-patches gate_retries into src")
+
+
+def check_a_corrupted_gate_log_degrades_to_null_not_a_crash(t):
+    """A hand-truncated or corrupted log is a real edge case -- a crash mid-append, a person
+    editing the file by hand -- and it must not read as zero (a false first-try-pass claim)
+    and must not take render-report.py down with it."""
+    with harness.tmpdir() as d:
+        doc = harness.payload(findings=[harness.finding()])
+        src, dst = _pair(d, doc)
+        log_path = rr._gate_log_path(src)
+        with open(log_path, "w") as fh:
+            fh.write("not json, not even close\n{garbage")
+
+        code, _out = _main(["render-report.py", src, dst])
+        t.equal(code, 0, "a corrupted log does not crash the render")
+        with open(src) as fh:
+            on_disk = json.load(fh)
+        t.equal(on_disk["run_cost"]["gate_retries"], None,
+                "degrades to null rather than a fabricated 0 or a crash")

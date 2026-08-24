@@ -49,6 +49,12 @@ CORPUS_KEYS = ("tool_calls", "sessions", "window", "sources")
 # a replacement -- `none` is in the vocabulary because a friction entry with no cost is a
 # real and common case, recorded so the next run does not rediscover it.
 COST_UNITS = {"runs", "renders", "minutes", "seconds", "none"}
+
+# `run_cost.checks/arms/adhoc_checks` used to be a bare number, and two saved runs both filled
+# it that way with two different meanings: one wrote 13 (a COUNT of checks run), the next wrote
+# 101.3 (SECONDS of wall clock) -- same field, same schema, un-comparable. Only two units exist
+# because only two mechanisms produce this number: a check count or a stopwatch.
+RUN_COST_UNITS = {"seconds", "count"}
 BUCKETS = ("findings", "not_raised", "reported", "dismissed", "process_friction")
 
 # What the other buckets need beyond an id, hoisted for the same reason NOT_RAISED_KEYS was:
@@ -262,6 +268,80 @@ def check(doc, doc_path=None, flags_dir=None, notes=None):
             fail("corpus", f"the fingerprint is missing {', '.join(missing)}. Phase 0 prints "
                            "all of it before any other number; a payload that drops a field "
                            "reads as a comparable run and is not one.")
+
+    # `run_cost.checks/arms/adhoc_checks/gate_retries`: absent is fine (payloads written
+    # before a field existed carry none), and null is fine (not measured -- no A/B ran, so
+    # `arms` is null on most runs; a corrupted gate-attempt log degrades `gate_retries` to
+    # null rather than a fabricated 0, see render-report.py's `_prior_gate_fails`). What is not
+    # fine is the bare number the field used to be, because that shape is exactly what let a
+    # count and a seconds figure collide unlabeled in the same key -- `gate_retries` is the
+    # same shape and the same closed vocabulary, so it rides the same rule rather than a copy.
+    run_cost = doc.get("run_cost")
+    if isinstance(run_cost, dict):
+        for key in ("checks", "arms", "adhoc_checks", "gate_retries"):
+            if key not in run_cost:
+                continue
+            val = run_cost[key]
+            if val is None:
+                continue
+            w = f"run_cost.{key}"
+            if not isinstance(val, dict):
+                fail(w, "is not an object. It is a bare number, which is the ambiguous form "
+                        "that let two saved runs write the same field with two different "
+                        f"meanings: {{\"unit\": one of {sorted(RUN_COST_UNITS)}, \"value\": "
+                        "a number}}.")
+                continue
+            if val.get("unit") not in RUN_COST_UNITS:
+                fail(w, f"unit {val.get('unit')!r} is not one of {sorted(RUN_COST_UNITS)}. "
+                        "A unit nobody else emits cannot be compared, which is the only "
+                        "reason this field exists.")
+            if not isinstance(val.get("value"), (int, float)) or isinstance(val.get("value"),
+                                                                             bool):
+                fail(w, "value is not a number.")
+
+    # `run_cost.phases.4_synthesis`: a sign constraint, not a shape one, so it does not ride
+    # the loop above -- that loop is about a value being the wrong TYPE, this is about a
+    # value that IS a number and is still wrong. `4_synthesis` is `wall.seconds - 0_anchor`
+    # (new-run.py's run_cost_phases()), and negative means the artifacts new-run.py could see
+    # spanned LESS time than Phase 0 alone took, which is never legitimate: Phase 0 finishes
+    # before Phases 1-4 even start. A 2026-08-24 cold run shipped `-34.0` all the way into a
+    # rendered report because `wall` was derived from a directory that never saw anchor.py's
+    # own work directory at all (fixed in new-run.py's `_combine_spans`) -- this rule is the
+    # backstop for whatever the next way to get that wrong turns out to be.
+    if isinstance(run_cost, dict):
+        phases = run_cost.get("phases")
+        if isinstance(phases, dict):
+            synthesis = phases.get("4_synthesis")
+            if isinstance(synthesis, (int, float)) and not isinstance(synthesis, bool) \
+                    and synthesis < 0:
+                fail("run_cost.phases.4_synthesis",
+                     f"is {synthesis!r}, a negative duration. Phase 0 (anchor.py's shell-out) "
+                     "finishes before Phases 1-4 start, so the residual covering them can "
+                     "never be less than zero -- a negative number means the span this was "
+                     "subtracted from missed real time, not that synthesis ran backwards.")
+
+    # `run_cost.agent`: filled only by whatever DISPATCHES miraudit as a subagent, never by
+    # scripts/ -- so absence is the normal case and this block does not require the object.
+    # `tool_uses` is the one field agent-cost.py always produces deterministically (a plain
+    # block count, never absent for a file that parsed at all), so it is the one required
+    # when the object is present at all; the rest are read the same mechanical way but are
+    # noisier and stay optional and nullable.
+    agent_cost = (doc.get("run_cost") or {}).get("agent") if isinstance(run_cost, dict) else None
+    if isinstance(agent_cost, dict):
+        w = "run_cost.agent"
+        tu = agent_cost.get("tool_uses")
+        if not isinstance(tu, int) or isinstance(tu, bool) or tu < 0:
+            fail(w, f"tool_uses {tu!r} is not a non-negative integer. This is the one field "
+                    "agent-cost.py always derives from a plain block count, so it is required "
+                    "structurally rather than left optional like the rest of this object.")
+        for key in ("duration_ms", "output_tokens_total", "context_peak"):
+            if key not in agent_cost:
+                continue
+            val = agent_cost[key]
+            if val is None:
+                continue
+            if isinstance(val, bool) or not isinstance(val, (int, float)) or val < 0:
+                fail(f"{w}.{key}", f"{val!r} is not a non-negative number or null.")
 
     # An untouched skeleton has every bucket empty at once, which is not the same as a run
     # that audited and found nothing -- that one fills `dismissed`. Distinguishing them is

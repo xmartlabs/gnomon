@@ -1,7 +1,8 @@
 """Run the arms of an A/B at once instead of one after another.
 
     python3 run-arms.py --checkout <unpatched copy> --arm NAME=<patched copy> \
-        --since --until [--window SINCE..UNTIL] --out-dir <run>/ab-<topic> [--jobs N]
+        --since --until [--window SINCE..UNTIL] --out-dir <run>/ab-<topic> [--jobs N] \
+        [--emit <run>/run-arms-emit.json]
 
 An arm is a full pipeline run over a copy of the scoring tool, and it costs about 85 seconds
 against this corpus. That is where a run's time actually goes: on one full audit the anchor
@@ -25,6 +26,7 @@ give each (arm, window) its own copy to get the rest.
 """
 import collections
 import concurrent.futures
+import json
 import os
 import subprocess
 import sys
@@ -44,6 +46,9 @@ args, WINDOW = parse(__doc__.strip().splitlines()[0], {
                "help": "copies to run at once (default: min(4, cpu count))"},
     "--timeout": {"type": int, "default": 1800, "metavar": "SECONDS",
                   "help": "per-arm wall clock ceiling (default: 1800)"},
+    "--emit": {"metavar": "PATH", "default": None,
+               "help": "write the wall/serial numbers and a per-run breakdown as JSON, for "
+                       "render-report.py to patch run_cost.arms from"},
 })
 
 arms = [("base", args.checkout)]
@@ -130,6 +135,24 @@ for name, since, until, code, secs, has_stats, _out in sorted(results, key=lambd
 serial = sum(r[4] for r in results)
 print(f"\n  wall clock {wall:.1f}s against {serial:.1f}s of pipeline time "
       f"({serial / wall:.1f}x across {len(by_copy)} copies)")
+
+# Written before the possible sys.exit(1) below, and before the "NOT CHECKED" line -- a run
+# with a missing arm still spent the wall time, and render-report.py patches run_cost.arms
+# from `wall` regardless of whether every arm produced a usable stats.json.
+if args.emit:
+    runs = [{"arm": name, "since": since, "until": until, "seconds": round(secs, 3),
+            "exit": code, "has_stats": has_stats}
+           for name, since, until, code, secs, has_stats, _out in results]
+    emit_doc = {
+        "wall": round(wall, 3),
+        "serial": round(serial, 3),
+        "ratio": round(serial / wall, 3) if wall else None,
+        "runs": runs,
+    }
+    with open(os.path.expanduser(args.emit), "w") as fh:
+        json.dump(emit_doc, fh, indent=2)
+        fh.write("\n")
+    print(f"\n  wrote {args.emit}: {len(runs)} arm run(s) for render-report.py")
 
 print("\n  NOT CHECKED: whether the arms differ for the reason you think. This runs them and")
 print("  says which produced a stats.json; comparing the payloads, and confirming the arm")

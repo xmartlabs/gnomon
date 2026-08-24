@@ -76,6 +76,10 @@ is not evidence.
    delivered back to you. Two different mechanisms; neither refutes the other. Nothing in
    this skill dispatches an agent anyway: `allowed-tools` grants Bash and nothing else, and
    the parallelism lives inside the Python.
+   The reverse direction is also real: when something else dispatches THIS skill as a
+   subagent, whoever dispatched it can fill `run_cost.agent` in the payload from the
+   completion notification's `<usage>` block, or by running `scripts/agent-cost.py` against
+   the run's own transcript file if it has access to it -- see `references/output-schema.md`.
 3. **If the base run does not reproduce it, stop.** The method is wrong before any finding.
    Give `scripts/anchor.py` the `--published` and `--expect-contract` values so it stops on
    its own. Omit them and it prints the number and asks you to compare, which is where the
@@ -126,7 +130,12 @@ It builds its list from the same `# miraudit-covers:` grep the manifest uses, so
 cannot be missing from the run while still looking covered, and it names what it skipped for
 want of a flag — a skipped check is not a passed one. Ad-hoc checks go in with `--also`, and
 it exports `MIRAUDIT_SCRIPTS` for them so their import of `_common.py` resolves from a run
-directory that sits nowhere near the skill.
+directory that sits nowhere near the skill. Pass `--emit <run>/checks/run-checks-emit.json`
+(and `run-arms.py --emit <run>/run-arms-emit.json`, when an A/B runs) so Phase 4's
+`render-report.py` can fill `run_cost.checks`/`adhoc_checks`/`arms` itself instead of that
+number never getting filled at all, which is what happened to every saved run before this.
+Iterating on one `--also` check without re-running the whole battery each time takes
+`--only <name>` — see `references/output-schema.md`.
 
 **`verification-reality.py` runs either way, and `--repo` adds its file-level half.** Without
 the flag it does the session-level pass and prints a by-repository table. **Read that table
@@ -216,7 +225,9 @@ two cannot be done out of order or the second done without the first. Do not han
 markdown and do not write your own renderer: two hand-written sources drift, and a report
 that drifted from its evidence is the defect this skill catches. The one that shipped before
 this script existed was invented per run, which meant two people auditing the same tool
-handed its maintainers two documents with nothing in common.
+handed its maintainers two documents with nothing in common. It also derives
+`run_cost.gate_retries` on its own, from a log of real gate attempts it writes beside the
+payload -- nothing to fill in by hand, unlike `run_cost.agent` above.
 
 The gate reads structure and not honesty. It cannot tell a real refutation from a plausible
 sentence, and it says so on every clean run.

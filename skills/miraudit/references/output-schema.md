@@ -31,8 +31,10 @@ anecdote; the same gap in five corpora is a defect in the axis.
   "run_cost": {
     "wall": { "started": "2026-08-10T18:11:02+00:00", "ended": "2026-08-10T18:30:26+00:00",
               "seconds": 1164,
-              "derived_from": "mtimes of the output directory, excluding anchor/.git/__pycache__. NOT a self-report: an agent's own clock has been wrong by 2.3x." },
-    "checks": 66.1, "arms": null, "adhoc_checks": null },
+              "derived_from": "mtimes of the output directory, excluding checkout/anchor/.git/__pycache__. NOT a self-report: an agent's own clock has been wrong by 2.3x." },
+    "checks": { "unit": "seconds", "value": 66.1 }, "arms": null, "adhoc_checks": null,
+    "agent": null, "gate_retries": { "unit": "count", "value": 0 },
+    "phases": { "0_anchor": 214.7, "4_synthesis": 949.3 } },
   "axes": [
     { "name": "Verification", "score": 20.1, "max": 35,
       "declared": { "test_runs_per_call": 0.004168, "target": 0.025 },
@@ -228,6 +230,27 @@ you can ask it what your finished payload missed, and you cannot ask it what the
 are. A cold run that read a list of holes during Phase 0 reported that it anchored the whole
 investigation before a single measurement existed.
 
+One real entry from that registry, so the shape does not have to be reconstructed with
+`python3 -c "import json; ..."` a fourth time (a cold run did this, once per bucket):
+
+```json
+{
+  "id": "Model mix/not-localized/linked_model_routing_state",
+  "anchor": "Model mix",
+  "kind": "not-localized",
+  "term": "linked_model_routing_state",
+  "runs": 13,
+  "first_seen": "2026-08-10",
+  "last_seen": "2026-08-20",
+  "reopens_when": null
+}
+```
+
+`id` is the derived `<axis>/<kind>/<term>` from the rule above, not typed by hand.
+`reopens_when` is `null` until it carries a structured condition, e.g.
+`{"kind": "signal_below_threshold", "signal": "skills_distinct", "threshold": "SKILLS_TOTAL_PER_CALL_TARGET"}`
+for another entry in the same registry, not free text.
+
 **`what_would_close_it`** — the observation that would settle a finding either way, concrete
 enough for the reader to go and get it. Optional here and required by `render-issue.py`,
 because the split is deliberate: this schema governs the audit artifact, where a finding kept
@@ -282,9 +305,11 @@ which cannot be compared between two runs.
 ```json
   "run_cost": {
     "wall":    {"started": "...", "ended": "...", "seconds": 900, "derived_from": "..."},
-    "checks":  null,
+    "checks":  {"unit": "seconds", "value": 66.1},
     "arms":    null,
-    "adhoc_checks": null
+    "adhoc_checks": null,
+    "gate_retries": {"unit": "count", "value": 0},
+    "phases":  {"0_anchor": 214.7, "4_synthesis": 685.3}
   }
 ```
 
@@ -294,21 +319,145 @@ clock came in inflated **2.3x both times** anyone compared it against reality, s
 minutes for runs that took 19.4 and 19.9. `derived_from` says so in the payload so a reader
 does not mistake it for a self-report.
 
-The walk excludes `anchor/`, and that is load-bearing rather than tidy: `anchor/` holds a copy
-of the checkout whose files carry the date `git archive` stamped on them, and one real run's
-raw directory span read **47 hours** because of it. `selfcheck/replay-run-cost.py` builds that
-exact trap and fails without the exclusion.
+Since 2026-08-24 that is not always a single directory. `anchor.py`'s own work directory (the
+one `--stats` points at, and `anchor.json` is read from) can be a completely separate tree
+from `--out` -- exactly how this project's own convention stages a fresh checkout copy apart
+from where a run's artifacts land, and exactly how a dispatched cold run was invoked that day.
+`new-run.py` used to walk only `dirname(--out)`, so anchor.json's mtime (15:04:44) was
+structurally invisible to a span that only ever saw the earliest file in `--out`'s own
+directory (15:07:17, 153 seconds later) -- not excluded by `EXCLUDE_FROM_SPAN`, just never
+walked at all. With `4_synthesis = wall.seconds - 0_anchor` that shipped `-34.0`, a
+structurally impossible negative duration, into a rendered report undetected. `wall` is now
+the union of both roots (`_combine_spans` in `new-run.py`), and `derived_from` says plainly
+which case it is: "mtimes of the output directory" when `--stats` lands beside the payload
+(the common case, and a no-op for every run before this fix), or "mtimes of TWO directories"
+when it does not.
+
+The walk excludes `checkout/` (and `anchor/`, `.git/`, `__pycache__`, see `EXCLUDE_FROM_SPAN`
+in `new-run.py`), and that is load-bearing rather than tidy: `checkout/` is where `anchor.py`
+writes its copy of the audited checkout, and those files carry the date `git archive` stamped
+on them, not the date the run touched them. One real run's raw directory span read **47
+hours** because of it. `selfcheck/replay-run-cost.py` builds that exact trap and fails
+without the exclusion. The exclusion applies inside EACH root when there are two, not just
+the output directory's own.
 
 `null` is the honest answer when there is nothing to span -- a single artifact spans no time,
-and reporting `0` would be a measurement. `checks` and `arms` are filled from the wall-clock
-lines `run-checks.py` and `run-arms.py` already print; report the mechanism's own counters
-beside the money number, never the money number alone.
+and reporting `0` would be a measurement. `checks`, `arms` and `adhoc_checks` are filled from
+the wall-clock lines `run-checks.py` and `run-arms.py` already print, or from a count of what
+ran, and each carries its unit rather than a bare number: two saved runs wrote this same field
+with two different meanings under it, `13` meaning a **count** of checks in one run and
+`101.3` meaning **seconds** of wall clock in the next. Nothing in the field told them apart.
+The shape is `{"unit": "seconds"|"count", "value": N}`, `emit-gate.py` refuses a bare number
+or an unknown unit, and `null` stays legal for "not measured" (the common case: no A/B ran, so
+`arms` is `null`). Report the mechanism's own counter beside the money number, never the money
+number alone.
+
+**`run_cost.gate_retries`** -- how many times the REAL submission gate already failed for this
+run before it passed, counted from an append-only log `render-report.py` writes beside the
+payload (`<run>.gate-log.jsonl`, one line per invocation) rather than typed by whoever ran it.
+It counts only calls through `render-report.py`'s own `gate = subprocess.run(...)` -- a
+standalone `emit-gate.py` invocation run for diagnosis (a saved transcript shows one run doing
+exactly this, twice, from two different working directories, on purpose, to compare behaviour)
+is not a submission attempt and never touches the log. This is fully automatic: unlike
+`run_cost.agent`, nobody has to fill it in, and a run that never touches `render-report.py`
+carries no `gate_retries` at all.
+
+`0` is a normal and meaningful value -- first-try success, not "nothing to report" -- and is
+written whenever the log has no `fail` entries yet, which is the common case. It is distinct
+from two other states: **absent**, meaning this payload never went through the logging code at
+all (an old payload, or one hand-assembled without `render-report.py`), and **null**, meaning
+the log file exists next to the payload but could not be read cleanly -- a hand-truncated or
+corrupted log degrades to `null` rather than a fabricated `0` or a crash, the same precedent
+`emit-gate.py`'s own `pinned_ref()` sets for an input it cannot resolve.
+
+**`run_cost.phases`** — where `wall` went, split into the one phase that has its own timer
+and everything else. `anchor.py` was the only large script in this skill with zero internal
+timing: two saved cold runs measured the orchestrating session at 767s and 1163s total, while
+`wall` (mtimes of the output directory) only covered 578s and 933s of that. The missing
+190-230s both times was `anchor.py`'s shell-out to the external scoring pipeline, and nothing
+recorded it. `0_anchor` is that shell-out's own `time.monotonic()` span, written into
+`anchor.json` as `pipeline_seconds` and read back from there -- `null`, not `0`, on a run made
+with an `anchor.json` from before this field existed (most saved runs). `4_synthesis` is
+**derived, not measured**: `wall.seconds - 0_anchor`, the residual covering Phases 1-5 (per-
+axis checks through send). There is no artifact that marks a boundary inside that span to
+measure it directly -- `render-report.py` overwrites the same payload file on every synthesis
+pass, so the file's own mtime span between "skeleton created" and "final write" collapses to
+zero by construction, not because synthesis took no time. `4_synthesis` is `null` whenever
+either `wall` or `0_anchor` is `null`, and never a fabricated `0`.
+
+It is meant to never be negative either, and until 2026-08-24 that was only an intent: `wall`
+missing the anchor-work root (see above) made the subtraction go negative in a real payload,
+`-34.0`, and nothing refused it. `wall` unioning both roots closes the cause that produced
+that number, but the residual is still a subtraction against whatever mtimes happen to exist,
+not a value with a hard floor -- so `emit-gate.py` now refuses a negative `4_synthesis`
+outright, as a backstop for whatever the next way to get it wrong turns out to be, rather than
+leaving the guarantee resting on `new-run.py` alone.
+
+Filling `checks`/`adhoc_checks`/`arms` by hand from the printed lines never actually happened
+across the saved runs, so it is automated now instead of documented as a manual step nobody
+took. `run-checks.py --emit <path>` and `run-arms.py --emit <path>` write the same wall/serial
+numbers as JSON, the same handoff shape `axis-terms.py --emit` already uses for
+`axis-coverage.py --terms`. `render-report.py` looks for two fixed paths next to the run
+directory that holds the payload it is rendering:
+
+  - `<run>/checks/run-checks-emit.json` -- point `run-checks.py --emit` here
+  - `<run>/run-arms-emit.json` -- point `run-arms.py --emit` here
+
+and patches `run_cost.checks`, `run_cost.adhoc_checks` and `run_cost.arms` from whichever of
+the two exist, writing the patched payload back to `src` **before** gating it, then gating
+that version, and only rendering the `.md` once the gate agrees. Neither file existing is a
+no-op: `render-report.py` does not touch `run_cost` at all in that case, so a run that never
+called `--emit` renders exactly as it did before this automation existed. `--check` mode does
+none of this patching -- its contract is comparing the report against its source with zero
+side effects, and reading an `--emit` file from disk would be one.
+
+**`run_cost.agent`** — what dispatching THIS RUN as a subagent cost, filled from the
+completion notification the harness writes when it does. **Entirely absent is the normal
+case**: most runs are not dispatched as a subagent, and the field is absent (not a
+null-filled object) then, the same convention `anchor` and `corpus` already use for "nothing
+to say" versus "measured and empty".
+
+```json
+  "run_cost": {
+    "agent": {"tool_uses": 47, "duration_ms": 766887,
+              "output_tokens_total": 28558, "context_peak": 131780}
+  }
+```
+
+Filled **only by whatever dispatches miraudit**, never by anything under `scripts/`: a
+script running inside the corpus-walk pipeline has no access to its own dispatch transcript,
+so `new-run.py`, `render-report.py` and `anchor.py` neither write this field nor assume it
+exists. An orchestrator can copy it straight off the harness's `<usage>` block, or run
+`scripts/agent-cost.py <the subagent's own transcript path>` to derive the same numbers from
+disk instead of hand-copying them off a notification that is not saved anywhere once read.
+
+`tool_uses` and `duration_ms` are the trustworthy fields here, the way `run_cost.wall` above
+is already derived rather than reported because a self-reported clock came in inflated 2.3x
+both times anyone checked it: `tool_uses` is a plain count of `tool_use` blocks and
+`duration_ms` a delta between two transcript timestamps, both near-deterministic
+reconstructions rather than something a model estimates. `output_tokens_total` and
+`context_peak` are read the same mechanical way but are noisier and turn-shape dependent --
+informational, not meant for cross-run comparison. And `context_peak` is deliberately not
+named `subagent_tokens` or "tokens used": checked against two real runs, the harness
+notification's own `subagent_tokens` field (130010 / 160998) turned out to be close to the
+LAST message's input+output+cache_read+cache_creation total, i.e. a final-context snapshot,
+while the real cumulative `output_tokens` summed to 28558 / 47410 over the same two runs.
+Reporting a snapshot as "tokens used" is exactly the kind of mislabeled metric this skill
+exists to catch in other tools' dashboards, so `agent-cost.py` never emits that name.
 
 ## Rendering the markdown
 
-Order: verdict, then what was confirmed, then what was dismissed. The dismissed section is
-not filler — it is the evidence that what survived went through a filter, and it is what
-keeps a reader from re-opening settled ground.
+`render-report.py`'s own order, upstream of the document's: patch `run_cost` from any
+`--emit` files (see above), gate the patched result, and only then render. Gating a payload
+this script never wrote meant nothing gated ever inspected what a later patch would add;
+gating after the patch means whatever ships in `run_cost` was validated by the same gate as
+every other field. The patch is written to a `src + ".partial"` temp file and gated there
+first, so a gate failure -- for any reason, not necessarily one the patch caused -- leaves
+`src` untouched rather than half-applied.
+
+Order within the document: verdict, then what was confirmed, then what was dismissed. The
+dismissed section is not filler — it is the evidence that what survived went through a
+filter, and it is what keeps a reader from re-opening settled ground.
 
 An empty `findings` with a populated `dismissed` renders as a normal, useful report. Say so
 plainly rather than padding it.
