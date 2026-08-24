@@ -16,6 +16,7 @@ implementation is what the rule exists to prevent. What is asserted is that the 
 derivation NAMES a planted orphan and STOPS naming it once the orphan is accounted for.
 """
 import glob
+import json
 import os
 import shutil
 import subprocess
@@ -48,13 +49,20 @@ def _copy_scripts(root):
 
 def _run(scripts, root, checkout, extra=()):
     """Drive the COPY's run-checks.py against an empty corpus."""
+    return _run_into(scripts, root, checkout, os.path.join(root, "out"), extra)
+
+
+def _run_into(scripts, root, checkout, out_dir, extra=()):
+    """Like `_run`, but the caller names --out-dir. Two invocations in one check (a control
+    run and a --only run) need separate directories, or comparing their .out files proves
+    nothing -- the second run's files would just sit beside the first's."""
     empty = os.path.join(root, "empty-corpus")
     os.makedirs(empty, exist_ok=True)
     return subprocess.run(
         [sys.executable, os.path.join(scripts, "run-checks.py"),
          "--checkout", checkout, "--corpus", empty,
          "--since", "2026-07-13", "--until", "2026-08-12",
-         "--out-dir", os.path.join(root, "out"), "--jobs", "8", "--timeout", "30"]
+         "--out-dir", out_dir, "--jobs", "8", "--timeout", "30"]
         + list(extra),
         capture_output=True, text=True, timeout=300)
 
@@ -205,3 +213,98 @@ def check_an_accounted_for_check_stops_being_an_orphan(t):
         proc = _run(scripts, d, ck)
         t.absent(proc.stdout + proc.stderr, ORPHAN,
                  "CONTROL: a script a procedure file calls is not an orphan")
+
+
+def check_emit_writes_a_well_formed_breakdown(t):
+    # The shape follows axis-terms.py --emit: a JSON file a sibling script reads, not a
+    # person comparing two printed lines by eye.
+    with harness.tmpdir() as d, harness.fake_checkout() as ck:
+        scripts = _copy_scripts(d)
+        emit_path = os.path.join(d, "run-checks-emit.json")
+        _run(scripts, d, ck, extra=["--emit", emit_path])
+        t.equal(os.path.exists(emit_path), True, "the --emit file is written")
+        with open(emit_path) as fh:
+            emitted = json.load(fh)
+        for key in ("wall", "serial", "battery", "adhoc", "checks"):
+            t.equal(key in emitted, True, "the emit doc carries %r" % key)
+        t.equal(emitted["adhoc"]["count"], 0, "no --also was given, so nothing is adhoc")
+        t.equal(emitted["battery"]["count"] + emitted["adhoc"]["count"],
+                len(emitted["checks"]), "battery and adhoc partition the checks list")
+        names = {c["name"] for c in emitted["checks"]}
+        out_names = {os.path.splitext(f)[0] + ".py"
+                    for f in os.listdir(os.path.join(d, "out")) if f.endswith(".out")}
+        t.equal(names, out_names,
+                "the breakdown names exactly the checks that actually wrote a .out")
+
+
+def check_emit_splits_battery_from_adhoc_when_both_ran_together(t):
+    # --emit alone, WITHOUT --only, is the case the two checks above never exercise: battery
+    # and ad-hoc checks running side by side in the one pool, and the breakdown having to
+    # tell them apart correctly rather than just reporting an empty adhoc bucket because
+    # nothing ad-hoc was passed at all.
+    with harness.tmpdir() as d, harness.fake_checkout() as ck:
+        scripts = _copy_scripts(d)
+        adhoc = os.path.join(d, "my-adhoc-check.py")
+        with open(adhoc, "w") as fh:
+            fh.write("print('hello from the adhoc check')\n")
+        emit_path = os.path.join(d, "run-checks-emit.json")
+        _run(scripts, d, ck, extra=["--also", adhoc, "--emit", emit_path])
+        with open(emit_path) as fh:
+            emitted = json.load(fh)
+        entry = next(c for c in emitted["checks"] if c["name"] == "my-adhoc-check.py")
+        t.equal(entry["adhoc"], True, "the --also entry is flagged adhoc in the breakdown")
+        t.equal(emitted["adhoc"]["count"], 1, "and counted in the adhoc bucket")
+        battery_names = {c["name"] for c in emitted["checks"] if c["name"] != "my-adhoc-check.py"}
+        t.equal(all(not c["adhoc"] for c in emitted["checks"] if c["name"] in battery_names),
+                True, "while every battery check stays flagged battery, not adhoc")
+        t.equal(emitted["battery"]["count"], len(battery_names),
+                "so battery.count reflects only the non---also checks")
+
+
+def check_only_restricts_execution_with_a_control(t):
+    with harness.tmpdir() as d, harness.fake_checkout() as ck:
+        scripts = _copy_scripts(d)
+        _run_into(scripts, d, ck, os.path.join(d, "out-full"))
+        _run_into(scripts, d, ck, os.path.join(d, "out-only"),
+                 extra=["--only", "unmeasured-surface.py"])
+        full_outs = os.listdir(os.path.join(d, "out-full"))
+        only_outs = os.listdir(os.path.join(d, "out-only"))
+        t.equal(len(full_outs) > 1, True,
+                "CONTROL: a run without --only writes more than one .out file")
+        t.equal(only_outs, ["unmeasured-surface.out"],
+                "--only restricts this run to exactly the named check")
+        t.equal(len(only_outs) < len(full_outs), True,
+                "and it is strictly fewer subprocess calls than the full battery")
+
+
+def check_only_composes_with_also_to_skip_the_battery(t):
+    # The measured waste this exists to fix: one saved run's --also cost ~194s of re-running
+    # twelve checks that had not changed. --only <adhoc basename> is how a second pass avoids
+    # paying that twice.
+    with harness.tmpdir() as d, harness.fake_checkout() as ck:
+        scripts = _copy_scripts(d)
+        adhoc = os.path.join(d, "my-adhoc-check.py")
+        with open(adhoc, "w") as fh:
+            fh.write("print('hello from the adhoc check')\n")
+        out_dir = os.path.join(d, "out-adhoc")
+        proc = _run_into(scripts, d, ck, out_dir,
+                         extra=["--also", adhoc, "--only", "my-adhoc-check.py"])
+        outs = os.listdir(out_dir)
+        t.equal(outs, ["my-adhoc-check.out"],
+                "--also plus --only on its own basename runs JUST the ad-hoc check")
+        t.absent(proc.stdout + proc.stderr, "unmeasured-surface.py",
+                 "and none of the battery's own checks are named as having run")
+
+
+def check_an_unknown_only_name_errors_before_writing_anything(t):
+    # Same shape as the renamed-ALWAYS-entry guard above: a wiring mistake refuses to start
+    # rather than silently running a shorter list than the one asked for.
+    with harness.tmpdir() as d, harness.fake_checkout() as ck:
+        scripts = _copy_scripts(d)
+        out_dir = os.path.join(d, "out-bad-only")
+        proc = _run_into(scripts, d, ck, out_dir, extra=["--only", "does-not-exist.py"])
+        t.equal(proc.returncode != 0, True, "an unknown --only name refuses to start")
+        t.contains(proc.stdout + proc.stderr, "does-not-exist.py",
+                   "naming the check that was not found")
+        t.equal(os.path.isdir(out_dir), False,
+                "and it stops before writing any check output at all")

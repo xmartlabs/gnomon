@@ -30,8 +30,8 @@ KNOWN_UNREAD = {
     "schema_version": "carried for future migrations; nothing branches on it yet",
     "run": "provenance for a human reader (date, label, purpose); the renderer does not "
            "consume it",
-    "run_cost": "new; the renderer does not surface it yet, but the gate and the schema "
-                "both define it",
+    "run_cost": "the gate validates checks/arms/adhoc_checks's shape when present and the "
+                "schema documents it, but the renderer still does not surface it",
     # Superseded schema, preserved verbatim in references/example-run rather than migrated.
     # `verdict` is now derived by the renderer from `anchor` and the buckets; `hypotheses`
     # was split into findings/not_raised/dismissed. Migrating that entry would mean INVENTING

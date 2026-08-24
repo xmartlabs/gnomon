@@ -390,6 +390,84 @@ def check_cost_units_is_optional_but_typed_when_present(t):
                                 "process_friction")), True, why)
 
 
+def check_run_cost_is_optional_but_typed_when_present(t):
+    """`run_cost.checks/arms/adhoc_checks` used to be a bare number, and two saved runs wrote
+    the SAME field with two different meanings under it: one wrote `13` meaning a COUNT of
+    checks, the next wrote `101.3` meaning SECONDS of wall clock. Same shape as cost_units
+    above: closed vocabulary, opt-in, and `null` stays legal for "not measured".
+
+    `gate_retries` rides the exact same validation loop in emit-gate.py (widened, not
+    duplicated -- see the `for key in (...)` tuple there), so it is folded into this same
+    check rather than getting a copy of it.
+    """
+    with harness.tmpdir() as flags:
+        t.equal(_where(_check(harness.payload(), flags), "run_cost"), [],
+                "CONTROL: no run_cost at all is clean -- payloads written before this field "
+                "existed carry none")
+
+        blank = {"wall": None, "checks": None, "arms": None, "adhoc_checks": None,
+                 "gate_retries": None}
+        t.equal(_where(_check(harness.payload(run_cost=blank), flags), "run_cost"), [],
+                "every field null is clean -- not measured is the common case (no A/B ran, "
+                "so `arms` is null on most runs; a corrupted gate-attempt log is null too)")
+
+        for key in ("checks", "arms", "adhoc_checks", "gate_retries"):
+            for unit in sorted(gate.RUN_COST_UNITS):
+                good = dict(blank, **{key: {"unit": unit, "value": 4}})
+                t.equal(_where(_check(harness.payload(run_cost=good), flags), "run_cost"), [],
+                        "%s with unit %r is in the vocabulary" % (key, unit))
+
+            for bad, why in (
+                (101.3, "a bare float is the exact ambiguous form that let seconds and a "
+                        "count collide unlabeled"),
+                (13, "a bare int is the exact ambiguous form that let seconds and a count "
+                     "collide unlabeled"),
+                ({"unit": "coffees", "value": 2}, "a unit nobody else emits cannot be "
+                                                  "compared"),
+                ({"unit": "seconds", "value": "sixty"}, "prose in value is not a quantity"),
+                ({"unit": "seconds", "value": True}, "a bool is not a quantity"),
+                ({"unit": "seconds"}, "a unit with no value measures nothing"),
+                ("101.3 seconds", "a bare string is not the structured half"),
+            ):
+                entry = dict(blank, **{key: bad})
+                t.equal(bool(_where(_check(harness.payload(run_cost=entry), flags),
+                                    "run_cost")), True, "%s: %s" % (key, why))
+
+
+def check_negative_synthesis_is_refused(t):
+    """A 2026-08-24 cold run shipped `run_cost.phases.4_synthesis: -34.0` into a rendered
+    report: `wall` was derived from a directory that never saw anchor.py's own work
+    directory, so the residual it fed came out negative and nothing caught it. Fixed at the
+    source in new-run.py (`_combine_spans`), and backstopped here: negative is never
+    legitimate regardless of what produced it, so the gate refuses it outright rather than
+    trusting the fix that closed today's specific cause to close every future one too.
+    """
+    with harness.tmpdir() as flags:
+        for bad, why in ((-34.0, "the real shape: a float"), (-1, "an int is just as bad")):
+            entry = {"phases": {"0_anchor": 100.0, "4_synthesis": bad}}
+            t.equal(bool(_where(_check(harness.payload(run_cost=entry), flags),
+                                "run_cost.phases.4_synthesis")), True,
+                    "%s: a negative synthesis duration is refused" % why)
+
+        t.equal(_where(_check(harness.payload(run_cost={"phases": {"4_synthesis": 0}}),
+                              flags), "run_cost.phases.4_synthesis"), [],
+                "CONTROL: zero is a legitimate residual, not refused")
+        t.equal(_where(_check(harness.payload(run_cost={"phases": {"4_synthesis": 685.3}}),
+                              flags), "run_cost.phases.4_synthesis"), [],
+                "CONTROL: a normal positive residual is clean")
+        t.equal(_where(_check(harness.payload(run_cost={"phases": {"4_synthesis": None}}),
+                              flags), "run_cost.phases.4_synthesis"), [],
+                "CONTROL: null (missing wall or missing 0_anchor) is not measured, not "
+                "negative -- new-run.py's own control for this, unaffected")
+        t.equal(_where(_check(harness.payload(run_cost={"phases": {"0_anchor": 100.0}}),
+                              flags), "run_cost.phases.4_synthesis"), [],
+                "CONTROL: 4_synthesis absent entirely (a payload from before this field "
+                "existed) is clean")
+        t.equal(_where(_check(harness.payload(run_cost={}), flags),
+                       "run_cost.phases.4_synthesis"), [],
+                "CONTROL: no phases object at all is clean")
+
+
 def check_exit_codes(t):
     # render-report.py branches on this and nothing else pins it.
     with harness.tmpdir() as d:

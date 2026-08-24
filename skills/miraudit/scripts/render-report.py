@@ -9,9 +9,26 @@ directory, which meant the report format was whatever that run's author invented
 afternoon. Two people auditing the same tool would hand its maintainers two different
 documents, and the maintainers would learn the shape of neither.
 
-It runs emit-gate.py first and refuses to write anything when the gate fails. Phase 4 says
-to gate and then render, in that order, and an order written in prose is an order somebody
-eventually reverses. Here the two cannot be separated.
+It runs emit-gate.py and refuses to write anything when the gate fails. Phase 4 says to gate
+and then render, in that order, and an order written in prose is an order somebody eventually
+reverses. Here the two cannot be separated.
+
+Before gating, it also patches `run_cost.checks`/`adhoc_checks`/`arms` from any
+`run-checks.py --emit` / `run-arms.py --emit` files sitting next to the run (see
+`_patch_run_cost`) and writes that back to `src` -- so what the gate validates is what a
+future reader of the payload actually sees, closing the same "published but never gated" gap
+this skill already closed once for other fields. The patched content is gated BEFORE it is
+promoted to `src`: written to `src + ".partial"` first (the temp-then-rename shape
+`emit-comparison.py` already uses, so a crash mid-write cannot leave a half-written JSON),
+gated at that path, and only renamed onto `src` once the gate passes. A gate failure -- for
+any reason, not necessarily one the patch caused -- leaves `src` byte-for-byte as it was
+found; the `.partial` is discarded, not promoted.
+
+The same pass also patches `run_cost.gate_retries`, counted from an append-only log this
+script writes beside `src` of every REAL gate attempt made through this exact call site (see
+`_gate_log_path`). It is never left to the agent to type: a standalone `emit-gate.py` run for
+diagnosis is not a submission and must not be counted, which is exactly why the log lives
+here and not inside `emit-gate.py` itself. See `references/output-schema.md`.
 
 The output is deliberately plain. It goes to a person deciding whether to spend an hour on
 a claim, and every section answers one of the three questions they will ask: what did you
@@ -28,6 +45,7 @@ deterministic, so re-rendering and comparing settles it exactly rather than appr
 Exit codes: 0 rendered (or, with --check, the report matches), 1 the gate refused the file or
 the report has drifted, 2 the file could not be read.
 """
+import datetime
 import json
 import os
 import subprocess
@@ -42,6 +60,95 @@ def _fmt_magnitude(mag):
     bound = mag.get("bound")
     where = f" ({bound} bound)" if bound else ""
     return f" · magnitude {mag.get('value')} {mag.get('unit')}{where}"
+
+
+def _patch_run_cost(doc, run_dir):
+    """Reconcile run_cost.checks/adhoc_checks/arms from run-checks.py/run-arms.py --emit
+    files, when they sit next to the run. Conventions (see references/output-schema.md):
+
+        <run_dir>/checks/run-checks-emit.json   -- run-checks.py --emit
+        <run_dir>/run-arms-emit.json            -- run-arms.py --emit
+
+    Returns whether anything changed. Neither file existing is the common case (most runs
+    never call --emit), and this is a no-op BY CONSTRUCTION for it: `doc` is not even
+    touched -- not a `run_cost` key added, not a field set to None -- until one of the two
+    files is confirmed on disk. That is what makes "a run that never called --emit renders
+    exactly as it does today" provable rather than asserted.
+    """
+    checks_path = os.path.join(run_dir, "checks", "run-checks-emit.json")
+    arms_path = os.path.join(run_dir, "run-arms-emit.json")
+    has_checks, has_arms = os.path.exists(checks_path), os.path.exists(arms_path)
+    if not has_checks and not has_arms:
+        return False
+
+    run_cost = doc.setdefault("run_cost", {})
+    changed = False
+    if has_checks:
+        with open(checks_path) as fh:
+            emit = json.load(fh)
+        battery, adhoc = emit.get("battery") or {}, emit.get("adhoc") or {}
+        if "seconds" in battery:
+            run_cost["checks"] = {"unit": "seconds", "value": battery["seconds"]}
+            changed = True
+        if "count" in adhoc:
+            run_cost["adhoc_checks"] = {"unit": "count", "value": adhoc["count"]}
+            changed = True
+    if has_arms:
+        with open(arms_path) as fh:
+            emit = json.load(fh)
+        if emit.get("wall") is not None:
+            run_cost["arms"] = {"unit": "seconds", "value": emit["wall"]}
+            changed = True
+    return changed
+
+
+def _gate_log_path(src):
+    """Where every REAL submission attempt through main()'s own `gate = subprocess.run(...)`
+    call gets recorded, one line per invocation of this script. Same directory and naming
+    convention as `src + ".partial"` above.
+
+    Deliberately not inside emit-gate.py: a saved transcript shows that file invoked directly,
+    twice, from two different working directories, on purpose, to compare behaviour -- neither
+    call was a submission, and emit-gate.py has no way to tell the difference between that and
+    the real thing. Only render-report.py knows which subprocess call is the real one.
+    """
+    return os.path.splitext(src)[0] + ".gate-log.jsonl"
+
+
+def _prior_gate_fails(log_path):
+    """Count of 'fail' verdicts already on record for this src, or None if the log exists but
+    could not be read cleanly. None is legal and distinct from 0 -- a hand-truncated or
+    corrupted log must not read as a first-try pass it did not earn, and a broken input here
+    is not a reason to crash the render (same precedent as `pinned_ref()` in emit-gate.py,
+    which degrades a pin it cannot resolve to None rather than raising).
+    """
+    if not os.path.exists(log_path):
+        return 0
+    fails = 0
+    try:
+        with open(log_path) as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                if json.loads(line).get("verdict") == "fail":
+                    fails += 1
+    except (OSError, ValueError):
+        return None
+    return fails
+
+
+def _append_gate_attempt(log_path, verdict):
+    """Appended AFTER the real gate subprocess returns, win or lose -- a log of only passes
+    would be useless, since the fail entries are the entire point. Independent of
+    `patched_tmp`'s lifecycle: this is never removed when a failed attempt's temp file is,
+    because deleting it would erase the exact history this feature exists to keep.
+    """
+    with open(log_path, "a") as fh:
+        fh.write(json.dumps({
+            "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+            "verdict": verdict,
+        }) + "\n")
 
 
 def _not_checked(out, obj):
@@ -256,20 +363,60 @@ def main(argv):
         print("  earlier version of this run. Re-render it; do not edit the markdown.")
         return 1
 
-    gate = subprocess.run([sys.executable, os.path.join(HERE, "emit-gate.py"), src],
-                          check=False)
-    if gate.returncode != 0:
-        print("\nrender-report: the gate refused this file, so nothing was written.")
-        print("Fix what it listed. A report that drifted from its evidence is the defect "
-              "this skill exists to catch.")
-        return 1
-
     try:
         with open(src) as fh:
             doc = json.load(fh)
     except (OSError, ValueError) as exc:
         print(f"error: cannot read {src}: {exc}")
         return 2
+
+    # Patch, THEN gate, THEN promote -- reversed from the order this shipped with, and on
+    # purpose. Gating a file this script never writes meant nothing gated ever inspected what
+    # a future patch would add; gating the patched content before it reaches `src` means
+    # whatever ships in run_cost was actually validated by the same gate as everything else.
+    run_dir = os.path.dirname(os.path.abspath(src))
+    other_patched = _patch_run_cost(doc, run_dir)
+
+    # gate_retries: how many times this exact call site already failed for this src, before
+    # whatever this attempt is about to do. Read from the log BEFORE the gate below runs, so
+    # the count reflects only what happened earlier and does not depend on this attempt's own
+    # outcome -- it is knowable in advance, the same reason `checks`/`arms` above come from a
+    # file already on disk rather than a guess.
+    log_path = _gate_log_path(src)
+    prior_fails = _prior_gate_fails(log_path)
+    run_cost = doc.setdefault("run_cost", {})
+    run_cost["gate_retries"] = ({"unit": "count", "value": prior_fails}
+                                 if prior_fails is not None else None)
+
+    # gate_retries is new content on every real invocation -- `src` never carried it before
+    # this attempt -- so the temp-then-gate-then-promote path below now runs unconditionally,
+    # even when no --emit files exist to make `other_patched` true. Gating `src` directly on
+    # that path would skip the gate on content that was never gated before, which is the exact
+    # gap this file exists to close for run_cost's other three fields.
+    patched_tmp = src + ".partial"
+    with open(patched_tmp, "w") as fh:
+        json.dump(doc, fh, indent=2)
+        fh.write("\n")
+    if other_patched:
+        print(f"render-report: patched run_cost from --emit files next to {src}; "
+              "gating that version before it is promoted.")
+
+    gate = subprocess.run([sys.executable, os.path.join(HERE, "emit-gate.py"), patched_tmp],
+                          check=False)
+    # Appended regardless of the verdict, and BEFORE the failure branch below removes
+    # `patched_tmp` -- the log outlives the temp file on purpose, since erasing it on a
+    # failure would erase the exact history gate_retries exists to keep.
+    _append_gate_attempt(log_path, "pass" if gate.returncode == 0 else "fail")
+    if gate.returncode != 0:
+        # The patch never reaches `src` -- a rejected run must not leave a half-applied
+        # payload sitting next to a report that has not been re-rendered from it.
+        os.remove(patched_tmp)
+        print("\nrender-report: the gate refused this file, so nothing was written.")
+        print("Fix what it listed. A report that drifted from its evidence is the defect "
+              "this skill exists to catch.")
+        return 1
+
+    os.replace(patched_tmp, src)
 
     with open(dst, "w") as fh:
         fh.write(render(doc))

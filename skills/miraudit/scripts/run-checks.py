@@ -1,7 +1,8 @@
 """Run every Phase 1 check at once instead of one after another.
 
     python3 run-checks.py --checkout <copy> --since --until --stats <stats.json> \
-        --out-dir <run>/checks [--jobs N] [--repo PATH] [--comparison PATH] [--also PATH]
+        --out-dir <run>/checks [--jobs N] [--repo PATH] [--comparison PATH] [--also PATH] \
+        [--only NAME] [--emit <run>/checks/run-checks-emit.json]
 
 The checks are independent read-only processes: each opens the corpus, prints, and exits.
 Nothing one writes is read by another, and `render-report.py` consumes them only afterwards.
@@ -19,10 +20,22 @@ that axis-coverage.py builds its manifest from. That is the point of it living t
 second list would drift, and a check missing from this driver would still look covered.
 
 Ad-hoc checks written into the run's own directory take `--also`, because they are the normal
-case rather than the exception and they are the slowest thing to run by hand.
+case rather than the exception and they are the slowest thing to run by hand. `--also` alone
+still re-runs the whole battery beside it -- on a real saved run, adding ONE ad-hoc check this
+way cost ~194 seconds of re-running twelve checks that had not changed. `--only NAME`
+(repeatable, matched by basename) restricts execution to just the named checks, so
+`--also new.py --only new.py` runs JUST the ad-hoc check. It is for iterating on one check
+fast; the canonical `--emit` run that feeds `run_cost` should be the final, unrestricted one,
+so the battery and adhoc numbers in that file both come from checks that actually ran.
+
+`--emit <path>` writes the wall/serial numbers this already prints, plus a per-check
+breakdown, as JSON -- for `render-report.py` to patch `run_cost.checks`/`adhoc_checks` from,
+the same way `axis-terms.py --emit` feeds `axis-coverage.py --terms`. Optional; omitting it
+changes nothing.
 """
 import concurrent.futures
 import glob
+import json
 import os
 import subprocess
 import sys
@@ -105,8 +118,15 @@ args, WINDOW = parse(__doc__.strip().splitlines()[0], {
                              "that read other corpora"},
     "--also": {"action": "append", "default": [], "metavar": "PATH",
                "help": "an ad-hoc check written for this run; repeatable"},
+    "--only": {"action": "append", "default": [], "metavar": "NAME",
+               "help": "restrict this run to just these checks (by basename, battery or "
+                       "--also); repeatable. Skips the rest of the battery instead of "
+                       "re-running it"},
     "--timeout": {"type": int, "default": 600, "metavar": "SECONDS",
                   "help": "per-check wall clock ceiling (default: 600)"},
+    "--emit": {"metavar": "PATH", "default": None,
+               "help": "write the wall/serial numbers and a per-check breakdown as JSON, for "
+                       "render-report.py to patch run_cost.checks/adhoc_checks from"},
 })
 
 print(header(args, WINDOW))
@@ -169,6 +189,25 @@ if _orphans:
 for path in args.also:
     work.append((os.path.basename(path), os.path.abspath(os.path.expanduser(path)), []))
 
+# `adhoc_names` is taken BEFORE --only filters work down, because it is used below (in the
+# --emit breakdown) to tell an ad-hoc check apart from a battery one -- and a check that
+# --only dropped from work never gets there to be told apart at all.
+adhoc_names = {os.path.basename(p) for p in args.also}
+
+# --only composes with --also rather than replacing it: filtering the already-built work list
+# (battery + ALWAYS + --also) is the smallest change that lets `--also new.py --only new.py`
+# run JUST the ad-hoc check. Orphan/exclusion detection above this line stays against the
+# FULL claims() set on purpose -- those are integrity checks about the whole battery, not
+# about what this one invocation is about to execute, and narrowing them to --only would make
+# a partial run look like it audited the battery's wiring, which it did not.
+if args.only:
+    _wanted = set(args.only)
+    _unknown = sorted(_wanted - {name for name, _p, _e in work})
+    if _unknown:
+        sys.exit(f"error: --only names {', '.join(_unknown)}, not in this run's work list "
+                 "(battery + --also). Check the basename.")
+    work = [item for item in work if item[0] in _wanted]
+
 os.makedirs(args.out_dir, exist_ok=True)
 
 shared = ["--checkout", args.checkout, "--corpus", args.corpus,
@@ -217,6 +256,32 @@ for name, code, secs, _ in sorted(results, key=lambda r: -r[2]):
 serial = sum(r[2] for r in results)
 print(f"\n  wall clock {wall:.1f}s against {serial:.1f}s of check time "
       f"({serial / wall:.1f}x)" if wall else "")
+
+# Written before the possible sys.exit(1) below, on purpose -- a batch with a red check still
+# paid for the checks that ran, and that cost is exactly what a re-run wants to avoid paying
+# twice. `battery`/`adhoc` split by `adhoc_names` (computed before --only filtered work) so
+# `render-report.py` can tell "the checks battery cost" from "how many ad-hoc checks ran" --
+# the same distinction run_cost.checks and run_cost.adhoc_checks carry in the schema.
+if args.emit:
+    breakdown = [{"name": name, "seconds": round(secs, 3),
+                 "exit": code, "adhoc": name in adhoc_names, "out": out}
+                for name, code, secs, out in results]
+    battery = [c for c in breakdown if not c["adhoc"]]
+    adhoc = [c for c in breakdown if c["adhoc"]]
+    emit_doc = {
+        "wall": round(wall, 3),
+        "serial": round(serial, 3),
+        "ratio": round(serial / wall, 3) if wall else None,
+        "battery": {"count": len(battery),
+                    "seconds": round(sum(c["seconds"] for c in battery), 3)},
+        "adhoc": {"count": len(adhoc),
+                  "seconds": round(sum(c["seconds"] for c in adhoc), 3)},
+        "checks": breakdown,
+    }
+    with open(os.path.expanduser(args.emit), "w") as fh:
+        json.dump(emit_doc, fh, indent=2)
+        fh.write("\n")
+    print(f"\n  wrote {args.emit}: {len(breakdown)} check result(s) for render-report.py")
 
 # A check that ran at HALF SCOPE exits 0 and reads identically to one that ran fully. The
 # skipped/warning path this replaced could at least print a line; a reduced scope printed
