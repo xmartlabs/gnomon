@@ -1,0 +1,14 @@
+/* Gnomon typefaces.
+   SUBSTITUTION FLAG: no font binaries were provided for gnomon. Both families are
+   Google Fonts stand-ins chosen for the "measuring instrument" direction:
+   Archivo (industrial grotesque, tight apertures, engineered feel) for UI and display,
+   IBM Plex Mono (drafting-table monospace) for all figures, labels and codes.
+   If real brand fonts exist, drop the .woff2 files into assets/fonts/ and replace
+   this @import with local @font-face rules keeping the same custom property names. */
+
+@import url("https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+
+:root {
+  --font-sans: "Archivo", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}

@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>gnomon — Proposal A · The Ledger (Editorial / Warm)</title>
+<!--
+  DESIGN PROPOSAL A — "The Ledger"
+  Direction: editorial / warm / characterful. A premium print report on cream stock.
+  Assumptions: B2B internal tool, read weekly by eng leads; density matters less than trust.
+  Form from content: an AQ report IS a periodical — so it's typeset like one.
+  Signature 120% detail: the team-average AQ set as a broadsheet drop-stat (giant Fraunces numeral
+  with an inked annotation), everything else calm hairlines at 80%.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Archivo:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:    #F6F1E6;  /* ground */
+    --paper-2:  #EFE8D8;  /* recessed panel */
+    --ink:      #262016;  /* espresso ink */
+    --ink-60:   #6E655A;  /* secondary text */
+    --ink-30:   #B4AA9A;  /* tertiary / rules-strong */
+    --hairline: #D8CFBC;  /* hairline rule */
+    --accent:   #B4451F;  /* terracotta — the one accent */
+    --gain:     #4A6A45;  /* muted moss for gains */
+    --loss:     #9A3B22;  /* burnt loss (kept near accent family) */
+    --bar-1:    #262016;  /* Opus — ink */
+    --bar-2:    #B4451F;  /* Fable — terracotta */
+    --bar-3:    #C9B99A;  /* Haiku — parchment */
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html{background:#E9E2D2;}
+  body{
+    font-family:'Archivo',sans-serif;
+    color:var(--ink);
+    background:var(--paper);
+    -webkit-font-smoothing:antialiased;
+    font-size:15px;
+    line-height:1.5;
+  }
+  .sheet{max-width:1440px;margin:0 auto;background:var(--paper);}
+  .pad{padding:0 72px;}
+  .serif{font-family:'Fraunces',serif;}
+  .num{font-variant-numeric:tabular-nums;font-feature-settings:'tnum';}
+  .rule{border:0;border-top:1px solid var(--hairline);}
+  .rule-heavy{border:0;border-top:2px solid var(--ink);}
+  .eyebrow{
+    font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--ink-60);font-weight:600;
+  }
+
+  /* ============ SECTION LABELS ============ */
+  .section-head{
+    display:flex;align-items:baseline;justify-content:space-between;
+    padding:28px 72px 14px;
+  }
+  .section-head h2{
+    font-family:'Fraunces',serif;font-weight:600;font-size:26px;
+    font-variation-settings:'opsz' 60;
+  }
+  .section-head .eyebrow{color:var(--accent);}
+
+  /* ================================================================
+     PART 1 · MINI DESIGN SYSTEM
+  ================================================================ */
+  .ds-grid{display:grid;grid-template-columns:1fr 1fr;gap:56px;padding:24px 72px 56px;}
+  .ds-block h3{
+    font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--ink-60);font-weight:600;margin:32px 0 14px;
+    padding-top:12px;border-top:1px solid var(--hairline);
+  }
+  .ds-block h3:first-child{margin-top:0;}
+
+  /* swatches */
+  .swatches{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--hairline);border:1px solid var(--hairline);}
+  .swatch{background:var(--paper);padding:0;}
+  .swatch .chip{height:64px;}
+  .swatch .meta{padding:8px 10px 10px;}
+  .swatch .role{font-size:12px;font-weight:600;}
+  .swatch .hex{font-size:11px;color:var(--ink-60);font-variant-numeric:tabular-nums;letter-spacing:.04em;}
+
+  /* type specimen */
+  .spec-display{
+    font-family:'Fraunces',serif;font-weight:600;font-size:44px;line-height:1.08;
+    font-variation-settings:'opsz' 100;letter-spacing:-0.01em;
+  }
+  .spec-display em{font-style:italic;color:var(--accent);}
+  .spec-caption{font-size:12px;color:var(--ink-60);margin-top:6px;}
+  .scale-row{display:flex;align-items:baseline;gap:16px;padding:7px 0;border-bottom:1px solid var(--hairline);}
+  .scale-row:last-child{border-bottom:0;}
+  .scale-row .sz{width:88px;font-size:11px;color:var(--ink-60);letter-spacing:.08em;text-transform:uppercase;}
+
+  /* buttons */
+  .btn{
+    display:inline-flex;align-items:center;gap:8px;
+    font-family:'Archivo',sans-serif;font-size:13px;font-weight:600;letter-spacing:.02em;
+    padding:10px 20px;border-radius:2px;cursor:pointer;border:1px solid transparent;
+    background:none;color:var(--ink);
+  }
+  .btn-primary{background:var(--ink);color:var(--paper);}
+  .btn-primary:hover{background:#3A3226;}
+  .btn-secondary{border-color:var(--ink);color:var(--ink);background:transparent;}
+  .btn-ghost{color:var(--accent);padding-left:0;padding-right:0;border-bottom:1px solid var(--accent);border-radius:0;padding-bottom:3px;padding-top:0;}
+
+  /* tier badges — small caps, dotted underline in tier weight, no pill slop */
+  .tier{
+    font-family:'Fraunces',serif;font-size:13px;font-weight:600;letter-spacing:.06em;
+    text-transform:uppercase;display:inline-flex;align-items:center;gap:7px;
+  }
+  .tier::before{content:'';width:7px;height:7px;border-radius:50%;background:currentColor;flex:none;}
+  .tier-elite{color:var(--accent);}
+  .tier-advanced{color:var(--ink);}
+  .tier-proficient{color:var(--ink-60);}
+
+  /* card atom */
+  .atom-card{
+    border-top:2px solid var(--ink);padding:16px 0 4px;max-width:320px;
+  }
+  .atom-card .eyebrow{margin-bottom:6px;}
+  .atom-card .val{font-family:'Fraunces',serif;font-size:34px;font-weight:600;line-height:1;}
+  .atom-card .foot{font-size:12px;color:var(--ink-60);margin-top:6px;}
+
+  /* input atom */
+  .atom-input{max-width:320px;}
+  .atom-input label{display:block;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-60);font-weight:600;margin-bottom:6px;}
+  .atom-input input{
+    width:100%;background:transparent;border:0;border-bottom:1px solid var(--ink-30);
+    font-family:'Archivo',sans-serif;font-size:15px;color:var(--ink);padding:6px 0;outline:none;
+  }
+  .atom-input input:focus{border-bottom-color:var(--accent);}
+  .atom-input input::placeholder{color:var(--ink-30);}
+
+  /* table row atom */
+  .atom-row{display:grid;grid-template-columns:1.4fr .6fr 1fr .8fr;align-items:baseline;gap:12px;
+    padding:12px 0;border-bottom:1px solid var(--hairline);max-width:520px;font-size:14px;}
+  .atom-row .name{font-family:'Fraunces',serif;font-weight:600;font-size:16px;}
+
+  /* ================================================================
+     PART 2 · TEAM OVERVIEW SCREEN
+  ================================================================ */
+  .screen{border-top:4px solid var(--ink);}
+
+  /* masthead */
+  .masthead{
+    display:flex;align-items:baseline;justify-content:space-between;
+    padding:34px 72px 22px;
+  }
+  .brand{display:flex;align-items:baseline;gap:16px;}
+  .brand .logo{
+    font-family:'Fraunces',serif;font-weight:600;font-size:34px;letter-spacing:-0.02em;
+    font-variation-settings:'opsz' 100;
+  }
+  .brand .logo::after{content:'.';color:var(--accent);}
+  .brand .sub{font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--ink-60);font-weight:600;}
+  .mast-right{font-size:13px;color:var(--ink-60);}
+  .mast-right b{color:var(--ink);font-weight:600;}
+  .mast-right .dot{margin:0 10px;color:var(--ink-30);}
+
+  /* stat band — signature drop-stat + three ruled columns */
+  .stat-band{
+    display:grid;grid-template-columns:1.45fr 1fr 1fr 1fr;
+    padding:30px 72px 34px;gap:0;
+  }
+  .drop-stat{padding-right:48px;border-right:1px solid var(--hairline);}
+  .drop-stat .eyebrow{margin-bottom:2px;}
+  .drop-figure{display:flex;align-items:flex-start;gap:18px;}
+  .drop-figure .big{
+    font-family:'Fraunces',serif;font-weight:600;font-size:148px;line-height:.92;
+    letter-spacing:-0.04em;font-variation-settings:'opsz' 144;
+    font-variant-numeric:tabular-nums;
+  }
+  .drop-figure .aside{padding-top:22px;}
+  .drop-figure .of{font-family:'Fraunces',serif;font-style:italic;font-size:19px;color:var(--ink-60);}
+  .annot{
+    margin-top:12px;display:inline-block;
+    font-family:'Fraunces',serif;font-style:italic;font-size:16px;color:var(--accent);
+    border-bottom:1px solid var(--accent);padding-bottom:2px;
+  }
+  .annot .tick{display:inline-block;transform:translateY(-1px);margin-right:6px;}
+  .stat-col{padding:6px 0 0 40px;border-right:1px solid var(--hairline);}
+  .stat-col:last-child{border-right:0;}
+  .stat-col .eyebrow{margin-bottom:14px;}
+  .stat-col .val{
+    font-family:'Fraunces',serif;font-weight:600;font-size:44px;line-height:1;
+    font-variant-numeric:tabular-nums;letter-spacing:-0.01em;
+  }
+  .stat-col .val small{font-size:22px;font-weight:500;color:var(--ink-60);letter-spacing:0;}
+  .stat-col .foot{font-size:12.5px;color:var(--ink-60);margin-top:10px;}
+
+  /* people table */
+  .board{padding:8px 72px 8px;}
+  .board-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;}
+  .board-head h2{font-family:'Fraunces',serif;font-weight:600;font-size:24px;font-variation-settings:'opsz' 60;}
+  .board-head .note{font-size:12px;color:var(--ink-60);}
+  table{width:100%;border-collapse:collapse;}
+  thead th{
+    text-align:left;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--ink-60);font-weight:600;padding:0 14px 10px 0;
+    border-bottom:2px solid var(--ink);white-space:nowrap;
+  }
+  thead th.r, td.r{text-align:right;padding-right:0;padding-left:14px;}
+  tbody td{
+    padding:17px 14px 17px 0;border-bottom:1px solid var(--hairline);
+    font-size:14.5px;vertical-align:middle;
+  }
+  tbody tr:last-child td{border-bottom:0;}
+  td .person{font-family:'Fraunces',serif;font-weight:600;font-size:17.5px;letter-spacing:-0.005em;}
+  td.aq{font-family:'Fraunces',serif;font-weight:600;font-size:22px;font-variant-numeric:tabular-nums;}
+  td .delta-up{color:var(--gain);font-weight:600;}
+  td .delta-down{color:var(--loss);font-weight:600;}
+  td .delta-flat{color:var(--ink-30);font-weight:600;letter-spacing:.1em;}
+  td .pillar{
+    font-family:'Fraunces',serif;font-style:italic;font-size:15px;color:var(--ink);
+  }
+  td.mono{font-variant-numeric:tabular-nums;}
+  .spark{display:block;}
+
+  /* usage chart */
+  .usage{padding:20px 72px 64px;}
+  .usage-head{display:flex;align-items:baseline;justify-content:space-between;margin:26px 0 6px;}
+  .usage-head h2{font-family:'Fraunces',serif;font-weight:600;font-size:24px;font-variation-settings:'opsz' 60;}
+  .toggle{display:inline-flex;border:1px solid var(--ink);border-radius:2px;overflow:hidden;}
+  .toggle button{
+    font-family:'Archivo',sans-serif;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+    padding:8px 18px;border:0;background:transparent;color:var(--ink-60);cursor:pointer;
+  }
+  .toggle button.active{background:var(--ink);color:var(--paper);}
+  .chart-wrap{display:grid;grid-template-columns:1fr 220px;gap:48px;align-items:end;margin-top:8px;}
+  .chart{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:96px;
+    align-items:end;height:300px;padding:0 48px;
+    border-bottom:2px solid var(--ink);position:relative;
+  }
+  .gridline{position:absolute;left:0;right:0;border-top:1px dashed var(--hairline);}
+  .gridline span{
+    position:absolute;right:100%;margin-right:10px;top:-8px;
+    font-size:11px;color:var(--ink-30);font-variant-numeric:tabular-nums;white-space:nowrap;
+  }
+  .bar-col{display:flex;flex-direction:column;justify-content:flex-end;height:100%;position:relative;z-index:1;}
+  .bar-col .total{
+    text-align:center;font-family:'Fraunces',serif;font-weight:600;font-size:17px;
+    margin-bottom:8px;font-variant-numeric:tabular-nums;
+  }
+  .seg{width:100%;}
+  .seg-1{background:var(--bar-1);}
+  .seg-2{background:var(--bar-2);}
+  .seg-3{background:var(--bar-3);}
+  .seg + .seg{border-top:2px solid var(--paper);}
+  .month-labels{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:96px;padding:10px 48px 0;
+  }
+  .month-labels div{text-align:center;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-60);font-weight:600;}
+  .legend{padding-bottom:34px;}
+  .legend .eyebrow{margin-bottom:14px;}
+  .legend-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--hairline);font-size:13.5px;}
+  .legend-item:last-child{border-bottom:0;}
+  .legend-item .key{width:14px;height:14px;flex:none;}
+  .legend-item .share{margin-left:auto;color:var(--ink-60);font-variant-numeric:tabular-nums;font-size:12.5px;}
+
+  .colophon{
+    padding:18px 72px 30px;border-top:1px solid var(--hairline);
+    display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-60);
+    letter-spacing:.04em;
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <!-- ============================================================
+       PART 1 · MINI DESIGN SYSTEM
+  ============================================================ -->
+  <div class="section-head" style="border-bottom:2px solid var(--ink);">
+    <h2>The Brand — mini design system</h2>
+    <span class="eyebrow">Proposal A · “The Ledger” · editorial / warm</span>
+  </div>
+
+  <div class="ds-grid">
+    <!-- LEFT COLUMN -->
+    <div class="ds-block">
+      <h3>Color — cream stock, espresso ink, one terracotta accent</h3>
+      <div class="swatches">
+        <div class="swatch"><div class="chip" style="background:#F6F1E6;border-bottom:1px solid var(--hairline);"></div><div class="meta"><div class="role">Paper</div><div class="hex">#F6F1E6 · ground</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#262016;"></div><div class="meta"><div class="role">Ink</div><div class="hex">#262016 · text / bars</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#B4451F;"></div><div class="meta"><div class="role">Terracotta</div><div class="hex">#B4451F · accent</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#6E655A;"></div><div class="meta"><div class="role">Ink 60</div><div class="hex">#6E655A · secondary</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#D8CFBC;"></div><div class="meta"><div class="role">Hairline</div><div class="hex">#D8CFBC · rules</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#C9B99A;"></div><div class="meta"><div class="role">Parchment</div><div class="hex">#C9B99A · chart 3rd</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#4A6A45;"></div><div class="meta"><div class="role">Moss</div><div class="hex">#4A6A45 · gains</div></div></div>
+        <div class="swatch"><div class="chip" style="background:#9A3B22;"></div><div class="meta"><div class="role">Burnt</div><div class="hex">#9A3B22 · losses</div></div></div>
+      </div>
+
+      <h3>Buttons</h3>
+      <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;">
+        <button class="btn btn-primary">Upload session data</button>
+        <button class="btn btn-secondary">Export report</button>
+        <button class="btn btn-ghost">Edit list prices</button>
+      </div>
+
+      <h3>Tier badges</h3>
+      <div style="display:flex;gap:32px;align-items:center;flex-wrap:wrap;">
+        <span class="tier tier-elite">Elite</span>
+        <span class="tier tier-advanced">Advanced</span>
+        <span class="tier tier-proficient">Proficient</span>
+      </div>
+
+      <h3>Input</h3>
+      <div class="atom-input">
+        <label>Model list price · $ / M tokens</label>
+        <input type="text" placeholder="15.00" value="15.00">
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="ds-block">
+      <h3>Typography — Fraunces (display) · Archivo (body)</h3>
+      <div class="spec-display">Score the <em>craft</em> of working with machines.</div>
+      <div class="spec-caption">Fraunces 600, optical size wide open. Body is Archivo 400/500 — quiet, legible, stays out of the serif’s way. All figures tabular.</div>
+      <div style="margin-top:18px;">
+        <div class="scale-row"><span class="sz">Display · 148</span><span class="serif num" style="font-size:40px;font-weight:600;line-height:1;">93 / 100</span></div>
+        <div class="scale-row"><span class="sz">H1 · 44</span><span class="serif" style="font-size:27px;font-weight:600;">Team Overview</span></div>
+        <div class="scale-row"><span class="sz">H2 · 24</span><span class="serif" style="font-size:20px;font-weight:600;">Company usage</span></div>
+        <div class="scale-row"><span class="sz">Body · 15</span><span style="font-size:15px;">Advanced tier holds four of six pillars.</span></div>
+        <div class="scale-row"><span class="sz">Label · 11</span><span class="eyebrow">Ingest coverage</span></div>
+      </div>
+
+      <h3>Stat card</h3>
+      <div class="atom-card">
+        <div class="eyebrow">Team avg AQ</div>
+        <div class="val num">81<span style="font-size:18px;color:var(--ink-60);font-weight:500;">/100</span></div>
+        <div class="foot"><span style="color:var(--gain);font-weight:600;">+4</span> vs last month</div>
+      </div>
+
+      <h3>Main card — ruled, not boxed</h3>
+      <div style="border-top:2px solid var(--ink);padding-top:14px;max-width:420px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+          <span class="serif" style="font-size:19px;font-weight:600;">Ada Lovelace</span>
+          <span class="tier tier-elite">Elite</span>
+        </div>
+        <div style="font-size:13px;color:var(--ink-60);margin-top:4px;">AQ 93 · top pillar <em class="serif" style="font-size:14px;">Craft</em> · 5.7B tokens this window</div>
+        <hr class="rule" style="margin:12px 0 0;">
+      </div>
+
+      <h3>Table row pattern</h3>
+      <div class="atom-row">
+        <span class="name">Grace Hopper</span>
+        <span class="serif num" style="font-size:18px;font-weight:600;">81</span>
+        <span class="tier tier-advanced" style="font-size:11.5px;">Advanced</span>
+        <span class="num" style="text-align:right;color:var(--ink-60);">4.6B</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       PART 2 · TEAM OVERVIEW — 1440px DESKTOP
+  ============================================================ -->
+  <div class="screen">
+    <div class="masthead">
+      <div class="brand">
+        <span class="logo">gnomon</span>
+        <span class="sub">Team Dashboard</span>
+      </div>
+      <div class="mast-right num">
+        <b>4 engineers</b><span class="dot">·</span>current window <b>2026-06</b>
+      </div>
+    </div>
+    <div class="pad"><hr class="rule-heavy"></div>
+
+    <!-- STAT BAND -->
+    <div class="stat-band">
+      <!-- signature drop-stat -->
+      <div class="drop-stat">
+        <div class="eyebrow">Team avg AQ</div>
+        <div class="drop-figure">
+          <span class="big num">81</span>
+          <span class="aside">
+            <div class="of">/ 100</div>
+            <div class="annot"><span class="tick">↗</span>+4 vs last month</div>
+          </span>
+        </div>
+      </div>
+      <div class="stat-col">
+        <div class="eyebrow">Ingest coverage</div>
+        <div class="val num">4<small>/4</small></div>
+        <div class="foot">people with a 2026-06 upload</div>
+      </div>
+      <div class="stat-col">
+        <div class="eyebrow">Tokens / mo</div>
+        <div class="val num">18.9<small>B</small></div>
+        <div class="foot">across all models</div>
+      </div>
+      <div class="stat-col">
+        <div class="eyebrow">Est. cost / mo</div>
+        <div class="val num">$1,284</div>
+        <div class="foot">list prices · <span style="color:var(--accent);border-bottom:1px solid var(--accent);padding-bottom:1px;">editable</span></div>
+      </div>
+    </div>
+
+    <!-- PEOPLE TABLE -->
+    <div class="board">
+      <div class="board-head">
+        <h2>The people</h2>
+        <span class="note num">Window 2026-06 · sorted by AQ</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:24%;">Name</th>
+            <th style="width:7%;">AQ</th>
+            <th style="width:13%;">Tier</th>
+            <th style="width:13%;">Trend</th>
+            <th style="width:9%;">Delta</th>
+            <th style="width:14%;">Top pillar</th>
+            <th class="r" style="width:10%;">Tokens</th>
+            <th class="r" style="width:10%;">Cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="person">Ada Lovelace</span></td>
+            <td class="aq">93</td>
+            <td><span class="tier tier-elite" style="font-size:12px;">Elite</span></td>
+            <td>
+              <svg class="spark" width="96" height="26" viewBox="0 0 96 26" aria-label="upward trend">
+                <polyline points="2,21 20,18 38,19 56,13 74,9 94,4" fill="none" stroke="#B4451F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="94" cy="4" r="2.4" fill="#B4451F"/>
+              </svg>
+            </td>
+            <td class="num"><span class="delta-up">+14</span></td>
+            <td><span class="pillar">Craft</span></td>
+            <td class="r mono">5.7B</td>
+            <td class="r mono">$392</td>
+          </tr>
+          <tr>
+            <td><span class="person">Alan Turing</span></td>
+            <td class="aq">85</td>
+            <td><span class="tier tier-advanced" style="font-size:12px;">Advanced</span></td>
+            <td>
+              <svg class="spark" width="96" height="26" viewBox="0 0 96 26" aria-label="downward trend">
+                <polyline points="2,7 20,10 38,8 56,14 74,15 94,19" fill="none" stroke="#6E655A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="94" cy="19" r="2.4" fill="#6E655A"/>
+              </svg>
+            </td>
+            <td class="num"><span class="delta-down">−3</span></td>
+            <td><span class="pillar">Efficiency</span></td>
+            <td class="r mono">4.9B</td>
+            <td class="r mono">$338</td>
+          </tr>
+          <tr>
+            <td><span class="person">Grace Hopper</span></td>
+            <td class="aq">81</td>
+            <td><span class="tier tier-advanced" style="font-size:12px;">Advanced</span></td>
+            <td>
+              <svg class="spark" width="96" height="26" viewBox="0 0 96 26" aria-label="upward trend">
+                <polyline points="2,19 20,20 38,15 56,16 74,10 94,7" fill="none" stroke="#B4451F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="94" cy="7" r="2.4" fill="#B4451F"/>
+              </svg>
+            </td>
+            <td class="num"><span class="delta-up">+7</span></td>
+            <td><span class="pillar">Breadth</span></td>
+            <td class="r mono">4.6B</td>
+            <td class="r mono">$318</td>
+          </tr>
+          <tr>
+            <td><span class="person">Katherine J.</span></td>
+            <td class="aq">66</td>
+            <td><span class="tier tier-proficient" style="font-size:12px;">Proficient</span></td>
+            <td>
+              <svg class="spark" width="96" height="26" viewBox="0 0 96 26" aria-label="flat trend">
+                <polyline points="2,13 20,12 38,14 56,13 74,13 94,13" fill="none" stroke="#B4AA9A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="94" cy="13" r="2.4" fill="#B4AA9A"/>
+              </svg>
+            </td>
+            <td class="num"><span class="delta-flat">––</span></td>
+            <td><span class="pillar">Savvy</span></td>
+            <td class="r mono">3.7B</td>
+            <td class="r mono">$236</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="pad" style="margin-top:22px;"><hr class="rule"></div>
+
+    <!-- USAGE CHART -->
+    <div class="usage">
+      <div class="usage-head">
+        <h2>Company usage over time</h2>
+        <div class="toggle" role="group" aria-label="Unit toggle">
+          <button class="active" aria-pressed="true">Tokens</button>
+          <button aria-pressed="false">Cost</button>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <div>
+          <!-- scale: 13px per B — tallest stack (18.9B ≈ 246px) + total label fits inside 300px -->
+          <div class="chart">
+            <div class="gridline" style="bottom:65px;"><span>5B</span></div>
+            <div class="gridline" style="bottom:130px;"><span>10B</span></div>
+            <div class="gridline" style="bottom:195px;"><span>15B</span></div>
+            <!-- 2026-04 · 15.2B = Opus 6.8 + Fable 5.4 + Haiku 3.0 -->
+            <div class="bar-col">
+              <div class="total">15.2B</div>
+              <div class="seg seg-1" style="height:88px;"></div>
+              <div class="seg seg-2" style="height:70px;"></div>
+              <div class="seg seg-3" style="height:39px;"></div>
+            </div>
+            <!-- 2026-05 · 17.4B = 7.6 + 6.2 + 3.6 -->
+            <div class="bar-col">
+              <div class="total">17.4B</div>
+              <div class="seg seg-1" style="height:99px;"></div>
+              <div class="seg seg-2" style="height:81px;"></div>
+              <div class="seg seg-3" style="height:47px;"></div>
+            </div>
+            <!-- 2026-06 · 18.9B = 8.1 + 6.6 + 4.2 -->
+            <div class="bar-col">
+              <div class="total">18.9B</div>
+              <div class="seg seg-1" style="height:105px;"></div>
+              <div class="seg seg-2" style="height:86px;"></div>
+              <div class="seg seg-3" style="height:55px;"></div>
+            </div>
+          </div>
+          <div class="month-labels">
+            <div>2026-04</div><div>2026-05</div><div>2026-06</div>
+          </div>
+        </div>
+        <div class="legend">
+          <div class="eyebrow">By model · 2026-06</div>
+          <div class="legend-item"><span class="key" style="background:var(--bar-1);"></span>Opus 4.8<span class="share num">8.1B</span></div>
+          <div class="legend-item"><span class="key" style="background:var(--bar-2);"></span>Fable 5<span class="share num">6.6B</span></div>
+          <div class="legend-item"><span class="key" style="background:var(--bar-3);"></span>Haiku 4.5<span class="share num">4.2B</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="colophon">
+      <span>gnomon · the AQ report · self-hosted</span>
+      <span class="num">Printed from window 2026-06 · list prices editable in Settings</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,26 @@
+<!-- @dsCard group="Components" viewport="700x280" name="Charts — Donut, Column" subtitle="Hover to inspect; ordered green ramp, no rainbow" -->
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css"><script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script><script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script><script src="https://unpkg.com/@babel/standalone/babel.min.js"></script><script src="../../_ds_bundle.js"></script>
+<style>body{padding:22px}</style></head><body><div id="r"></div>
+<script type="text/babel">
+const DS=(function(){for(const k of Object.keys(window)){const v=window[k];if(v&&typeof v==='object'&&!Array.isArray(v)&&v.Button&&v.Metric&&v.DataTable)return v;}return null;})();
+if(!DS){document.getElementById('r').innerHTML='<p style="font:var(--type-body-sm);color:var(--text-tertiary)">Component bundle not built yet.</p>';}
+else{
+const {DonutChart,ColumnChart,SectionLabel}=DS;
+function Card(){return(
+<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'32px',alignItems:'start'}}>
+  <div>
+    <SectionLabel hint="Share of the month's tokens by model.">Model mix</SectionLabel>
+    <DonutChart size={150} data={[
+      {label:'Sonnet 4.5',value:46},{label:'Opus 4.1',value:31},
+      {label:'GPT-5',value:15},{label:'Other',value:8}]}/>
+  </div>
+  <div>
+    <SectionLabel>AQ &middot; 6 months</SectionLabel>
+    <ColumnChart height={150} data={[
+      {label:'Mar',value:58},{label:'Apr',value:61},{label:'May',value:65},
+      {label:'Jun',value:67},{label:'Jul',value:68},{label:'Aug',value:72}]}/>
+  </div>
+</div>);}
+ReactDOM.createRoot(document.getElementById('r')).render(<Card/>);
+}
+</script></body></html>

@@ -1,0 +1,56 @@
+:root {
+  /* ---- Families ---- */
+  --font-ui: var(--font-sans);
+  --font-figure: var(--font-mono);
+
+  /* ---- Weights ---- */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* ---- Metric scale. Figures are the loudest thing on any gnomon screen. ---- */
+  --size-metric-xl: 88px;
+  --size-metric-lg: 64px;
+  --size-metric-md: 40px;
+  --size-metric-sm: 28px;
+  --size-metric-xs: 20px;
+
+  /* ---- Title scale ---- */
+  --size-title-lg: 32px;
+  --size-title-md: 24px;
+  --size-title-sm: 19px;
+
+  /* ---- Body scale ---- */
+  --size-body-lg: 16px;
+  --size-body: 15px;
+  --size-body-sm: 13px;
+
+  /* ---- Label scale. Uppercase, mono, tracked out. ---- */
+  --size-label: 11px;
+  --size-label-lg: 12px;
+
+  /* ---- Line heights ---- */
+  --leading-metric: 0.88;
+  --leading-tight: 1.15;
+  --leading-snug: 1.3;
+  --leading-body: 1.5;
+
+  /* ---- Tracking ---- */
+  --tracking-metric: -0.025em;
+  --tracking-title: -0.015em;
+  --tracking-body: 0;
+  --tracking-label: 0.1em;
+
+  /* ---- Composed roles ---- */
+  --type-metric-xl: var(--weight-medium) var(--size-metric-xl) / var(--leading-metric) var(--font-figure);
+  --type-metric-lg: var(--weight-medium) var(--size-metric-lg) / var(--leading-metric) var(--font-figure);
+  --type-metric-md: var(--weight-medium) var(--size-metric-md) / var(--leading-metric) var(--font-figure);
+  --type-metric-sm: var(--weight-medium) var(--size-metric-sm) / var(--leading-tight) var(--font-figure);
+  --type-title-lg: var(--weight-semibold) var(--size-title-lg) / var(--leading-tight) var(--font-ui);
+  --type-title-md: var(--weight-semibold) var(--size-title-md) / var(--leading-tight) var(--font-ui);
+  --type-title-sm: var(--weight-semibold) var(--size-title-sm) / var(--leading-snug) var(--font-ui);
+  --type-body: var(--weight-regular) var(--size-body) / var(--leading-body) var(--font-ui);
+  --type-body-sm: var(--weight-regular) var(--size-body-sm) / var(--leading-body) var(--font-ui);
+  --type-label: var(--weight-medium) var(--size-label) / 1.2 var(--font-figure);
+}

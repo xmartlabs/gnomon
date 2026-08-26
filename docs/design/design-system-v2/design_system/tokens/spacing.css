@@ -1,0 +1,30 @@
+:root {
+  /* 4px base, with 2 and 6 available for optical work inside controls. */
+  --space-0: 0;
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 12px;
+  --space-6: 16px;
+  --space-7: 20px;
+  --space-8: 24px;
+  --space-9: 32px;
+  --space-10: 40px;
+  --space-11: 48px;
+  --space-12: 64px;
+  --space-13: 80px;
+  --space-14: 96px;
+
+  /* ---- Layout ---- */
+  --layout-max: 1180px;
+  --layout-gutter: var(--space-9);
+  --layout-column-gap: var(--space-10);
+  --layout-section-gap: var(--space-11);
+  --layout-block-gap: var(--space-8);
+
+  /* ---- Control heights. 32/40/48, all touch-safe at md and up. ---- */
+  --control-sm: 32px;
+  --control-md: 40px;
+  --control-lg: 48px;
+}

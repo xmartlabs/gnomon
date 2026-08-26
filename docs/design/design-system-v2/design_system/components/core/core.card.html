@@ -1,0 +1,44 @@
+<!-- @dsCard group="Components" viewport="700x270" name="Core — Button, Badge, Label, Divider" subtitle="Actions, classifiers and the hairlines that replace cards" -->
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css"><script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script><script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script><script src="https://unpkg.com/@babel/standalone/babel.min.js"></script><script src="../../_ds_bundle.js"></script>
+<style>body{padding:22px}#r>div{display:flex;flex-direction:column;gap:20px}.set{display:flex;align-items:center;gap:12px;flex-wrap:wrap}</style>
+</head><body><div id="r"></div>
+<script type="text/babel">
+const DS=(function(){for(const k of Object.keys(window)){const v=window[k];if(v&&typeof v==='object'&&!Array.isArray(v)&&v.Button&&v.Metric&&v.DataTable)return v;}return null;})();
+if(!DS){document.getElementById('r').innerHTML='<p style="font:var(--type-body-sm);color:var(--text-tertiary)">Component bundle not built yet.</p>';}
+else{
+const {Button,IconButton,Badge,SectionLabel,Divider}=DS;
+function Card(){return(
+<div>
+  <div className="set">
+    <Button variant="primary">Link CLI</Button>
+    <Button variant="secondary">Export month</Button>
+    <Button variant="ghost">Cancel</Button>
+    <Button variant="link">View profile &rsaquo;</Button>
+    <Button variant="primary" disabled>Disabled</Button>
+  </div>
+  <div className="set">
+    <Button variant="secondary" size="sm">Small 32</Button>
+    <Button variant="secondary" size="md">Medium 40</Button>
+    <Button variant="secondary" size="lg">Large 48</Button>
+    <IconButton ariaLabel="Previous month" bordered>&lsaquo;</IconButton>
+    <IconButton ariaLabel="Next month" bordered>&rsaquo;</IconButton>
+  </div>
+  <div className="set">
+    <Badge tone="accent">Architect</Badge>
+    <Badge tone="neutral">Operator</Badge>
+    <Badge tone="neutral">Pilot</Badge>
+    <Badge tone="solid">Top pillar</Badge>
+    <Badge tone="warning" uppercase>Stale</Badge>
+    <Badge tone="negative">Declining</Badge>
+  </div>
+  <div>
+    <SectionLabel as="h2" size="lg" hint="Average of the pillar across people who uploaded this month.">Four pillars</SectionLabel>
+    <SectionLabel>Tokens &middot; cost</SectionLabel>
+    <Divider weight="strong" space={4}/>
+    <Divider weight="default" space={4}/>
+    <Divider weight="subtle" space={4}/>
+  </div>
+</div>);}
+ReactDOM.createRoot(document.getElementById('r')).render(<Card/>);
+}
+</script></body></html>

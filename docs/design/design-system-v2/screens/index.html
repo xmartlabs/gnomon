@@ -1,0 +1,88 @@
+<!-- @dsCard group="Dashboard" viewport="1180x820" subtitle="Team dashboard and person profile, click-through" -->
+<!-- @startingPoint section="Dashboard" subtitle="gnomon team dashboard — hi-fi screens" viewport="1180x820" -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>gnomon · tablero de equipo</title>
+<link rel="stylesheet" href="../../styles.css">
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  html, body { background: var(--surface-page); }
+  code { font-family: var(--font-figure); }
+  #boot { padding: 40px; font: var(--type-body-sm); color: var(--text-tertiary); }
+</style>
+</head>
+<body>
+<div id="root"><div id="boot">Cargando el tablero…</div></div>
+
+<script>
+/* The design-system bundle is generated only once this project is registered as a
+   Design System. Until then (and for plain file: previews) the kit loads the same
+   component sources directly: strip module syntax, transform with Babel, run as one
+   classic script so every component and screen shares a single scope. */
+(async function () {
+  const COMPONENTS = [
+    '../../components/core/Button.jsx',
+    '../../components/core/IconButton.jsx',
+    '../../components/core/Badge.jsx',
+    '../../components/core/Divider.jsx',
+    '../../components/forms/Input.jsx',
+    '../../components/forms/Select.jsx',
+    '../../components/data/Metric.jsx',
+    '../../components/data/Trend.jsx',
+    '../../components/data/PillarBar.jsx',
+    '../../components/data/DataTable.jsx',
+    '../../components/data/DonutChart.jsx',
+    '../../components/data/ColumnChart.jsx',
+    '../../components/feedback/Tooltip.jsx',
+    '../../components/core/SectionLabel.jsx',
+    '../../components/feedback/EmptyState.jsx'
+  ];
+  const SCREENS = ['data.js', 'AppHeader.jsx', 'TeamDashboard.jsx', 'PersonProfile.jsx', 'App.jsx'];
+
+  /* A module with exports is wrapped in its own scope and its exports published on
+     window (component files declare private helpers like SIZES that would otherwise
+     collide). Screen files have no exports and stay in the shared script scope. */
+  const prepare = (src) => {
+    const names = [];
+    const re = /^export\s+(?:function|const|let|var|class)\s+(\w+)/gm;
+    let m;
+    while ((m = re.exec(src))) names.push(m[1]);
+
+    const body = src
+      .split('\n')
+      .filter((l) => !/^\s*import\s/.test(l))
+      .join('\n')
+      .replace(/^export\s+(function|const|let|var|class)\s/gm, '$1 ');
+
+    if (!names.length) return body;
+    const publish = names.map((n) => n + ': ' + n).join(', ');
+    return '(function(){\n' + body + '\nObject.assign(window, {' + publish + '});\n})();';
+  };
+
+  try {
+    const sources = await Promise.all(
+      COMPONENTS.concat(SCREENS).map((p) => fetch(p).then((r) => {
+        if (!r.ok) throw new Error(p + ' → ' + r.status);
+        return r.text();
+      }))
+    );
+
+    const code = sources
+      .map((src) => Babel.transform(prepare(src), { presets: [['react', { runtime: 'classic' }]] }).code)
+      .join('\n;\n');
+
+    const tag = document.createElement('script');
+    tag.textContent = code + '\n;ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));';
+    document.body.appendChild(tag);
+  } catch (err) {
+    document.getElementById('boot').textContent = 'No se pudo cargar el kit: ' + err.message;
+    console.error(err);
+  }
+})();
+</script>
+</body>
+</html>

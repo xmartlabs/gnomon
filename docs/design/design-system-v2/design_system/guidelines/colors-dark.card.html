@@ -1,0 +1,18 @@
+<!-- @dsCard group="Colors" viewport="700x190" name="Dark theme" subtitle="Same token names under [data-theme=dark]" -->
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>body{padding:0}
+.pane{padding:22px 24px}
+.lbl{font:var(--type-label);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-tertiary)}
+.m{font:var(--type-metric-md);color:var(--text-primary);margin-top:6px}
+.sub{font:var(--type-body-sm);color:var(--text-secondary)}
+.bar{height:8px;background:var(--chart-track);margin-top:14px;position:relative}
+.fill{position:absolute;inset:0 auto 0 0;width:64%;background:var(--chart-1)}
+</style></head><body>
+<div class="pane" style="background:var(--surface-page)">
+<div class="lbl">Team AQ &middot; light</div><div class="m">72<span style="font-size:14px;color:var(--text-secondary)"> /100</span></div>
+<div class="sub">Breadth is the weakest pillar</div><div class="bar"><span class="fill"></span></div>
+</div>
+<div class="pane" data-theme="dark" style="background:var(--surface-page)">
+<div class="lbl">Team AQ &middot; dark</div><div class="m">72<span style="font-size:14px;color:var(--text-secondary)"> /100</span></div>
+<div class="sub">Breadth is the weakest pillar</div><div class="bar"><span class="fill"></span></div>
+</div></body></html>
