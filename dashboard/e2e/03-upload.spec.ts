@@ -61,9 +61,11 @@ test.describe("Flow 3 · the CLI uploads a month", () => {
     await expect(page.getByText("77", { exact: true }).first()).toBeVisible();
     await page.screenshot({ path: "test-results/flows/03-uploaded-profile.png", fullPage: true });
 
-    // The new person is now on the team board.
+    // The new person is now on the team board. Every row is a "button" (the
+    // whole row is the click target — see DataTable), so match on that role
+    // rather than a table-header cell, which this design doesn't use.
     await page.goto(SEEDED);
-    await expect(page.getByRole("rowheader", { name: /Ada Byron/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Ada Byron/ })).toBeVisible();
     await api.dispose();
   });
 

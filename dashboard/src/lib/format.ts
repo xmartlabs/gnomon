@@ -31,3 +31,20 @@ export function splitUnit(s: string): { value: string; unit: string } {
 export function fmtDelta(n: number): string {
   return n < 0 ? `−${Math.abs(n)}` : `+${n}`;
 }
+
+const MONTHS_EN = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/** "2026-08" -> "August 2026" — the dashboard's content language is English. */
+export function fmtMonthLabel(monthKey: string): string {
+  const [y, m] = monthKey.split("-").map(Number);
+  const name = MONTHS_EN[(m ?? 1) - 1] ?? monthKey;
+  return `${name} ${y}`;
+}
+
+/** "2026-08" -> "aug" — the three-month history chart's column labels. */
+export function fmtMonthShort(monthKey: string): string {
+  return fmtMonthLabel(monthKey).slice(0, 3).toLowerCase();
+}

@@ -1,0 +1,23 @@
+<!-- @dsCard group="Components" viewport="700x230" name="Forms — Input, Select" subtitle="Visible labels, actionable errors, inline header select" -->
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css"><script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script><script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script><script src="https://unpkg.com/@babel/standalone/babel.min.js"></script><script src="../../_ds_bundle.js"></script>
+<style>body{padding:22px}</style></head><body><div id="r"></div>
+<script type="text/babel">
+const DS=(function(){for(const k of Object.keys(window)){const v=window[k];if(v&&typeof v==='object'&&!Array.isArray(v)&&v.Button&&v.Metric&&v.DataTable)return v;}return null;})();
+if(!DS){document.getElementById('r').innerHTML='<p style="font:var(--type-body-sm);color:var(--text-tertiary)">Component bundle not built yet.</p>';}
+else{
+const {Input,Select}=DS;
+function Card(){return(
+<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'24px',alignItems:'start'}}>
+  <Input label="Name" name="name" autoComplete="name" placeholder="Ana Pérez" required fullWidth/>
+  <Input label="Email" name="email" type="email" autoComplete="email" value="ana@" required fullWidth
+         error="That is not an email — check for a missing @domain."/>
+  <Input label="Team token" name="token" mono fullWidth placeholder="shared by whoever deployed the server"
+         hint="Ask the operator who ran docker compose up."/>
+  <div style={{display:'flex',flexDirection:'column',gap:'18px'}}>
+    <Select label="Month" variant="inline" value="August 2026" options={['August 2026','July 2026','June 2026']}/>
+    <Select label="Period" options={['Last 6 months','Last 3 months','This month']}/>
+  </div>
+</div>);}
+ReactDOM.createRoot(document.getElementById('r')).render(<Card/>);
+}
+</script></body></html>

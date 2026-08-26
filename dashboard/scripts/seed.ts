@@ -12,6 +12,10 @@ const PEOPLE = [
   { email: "alan@example.com", name: "Alan Turing", scale: 0.86, top: "Efficiency", aq: { "2026-05": 88, "2026-06": 85 } },
   { email: "grace@example.com", name: "Grace Hopper", scale: 0.8, top: "Breadth", aq: { "2026-04": 70, "2026-05": 74, "2026-06": 81 } },
   { email: "kat@example.com", name: "Katherine J.", scale: 0.65, top: "Savvy", aq: { "2026-06": 66 } },
+  // Deliberately low trajectory so the tier-distribution widget shows real
+  // (not contrived) coverage across the bottom of the real 6-tier scale
+  // instead of only the top 3 the other four people happen to land in.
+  { email: "iris@example.com", name: "Iris Watson", scale: 0.3, top: "Breadth", aq: { "2026-04": 20, "2026-05": 30, "2026-06": 46 } },
 ];
 
 // Weights come from the AQ model; the leader fills ~97% of its weight and the
@@ -39,13 +43,18 @@ function pillarsFor(top: string, aq: number) {
   });
 }
 
+// A 4th, minor model so the team-level model mix actually exercises its
+// "Otros" overflow bucket in `pnpm dev`, not only in unit tests.
 const MODELS = [
-  { model_id: "claude-opus-4-8", model: "Opus 4.8", share: 0.6 },
-  { model_id: "claude-fable-5", model: "Fable 5", share: 0.28 },
-  { model_id: "claude-haiku-4-5", model: "Haiku 4.5", share: 0.12 },
+  { model_id: "claude-opus-4-8", model: "Opus 4.8", share: 0.58 },
+  { model_id: "claude-fable-5", model: "Fable 5", share: 0.27 },
+  { model_id: "claude-haiku-4-5", model: "Haiku 4.5", share: 0.1 },
+  { model_id: "claude-sonnet-4", model: "Sonnet 4", share: 0.05 },
 ];
 
-const tierFor = (aq: number) => (aq >= 90 ? "Elite" : aq >= 80 ? "Advanced" : "Proficient");
+const tierFor = (aq: number) =>
+  aq >= 88 ? "Elite" : aq >= 75 ? "Advanced" : aq >= 60 ? "Proficient"
+  : aq >= 45 ? "Adequate" : aq >= 25 ? "Apprentice" : "Novice";
 
 function monthsEndingAt(monthKey: string, count: number): string[] {
   const [y, m] = monthKey.split("-").map(Number);

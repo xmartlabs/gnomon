@@ -1,103 +1,151 @@
-# gnomon dashboard — design system · "The Ledger" (huashu-design)
+# gnomon dashboard — design system v2 · "the instrument direction"
 
-Chosen direction (from `/design-directions`, proposal A). An **editorial, warm, print-report**
-aesthetic: cream stock, espresso ink, one terracotta accent, Fraunces display + Archivo body,
-hairline rules instead of boxes. An AQ report *is* a periodical — so it's typeset like one.
+Replaces "The Ledger" (cream/terracotta, Fraunces + Archivo) in full. Nothing of the old
+visual identity survived this pass — new palette, new typefaces, new components, dark mode.
+`/cli-auth` is the one screen this redesign does not touch (out of scope in the handoff);
+it still runs on the old Ledger tokens, kept side by side in `globals.css` under different
+custom-property names so nothing collides.
 
-Source of truth for the UI. The three screens are Playwright-verified hi-fi mockups in
-`docs/design/mockups/*.html` (`*.png`). The Next.js implementation (Tasks 6/8/9) must match them —
-do not hand-invent visuals. The three exploration directions are kept in `docs/design/directions/`.
+## Source of truth
+
+[`design-system-v2/`](./design-system-v2/) is the hi-fi handoff bundle, copied into the repo
+verbatim so it survives after the original `~/Downloads` folder is gone:
+
+- `design-system-v2/HANDOFF.md` — the full handoff brief (screens, copy rules, a11y commitments,
+  interaction spec). Read this first for anything not covered below.
+- `design-system-v2/design_system/tokens/*.css` — every CSS custom property, ported into
+  `dashboard/src/app/globals.css` under the same names.
+- `design-system-v2/design_system/components/**/*.jsx` (+ `.d.ts` + `.prompt.md`) — the reference
+  implementation every component in `dashboard/src/components/ds/` was ported from.
+- `design-system-v2/screens/*.jsx` — the two reference screens (`TeamDashboard.jsx`,
+  `PersonProfile.jsx`) the actual pages were built against.
 
 ## Screens
 
-| Screen | Mockup | Implements |
-|--------|--------|------------|
-| CLI sign-in | `mockups/cli-auth.html` | Task 6 — `/cli-auth` |
-| Team overview | `mockups/team-overview.html` | Task 8 — `/` |
-| Person profile | `mockups/person-profile.html` | Task 9 — `/p/[personId]/[monthKey]` |
+| Screen | Route | Reference |
+| --- | --- | --- |
+| Equipo (team dashboard) | `/` | `design-system-v2/screens/TeamDashboard.jsx` |
+| Perfil de persona | `/p/[personId]/[monthKey]` | `design-system-v2/screens/PersonProfile.jsx` |
 
-## Tokens (CSS variables → `globals.css`)
+Both live under `dashboard/src/app/(dashboard)/`, a route group with its own
+`layout.tsx` (masthead: wordmark, month select, theme toggle). `/cli-auth` sits outside that
+group and keeps the root layout's old styling untouched.
 
-```css
-:root {
-  --paper:    #F6F1E6;   /* ground — cream stock */
-  --paper-2:  #EFE8D8;   /* recessed panel / track wells */
-  --ink:      #262016;   /* espresso ink — text, primary button, dark bars */
-  --ink-60:   #6E655A;   /* secondary text */
-  --ink-30:   #B4AA9A;   /* tertiary text / strong rule */
-  --hairline: #D8CFBC;   /* hairline rules (the primary structural device) */
-  --accent:   #B4451F;   /* terracotta — THE one accent (links, gains-context, active) */
-  --gain:     #4A6A45;   /* muted moss — positive deltas */
-  --loss:     #9A3B22;   /* burnt — negative deltas (kept in the accent family) */
-  --parch:    #C9B99A;   /* parchment — 3rd chart series / older level bars */
-}
-/* page gutter outside the sheet */
-html { background: #E9E2D2; }
-body { background: var(--paper); color: var(--ink); }
-```
+## The governing rule
 
-Chart / model-mix series order: **ink (Opus) → terracotta (Fable) → parchment (Haiku)**. Segments
-separated by a 2px `--paper` gap, not borders.
+**No cards.** Hierarchy comes from type size and whitespace, never from a bordered/shadowed
+container. Grouping is a `SectionLabel`, a 1px hairline (`Divider`), and space — nothing else.
+Corollaries, all binding:
 
-## Typography
+- Asymmetric grids (`1.15fr auto 1fr`, `1fr auto 1.25fr`, `1.35fr auto 1fr`), never equal thirds.
+- Bold is rationed to figures and headline titles — never body copy, never a table name.
+- Actions are visible at rest ("Ver perfil ›" on every row, not a hover reveal).
+- Definitions live in keyboard-reachable `Tooltip`s, not the native `title` attribute.
+- Red (`--negative`) is only for a real decline or an error. Missing data is grey, never red.
+- Colour is never the only carrier of meaning — every `Trend` renders a glyph and a number.
 
-Two Google fonts via `next/font/google` (self-hosted at build, no runtime CDN):
+## Tokens
 
-- **Fraunces** — display: headings, all big numerals (AQ, stat values, table AQ cell), the logo,
-  tier badges, pillar names, italic archetype/annotation lines. Use optical-size axis (`opsz`)
-  wide open at large sizes; italic in terracotta for accents. Weights 300–700, `ital` axis.
-- **Archivo** — body: paragraphs, labels, table cells, buttons, inputs. Weights 400/500/600.
+Ported verbatim into `globals.css`, appended after the old Ledger block (untouched, still
+serving `/cli-auth`) rather than replacing it. Nothing here is registered into Tailwind's
+`@theme` — components read the custom properties directly via inline `style` objects, exactly
+like the reference components do, which is what makes them portable copy-paste.
 
-```ts
-// app/layout.tsx
-import { Fraunces, Archivo } from "next/font/google";
-const display = Fraunces({ subsets: ["latin"], variable: "--font-display", axes: ["opsz"], weight: ["300","400","500","600","700"], style: ["normal","italic"] });
-const body = Archivo({ subsets: ["latin"], variable: "--font-body", weight: ["400","500","600"] });
-// <html className={`${display.variable} ${body.variable}`}>
-// body { font-family: var(--font-body) }  .serif { font-family: var(--font-display) }
-```
+- **Colour** — instrument blue (`--blue-50`…`--blue-900`, brand hue `#2A78D6`), cool greys
+  (`--grey-0`…`--grey-950`), signal ramps (moss/clay/ochre for positive/negative/warning).
+  Semantic tokens (`--text-*`, `--surface-*`, `--rule-*`, `--accent*`, `--chart-*`) remap
+  entirely under `[data-theme="dark"]` — components never branch on theme, only read tokens.
+- **Typography** — `--font-ui` (Archivo, self-hosted via `next/font/google`, reusing the same
+  instance `/cli-auth` already loads) for language; `--font-figure` (IBM Plex Mono, new) for
+  every number, label and code span, always `tabular-nums`. Composed roles: `--type-metric-xl`
+  (88px) down to `--type-label` (11px uppercase tracked).
+- **Spacing** — 4px base (`--space-1`…`--space-14`), `--layout-max: 1180px`.
+- **Borders/radii/elevation** — two rule weights, near-square radii, one shadow token
+  reserved for the `Tooltip` and nothing else.
+- **Motion** — 80/120/180/320ms, zeroed under `prefers-reduced-motion: reduce`.
 
-All numerals use `font-variant-numeric: tabular-nums`.
+## Dark mode
 
-## Component patterns (the grammar)
+New. `data-theme="light"|"dark"` on `<html>`, toggled by `ThemeToggle`
+(`dashboard/src/components/ThemeToggle.tsx`) and persisted to `localStorage["gn-theme"]`. An
+inline script in `app/layout.tsx` applies the saved-or-system theme **before** paint (no flash);
+`<html>` carries `suppressHydrationWarning` because that script deliberately makes the
+server-rendered markup and the first client paint disagree on that one attribute — expected,
+not a bug.
 
-- **No boxes — rules.** Structure comes from hairlines (`1px --hairline`) and heavy rules
-  (`2px --ink`), not from bordered/rounded cards. Sections open with a 2px ink rule or an eyebrow.
-- **Eyebrow label**: 11px, `letter-spacing:.18em`, uppercase, `--ink-60`, weight 600.
-- **Section heading**: Fraunces 600, ~22–26px, `opsz` ~60.
-- **Masthead**: Fraunces logo `gnomon` with a terracotta full-stop (`gnomon.`), small-caps
-  "Team Dashboard" sub, right-aligned meta. Page opens with a 4px top ink rule.
-- **Signature (the 120%)**: the drop-stat — a giant Fraunces numeral (team avg AQ ~148px on
-  overview, person AQ ~120px on profile) with an inked italic annotation (`↗ +4 vs last month`).
-  Everything else stays calm hairlines at 80%.
-- **Stat column**: eyebrow + Fraunces value with muted `/unit` small, ruled left divider.
-- **Tier badge**: NO pill. Fraunces small-caps + a leading dot in the tier's color. Elite→terracotta,
-  Advanced→ink, Proficient→ink-60.
-- **Table**: heavy ink header rule, uppercase Archivo column labels, hairline row dividers; Name in
-  Fraunces, AQ cell in Fraunces ~22px, top-pillar in Fraunces italic, numeric columns right-aligned
-  tabular. Sortable headers are `<button>` (active shows a small caret in accent).
-- **Bars** (usage-over-time, level-over-time): flat fills, 2px ink baseline, dashed hairline
-  gridlines with tabular labels; most-recent level bar in `--ink`, older bars in `--parch`.
-  Fraunces total label above each column.
-- **Sparkline / trend**: 1.8px SVG polyline — terracotta for up, ink-60 for down, ink-30 flat.
-- **Toggle** (Tokens/Cost): 1px ink outline segmented; active segment ink fill, paper text.
-- **Buttons**: primary = ink fill / paper text, 2px radius; secondary = ink outline; ghost = terracotta
-  text with a terracotta underline (link-like).
-- **Inputs**: no box — a single `--ink-30` bottom rule that turns terracotta on focus; uppercase
-  eyebrow label above.
-- **Coach card**: opens with a 2px terracotta rule, `AI COACH` eyebrow + `optional · LLM_API_KEY`
-  badge, body set in Fraunces. Hidden entirely when the coach text is null.
-- **Colophon**: a footer line ("gnomon · the AQ report · self-hosted" / window meta) in `--ink-60`.
+## Components
 
-## Anti-slop guardrails (applied)
+`dashboard/src/components/ds/` — ported from `design_system/components/`, same names, same
+prop shapes where the DOM allowed it (TSX types instead of the reference's untyped `props`):
+`Button`, `IconButton`, `Badge`, `SectionLabel`, `Divider`, `Select`, `Metric`, `Trend`,
+`PillarBar`, `DataTable`, `DonutChart`, `ColumnChart`, `Tooltip`, `EmptyState`.
 
-- No emoji icons; the `§` privacy mark and `↗` annotation tick are typographic glyphs.
-- No gradients at all — the warmth is the paper color, not a wash.
-- No rounded-card-with-left-border cliché — hairline rules carry structure.
-- Numerals always Fraunces + tabular; colors never invented outside the token set.
-- Real fake data throughout (Ada / Alan / Grace / Katherine — same team as `scripts/seed.ts`).
+Page-specific composition (not in the reference bundle, built to wire the primitives above to
+real data): `AppHeader`, `MonthSelect`, `PeopleTable`, `TierSplit`, `TeamCoaching`,
+`SuggestionsCard`.
 
-## Empty state (design spec §Error handling)
+**`DonutChart` note:** its slice path math rounds every coordinate to 2 decimal places.
+`Math.cos`/`Math.sin` can differ in their last bit between Node (server render) and the
+browser (client hydration) for the same input, which turns into a byte-different SVG `d`
+string and a hydration mismatch React "won't patch up." Rounding collapses that noise below
+anything that matters at a 176px chart. Its `<svg>` uses `role="group"`, never `role="img"` —
+`img` forbids exposing focusable descendants, which would silence every slice's own
+`aria-label` and make the whole chart unreachable by keyboard despite `tabIndex={0}` on each
+`<path>`.
 
-No uploads yet → overview shows a ruled onboarding block (not a boxed card) with the exact CLI
-command `xl-ai-insights --mirdash-base=http://localhost:3000` set in a mono/Archivo run, copyable.
+## Domain data — kept real, not the handoff's placeholder numbers
+
+The handoff's own fixture data (`screens/data.js`) uses a 3-tier system (Pilot &lt;65, Operator
+65–79, Architect 80+) and pillar weights 30/30/25/15. gnomon's real scoring engine
+(`gnomon/scoring/aq.py`, untouched by this branch) uses six tiers — Elite ≥88, Advanced ≥75,
+Proficient ≥60, Adequate ≥45, Apprentice ≥25, Novice — and weights 30/35/20/15. **Confirmed with
+the user rather than assumed** (this exact fictional taxonomy appeared verbatim in two
+independent design handoffs, which made it worth asking about explicitly instead of guessing
+again). The dashboard shows the real six tiers and real weights everywhere; the handoff's
+numbers were illustrative fixture data, not a product decision to adopt.
+
+`TierSplit` (`Cómo se reparte el equipo`) only lists tiers with at least one person in them this
+month — unlike `PillarBar`'s always-show-all-four pillars, an all-zero row for a tier nobody is
+near reads as noise in this shorter list.
+
+## Coach integration
+
+`Qué mejorar este mes` (team) and `Sugerencias` (person) are the coaching surfaces the handoff
+calls primary. Both are optional, gated on `LLM_API_KEY` exactly like the pre-existing AI coach
+feature (`dashboard/src/lib/coach.ts`'s `getTeamInsight`/`getPersonSuggestions`, cached under
+`coach-team:`/`coach-suggestions:` keys, never colliding with the original `coach:` prefix).
+When the key is unset, the whole column collapses — decided **synchronously** via
+`coachEnabled()` before the async generation call ever resolves, so there is never a dead
+half-width column waiting on an LLM round-trip that will never come.
+
+## Deliberate scope reductions vs. the previous (Ledger) implementation
+
+The hi-fi reference screens don't show these, so they were dropped rather than carried forward
+by default — flagged here instead of silently disappearing:
+
+- **No column sorting** on the Personas table. The reference `DataTable` component has none;
+  the table is presented pre-sorted by AQ.
+- **No per-person month stepper** (previous/next arrows) on the profile page. The only
+  month-changing control in this design is the header's global "Mes" select, which — per the
+  handoff's own spec — always routes back to the team screen, even when triggered from a
+  profile. A person's own history is visible only via the "Nivel en el tiempo" chart now.
+- **No discrete AQ delta annotation** next to the person header's 96px figure (the team header
+  keeps its `Trend`). The reference never shows one there.
+- **"Último upload"** shows the raw `monthKey` (e.g. `2026-06`), not a relative string like
+  "hace 2 días" — the dashboard has no upload-timestamp-to-relative-time formatter yet, and the
+  monthKey is an honest substitute rather than fabricated precision.
+- **No usage-over-time stacked chart** (tokens/cost by month, with a unit toggle) on the team
+  screen. The reference has no equivalent — only the 3-month AQ history and the current month's
+  model-mix donut.
+
+None of these are backend limitations — the underlying data (`prevMonthKey`/`nextMonthKey`,
+`uploadedAt` timestamps, the full monthly usage series) is still there in `lib/metrics.ts` and
+`lib/db.ts`. Reintroducing any of them is a UI-only change if a future design calls for it.
+
+## Verification
+
+Unit (Vitest) 152 passed · E2E (Playwright) 19 passed, rewritten against this design's markup
+and copy · `pnpm build` clean · manually reviewed in both themes at 1180px and 1600px viewports
+(the 1600px pass caught a real bug: the old Ledger cream background bled through the side
+gutters because `background` and `max-width` were on the same element — fixed by splitting the
+dashboard layout into a full-width background wrapper with a centered, width-capped child).

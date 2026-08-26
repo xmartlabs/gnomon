@@ -1,0 +1,42 @@
+<!-- @dsCard group="Components" viewport="700x380" name="Data — Metric, Trend, PillarBar, DataTable" subtitle="Figures lead; hairlines and alignment carry structure" -->
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css"><script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script><script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script><script src="https://unpkg.com/@babel/standalone/babel.min.js"></script><script src="../../_ds_bundle.js"></script>
+<style>body{padding:22px}</style></head><body><div id="r"></div>
+<script type="text/babel">
+const DS=(function(){for(const k of Object.keys(window)){const v=window[k];if(v&&typeof v==='object'&&!Array.isArray(v)&&v.Button&&v.Metric&&v.DataTable)return v;}return null;})();
+if(!DS){document.getElementById('r').innerHTML='<p style="font:var(--type-body-sm);color:var(--text-tertiary)">Component bundle not built yet.</p>';}
+else{
+const {Metric,Trend,PillarBar,DataTable,Badge,Divider}=DS;
+const people=[
+ {id:1,name:'Ana P.',aq:84,tier:'Architect',delta:6,top:'Craft',upload:'2 days ago'},
+ {id:2,name:'Bruno M.',aq:75,tier:'Operator',delta:2,top:'Savvy',upload:'5 days ago'},
+ {id:3,name:'Carla S.',aq:71,tier:'Operator',delta:-3,top:'Efficiency',upload:'1 week ago'},
+ {id:4,name:'Diego R.',aq:58,tier:'Pilot',delta:null,top:'Breadth',upload:'June'}
+];
+function Card(){return(
+<div style={{display:'flex',flexDirection:'column',gap:'22px'}}>
+  <div style={{display:'flex',alignItems:'flex-end',gap:'40px',flexWrap:'wrap'}}>
+    <Metric label="Team AQ" value={72} unit="/100" size="xl" trailing={<Trend delta={4} against="July"/>}/>
+    <Metric label="Tokens" value="48.2M" size="md"/>
+    <Metric label="Cost" value="$310" size="md" trailing={<Trend delta={-8}/>}/>
+  </div>
+  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'24px'}}>
+    <PillarBar name="Breadth" weight="30%" value={64} reference={71}/>
+    <PillarBar name="Craft" weight="30%" value={78} reference={82}/>
+  </div>
+  <Divider weight="default" space={2}/>
+  <DataTable
+    columns={[
+      {key:'name',header:'Name'},
+      {key:'aq',header:'AQ',figure:true},
+      {key:'tier',header:'Tier',render:r=><Badge tone={r.tier==='Architect'?'accent':'neutral'}>{r.tier}</Badge>},
+      {key:'trend',header:'Trend',render:r=><Trend delta={r.delta}/>},
+      {key:'top',header:'Top pillar'},
+      {key:'upload',header:'Last upload',muted:true}
+    ]}
+    rows={people} actionLabel="View profile"
+    rowLabel={r=>'Open profile for '+r.name}
+    onRowClick={()=>{}}/>
+</div>);}
+ReactDOM.createRoot(document.getElementById('r')).render(<Card/>);
+}
+</script></body></html>

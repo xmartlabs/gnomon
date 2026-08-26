@@ -1,0 +1,23 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Surfaces & rules" subtitle="Three rule weights carry the layout; surfaces stay almost flat" -->
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>body{padding:20px}
+.wrap{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.s{padding:12px 14px;font:var(--type-body-sm)}
+.k{font-family:var(--font-figure);font-size:11px;color:var(--text-tertiary)}
+.rules{display:flex;flex-direction:column;gap:12px}
+.r{display:flex;align-items:center;gap:12px}
+.line{flex:1}
+</style></head><body>
+<div class="wrap">
+<div style="display:flex;flex-direction:column;gap:8px">
+<div class="s" style="background:var(--surface-page);border:var(--rule-width) solid var(--rule-default)">--surface-page <span class="k">page</span></div>
+<div class="s" style="background:var(--surface-sunken)">--surface-sunken <span class="k">tables, wells</span></div>
+<div class="s" style="background:var(--surface-inverse);color:var(--text-inverse)">--surface-inverse <span class="k">tooltip, hero</span></div>
+</div>
+<div class="rules">
+<div class="r"><span class="k" style="width:104px">--rule-strong</span><span class="line" style="border-top:var(--rule-width) solid var(--rule-strong)"></span></div>
+<div class="r"><span class="k" style="width:104px">--rule-default</span><span class="line" style="border-top:var(--rule-width) solid var(--rule-default)"></span></div>
+<div class="r"><span class="k" style="width:104px">--rule-subtle</span><span class="line" style="border-top:var(--rule-width) solid var(--rule-subtle)"></span></div>
+<div class="r"><span class="k" style="width:104px">2px strong</span><span class="line" style="border-top:var(--rule-width-strong) solid var(--rule-strong)"></span></div>
+</div>
+</div></body></html>

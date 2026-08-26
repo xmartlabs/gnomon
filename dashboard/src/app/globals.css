@@ -50,3 +50,285 @@ body {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* ============================================================================
+   gnomon design system v2 — the "instrument" direction (blue/grey, Archivo +
+   IBM Plex Mono, no cards). Scoped entirely to new custom-property names, so
+   nothing above this line (and nothing on /cli-auth, out of scope for this
+   redesign) changes. Ported verbatim from design_handoff_gnomon/design_system.
+   ========================================================================= */
+
+:root {
+  /* ---- Base: neutrals. Cool, desaturated, printer-ink greys. ---- */
+  --grey-0: #FFFFFF;
+  --grey-25: #FBFBFB;
+  --grey-50: #F4F5F5;
+  --grey-100: #E9EAEA;
+  --grey-200: #D5D7D7;
+  --grey-300: #B4B7B7;
+  --grey-400: #8B8F8F;
+  --grey-500: #6A6E6E;
+  --grey-600: #4E5252;
+  --grey-700: #383B3B;
+  --grey-800: #232626;
+  --grey-900: #141616;
+  --grey-950: #0A0B0B;
+
+  /* ---- Base: accent. Instrument blue, built around #2A78D6. --blue-500 is
+     the brand hue and the chart fill. Anything that CARRIES TEXT (links,
+     primary buttons) uses --blue-600, which clears 4.5:1 against white. ---- */
+  --blue-50: #EBF2FC;
+  --blue-100: #CFE0F7;
+  --blue-200: #9EC2EF;
+  --blue-300: #6BA1E4;
+  --blue-400: #4189DC;
+  --blue-500: #2A78D6;
+  --blue-600: #1F60B0;
+  --blue-700: #17498A;
+  --blue-800: #103361;
+  --blue-900: #0A2242;
+
+  /* ---- Base: signal. Used only for status, never decoration. ---- */
+  --moss-100: #DCEDE3;
+  --moss-500: #15734A;
+  --moss-600: #0F5A39;
+  --clay-100: #F6E3DF;
+  --clay-500: #A23B2A;
+  --clay-600: #85301F;
+  --ochre-100: #F5EBD4;
+  --ochre-500: #8A6516;
+
+  /* ---- Semantic: text ---- */
+  --text-primary: var(--grey-900);
+  --text-secondary: var(--grey-500);
+  --text-tertiary: #6E7272;
+  /* Non-text only: aria-hidden marks, chevrons, hairline glyphs. Never words. */
+  --text-decorative: var(--grey-400);
+  --text-inverse: var(--grey-0);
+  --text-accent: var(--blue-600);
+
+  /* ---- Semantic: surfaces ---- */
+  --surface-page: var(--grey-0);
+  --surface-raised: var(--grey-0);
+  --surface-sunken: var(--grey-50);
+  --surface-hover: var(--grey-50);
+  --surface-active: var(--grey-100);
+  --surface-inverse: var(--grey-900);
+  --surface-accent-subtle: var(--blue-50);
+
+  /* ---- Semantic: rules. Three weights, nothing else. ---- */
+  --rule-strong: var(--grey-900);
+  --rule-default: var(--grey-200);
+  --rule-subtle: var(--grey-100);
+
+  /* ---- Semantic: accent ---- */
+  --accent: var(--blue-600);
+  --accent-hover: var(--blue-700);
+  --accent-pressed: var(--blue-800);
+  --accent-on: var(--grey-0);
+  --accent-subtle: var(--blue-50);
+  /* Brand hue for fills that never carry text: chart series, the wordmark mark. */
+  --accent-mark: var(--blue-500);
+
+  /* ---- Semantic: status. Always paired with a glyph or word, never colour alone. ---- */
+  --positive: var(--moss-500);
+  --positive-subtle: var(--moss-100);
+  --negative: var(--clay-500);
+  --negative-subtle: var(--clay-100);
+  --warning: var(--ochre-500);
+  --warning-subtle: var(--ochre-100);
+  --neutral: var(--grey-400);
+
+  /* ---- Semantic: data. A single blue ramp plus grey. Ordered, not categorical. ---- */
+  --chart-1: var(--blue-500);
+  --chart-2: var(--blue-300);
+  --chart-3: var(--blue-100);
+  --chart-4: var(--grey-300);
+  --chart-track: var(--grey-100);
+  --chart-grid: var(--grey-200);
+
+  /* ---- Semantic: focus ---- */
+  --focus-ring: var(--blue-500);
+
+  /* ---- Typography ---- */
+  --font-ui: var(--font-body), "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-figure: var(--font-mono-gn), ui-monospace, "SF Mono", Menlo, monospace;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --size-metric-xl: 88px;
+  --size-metric-lg: 64px;
+  --size-metric-md: 40px;
+  --size-metric-sm: 28px;
+  --size-metric-xs: 20px;
+
+  --size-title-lg: 32px;
+  --size-title-md: 24px;
+  --size-title-sm: 19px;
+
+  --size-body-lg: 16px;
+  --size-body: 15px;
+  --size-body-sm: 13px;
+
+  --size-label: 11px;
+  --size-label-lg: 12px;
+
+  --leading-metric: 0.88;
+  --leading-tight: 1.15;
+  --leading-snug: 1.3;
+  --leading-body: 1.5;
+
+  --tracking-metric: -0.025em;
+  --tracking-title: -0.015em;
+  --tracking-body: 0;
+  --tracking-label: 0.1em;
+
+  --type-metric-xl: var(--weight-medium) var(--size-metric-xl) / var(--leading-metric) var(--font-figure);
+  --type-metric-lg: var(--weight-medium) var(--size-metric-lg) / var(--leading-metric) var(--font-figure);
+  --type-metric-md: var(--weight-medium) var(--size-metric-md) / var(--leading-metric) var(--font-figure);
+  --type-metric-sm: var(--weight-medium) var(--size-metric-sm) / var(--leading-tight) var(--font-figure);
+  --type-title-lg: var(--weight-semibold) var(--size-title-lg) / var(--leading-tight) var(--font-ui);
+  --type-title-md: var(--weight-semibold) var(--size-title-md) / var(--leading-tight) var(--font-ui);
+  --type-title-sm: var(--weight-semibold) var(--size-title-sm) / var(--leading-snug) var(--font-ui);
+  --type-body: var(--weight-regular) var(--size-body) / var(--leading-body) var(--font-ui);
+  --type-body-sm: var(--weight-regular) var(--size-body-sm) / var(--leading-body) var(--font-ui);
+  --type-label: var(--weight-medium) var(--size-label) / 1.2 var(--font-figure);
+
+  /* ---- Spacing. 4px base, 2 and 6 reserved for optical work in controls. ---- */
+  --space-0: 0;
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 12px;
+  --space-6: 16px;
+  --space-7: 20px;
+  --space-8: 24px;
+  --space-9: 32px;
+  --space-10: 40px;
+  --space-11: 48px;
+  --space-12: 64px;
+  --space-13: 80px;
+  --space-14: 96px;
+
+  --layout-max: 1180px;
+  --layout-gutter: var(--space-9);
+  --layout-column-gap: var(--space-10);
+  --layout-section-gap: var(--space-11);
+  --layout-block-gap: var(--space-8);
+
+  --control-sm: 32px;
+  --control-md: 40px;
+  --control-lg: 48px;
+
+  /* ---- Rules, radii, elevation ---- */
+  --rule-width: 1px;
+  --rule-width-strong: 2px;
+
+  --radius-none: 0;
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-full: 999px;
+
+  --shadow-none: none;
+  --shadow-overlay: 0 1px 2px rgba(10, 11, 11, 0.06), 0 8px 24px rgba(10, 11, 11, 0.10);
+
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+
+  /* ---- Motion. Confirmation, never entertainment — nothing bounces. ---- */
+  --duration-instant: 80ms;
+  --duration-fast: 120ms;
+  --duration-normal: 180ms;
+  --duration-slow: 320ms;
+  --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-control: color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+[data-theme="dark"] {
+  --text-primary: var(--grey-50);
+  --text-secondary: var(--grey-400);
+  --text-tertiary: #9AA0A0;
+  --text-decorative: var(--grey-500);
+  --text-inverse: var(--grey-950);
+  --text-accent: var(--blue-200);
+
+  --surface-page: var(--grey-950);
+  --surface-raised: var(--grey-900);
+  --surface-sunken: var(--grey-900);
+  --surface-hover: var(--grey-800);
+  --surface-active: var(--grey-700);
+  --surface-inverse: var(--grey-50);
+  --surface-accent-subtle: var(--blue-900);
+
+  --rule-strong: var(--grey-300);
+  --rule-default: var(--grey-700);
+  --rule-subtle: var(--grey-800);
+
+  --accent: var(--blue-300);
+  --accent-hover: var(--blue-200);
+  --accent-pressed: var(--blue-100);
+  --accent-on: var(--grey-950);
+  --accent-subtle: var(--blue-900);
+  --accent-mark: var(--blue-300);
+
+  --positive: #7FC79E;
+  --positive-subtle: #0E2E1E;
+  --negative: #D98A78;
+  --negative-subtle: #3A1C15;
+  --warning: #D6AC5C;
+  --warning-subtle: #33280F;
+  --neutral: var(--grey-500);
+
+  --chart-1: var(--blue-300);
+  --chart-2: var(--blue-500);
+  --chart-3: var(--blue-800);
+  --chart-4: var(--grey-600);
+  --chart-track: var(--grey-800);
+  --chart-grid: var(--grey-700);
+
+  --focus-ring: var(--blue-300);
+  --shadow-overlay: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-instant: 0ms;
+    --duration-fast: 0ms;
+    --duration-normal: 0ms;
+    --duration-slow: 0ms;
+  }
+}
+
+/* Scoped base layer — everything under the new dashboard's root wrapper
+   (.gn-app, set in app/(dashboard)/layout.tsx). Deliberately NOT applied to
+   the bare `body`/`a`/`:focus-visible` selectors above, which /cli-auth still
+   depends on unchanged. */
+.gn-app {
+  font: var(--type-body);
+  letter-spacing: var(--tracking-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+.gn-app a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: var(--rule-width) solid currentColor;
+}
+.gn-app a:hover { color: var(--accent-hover); }
+.gn-app :focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+.gn-app ::selection { background: var(--accent-subtle); }
+.gn-app table { border-collapse: collapse; }
+.gn-app .gn-figure, .gn-app [data-figure] {
+  font-family: var(--font-figure);
+  font-variant-numeric: tabular-nums;
+}

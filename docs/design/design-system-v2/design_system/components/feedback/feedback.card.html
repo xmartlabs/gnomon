@@ -1,0 +1,28 @@
+<!-- @dsCard group="Components" viewport="700x300" name="Feedback — Tooltip, EmptyState" subtitle="Definitions in tooltips; empty states always offer a way out" -->
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css"><script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script><script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script><script src="https://unpkg.com/@babel/standalone/babel.min.js"></script><script src="../../_ds_bundle.js"></script>
+<style>body{padding:22px}</style></head><body><div id="r"></div>
+<script type="text/babel">
+const DS=(function(){for(const k of Object.keys(window)){const v=window[k];if(v&&typeof v==='object'&&!Array.isArray(v)&&v.Button&&v.Metric&&v.DataTable)return v;}return null;})();
+if(!DS){document.getElementById('r').innerHTML='<p style="font:var(--type-body-sm);color:var(--text-tertiary)">Component bundle not built yet.</p>';}
+else{
+const {Tooltip,EmptyState,Button,SectionLabel,Divider}=DS;
+function Card(){return(
+<div>
+  <div style={{display:'flex',alignItems:'center',gap:'26px',paddingBottom:'8px'}}>
+    <span style={{display:'flex',alignItems:'center',gap:'8px',font:'var(--type-title-sm)'}}>
+      Team AQ <Tooltip label="AQ = Agentic Quotient (0-100). It measures how you operate agents, not the quality of the code that comes out."/>
+    </span>
+    <span style={{display:'flex',alignItems:'center',gap:'8px',font:'var(--type-title-sm)'}}>
+      Explore <Tooltip side="right" label="Deterministic counters. They do not judge, they count."/>
+    </span>
+  </div>
+  <Divider weight="default" space={4}/>
+  <EmptyState
+    label="August 2026"
+    title="Nobody uploaded sessions in June 2026."
+    body={<span>Data appears once someone runs <code style={{fontFamily:'var(--font-figure)',fontSize:'13px'}}>gnomon push</code> pointed at this server.</span>}
+    action={<Button variant="link">&larr; View August 2026</Button>}/>
+</div>);}
+ReactDOM.createRoot(document.getElementById('r')).render(<Card/>);
+}
+</script></body></html>

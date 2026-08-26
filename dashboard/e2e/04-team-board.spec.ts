@@ -3,110 +3,86 @@ import { SEEDED } from "../playwright.config";
 
 const shot = (name: string) => ({ path: `test-results/flows/${name}.png`, fullPage: true });
 
-/** The people table specifically — the chart ships a second, sr-only one. */
-const board = (page: Page) => page.getByRole("table", { name: /Engineers ranked by AQ/ });
-
-/**
- * Open the board and wait for the client bundle to take over. The sort headers
- * and the unit toggle are client components; clicking the server-rendered HTML
- * before hydration silently drops the event.
- */
-async function openBoard(page: Page) {
-  await page.goto(SEEDED);
-  await page.waitForLoadState("networkidle");
-}
-
-/** Person names only — the cell may also carry a stale-window marker. */
-const names = (page: Page) => board(page).locator("tbody tr th a").allTextContents();
-
-/** The values of one column, in the order they are painted. */
+/** The values of one column, in the order they are painted. Column order: Name, AQ, Tier, Trend, Top pillar, Last upload. */
 async function column(page: Page, index: number) {
-  return board(page)
-    .locator("tbody tr")
-    .evaluateAll((rows, i) => rows.map((r) => r.children[i].textContent!.trim()), index);
+  return page.locator("table tbody tr").evaluateAll((rows, i) => rows.map((r) => r.children[i].textContent!.trim()), index);
 }
-
-const AQ = 1;
-const TOKENS = 6;
 
 test.describe("Flow 4 · reading the team board", () => {
   test("the board opens ranked by AQ, highest first", async ({ page }) => {
     await page.goto(SEEDED);
 
-    await expect(page.getByRole("heading", { name: "The people" })).toBeVisible();
-    // Everyone the seed created is on the board.
-    for (const name of ["Ada Lovelace", "Alan Turing", "Grace Hopper", "Katherine J."]) {
-      await expect(page.getByRole("rowheader", { name: new RegExp(name) })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "People", exact: true })).toBeVisible();
+    // Everyone the seed created is on the board — every row is a clickable "button".
+    for (const name of ["Ada Lovelace", "Alan Turing", "Grace Hopper", "Katherine J.", "Iris Watson"]) {
+      await expect(page.getByRole("button", { name: new RegExp(name) })).toBeVisible();
     }
 
-    const aqs = (await column(page, AQ)).map(Number);
+    const aqs = (await column(page, 1)).map(Number);
     expect(aqs).toEqual([...aqs].sort((a, b) => b - a));
 
-    // The stat band summarises the same window the table is showing.
-    await expect(page.getByText("Team avg AQ")).toBeVisible();
-    await expect(page.getByText("Ingest coverage")).toBeVisible();
+    // The hero states the same window the table is showing.
+    await expect(page.getByText("Team AQ")).toBeVisible();
     await page.screenshot(shot("04-board-default"));
   });
 
-  test("column headers re-sort the board and announce the direction", async ({ page }) => {
-    await openBoard(page);
-    // Scoped to the table: "Tokens" also names the chart's unit toggle.
-    const header = (name: string) => board(page).getByRole("button", { name, exact: false });
-
-    await header("Name").click();
-    const sorted = await names(page);
-    expect(sorted).toEqual([...sorted].sort((a, b) => a.localeCompare(b)));
-    await expect(page.getByRole("columnheader", { name: "Name" })).toHaveAttribute("aria-sort", "ascending");
-
-    // Clicking the active column flips it.
-    await header("Name").click();
-    expect(await names(page)).toEqual([...sorted].reverse());
-    await expect(page.getByRole("columnheader", { name: "Name" })).toHaveAttribute("aria-sort", "descending");
-
-    // Numeric columns start at highest-first.
-    await header("Tokens").click();
-    const tokens = await column(page, TOKENS);
-    const asNum = tokens.map((t) => parseFloat(t));
-    expect(asNum).toEqual([...asNum].sort((a, b) => b - a));
-
-    await page.screenshot(shot("04-board-sorted-by-tokens"));
-  });
-
-  test("people with no previous window sort last, not first", async ({ page }) => {
-    await openBoard(page);
-    await board(page).getByRole("button", { name: "Delta", exact: false }).click();
-
-    // Katherine has a single upload, so she has no delta at all. Whichever way
-    // the column points, an absent value must not outrank a real one.
-    const deltas = await column(page, 4);
-    const missing = deltas.filter((d) => !/[+−±]/.test(d));
-    expect(missing.length).toBeGreaterThan(0);
-    expect(deltas.slice(-missing.length)).toEqual(missing);
-  });
-
-  test("the unit toggle switches the chart from tokens to cost", async ({ page }) => {
-    await openBoard(page);
-    const chart = page.getByRole("group", { name: "Chart unit" });
-    await expect(chart.getByRole("button", { name: "Tokens" })).toHaveAttribute("aria-pressed", "true");
-
-    // Bar totals read in billions of tokens...
-    await expect(page.getByText(/^\d+\.\d+B$/).first()).toBeVisible();
-
-    await chart.getByRole("button", { name: "Cost" }).click();
-    await expect(chart.getByRole("button", { name: "Cost" })).toHaveAttribute("aria-pressed", "true");
-
-    // ...and in dollars once toggled, legend included.
-    await expect(page.getByText(/^\$[\d,]+$/).first()).toBeVisible();
-    await expect(page.getByText("By model ·")).toBeVisible();
-
-    await page.screenshot(shot("04-board-cost-mode"));
-  });
-
-  test("the chart is legible to a screen reader, not just to the eye", async ({ page }) => {
+  test("a person with no previous window shows 'no data', never a false zero or a red decline", async ({ page }) => {
     await page.goto(SEEDED);
-    // The stacked bars are decorative; the same numbers exist as a real table.
-    const srTable = page.locator("table", { hasText: "Company usage over time, by model" });
-    await expect(srTable).toBeAttached();
-    await expect(srTable.locator("tbody tr").first().locator("th")).toHaveText(/^\d{4}-\d{2}$/);
+    const row = page.getByRole("button", { name: /Katherine J\./ });
+    await expect(row.getByText("no data")).toBeVisible();
+  });
+
+  test("the model mix donut responds to hover and keyboard focus alike", async ({ page }) => {
+    // Explicit month: 03-upload.spec.ts's tests land uploads in later months
+    // on this SAME shared seeded server, which can push the page's default
+    // (latest) month to one with no real model data at all.
+    await page.goto(`${SEEDED}/?month=2026-06`);
+
+    const slices = page.locator('svg[role="group"] path');
+    await expect(slices.first()).toBeVisible();
+    const firstLabel = await slices.first().getAttribute("aria-label");
+    expect(firstLabel).toMatch(/%$/);
+
+    // Hovering a slice opens the centred tooltip with its name and percentage.
+    await slices.first().hover();
+    await expect(page.getByText(firstLabel!.split(":")[1].trim())).toBeVisible();
+
+    // Every slice is independently reachable by keyboard, not just by mouse.
+    await slices.first().focus();
+    await expect(slices.first()).toBeFocused();
+
+    await page.screenshot(shot("04-donut-hover"));
+  });
+
+  test("the theme toggle flips data-theme on <html> and the icon swaps", async ({ page }) => {
+    await page.goto(SEEDED);
+    const html = page.locator("html");
+    const before = await html.getAttribute("data-theme");
+
+    const toggle = page.getByRole("button", { name: /Switch to/ });
+    await toggle.click();
+
+    await expect(html).not.toHaveAttribute("data-theme", before ?? "");
+    // The accessible name flips with the state, so the SAME toggle is still reachable.
+    await expect(page.getByRole("button", { name: /Switch to/ })).toBeVisible();
+  });
+
+  test("the month select moves the whole screen to another month", async ({ page }) => {
+    await page.goto(SEEDED);
+    const select = page.getByRole("combobox", { name: "Month" });
+    const current = await select.inputValue();
+    const optionEls = select.locator("option");
+    const values = await optionEls.evaluateAll((els) => els.map((o) => (o as HTMLOptionElement).value));
+    const labels = await optionEls.allTextContents();
+
+    // Pick whichever option isn't already selected — robust to however many
+    // months another spec's uploads have added to this shared seeded server.
+    const targetIndex = values.findIndex((v) => v !== current);
+    expect(targetIndex, "expected at least two selectable months").toBeGreaterThanOrEqual(0);
+
+    await select.selectOption({ value: values[targetIndex] });
+
+    await expect(page).toHaveURL(new RegExp(`month=${values[targetIndex]}`));
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(labels[targetIndex]);
   });
 });

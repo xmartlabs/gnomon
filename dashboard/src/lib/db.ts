@@ -88,7 +88,30 @@ export function upsertUpload(
     const coachKey = `coach:${args.personId}:${args.monthKey}`;
     db.prepare(`DELETE FROM settings WHERE key = ? OR key LIKE ? ESCAPE '\\'`)
       .run(coachKey, `${coachKey}:%`);
+    // Team insight isn't tied to any one person's upload — it describes the
+    // whole team's numbers for this month, so ANY upload landing for this
+    // monthKey invalidates it, scoped by monthKey alone (see lib/coach.ts).
+    const teamKey = `coach-team:${args.monthKey}`;
+    db.prepare(`DELETE FROM settings WHERE key = ? OR key LIKE ? ESCAPE '\\'`)
+      .run(teamKey, `${teamKey}:%`);
+    // Person suggestions depend on this one person's own data for this month,
+    // same per-person scope as the coach cache above, distinct prefix so it
+    // never collides with either `coach:` or `coach-team:`.
+    const suggestionsKey = `coach-suggestions:${args.personId}:${args.monthKey}`;
+    db.prepare(`DELETE FROM settings WHERE key = ? OR key LIKE ? ESCAPE '\\'`)
+      .run(suggestionsKey, `${suggestionsKey}:%`);
   })();
+}
+
+/** Every monthKey with at least one upload, most recent first. */
+export function distinctMonthKeys(db: Db, limit?: number): string[] {
+  const sql =
+    `SELECT DISTINCT month_key AS monthKey FROM uploads ORDER BY month_key DESC` +
+    (limit ? ` LIMIT ?` : "");
+  const rows = (limit ? db.prepare(sql).all(limit) : db.prepare(sql).all()) as {
+    monthKey: string;
+  }[];
+  return rows.map((r) => r.monthKey);
 }
 
 export function uploadedMonths(db: Db, personId: number) {

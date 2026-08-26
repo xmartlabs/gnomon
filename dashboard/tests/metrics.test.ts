@@ -3,6 +3,7 @@ import { upsertPerson } from "@/lib/db";
 import {
   monthEntry, monthTokensByModel, monthlyUsage,
   buildTeamOverview, buildPersonProfile,
+  teamPillarAverages, tierDistribution, teamModelMix,
 } from "@/lib/metrics";
 import { fmtTokens, fmtUsd, fmtDelta } from "@/lib/format";
 import { costUsd } from "@/lib/pricing";
@@ -139,7 +140,13 @@ describe("metrics", () => {
     expect(buildTeamOverview(db)).toEqual({
       people: [], avgAq: null, avgAqDelta: null, currentMonth: null,
       coverage: { withCurrentMonth: 0, total: 0 },
-      tokensCurrentMonth: 0, costCurrentMonth: 0, usageOverTime: [],
+      tokensCurrentMonth: 0, costCurrentMonth: 0, tokensDelta: null, costDelta: null, usageOverTime: [],
+      availableMonths: [], pillarAverages: [], modelMix: [], teamAqTrend: [],
+      tierDistribution: [
+        { tier: "Elite", count: 0 }, { tier: "Advanced", count: 0 },
+        { tier: "Proficient", count: 0 }, { tier: "Adequate", count: 0 },
+        { tier: "Apprentice", count: 0 }, { tier: "Novice", count: 0 },
+      ],
     });
   });
 
@@ -286,5 +293,143 @@ describe("metrics", () => {
 
   it("prices unknown models with the default table instead of zero", () => {
     expect(costUsd({ input: 1_000_000, output: 0, cacheRead: 0, cacheCreation: 0 }, "who-knows-5")).toBeCloseTo(3);
+  });
+
+  describe("teamPillarAverages", () => {
+    it("averages by pillar name across people, weight rounded", () => {
+      const sets = [
+        [{ name: "Breadth", weight: 30, score: 20, axes: [] }, { name: "Craft", weight: 35, score: 30, axes: [] }],
+        [{ name: "Breadth", weight: 31, score: 24, axes: [] }, { name: "Craft", weight: 35, score: 34, axes: [] }],
+      ];
+      expect(teamPillarAverages(sets)).toEqual([
+        { name: "Breadth", weight: 31, avgScore: 22 }, // (20+24)/2, (30+31)/2 rounded
+        { name: "Craft", weight: 35, avgScore: 32 },
+      ]);
+    });
+
+    it("is coverage-aware by construction: only pass pillar sets from covered people", () => {
+      // A person with no pillar data for the month simply contributes an empty
+      // array — the caller decides who's "covered", this function never fetches.
+      const sets = [[{ name: "Breadth", weight: 30, score: 20, axes: [] }], []];
+      expect(teamPillarAverages(sets)).toEqual([{ name: "Breadth", weight: 30, avgScore: 20 }]);
+    });
+
+    it("returns an empty array for no covered people", () => {
+      expect(teamPillarAverages([])).toEqual([]);
+    });
+  });
+
+  describe("tierDistribution", () => {
+    it("returns all six tiers, including zero-count ones, in Elite→Novice order", () => {
+      const people = [{ tier: "Advanced" }, { tier: "Advanced" }, { tier: "Novice" }];
+      expect(tierDistribution(people)).toEqual([
+        { tier: "Elite", count: 0 }, { tier: "Advanced", count: 2 },
+        { tier: "Proficient", count: 0 }, { tier: "Adequate", count: 0 },
+        { tier: "Apprentice", count: 0 }, { tier: "Novice", count: 1 },
+      ]);
+    });
+
+    it("ignores null tiers without counting them as a seventh bucket", () => {
+      const dist = tierDistribution([{ tier: null }, { tier: "Elite" }]);
+      expect(dist.reduce((s, t) => s + t.count, 0)).toBe(1);
+      expect(dist.find((t) => t.tier === "Elite")?.count).toBe(1);
+    });
+  });
+
+  describe("teamModelMix", () => {
+    it("returns exact shares with no Otros bucket at exactly maxSeries models", () => {
+      const byModel = [
+        { modelId: "opus", model: "Opus 4.8", tokens: 60, cost: 0 },
+        { modelId: "fable", model: "Fable 5", tokens: 30, cost: 0 },
+        { modelId: "haiku", model: "Haiku 4.5", tokens: 10, cost: 0 },
+      ];
+      const mix = teamModelMix(byModel);
+      expect(mix).toHaveLength(3);
+      expect(mix.find((m) => m.modelId === "opus")?.pct).toBeCloseTo(0.6);
+      expect(mix.some((m) => m.modelId === "__other__")).toBe(false);
+    });
+
+    it("buckets everything past maxSeries into one Otros entry", () => {
+      const byModel = [
+        { modelId: "opus", model: "Opus 4.8", tokens: 40, cost: 0 },
+        { modelId: "fable", model: "Fable 5", tokens: 30, cost: 0 },
+        { modelId: "haiku", model: "Haiku 4.5", tokens: 20, cost: 0 },
+        { modelId: "gpt", model: "GPT-5", tokens: 10, cost: 0 },
+      ];
+      const mix = teamModelMix(byModel);
+      expect(mix.map((m) => m.modelId)).toEqual(["opus", "fable", "haiku", "__other__"]);
+      const otros = mix.find((m) => m.modelId === "__other__")!;
+      expect(otros.model).toBe("Other");
+      expect(otros.tokens).toBe(10);
+      expect(otros.pct).toBeCloseTo(0.1);
+    });
+
+    it("returns an empty array when the month has zero tokens", () => {
+      expect(teamModelMix([])).toEqual([]);
+    });
+  });
+
+  describe("buildTeamOverview month param", () => {
+    it("with no month, behaves exactly as before (latest month, per-person latest row)", () => {
+      seed(db);
+      const withoutMonth = buildTeamOverview(db);
+      const withLatest = buildTeamOverview(db, "2026-06");
+      expect(withoutMonth).toEqual(withLatest);
+    });
+
+    it("pins every aggregate to a past month while `people` stays each person's own latest", () => {
+      const ada = upsertPerson(db, "ada@example.com", "Ada");
+      put(db, ada.id, "2026-05", makeSummary({ profile: { aq: { aq_0_100: 70, tier: "Proficient" } } }));
+      put(db, ada.id, "2026-06", makeSummary({ profile: { aq: { aq_0_100: 90, tier: "Elite" } } }));
+      const o = buildTeamOverview(db, "2026-05");
+      expect(o.currentMonth).toBe("2026-05");
+      expect(o.avgAq).toBe(70);
+      expect(o.coverage).toEqual({ withCurrentMonth: 1, total: 1 });
+      // The Equipo table row is unaffected — still Ada's own latest, June.
+      expect(o.people[0].monthKey).toBe("2026-06");
+      expect(o.people[0].aq).toBe(90);
+    });
+
+    it("falls back to latest on an unknown month, without throwing", () => {
+      seed(db);
+      const o = buildTeamOverview(db, "1999-01");
+      expect(o.currentMonth).toBe("2026-06");
+    });
+
+    it("reports zero coverage for a real month with uploads but no AQ-parseable summary", () => {
+      const p = upsertPerson(db, "ada@example.com", "Ada");
+      put(db, p.id, "2026-06", {
+        context: { date_range: ["2026-01-01", "2026-06-30"], total_sessions: 1 },
+      });
+      const o = buildTeamOverview(db, "2026-06");
+      expect(o.coverage).toEqual({ withCurrentMonth: 0, total: 1 });
+      expect(o.avgAq).toBeNull();
+    });
+
+    it("compares tokens/cost against the exact prior month, not a window-spanning total", () => {
+      const ada = upsertPerson(db, "ada@example.com", "Ada");
+      const summary = makeSummary();
+      put(db, ada.id, "2026-05", summary);
+      put(db, ada.id, "2026-06", summary);
+      const o = buildTeamOverview(db, "2026-06");
+
+      // Each upload's own monthKey is read from ITS OWN entry inside the same
+      // shared fixture blob, so the two months are not necessarily equal —
+      // the point is that the delta must match exactly that per-month
+      // difference (`agg`'s window-spanning sum would instead double-count
+      // and diverge from this).
+      const juneTokens = monthTokensByModel(summary, "2026-06").reduce((s, m) => s + m.tokens, 0);
+      const mayTokens = monthTokensByModel(summary, "2026-05").reduce((s, m) => s + m.tokens, 0);
+      expect(o.tokensDelta).toBe(juneTokens - mayTokens);
+      expect(o.tokensCurrentMonth).toBe(juneTokens);
+    });
+
+    it("reports no tokens/cost delta when the prior month falls outside the tracked window", () => {
+      const p = upsertPerson(db, "ada@example.com", "Ada");
+      put(db, p.id, "2026-06", makeSummary());
+      const o = buildTeamOverview(db, "2026-06");
+      expect(o.tokensDelta).toBeNull();
+      expect(o.costDelta).toBeNull();
+    });
   });
 });

@@ -8,7 +8,7 @@
 // APPROXIMATING the split by distributing the progression entry's tokens_total
 // across models proportionally to invocation counts.
 import type { Db } from "@/lib/db";
-import { getPerson, listPeople, uploadsForPerson } from "@/lib/db";
+import { getPerson, listPeople, uploadsForPerson, distinctMonthKeys } from "@/lib/db";
 import { costUsd, type TokenSplit } from "@/lib/pricing";
 
 // Tolerate malformed known fields everywhere: coerce anything non-array to [].
@@ -194,6 +194,8 @@ export function personRow(
   };
 }
 
+export type ModelShare = { modelId: string; model: string; tokens: number; pct: number };
+
 export type TeamOverview = {
   people: PersonRow[];
   avgAq: number | null;
@@ -202,17 +204,104 @@ export type TeamOverview = {
   coverage: { withCurrentMonth: number; total: number };
   tokensCurrentMonth: number;
   costCurrentMonth: number;
+  /** vs the month immediately before the selected one; null when that's outside the tracked window. */
+  tokensDelta: number | null;
+  costDelta: number | null;
   usageOverTime: MonthUsage[];
+  /** Every uploaded monthKey the month selector can offer, most recent first. */
+  availableMonths: string[];
+  pillarAverages: { name: string; weight: number; avgScore: number }[];
+  tierDistribution: { tier: string; count: number }[];
+  modelMix: ModelShare[];
+  teamAqTrend: AqPoint[];
 };
 
-export function buildTeamOverview(db: Db): TeamOverview {
+const TIER_ORDER = ["Elite", "Advanced", "Proficient", "Adequate", "Apprentice", "Novice"] as const;
+
+/**
+ * Team-wide average score per AQ pillar, across everyone COVERED for the
+ * selected month (callers only pass pillar sets for people who actually have
+ * an upload for that month, so this stays coverage-aware by construction).
+ * Order is first-seen order across `pillarSets`, itself stable per the AQ
+ * scoring contract — no pillar names hardcoded here.
+ */
+export function teamPillarAverages(
+  pillarSets: PersonProfile["pillars"][]
+): { name: string; weight: number; avgScore: number }[] {
+  const acc = new Map<string, { weightSum: number; scoreSum: number; n: number }>();
+  for (const pillars of pillarSets) {
+    for (const p of pillars) {
+      const e = acc.get(p.name) ?? { weightSum: 0, scoreSum: 0, n: 0 };
+      e.weightSum += p.weight;
+      e.scoreSum += p.score;
+      e.n += 1;
+      acc.set(p.name, e);
+    }
+  }
+  return [...acc.entries()].map(([name, e]) => ({
+    name,
+    weight: Math.round(e.weightSum / e.n),
+    avgScore: e.scoreSum / e.n,
+  }));
+}
+
+/**
+ * How many people land in each of the six real AQ tiers this month. Always
+ * all six, including zero-count ones — a widget whose categories change shape
+ * month to month reads as broken, and "Novice: 0" is itself information.
+ */
+export function tierDistribution(people: { tier: string | null }[]): { tier: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const p of people) {
+    if (!p.tier) continue;
+    counts.set(p.tier, (counts.get(p.tier) ?? 0) + 1);
+  }
+  return TIER_ORDER.map((tier) => ({ tier, count: counts.get(tier) ?? 0 }));
+}
+
+/**
+ * One month's already-summed per-model totals, as shares of that month's
+ * total tokens. Beyond `maxSeries` models by token share, the rest are folded
+ * into one "Other" bucket so a chart never has to budget more series colors
+ * than the design system's ink/accent/parch triad plus one muted overflow.
+ */
+export function teamModelMix(byModel: ModelUsage[], maxSeries = 3): ModelShare[] {
+  const total = byModel.reduce((s, m) => s + m.tokens, 0);
+  if (total <= 0) return [];
+  const sorted = [...byModel].sort((a, b) => b.tokens - a.tokens);
+  const top = sorted
+    .slice(0, maxSeries)
+    .map((m) => ({ modelId: m.modelId, model: m.model, tokens: m.tokens, pct: m.tokens / total }));
+  const rest = sorted.slice(maxSeries);
+  if (!rest.length) return top;
+  const tokens = rest.reduce((s, m) => s + m.tokens, 0);
+  return [...top, { modelId: "__other__", model: "Other", tokens, pct: tokens / total }];
+}
+
+/**
+ * `month` pins every aggregate below to one specific calendar month instead
+ * of "whatever's most recent". `people` (the Equipo table rows) is NOT
+ * filtered by it — each row stays that person's own latest upload, same as
+ * today, with the table's existing staleness label doing the "this row isn't
+ * the selected month" work. Everything else needs each person's data AT
+ * `month` specifically, which `rows` can't give (it only ever holds each
+ * person's latest row) — so those are recomputed via buildPersonProfile.
+ */
+export function buildTeamOverview(db: Db, month?: string): TeamOverview {
   const people = listPeople(db);
   const rows: PersonRow[] = [];
+  const upsByPerson = new Map<number, ReturnType<typeof uploadsForPerson>>();
   // month -> modelId -> totals. The id is the join key; the label rides along.
+  // Deliberately window-spanning (every month ANY upload's window covers,
+  // even months that upload didn't literally re-upload) — this is what
+  // usageOverTime's monthly bars want. NOT reused for tokensCurrentMonth /
+  // teamModelMix below, which need the narrower "this exact monthKey was
+  // uploaded" scope instead — see the comment there for why.
   const agg = new Map<string, Map<string, ModelUsage>>();
 
   for (const p of people) {
     const ups = uploadsForPerson(db, p.id); // ascending by monthKey
+    upsByPerson.set(p.id, ups);
     if (!ups.length) continue;
     const latestMonth = ups.at(-1)!.monthKey;
     const usage = monthlyUsage(ups);
@@ -236,25 +325,91 @@ export function buildTeamOverview(db: Db): TeamOverview {
   rows.sort((a, b) => (b.aq ?? -1) - (a.aq ?? -1));
 
   const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((s, x) => s + x, 0) / xs.length) : null);
-  const currentMonth = rows.length ? rows.map((r) => r.monthKey).sort().at(-1)! : null;
-  const currentRows = rows.filter((r) => r.monthKey === currentMonth);
+
+  const allMonths = distinctMonthKeys(db); // desc, every monthKey with a real upload
+  const availableMonths = allMonths.slice(0, 3); // the month selector's options
+  // An unknown `month` (stale bookmark, typo) falls back silently to latest —
+  // this is not the empty-state's job, which is reserved for a valid month
+  // that genuinely has zero AQ-parseable coverage.
+  const selectedMonth = month && allMonths.includes(month) ? month : (allMonths[0] ?? null);
+
+  // Computed once per month in `availableMonths` (not just `selectedMonth`),
+  // so the 3-month team AQ trend below doesn't pay for a second pass.
+  const coveredByMonth = new Map<string, PersonProfile[]>();
+  for (const mk of availableMonths) {
+    coveredByMonth.set(
+      mk,
+      people
+        .map((p) => buildPersonProfile(db, p.id, mk))
+        .filter((x): x is PersonProfile => x !== null)
+    );
+  }
+  const covered = selectedMonth ? (coveredByMonth.get(selectedMonth) ?? []) : [];
+
+  // tokensCurrentMonth/costCurrentMonth/teamModelMix must count each person
+  // AT MOST ONCE, from their OWN upload literally labeled the target month —
+  // not from `agg`, whose window-spanning months can otherwise double-count a
+  // person whose upload for an OLDER month still claims usage data reaching
+  // into the target month (a real scenario: a wide window legitimately
+  // mentions more months than its own monthKey label). Computed for every
+  // month in `availableMonths` so the cost/token Trend below has a same-shape
+  // number to compare the selected month against.
+  const exactByMonth = new Map<string, ModelUsage[]>();
+  for (const mk of availableMonths) {
+    const models = new Map<string, ModelUsage>();
+    for (const p of people) {
+      const exact = upsByPerson.get(p.id)?.find((u) => u.monthKey === mk);
+      if (!exact) continue;
+      for (const m of monthTokensByModel(exact.summary, mk)) {
+        const cur = models.get(m.modelId);
+        if (cur) {
+          cur.tokens += m.tokens;
+          cur.cost += m.cost;
+        } else {
+          models.set(m.modelId, { ...m });
+        }
+      }
+    }
+    exactByMonth.set(mk, [...models.values()]);
+  }
+  const monthByModel = selectedMonth ? (exactByMonth.get(selectedMonth) ?? []) : [];
+  const sumTokens = (xs: ModelUsage[]) => xs.reduce((s, m) => s + m.tokens, 0);
+  const sumCost = (xs: ModelUsage[]) => xs.reduce((s, m) => s + m.cost, 0);
+
+  // The delta compares against whichever month sits immediately before the
+  // selected one — null (renders "sin datos") when that's outside the last-3
+  // window this function tracks, e.g. the oldest of the three is selected.
+  const prevMonth = selectedMonth ? allMonths[allMonths.indexOf(selectedMonth) + 1] : undefined;
+  const prevExact = prevMonth ? exactByMonth.get(prevMonth) : undefined;
+  const tokensDelta = prevExact ? Math.round(sumTokens(monthByModel) - sumTokens(prevExact)) : null;
+  const costDelta = prevExact ? Math.round(sumCost(monthByModel) - sumCost(prevExact)) : null;
 
   return {
     people: rows,
-    // Scoped to the current window, like the tokens/cost stats beside them: the
-    // masthead labels this figure with `currentMonth`, so folding in a person
-    // whose last upload was three months ago would make the headline number
-    // silently wrong exactly when coverage is partial. `coverage` is what tells
-    // the reader how many people the average stands on.
-    avgAq: avg(currentRows.map((r) => r.aq).filter((x): x is number => x !== null)),
-    avgAqDelta: avg(currentRows.map((r) => r.delta).filter((x): x is number => x !== null)),
-    currentMonth,
-    coverage: { withCurrentMonth: currentRows.length, total: people.length },
-    tokensCurrentMonth: currentRows.reduce((s, r) => s + (r.tokens ?? 0), 0),
-    costCurrentMonth: currentRows.reduce((s, r) => s + (r.cost ?? 0), 0),
+    // Scoped to the selected window, like the tokens/cost stats beside them:
+    // the masthead labels this figure with `currentMonth`, so folding in a
+    // person whose last upload doesn't cover it would make the headline
+    // number silently wrong exactly when coverage is partial. `coverage` is
+    // what tells the reader how many people the average stands on.
+    avgAq: avg(covered.map((c) => c.aq)),
+    avgAqDelta: avg(covered.map((c) => c.delta).filter((x): x is number => x !== null)),
+    currentMonth: selectedMonth,
+    coverage: { withCurrentMonth: covered.length, total: people.length },
+    tokensCurrentMonth: sumTokens(monthByModel),
+    costCurrentMonth: sumCost(monthByModel),
+    tokensDelta,
+    costDelta,
     usageOverTime: [...agg.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([monthKey, models]) => ({ monthKey, byModel: [...models.values()] })),
+    availableMonths,
+    pillarAverages: teamPillarAverages(covered.map((c) => c.pillars)),
+    tierDistribution: tierDistribution(covered.map((c) => ({ tier: c.tier }))),
+    modelMix: teamModelMix(monthByModel),
+    teamAqTrend: [...availableMonths].reverse().map((mk) => ({
+      monthKey: mk,
+      aq: avg((coveredByMonth.get(mk) ?? []).map((c) => c.aq)) ?? 0,
+    })),
   };
 }
 

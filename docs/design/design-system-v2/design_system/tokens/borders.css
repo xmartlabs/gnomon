@@ -1,0 +1,22 @@
+:root {
+  /* Hairlines carry the whole layout. Two weights only. */
+  --rule-width: 1px;
+  --rule-width-strong: 2px;
+
+  /* Corners stay near-square: this is an instrument, not a toy. */
+  --radius-none: 0;
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-full: 999px;
+
+  /* One elevation, reserved for overlays that must detach from the page. */
+  --shadow-none: none;
+  --shadow-overlay: 0 1px 2px rgba(10, 11, 11, 0.06), 0 8px 24px rgba(10, 11, 11, 0.10);
+
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+}
+
+[data-theme="dark"] {
+  --shadow-overlay: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.6);
+}
