@@ -42,9 +42,9 @@ Two substitutions are flagged and awaiting real assets:
    nearest match to this direction (1.5px stroke, square terminals) and should be pulled in
    properly rather than hand-drawn.
 
-**There is no gnomon logo.** Nothing was drawn or reconstructed. `assets/wordmark/` holds three
-typographic wordmark proposals for the owner to choose from; until then the brand renders as the
-word *gnomon* in Archivo with the accent triangle.
+**The gnomon mark now exists.** Two triangles — the rod and the shadow it casts — see
+`assets/logo/logo.card.html` for the mark, lockup, clear space, sizes, and the dark-background
+pair. The wordmark pairs it with the word *gnomon* in Archivo.
 
 ---
 
@@ -136,9 +136,9 @@ as ordered rather than categorical. Series in a share-of-total chart must theref
 descending.
 
 The ramp splits by job: `--blue-500` is the brand hue and is used for fills that carry no text
-(chart series, the wordmark triangle — `--accent-mark`), while `--accent` resolves to
-`--blue-600` because links and primary buttons must clear 4.5:1. Never put text on
-`--accent-mark`.
+(chart series, the mark's darker triangle — `--accent-mark`; its lighter triangle is
+`--accent-mark-shadow`), while `--accent` resolves to `--blue-600` because links and primary
+buttons must clear 4.5:1. Never put text on `--accent-mark` or `--accent-mark-shadow`.
 
 Status colours are strictly rationed: moss green for a real rise, clay red **only** for a real decline
 or an error, ochre for a warning, grey for flat or missing. **Colour is never the sole carrier of
@@ -229,9 +229,8 @@ What exists:
   `=` for flat, `—` for no data, `‹` `›` for stepping and row actions, `●` `○` for the
   theme toggle, `i` in a hairline circle for a tooltip marker. These are set in
   `--font-figure` so they align with figures.
-- **The accent triangle** in the wordmark — the gnomon of a sundial, the thing that casts the
-  shadow. It is drawn with CSS borders, not an SVG asset, and it is the only piece of brand
-  geometry.
+- **The mark** in the wordmark — the gnomon of a sundial and the shadow it casts, two triangles
+  drawn as an inline SVG (`assets/logo/`). It is the only piece of brand geometry.
 - **Two inline SVG marks**, both 1.5px stroke on `currentColor`: a crescent moon and a sun, for
   the theme toggle. They are the only drawn glyphs in the product and follow the Lucide stroke
   spec below, so they swap out cleanly if that set is adopted.
@@ -256,7 +255,7 @@ stroke match the instrument direction. Load it properly; never hand-draw an appr
 | `tokens/motion.css` | Durations, easings, reduced-motion override. |
 | `tokens/base.css` | Minimal resets, link and focus defaults, tabular figures. |
 | `guidelines/*.card.html` | 13 foundation specimens: colour, type, spacing, corners. |
-| `assets/wordmark/` | Three wordmark proposals. No logo file exists. |
+| `assets/logo/` | The gnomon mark — lockup, clear space, sizes, on-dark pair, don'ts. |
 | `components/core/` | Button, IconButton, Badge, SectionLabel, Divider |
 | `components/forms/` | Input, Select |
 | `components/data/` | Metric, Trend, PillarBar, DataTable, DonutChart, ColumnChart |

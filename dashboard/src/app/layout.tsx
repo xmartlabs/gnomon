@@ -15,7 +15,7 @@ const body = Archivo({ subsets: ["latin"], variable: "--font-body", weight: ["40
 const mono = IBM_Plex_Mono({ subsets: ["latin"], variable: "--font-mono-gn", weight: ["400", "500", "600"] });
 
 export const metadata: Metadata = {
-  title: "gnomon dashboard",
+  title: "Gnomon",
   description: "Self-hosted team dashboard for gnomon build profiles",
 };
 
