@@ -78,7 +78,7 @@ Corollaries that follow from it and that are equally binding:
 
 **Header.** Flex row, `align-items: center`, `gap: 24px`, `padding-bottom: 12px`, `border-bottom: 1px solid var(--rule-strong)`, `margin-bottom: 48px`.
 
-- **Left — wordmark, as a button that returns to the team screen.** An accent triangle (the gnomon of a sundial — the thing that casts the shadow) built with CSS borders: `border-left: 7px solid transparent; border-right: 7px solid transparent; border-bottom: 16px solid var(--accent-mark)`, `width: 0; height: 0`. Then the word `gnomon` in Archivo, `font-weight: 600`, `22px`, `letter-spacing: -0.03em`, `--text-primary`. Gap 8px. `aria-label="gnomon — volver al tablero"`.
+- **Left — wordmark, as a button that returns to the team screen.** The gnomon mark (the sundial's rod and the shadow it casts), an inline SVG, `viewBox="0 0 64 64"`, rendered `24×24`: `<path d="M32 8 L32 52 L8 52 Z" fill="var(--accent-mark-shadow)"/><path d="M32 8 L44 52 L32 52 Z" fill="var(--accent-mark)"/>`. Then the word `gnomon` in Archivo, `font-weight: 600`, `22px`, `letter-spacing: -0.03em`, `--text-primary`. Gap 8px. `aria-label="gnomon — volver al tablero"`.
 - **Right (`margin-left: auto`, gap 16px)** — a `Select variant="inline"` labelled "Mes" (`August/July/June 2026`), then a bordered `IconButton` theme toggle.
 
 **Theme toggle.** Sets `data-theme="dark"|"light"` on `<html>`. Renders a **crescent moon** when light (switch to dark) and a **sun** when dark (switch to light), both inline SVG, `17×17` in a `20×20` viewBox, `fill: none`, `stroke: currentColor`, `stroke-width: 1.5`, `stroke-linecap: round`. Moon path: `M16.3 12.4A7 7 0 0 1 7.6 3.7a7 7 0 1 0 8.7 8.7z`. Sun: `circle cx=10 cy=10 r=3.6` plus eight rays. `aria-label` flips with state; the SVGs are `aria-hidden`.
@@ -286,7 +286,7 @@ All defined in `design_system/tokens/` and reachable from `design_system/styles.
 
 `--blue-50 #EBF2FC` · `100 #CFE0F7` · `200 #9EC2EF` · `300 #6BA1E4` · `400 #4189DC` · **`500 #2A78D6`** · `600 #1F60B0` · `700 #17498A` · `800 #103361` · `900 #0A2242`
 
-**The ramp splits by job, and this matters:** `--blue-500` (#2A78D6) is the brand hue, used for fills that carry no text — chart series, the wordmark triangle (`--accent-mark`). `--accent` resolves to `--blue-600` because links and primary buttons must clear 4.5:1, and #2A78D6 on white is only 3.9:1. **Never put text on `--accent-mark`.**
+**The ramp splits by job, and this matters:** `--blue-500` (#2A78D6) is the brand hue, used for fills that carry no text — chart series, the mark's darker triangle (`--accent-mark`); the mark's lighter triangle is `--accent-mark-shadow` (`--blue-200`, or `--blue-700` on dark). `--accent` resolves to `--blue-600` because links and primary buttons must clear 4.5:1, and #2A78D6 on white is only 3.9:1. **Never put text on `--accent-mark` or `--accent-mark-shadow`.**
 
 ### Colour — neutrals
 
@@ -417,10 +417,9 @@ WCAG 2.2 AA, verified on the built screens:
 
 **There are no image assets, and that is deliberate.**
 
-- **No logo exists.** Nothing was drawn or reconstructed. `design_system/assets/wordmark/wordmark.card.html` holds three typographic wordmark proposals; the screens use proposal A (accent triangle + lowercase Archivo). **The client still needs to pick one.**
+- **The gnomon mark.** Two triangles — the rod and its shadow — drawn as an inline SVG. See `design_system/assets/logo/logo.card.html` for the mark, lockup, clear space, sizes, and the dark-background pair.
 - **No photos or avatars of people** — an explicit product decision, not an omission.
 - **Icons: two inline SVGs only** (the crescent moon and sun for the theme toggle), 1.5px stroke on `currentColor`. Everything else that reads as an icon is Unicode geometry in the figure font: `▲ ▼` trend direction, `=` flat, `—` no data, `‹ ›` stepping and row actions, `i` in a hairline circle for tooltips. No icon font, no sprite sheet, no PNG icons.
-- **The wordmark triangle is CSS borders**, not an SVG.
 - If an icon set becomes necessary, use **Lucide** at `strokeWidth={1.5}`, sized 16 or 20, `currentColor` — it matches the two existing SVGs. Load it properly; never hand-draw approximations.
 
 ### ⚠ Fonts are substitutions
@@ -450,7 +449,7 @@ design_handoff_gnomon/
 │   │   └── feedback/                Tooltip, EmptyState
 │   ├── guidelines/                  13 foundation specimen cards (colour, type,
 │   │                                spacing, corners) — open in a browser
-│   └── assets/wordmark/             three wordmark proposals
+│   └── assets/logo/                  the gnomon mark specimen
 ├── screens/                         ← THE HI-FI DESIGN. Open index.html
 │   ├── index.html                   shell + bootstrap
 │   ├── App.jsx                      view / month / theme state

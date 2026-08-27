@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="32" height="32" role="img" aria-label="gnomon">
+  <path d="M32 8 L32 52 L8 52 Z" fill="#9EC2EF"/>
+  <path d="M32 8 L44 52 L32 52 Z" fill="#2A78D6"/>
+</svg>

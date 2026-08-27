@@ -127,8 +127,10 @@ body {
   --accent-pressed: var(--blue-800);
   --accent-on: var(--grey-0);
   --accent-subtle: var(--blue-50);
-  /* Brand hue for fills that never carry text: chart series, the wordmark mark. */
+  /* Brand hue for fills that never carry text: chart series, the mark's darker triangle. */
   --accent-mark: var(--blue-500);
+  /* The mark's lighter, secondary triangle. */
+  --accent-mark-shadow: var(--blue-200);
 
   /* ---- Semantic: status. Always paired with a glyph or word, never colour alone. ---- */
   --positive: var(--moss-500);
@@ -277,6 +279,7 @@ body {
   --accent-on: var(--grey-950);
   --accent-subtle: var(--blue-900);
   --accent-mark: var(--blue-300);
+  --accent-mark-shadow: var(--blue-700);
 
   --positive: #7FC79E;
   --positive-subtle: #0E2E1E;

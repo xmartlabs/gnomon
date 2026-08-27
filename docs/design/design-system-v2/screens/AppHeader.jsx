@@ -1,11 +1,10 @@
 function Wordmark() {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-4)' }}>
-      <i aria-hidden="true" style={{
-        width: 0, height: 0,
-        borderLeft: '7px solid transparent', borderRight: '7px solid transparent',
-        borderBottom: '16px solid var(--accent-mark)'
-      }} />
+      <svg width="24" height="24" viewBox="0 0 64 64" aria-hidden="true">
+        <path d="M32 8 L32 52 L8 52 Z" fill="var(--accent-mark-shadow)" />
+        <path d="M32 8 L44 52 L32 52 Z" fill="var(--accent-mark)" />
+      </svg>
       <span style={{
         fontFamily: 'var(--font-ui)', fontWeight: 'var(--weight-semibold)',
         fontSize: 22, letterSpacing: '-0.03em', color: 'var(--text-primary)'
