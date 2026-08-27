@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/gnomon-mark-dark.svg">
+    <img src=".github/assets/gnomon-mark-light.svg" alt="gnomon" width="64">
+  </picture>
+</p>
+
 # gnomon
 
 > A local builder-profiler for AI-assisted coding. Reads your agent transcripts on-device and grades **how you build** (gstack) and **how well you operate agents** (Agentic Quotient). Local mode keeps all data on your machine; the separate opt-in `xl-ai-insights` flow uploads the disclosed `summary.json` fields for AI-powered analysis and historical tracking.
