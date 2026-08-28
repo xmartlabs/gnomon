@@ -1,0 +1,30 @@
+[
+  {
+    "name": "POSTGRES_HOST",
+    "value": ""
+  },
+  {
+    "name": "POSTGRES_PORT",
+    "value": "5432"
+  },
+  {
+    "name": "POSTGRES_DB",
+    "value": ""
+  },
+  {
+    "name": "POSTGRES_USER",
+    "value": ""
+  },
+  {
+    "name": "POSTGRES_PASSWORD",
+    "value": ""
+  },
+  {
+    "name": "CONN_MAX_AGE",
+    "value": "60"
+  },
+  {
+    "name": "DATABASE_URL",
+    "value": ""
+  }
+]
