@@ -17,6 +17,7 @@ import unittest
 from unittest.mock import MagicMock, call, patch
 
 import gnomon.cli.insights as _insights
+from gnomon.cli import upload_pipeline as _upload_pipeline
 _RELEASE_CURRENT = {"status": "current", "current": "0.4.0", "latest": "0.4.0"}
 
 import gnomon.upload.mirdash as _mirdash
@@ -255,16 +256,16 @@ class TestMainConsoleDryRun(unittest.TestCase):
         mock_date = MagicMock()
         mock_date.today.return_value = self.TODAY
         with (
-            patch.object(_insights, "_capture_cli_token",
+            patch.object(_upload_pipeline, "_capture_cli_token",
                          return_value=(["tok"] * token_count, uploaded)),
-            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_upload_pipeline, "webbrowser") as mock_wb,
             patch.object(_insights.os.path, "isfile", return_value=True),
             patch.object(_mirdash, "_run_paxel") as mock_paxel,
             patch.object(_mirdash, "_upload_summary") as mock_upload,
-            patch("gnomon.cli.insights.datetime") as mock_dt,
+            patch("gnomon.cli.upload_pipeline.datetime") as mock_dt,
             # Deterministic, filesystem-free stand-in for the real cheap coverage
             # pre-check -- see gnomon.upload.mirdash.default_producible_coverage_for.
-            patch.object(_insights, "default_producible_coverage_for", return_value=(2, 999)),
+            patch.object(_upload_pipeline, "default_producible_coverage_for", return_value=(2, 999)),
             contextlib.redirect_stdout(buf),
         ):
             mock_wb.open.return_value = True
@@ -440,18 +441,18 @@ class TestMainWebDryRun(unittest.TestCase):
         mock_date.today.return_value = self.TODAY
 
         with (
-            patch("gnomon.upload.progress_server.ProgressServer", return_value=mock_server),
-            patch("gnomon.cli.insights.ProgressServer", return_value=mock_server, create=True),
-            patch.object(_insights, "_wait_for_auth_tokens",
+            patch("gnomon.cli.upload_pipeline.ProgressServer", return_value=mock_server),
+            patch("gnomon.cli.upload_pipeline.ProgressServer", return_value=mock_server, create=True),
+            patch.object(_upload_pipeline, "_wait_for_auth_tokens",
                          return_value=(["tok"] * token_count)),
-            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_upload_pipeline, "webbrowser") as mock_wb,
             patch.object(_insights.os.path, "isfile", return_value=True),
             patch.object(_mirdash, "_run_paxel") as mock_paxel,
             patch.object(_mirdash, "_upload_summary") as mock_upload,
-            patch("gnomon.cli.insights.datetime") as mock_dt,
+            patch("gnomon.cli.upload_pipeline.datetime") as mock_dt,
             # Deterministic, filesystem-free stand-in for the real cheap coverage
             # pre-check -- see gnomon.upload.mirdash.default_producible_coverage_for.
-            patch.object(_insights, "default_producible_coverage_for", return_value=(2, 999)),
+            patch.object(_upload_pipeline, "default_producible_coverage_for", return_value=(2, 999)),
             contextlib.redirect_stdout(buf),
         ):
             mock_wb.open.return_value = True
@@ -594,18 +595,18 @@ class TestMainWebOSErrorFallbackDryRun(unittest.TestCase):
             # console mode. Patching only gnomon.cli.insights.ProgressServer is a
             # no-op (it's a function-local import), which left a real server bound
             # and blocked on wait_for_auth under `unittest discover`.
-            patch("gnomon.upload.progress_server.ProgressServer", side_effect=OSError("address already in use")),
-            patch("gnomon.cli.insights.ProgressServer", side_effect=OSError("address already in use"), create=True),
-            patch.object(_insights, "_capture_cli_token",
+            patch("gnomon.cli.upload_pipeline.ProgressServer", side_effect=OSError("address already in use")),
+            patch("gnomon.cli.upload_pipeline.ProgressServer", side_effect=OSError("address already in use"), create=True),
+            patch.object(_upload_pipeline, "_capture_cli_token",
                          return_value=(["tok"] * token_count, uploaded)),
-            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_upload_pipeline, "webbrowser") as mock_wb,
             patch.object(_insights.os.path, "isfile", return_value=True),
             patch.object(_mirdash, "_run_paxel") as mock_paxel,
             patch.object(_mirdash, "_upload_summary") as mock_upload,
-            patch("gnomon.cli.insights.datetime") as mock_dt,
+            patch("gnomon.cli.upload_pipeline.datetime") as mock_dt,
             # Deterministic, filesystem-free stand-in for the real cheap coverage
             # pre-check -- see gnomon.upload.mirdash.default_producible_coverage_for.
-            patch.object(_insights, "default_producible_coverage_for", return_value=(2, 999)),
+            patch.object(_upload_pipeline, "default_producible_coverage_for", return_value=(2, 999)),
             contextlib.redirect_stdout(buf),
         ):
             mock_wb.open.return_value = True
@@ -663,10 +664,10 @@ class TestForceBackfillDryRunNoAuth(unittest.TestCase):
         to BLOW UP if touched, proving the short-circuit happens before auth."""
         buf = io.StringIO()
         with (
-            patch.object(_insights, "webbrowser") as mock_wb,
-            patch.object(_insights, "_capture_cli_token") as mock_cap,
-            patch.object(_insights, "_wait_for_auth_tokens") as mock_wait,
-            patch("gnomon.upload.progress_server.ProgressServer") as mock_server_cls,
+            patch.object(_upload_pipeline, "webbrowser") as mock_wb,
+            patch.object(_upload_pipeline, "_capture_cli_token") as mock_cap,
+            patch.object(_upload_pipeline, "_wait_for_auth_tokens") as mock_wait,
+            patch("gnomon.cli.upload_pipeline.ProgressServer") as mock_server_cls,
             contextlib.redirect_stdout(buf),
         ):
             # No browser available, like headless/CI.

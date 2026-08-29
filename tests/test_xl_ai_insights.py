@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import gnomon.cli.insights as _insights
+from gnomon.cli import upload_pipeline as _upload_pipeline
 import gnomon.upload.mirdash as _mirdash
 from gnomon.upload.mirdash import (
     _format_summary, _run_paxel, _absolutize_dir_flags,
@@ -246,7 +247,7 @@ class TestOutputDirArgParsing(unittest.TestCase):
             patch.object(_insights, "_check_latest_cli_release", return_value={"status": "current"}),
             # main() offers the retention config once it clears the freshness gate;
             # stub it so no test prompts on stdin or writes ~/.claude/settings.json.
-            patch.object(_insights, "offer_retention_config"),
+            patch.object(_upload_pipeline, "offer_retention_config"),
             patch.object(_insights, "_main_web") as mock_main_web,
             patch.object(
                 _insights.sys,
@@ -279,9 +280,9 @@ class TestOutputDirPropagation(unittest.TestCase):
         if uploaded is None:
             uploaded = []
         with (
-            patch.object(_insights, "_capture_cli_token",
+            patch.object(_upload_pipeline, "_capture_cli_token",
                          return_value=(["tok"] * max(token_count, 1), uploaded)),
-            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_upload_pipeline, "webbrowser") as mock_wb,
             patch.object(_insights.os.path, "isfile", return_value=True),
             patch.object(_mirdash, "_run_paxel", side_effect=run_paxel_side_effect) as mock_run,
             patch.object(_mirdash, "_upload_summary", return_value="/r/1"),
@@ -370,13 +371,13 @@ class TestConsoleFailureAndSummary(unittest.TestCase):
         else:
             upload_kwargs["return_value"] = "/r/1"
         with (
-            patch.object(_insights, "_capture_cli_token",
+            patch.object(_upload_pipeline, "_capture_cli_token",
                          return_value=(["tok"] * max(token_count, 1), uploaded)),
-            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_upload_pipeline, "webbrowser") as mock_wb,
             patch.object(_insights.os.path, "isfile", return_value=True),
             patch.object(_mirdash, "_run_paxel", side_effect=run_paxel_side_effect),
             patch.object(_mirdash, "_upload_summary", **upload_kwargs),
-            patch("gnomon.cli.insights.datetime") as mock_dt,
+            patch("gnomon.cli.upload_pipeline.datetime") as mock_dt,
             contextlib.redirect_stdout(buf),
         ):
             mock_wb.open.return_value = True
@@ -510,7 +511,7 @@ class TestCliReleaseFreshness(unittest.TestCase):
         stdout = io.StringIO()
         with (
             patch.object(_insights, "_check_latest_cli_release", return_value=self.MISMATCH_OLDER),
-            patch.object(_insights, "offer_retention_config"),  # never prompt/write in tests
+            patch.object(_upload_pipeline, "offer_retention_config"),  # never prompt/write in tests
             patch.object(_insights, "_main_web") as mock_main_web,
             patch.object(_insights.sys, "argv", ["xl-ai-insights", "--allow-stale-cli", "claude"]),
             contextlib.redirect_stdout(stdout),
@@ -525,7 +526,7 @@ class TestCliReleaseFreshness(unittest.TestCase):
         stdout = io.StringIO()
         with (
             patch.object(_insights, "_check_latest_cli_release", return_value=self.CURRENT),
-            patch.object(_insights, "offer_retention_config"),  # never prompt/write in tests
+            patch.object(_upload_pipeline, "offer_retention_config"),  # never prompt/write in tests
             patch.object(_insights, "_main_web") as mock_main_web,
             patch.object(_insights.sys, "argv", ["xl-ai-insights", "codex"]),
             contextlib.redirect_stdout(stdout),
@@ -539,7 +540,7 @@ class TestCliReleaseFreshness(unittest.TestCase):
         stdout = io.StringIO()
         with (
             patch.object(_insights, "_check_latest_cli_release", return_value=self.UNKNOWN),
-            patch.object(_insights, "offer_retention_config"),  # never prompt/write in tests
+            patch.object(_upload_pipeline, "offer_retention_config"),  # never prompt/write in tests
             patch.object(_insights, "_main_web") as mock_main_web,
             patch.object(_insights.sys, "argv", ["xl-ai-insights", "gemini"]),
             contextlib.redirect_stdout(stdout),
@@ -552,7 +553,7 @@ class TestCliReleaseFreshness(unittest.TestCase):
     def test_custom_mirdash_base_skips_public_release_check(self):
         with (
             patch.object(_insights, "_check_latest_cli_release") as mock_check,
-            patch.object(_insights, "offer_retention_config"),  # never prompt/write in tests
+            patch.object(_upload_pipeline, "offer_retention_config"),  # never prompt/write in tests
             patch.object(_insights, "_main_web") as mock_main_web,
             patch.object(
                 _insights.sys,
@@ -584,7 +585,7 @@ class TestCliReleaseFreshness(unittest.TestCase):
             patch.object(_insights, "_check_latest_cli_release") as mock_check,
             # never prompt/write in tests: --local offers the retention config too, and
             # the offer's only guard is a real tty, which `unittest discover` preserves
-            patch.object(_insights, "offer_retention_config"),
+            patch.object(_upload_pipeline, "offer_retention_config"),
             patch("gnomon.cli.local.main") as mock_local_main,
             patch.object(_insights.sys, "argv", ["xl-ai-insights", "--local", "--allow-stale-cli", "claude"]),
         ):
