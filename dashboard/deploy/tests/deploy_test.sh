@@ -174,24 +174,18 @@ run_deploy abc123
 assert "$rc" 1 "a failed docker load exits 1, not docker's own status"
 assert_contains "$out" "deploy:" "a failed load reports in the script's own error format"
 refute_contains "$(cat "$DOCKER_LOG")" "compose up" "a failed load never starts the service"
+# Only the EXIT trap can have removed it: load_image's own `rm -f` is
+# short-circuited by `|| die` when the load fails.
+# shellcheck disable=SC2015 # deliberate: notok/ok always return 0, so C can never double-fire
+[ -f "$box/tmp/image.tar.gz" ] \
+  && notok "the EXIT trap removes the tarball when the load fails" \
+  || ok "the EXIT trap removes the tarball when the load fails"
 
 new_box
 export FAKE_COMPOSE_UP_RC=1
 run_deploy abc123
 assert "$rc" 1 "a failed compose up exits 1, not docker's own status"
 assert_contains "$out" "deploy:" "a failed start reports in the script's own error format"
-
-# The trap must fire even when the run dies before the normal cleanup point.
-new_box
-mkdir -p "$box/tmp"
-printf 'not-a-real-image' | gzip > "$box/tmp/image.tar.gz"
-export FAKE_IMAGE_INSPECT_RC=1
-run_deploy abc123
-assert "$rc" 1 "an unknown tag still fails"
-# shellcheck disable=SC2015 # deliberate: notok/ok always return 0, so C can never double-fire
-[ -f "$box/tmp/image.tar.gz" ] \
-  && notok "the EXIT trap removes the tarball even on a failed run" \
-  || ok "the EXIT trap removes the tarball even on a failed run"
 
 echo
 echo "$pass passed, $fail failed"
