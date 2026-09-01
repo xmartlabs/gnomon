@@ -134,6 +134,10 @@ cp .env.example .env          # set TEAM_TOKEN (openssl rand -hex 24)
 docker compose up -d          # dashboard at http://localhost:3000
 ```
 
+> Deploying to your own Linux VM? See [`dashboard/deploy/README.md`](dashboard/deploy/README.md)
+> — a manual GitHub Actions workflow that builds the image, ships it over SSH,
+> and keeps all state in `~/gnomon` on the box.
+
 The container refuses to start without `TEAM_TOKEN`, so a misconfigured deploy
 fails loudly instead of serving an open endpoint.
 
