@@ -7,21 +7,33 @@
 # be run by hand — that is the rollback path. With tmp/image.tar.gz present the
 # tag is loaded from it; without, the tag must already be in the local store.
 #
-# Env: HTTP_PORT (80), HEALTH_TIMEOUT (60), HEALTH_INTERVAL (2)
+# Env: HTTP_PORT (the last deployed value, else 80), HEALTH_TIMEOUT (60),
+#      HEALTH_INTERVAL (2)
 set -euo pipefail
 
-cd "$(dirname "$0")"
-
-IMAGE_REPO=gnomon-dashboard
-TARBALL=tmp/image.tar.gz
-HTTP_PORT="${HTTP_PORT:-80}"
-HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-60}"
-HEALTH_INTERVAL="${HEALTH_INTERVAL:-2}"
-
+# Defined first: the guards below the cd already need it.
 die() {
   echo "deploy: $*" >&2
   exit 1
 }
+
+cd "$(dirname "$0")" || die "cannot enter the script's own directory"
+# `cd ""` succeeds silently in bash, so a failed dirname would leave us in the
+# caller's cwd and run compose against whatever project lives there.
+[ -f docker-compose.yml ] || die "docker-compose.yml is not in $(pwd) — run this from the deployment directory (~/gnomon on the VM)"
+
+IMAGE_REPO=gnomon-dashboard
+TARBALL=tmp/image.tar.gz
+# A manual rollback that omits HTTP_PORT must not silently move the published
+# port: the health gate would still pass, because it polls whatever port it
+# just chose. Read after the cd, since .env is relative to the deployment
+# directory; the -f guard keeps sed off the path entirely on a first deploy.
+if [ -z "${HTTP_PORT:-}" ] && [ -f .env ]; then
+  HTTP_PORT="$(sed -n 's/^HTTP_PORT=//p' .env | tail -n1)"
+fi
+HTTP_PORT="${HTTP_PORT:-80}"
+HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-60}"
+HEALTH_INTERVAL="${HEALTH_INTERVAL:-2}"
 
 preflight() {
   docker version >/dev/null 2>&1 || die \
@@ -33,7 +45,7 @@ preflight() {
   # health-check failure — the most misleading outcome this script can produce.
   command -v curl >/dev/null 2>&1 || die \
     "curl is not installed, and the health gate needs it. Install it: sudo apt-get install -y curl"
-  mkdir -p data tmp
+  mkdir -p data tmp || die "cannot create data/ and tmp/ in $(pwd)"
   # Checked before anything starts: a data/ the container cannot write to
   # otherwise surfaces as a confusing SQLite SQLITE_CANTOPEN *after* an
   # apparently green deploy.
@@ -62,7 +74,7 @@ EOF
 
 load_image() {
   if [ -f "$TARBALL" ]; then
-    gunzip -c "$TARBALL" | docker load || die "failed to load $TARBALL — the tarball may be truncated or corrupt. Re-run the deploy to ship a fresh copy."
+    gunzip -c "$TARBALL" | docker load || die "failed to load $TARBALL — the tarball may be truncated or corrupt, or the disk may be full. Check free space with df -h, then re-run the deploy to ship a fresh copy."
     rm -f "$TARBALL"
   fi
   docker image inspect "$IMAGE_REPO:$TAG" >/dev/null 2>&1 || die \

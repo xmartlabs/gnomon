@@ -135,6 +135,17 @@ env_file="$(cat "$box/.env")"
 assert_contains "$env_file" "IMAGE_TAG=def456"        "second deploy records the new tag"
 assert_contains "$env_file" "PREVIOUS_TAG=abc123"     "second deploy records the prior tag for rollback"
 
+# --- a manual rollback inherits the deployed port ----------------------------
+# The README's rollback command omits HTTP_PORT; if the script defaulted back to
+# 80 it would republish on a different port, and the health gate would still
+# pass because it polls whatever port it just chose.
+new_box
+export HTTP_PORT=8080
+run_deploy first111
+unset HTTP_PORT
+run_deploy second222
+assert_contains "$(cat "$box/.env")" "HTTP_PORT=8080" "a deploy with no HTTP_PORT inherits the deployed one"
+
 # --- image load --------------------------------------------------------------
 new_box
 mkdir -p "$box/tmp"
@@ -187,6 +198,12 @@ refute_contains "$(cat "$DOCKER_LOG")" "compose up" "a failed load never starts 
 [ -f "$box/tmp/image.tar.gz" ] \
   && notok "the EXIT trap removes the tarball when the load fails" \
   || ok "the EXIT trap removes the tarball when the load fails"
+# The one invariant this script cannot afford to break: .env always describes
+# what is actually running. write_env comes after load_image for that reason.
+# shellcheck disable=SC2015 # deliberate: notok/ok always return 0, so C can never double-fire
+[ -f "$box/.env" ] \
+  && notok "a failed load never writes .env" \
+  || ok "a failed load never writes .env"
 
 new_box
 export FAKE_COMPOSE_UP_RC=1
@@ -199,6 +216,8 @@ new_box
 run_deploy good111                      # establishes a known-good tag
 : > "$DOCKER_LOG"                       # count only the failing deploy's calls
 export FAKE_CURL_RC=1
+# A prunable tag exists, so the refutation below has something to catch.
+export FAKE_IMAGE_TAGS="stale999 good111 bad222"
 run_deploy bad222
 assert "$rc" 1 "a failing new image fails the workflow run"
 env_file="$(cat "$box/.env")"
@@ -206,6 +225,9 @@ assert_contains "$env_file" "IMAGE_TAG=good111" "a failing health gate restores 
 assert_contains "$out" "rolling back" "the rollback is announced"
 # Two `compose up` calls: the bad image, then the restored one.
 assert "$(grep -c 'compose up' "$DOCKER_LOG")" 2 "rollback brings the previous image back up"
+# The failing tag must survive for a post-mortem, so no prune runs on a failure
+# path. $DOCKER_LOG was truncated above, so this sees only the failing deploy.
+refute_contains "$(cat "$DOCKER_LOG")" "image rm" "a failed deploy never prunes"
 
 new_box
 export FAKE_CURL_RC=1
