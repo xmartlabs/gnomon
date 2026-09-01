@@ -127,6 +127,43 @@ env_file="$(cat "$box/.env")"
 assert_contains "$env_file" "IMAGE_TAG=def456"        "second deploy records the new tag"
 assert_contains "$env_file" "PREVIOUS_TAG=abc123"     "second deploy records the prior tag for rollback"
 
+# --- image load --------------------------------------------------------------
+new_box
+mkdir -p "$box/tmp"
+printf 'not-a-real-image' | gzip > "$box/tmp/image.tar.gz"
+run_deploy abc123
+assert "$rc" 0 "a healthy deploy exits 0"
+assert_contains "$(cat "$DOCKER_LOG")" "load" "the tarball is handed to docker load"
+# shellcheck disable=SC2015 # deliberate: notok/ok always return 0, so C can never double-fire
+[ -f "$box/tmp/image.tar.gz" ] \
+  && notok "the tarball is deleted after loading" \
+  || ok "the tarball is deleted after loading"
+
+new_box
+export FAKE_IMAGE_INSPECT_RC=1
+run_deploy abc123
+assert "$rc" 1 "no tarball and an unknown tag aborts"
+assert_contains "$out" "not in the local store" "the abort explains why"
+refute_contains "$(cat "$DOCKER_LOG")" "compose up" "an unknown tag never reaches compose up"
+
+# Rollback usage: no tarball, but the tag already exists locally.
+new_box
+run_deploy abc123
+assert "$rc" 0 "an already-loaded tag deploys with no tarball (the rollback path)"
+
+# --- start and health gate ---------------------------------------------------
+new_box
+run_deploy abc123
+log="$(cat "$DOCKER_LOG")"
+assert_contains "$log" "compose up -d --remove-orphans" "the service is started detached"
+assert_contains "$out" "healthy" "a passing health gate says so"
+
+new_box
+export FAKE_CURL_RC=1
+run_deploy abc123
+assert "$rc" 1 "a failing health gate fails the deploy"
+assert_contains "$(cat "$DOCKER_LOG")" "compose logs --tail=100" "a failing health gate dumps container logs"
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

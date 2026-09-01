@@ -12,9 +12,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-# shellcheck disable=SC2034 # consumed by load_image/prune_images, added in Task 3/4
 IMAGE_REPO=gnomon-dashboard
-# shellcheck disable=SC2034 # consumed by load_image, added in Task 3
 TARBALL=tmp/image.tar.gz
 HTTP_PORT="${HTTP_PORT:-80}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-60}"
@@ -57,6 +55,28 @@ HTTP_PORT=$HTTP_PORT
 EOF
 }
 
+load_image() {
+  if [ -f "$TARBALL" ]; then
+    gunzip -c "$TARBALL" | docker load
+    rm -f "$TARBALL"
+  fi
+  docker image inspect "$IMAGE_REPO:$TAG" >/dev/null 2>&1 || die \
+    "image $IMAGE_REPO:$TAG is not in the local store and no $TARBALL was supplied. To roll back, pass a tag that is still loaded: docker image ls $IMAGE_REPO"
+}
+
+# Polls the published port from the host — the same endpoint
+# .github/workflows/dashboard-image.yml already uses as a readiness probe.
+healthy() {
+  local deadline=$((SECONDS + HEALTH_TIMEOUT))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if curl -fsS -o /dev/null "http://127.0.0.1:$HTTP_PORT/"; then
+      return 0
+    fi
+    sleep "$HEALTH_INTERVAL"
+  done
+  return 1
+}
+
 TAG="${1:-}"
 [ -n "$TAG" ] || {
   echo "usage: deploy.sh <image-tag>" >&2
@@ -65,5 +85,23 @@ TAG="${1:-}"
 
 preflight
 
+# Unconditional: a failure anywhere below must not leave hundreds of megabytes
+# sitting in the operator's home directory.
+trap 'rm -f "$TARBALL"' EXIT
+
+load_image
+
 PREVIOUS_TAG="$(current_tag)"
 write_env "$TAG" "$PREVIOUS_TAG"
+
+echo "deploy: starting $IMAGE_REPO:$TAG on port $HTTP_PORT"
+docker compose up -d --remove-orphans
+
+if healthy; then
+  echo "deploy: healthy — http://127.0.0.1:$HTTP_PORT/ is serving $IMAGE_REPO:$TAG"
+  exit 0
+fi
+
+echo "deploy: $IMAGE_REPO:$TAG failed the health check after ${HEALTH_TIMEOUT}s" >&2
+docker compose logs --tail=100 >&2 || true
+die "deploy failed"
