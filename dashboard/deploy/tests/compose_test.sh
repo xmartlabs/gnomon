@@ -48,6 +48,7 @@ check  "app.env supplies the container environment" 'app\.env|TEAM_TOKEN'
 check  "restart policy survives a reboot"           'restart: unless-stopped'
 check  "project name is pinned to gnomon"           '^name: gnomon'
 check  "a healthcheck is defined"                   'healthcheck:'
+check  "container logs are capped"                  'max-size'
 refute "the host never builds the image"            '^[[:space:]]*build:'
 refute "TRUST_PROXY is not set by the deployment"   'TRUST_PROXY'
 

@@ -23,6 +23,12 @@ services:
     volumes:
       - ./data:/data
     restart: unless-stopped
+    # Unbounded by default, on a box whose only job is serving HTTP.
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
     healthcheck:
       # node is the only HTTP-capable binary in node:22-bookworm-slim — there
       # is no curl and no wget — so `docker compose ps` can still tell the
