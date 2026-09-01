@@ -66,3 +66,30 @@ jobs:
 
       - name: Flow tests
         run: pnpm test:e2e
+
+  # The VM deploy path is unattended shell that runs `rm` and `docker image rm`
+  # against a live box, so it gets the same PR gate the app code does.
+  deploy-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      # An unquoted variable in one of those rm/docker calls is exactly the bug
+      # shellcheck catches.
+      - name: Lint the deploy shell
+        run: shellcheck dashboard/deploy/deploy.sh dashboard/deploy/tests/*.sh
+
+      - name: Compose config renders
+        run: ./dashboard/deploy/tests/compose_test.sh
+
+      - name: deploy.sh behaves
+        run: ./dashboard/deploy/tests/deploy_test.sh
+
+      - name: Deploy workflow invariants hold
+        run: ./dashboard/deploy/tests/workflow_test.sh
