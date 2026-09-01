@@ -109,7 +109,7 @@ jobs:
         run: |
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=yes \
             "$DEPLOY_USER@$DEPLOY_HOST" \
-            "cd ~/gnomon && chmod +x deploy.sh && HTTP_PORT=$HTTP_PORT ./deploy.sh ${{ steps.tag.outputs.tag }}"
+            "cd ~/gnomon && chmod 600 app.env && chmod +x deploy.sh && HTTP_PORT=$HTTP_PORT ./deploy.sh ${{ steps.tag.outputs.tag }}"
 
       - name: Remove key material
         if: always()
