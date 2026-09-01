@@ -90,10 +90,15 @@ jobs:
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
           printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
 
+      # The guard runs BEFORE the mkdir: the repo's own quickstart tells
+      # self-hosters to `git clone ... && cd gnomon`, which from $HOME makes
+      # ~/gnomon a checkout whose docker-compose.yml and .env this deploy would
+      # overwrite — and that .env holds the quickstart's TEAM_TOKEN.
       - name: Create the remote directories
         run: |
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=yes \
-            "$DEPLOY_USER@$DEPLOY_HOST" 'mkdir -p ~/gnomon/data ~/gnomon/tmp'
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            'if [ -e ~/gnomon/.git ]; then echo "FATAL: ~/gnomon is a git checkout. This deploy would overwrite its docker-compose.yml and .env. Move the checkout elsewhere." >&2; exit 1; fi; mkdir -p ~/gnomon/data ~/gnomon/tmp'
 
       - name: Copy the release
         run: |

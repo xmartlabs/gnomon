@@ -25,6 +25,10 @@ refute "host-key checking is never disabled"      'StrictHostKeyChecking=no'
 check  "host keys are pinned from a secret"       'DEPLOY_SSH_KNOWN_HOSTS'
 check  "the image is referenced by the expected repo name"  'gnomon-dashboard:'
 refute "the image is never pulled from a registry"          'docker pull|docker/login-action'
+# load: true, never push: true — the image travels over SSH, and a registry push
+# would put the team's image somewhere this deployment never authenticated to.
+refute "the image is never pushed to a registry"            'push: true'
+check  "the deploy refuses to overwrite a git checkout"     'gnomon/\.git'
 check  "app.env is restricted on the host"        'chmod 600 app\.env'
 check  "the image travels as a saved tarball"     'docker save'
 check  "deploy.sh drives the host"                'deploy\.sh'
