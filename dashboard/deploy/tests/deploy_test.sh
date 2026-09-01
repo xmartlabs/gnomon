@@ -37,7 +37,12 @@ case "$1" in
   compose)
     case "$2" in
       version) exit "${FAKE_COMPOSE_VERSION_RC:-0}" ;;
-      up)      exit "${FAKE_COMPOSE_UP_RC:-0}" ;;
+      up)
+        if [ -n "${FAKE_COMPOSE_UP_FAIL_FIRST:-}" ] && [ ! -f "$DOCKER_LOG.upfailed" ]; then
+          touch "$DOCKER_LOG.upfailed"
+          exit 1
+        fi
+        exit "${FAKE_COMPOSE_UP_RC:-0}" ;;
       *)       exit 0 ;;
     esac ;;
   load)  cat > /dev/null; exit "${FAKE_LOAD_RC:-0}" ;;
@@ -60,12 +65,14 @@ STUB
   chmod +x "$box/bin/docker" "$box/bin/curl"
   export DOCKER_LOG="$box/docker.log"
   : > "$DOCKER_LOG"
+  rm -f "$DOCKER_LOG.upfailed"
   # Every scenario starts clean. The stubs read these from the environment, so
   # tests `export` them — do NOT write `FAKE_X=1 run_deploy ...`, because bash
   # does not reliably scope an assignment prefixed to a *function* call, and a
   # leaked value silently corrupts every later scenario.
   unset FAKE_DOCKER_VERSION_RC FAKE_COMPOSE_VERSION_RC FAKE_IMAGE_INSPECT_RC \
-        FAKE_IMAGE_TAGS FAKE_CURL_RC FAKE_LOAD_RC FAKE_COMPOSE_UP_RC
+        FAKE_IMAGE_TAGS FAKE_CURL_RC FAKE_LOAD_RC FAKE_COMPOSE_UP_RC \
+        FAKE_COMPOSE_UP_FAIL_FIRST
 }
 
 # Runs deploy.sh inside the current box with the stubs first on PATH.
@@ -186,6 +193,68 @@ export FAKE_COMPOSE_UP_RC=1
 run_deploy abc123
 assert "$rc" 1 "a failed compose up exits 1, not docker's own status"
 assert_contains "$out" "deploy:" "a failed start reports in the script's own error format"
+
+# --- rollback ----------------------------------------------------------------
+new_box
+run_deploy good111                      # establishes a known-good tag
+: > "$DOCKER_LOG"                       # count only the failing deploy's calls
+export FAKE_CURL_RC=1
+run_deploy bad222
+assert "$rc" 1 "a failing new image fails the workflow run"
+env_file="$(cat "$box/.env")"
+assert_contains "$env_file" "IMAGE_TAG=good111" "a failing health gate restores the previous tag"
+assert_contains "$out" "rolling back" "the rollback is announced"
+# Two `compose up` calls: the bad image, then the restored one.
+assert "$(grep -c 'compose up' "$DOCKER_LOG")" 2 "rollback brings the previous image back up"
+
+new_box
+export FAKE_CURL_RC=1
+run_deploy first333
+assert "$rc" 1 "a failing FIRST deploy fails"
+refute_contains "$out" "rolling back" "a first deploy has nothing to roll back to"
+assert_contains "$out" "first deploy" "the first-deploy case says so explicitly"
+
+new_box
+run_deploy same444
+export FAKE_CURL_RC=1
+run_deploy same444
+assert "$rc" 1 "redeploying the same failing tag fails"
+refute_contains "$out" "rolling back" "rolling back to the identical failing tag is not attempted"
+
+# --- prune -------------------------------------------------------------------
+new_box
+run_deploy keepA
+export FAKE_IMAGE_TAGS="old1 old2 keepA keepB"
+run_deploy keepB
+log="$(cat "$DOCKER_LOG")"
+assert_contains "$log" "image rm gnomon-dashboard:old1" "a stale tag is pruned"
+assert_contains "$log" "image rm gnomon-dashboard:old2" "every stale tag is pruned"
+refute_contains "$log" "image rm gnomon-dashboard:keepA" "the previous tag is kept for rollback"
+refute_contains "$log" "image rm gnomon-dashboard:keepB" "the current tag is kept"
+
+new_box
+export FAKE_IMAGE_TAGS="<none> onlytag"
+run_deploy onlytag
+refute_contains "$(cat "$DOCKER_LOG")" "image rm gnomon-dashboard:<none>" "dangling entries are left to docker"
+
+# --- a container that never starts recovers like one that never serves -------
+new_box
+run_deploy good111
+: > "$DOCKER_LOG"
+export FAKE_COMPOSE_UP_FAIL_FIRST=1
+run_deploy bad222
+assert "$rc" 1 "a container that never starts fails the run"
+assert_contains "$out" "rolling back" "a failed start rolls back, it does not just die"
+assert_contains "$out" "which is serving" "the previous image is brought back up and verified"
+env_file="$(cat "$box/.env")"
+assert_contains "$env_file" "IMAGE_TAG=good111" "a failed start restores the previous tag"
+
+new_box
+run_deploy good111
+export FAKE_COMPOSE_UP_RC=1
+run_deploy bad222
+assert "$rc" 1 "a rollback that cannot start is reported, not swallowed"
+assert_contains "$out" "could not even start" "the nested rollback guard fires"
 
 echo
 echo "$pass passed, $fail failed"

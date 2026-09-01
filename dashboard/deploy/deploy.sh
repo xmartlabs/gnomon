@@ -77,6 +77,44 @@ healthy() {
   return 1
 }
 
+# Removes gnomon-dashboard images other than the two kept tags. Scoped to this
+# repository name only — it must never touch anything else running on the box.
+prune_images() {
+  local keep_a="$1" keep_b="$2" tag
+  while read -r tag; do
+    case "$tag" in
+      "" | "<none>" | "$keep_a" | "$keep_b") continue ;;
+    esac
+    docker image rm "$IMAGE_REPO:$tag" >/dev/null 2>&1 || true
+  done < <(docker image ls "$IMAGE_REPO" --format '{{.Tag}}')
+}
+
+# Both post-start failures leave the box in the same state — .env already
+# advanced to a tag that is not serving — so they take the same recovery path.
+rollback_or_die() {
+  echo "deploy: $1" >&2
+  docker compose logs --tail=100 >&2 || true
+
+  if [ -z "$PREVIOUS_TAG" ]; then
+    die "no previous image to roll back to (first deploy). The box is NOT serving — fix the image and deploy again."
+  fi
+  if [ "$PREVIOUS_TAG" = "$TAG" ]; then
+    die "the previous tag is the same failing image ($TAG), so there is nothing to roll back to. The box is NOT serving."
+  fi
+
+  echo "deploy: rolling back to $IMAGE_REPO:$PREVIOUS_TAG" >&2
+  # PREVIOUS_TAG stays pointing at itself, so the next deploy's rollback target
+  # is this known-good image rather than the one that just failed.
+  write_env "$PREVIOUS_TAG" "$PREVIOUS_TAG"
+  docker compose up -d --remove-orphans \
+    || die "the rollback to $PREVIOUS_TAG could not even start. The box is NOT serving — investigate now."
+
+  if healthy; then
+    die "rolled back to $PREVIOUS_TAG, which is serving. $TAG was NOT deployed."
+  fi
+  die "the rollback to $PREVIOUS_TAG ALSO failed its health check. The box is NOT serving — investigate now."
+}
+
 TAG="${1:-}"
 [ -n "$TAG" ] || {
   echo "usage: deploy.sh <image-tag>" >&2
@@ -95,13 +133,13 @@ PREVIOUS_TAG="$(current_tag)"
 write_env "$TAG" "$PREVIOUS_TAG"
 
 echo "deploy: starting $IMAGE_REPO:$TAG on port $HTTP_PORT"
-docker compose up -d --remove-orphans || die "docker compose up failed for $IMAGE_REPO:$TAG — check for a port conflict on $HTTP_PORT or a malformed app.env, then re-run."
+docker compose up -d --remove-orphans \
+  || rollback_or_die "docker compose up failed for $IMAGE_REPO:$TAG — check for a port conflict on $HTTP_PORT or a malformed app.env."
 
 if healthy; then
   echo "deploy: healthy — http://127.0.0.1:$HTTP_PORT/ is serving $IMAGE_REPO:$TAG"
+  prune_images "$TAG" "$PREVIOUS_TAG"
   exit 0
 fi
 
-echo "deploy: $IMAGE_REPO:$TAG failed the health check after ${HEALTH_TIMEOUT}s" >&2
-docker compose logs --tail=100 >&2 || true
-die "deploy failed"
+rollback_or_die "$IMAGE_REPO:$TAG failed the health check after ${HEALTH_TIMEOUT}s"
