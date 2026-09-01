@@ -180,9 +180,12 @@ performs the bind as root and forwards to container port 3000.
 
 ## `dashboard/deploy/deploy.sh`
 
-`bash`, `set -euo pipefail`, `cd "$(dirname "$0")"` as the first action so it operates on
-its own directory and can be rehearsed anywhere. Usage: `deploy.sh <tag>`, with `HTTP_PORT`
-read from the environment and defaulting to `80`.
+`bash`, `set -euo pipefail`, then `cd "$(dirname "$0")"` so it operates on its own
+directory and can be rehearsed anywhere — guarded by `|| die` and a `[ -f docker-compose.yml ]`
+check, because `cd ""` succeeds silently in bash and would leave the script running compose
+against the caller's cwd. Usage: `deploy.sh <tag>`, with `HTTP_PORT` read from the
+environment, falling back to the value in the existing `.env` and then to `80`, so a manual
+rollback that omits it cannot silently move the published port.
 
 1. **Preflight.** `docker` reachable without sudo; `docker compose` plugin present; `data/`
    writable by the current user. Each failure exits with the remedy, not a stack trace. The
@@ -209,7 +212,7 @@ read from the environment and defaulting to `80`.
 Manual rollback is therefore:
 
 ```
-ssh <user>@<host> 'cd ~/gnomon && HTTP_PORT=80 ./deploy.sh <old-sha>'
+ssh <user>@<host> 'cd ~/gnomon && ./deploy.sh <old-sha>'
 ```
 
 using the previous image still present in the local Docker store — no GitHub, no rebuild.
@@ -231,7 +234,9 @@ Manual, and the final step of the implementation plan — a local rehearsal, no 
 2. Copy `docker-compose.yml`, `deploy.sh` and a minimal `app.env` (`TEAM_TOKEN=dev`) into a
    scratch directory.
 3. `HTTP_PORT=8080 ./deploy.sh rehearsal` → confirm the container starts, `curl localhost:8080`
-   answers, and `data/gnomon.db` plus `data/jwt-secret` appear owned by the current user.
+   answers, and `data/gnomon.db` appears owned by the current user. `data/jwt-secret` will
+   *not* be there yet: `dashboard/src/lib/auth.ts` creates it lazily on the first request
+   that signs or verifies a token, so a plain page load leaves it absent — correctly.
 4. Build a deliberately broken image (for example, one whose entrypoint exits immediately),
    deploy it, and confirm the health gate fails, the logs print, and `.env` is restored to
    the `rehearsal` tag with the container serving again.
