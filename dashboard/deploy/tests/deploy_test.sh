@@ -256,6 +256,20 @@ run_deploy bad222
 assert "$rc" 1 "a rollback that cannot start is reported, not swallowed"
 assert_contains "$out" "could not even start" "the nested rollback guard fires"
 
+# --- curl is a real prerequisite ---------------------------------------------
+# Deleting the stub proves nothing — the system curl is still on PATH. This runs
+# against a curated PATH holding only what preflight reaches before the curl
+# check, so curl is genuinely absent.
+new_box
+mkdir -p "$box/nocurl"
+for b in env bash id mkdir; do ln -s "$(command -v "$b")" "$box/nocurl/$b"; done
+cp "$box/bin/docker" "$box/nocurl/docker"
+out="$(cd "$box" && PATH="$box/nocurl" DOCKER_LOG="$box/docker.log" ./deploy.sh abc123 2>&1)"
+rc=$?
+assert "$rc" 1 "a box without curl fails preflight"
+assert_contains "$out" "curl" "the preflight failure names curl"
+refute_contains "$(cat "$box/docker.log")" "compose up" "a box without curl never starts a container"
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

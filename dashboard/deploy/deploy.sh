@@ -28,6 +28,11 @@ preflight() {
     "cannot reach the Docker daemon as $(id -un). Install Docker Engine and add this user to the docker group: sudo usermod -aG docker $(id -un) — then log out and back in."
   docker compose version >/dev/null 2>&1 || die \
     "the Docker Compose plugin is missing. Install docker-compose-plugin (v2); the standalone docker-compose script is not used here."
+  # healthy() polls the published port with curl. Without it every poll fails
+  # with 127 and a perfectly healthy container gets rolled back, reported as a
+  # health-check failure — the most misleading outcome this script can produce.
+  command -v curl >/dev/null 2>&1 || die \
+    "curl is not installed, and the health gate needs it. Install it: sudo apt-get install -y curl"
   mkdir -p data tmp
   # Checked before anything starts: a data/ the container cannot write to
   # otherwise surfaces as a confusing SQLite SQLITE_CANTOPEN *after* an

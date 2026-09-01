@@ -8,8 +8,9 @@ Design rationale: `docs/specs/2026-09-01-dashboard-vm-deploy-design.md`.
 
 ## One-time VM preparation
 
-1. Install Docker Engine and the Compose **plugin** (v2), then enable the
-   service so the container comes back after a reboot:
+1. Install Docker Engine, the Compose **plugin** (v2), and `curl` — `deploy.sh`
+   polls the health check with it — then enable the Docker service so the
+   container comes back after a reboot:
 
    ```bash
    sudo systemctl enable --now docker
@@ -144,6 +145,7 @@ shared `TEAM_TOKEN` unthrottled. See the comment block in
 | --- | --- |
 | `cannot reach the Docker daemon` | deploy user not in the `docker` group, or no re-login since |
 | `the Docker Compose plugin is missing` | only the standalone `docker-compose` script is installed |
+| `curl is not installed` | the health gate has nothing to poll with; install `curl` |
 | `data is not writable` | `~/gnomon/data` owned by another user — the message carries the `chown` fix |
 | `image ... is not in the local store` | rolling back to a tag that has already been pruned |
 | Health check fails on a first deploy | there is nothing to roll back to; the box is down. Read the container logs the job printed |
