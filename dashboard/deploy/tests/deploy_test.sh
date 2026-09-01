@@ -37,9 +37,10 @@ case "$1" in
   compose)
     case "$2" in
       version) exit "${FAKE_COMPOSE_VERSION_RC:-0}" ;;
+      up)      exit "${FAKE_COMPOSE_UP_RC:-0}" ;;
       *)       exit 0 ;;
     esac ;;
-  load)  cat > /dev/null; exit 0 ;;
+  load)  cat > /dev/null; exit "${FAKE_LOAD_RC:-0}" ;;
   image)
     case "$2" in
       inspect) exit "${FAKE_IMAGE_INSPECT_RC:-0}" ;;
@@ -64,7 +65,7 @@ STUB
   # does not reliably scope an assignment prefixed to a *function* call, and a
   # leaked value silently corrupts every later scenario.
   unset FAKE_DOCKER_VERSION_RC FAKE_COMPOSE_VERSION_RC FAKE_IMAGE_INSPECT_RC \
-        FAKE_IMAGE_TAGS FAKE_CURL_RC
+        FAKE_IMAGE_TAGS FAKE_CURL_RC FAKE_LOAD_RC FAKE_COMPOSE_UP_RC
 }
 
 # Runs deploy.sh inside the current box with the stubs first on PATH.
@@ -163,6 +164,34 @@ export FAKE_CURL_RC=1
 run_deploy abc123
 assert "$rc" 1 "a failing health gate fails the deploy"
 assert_contains "$(cat "$DOCKER_LOG")" "compose logs --tail=100" "a failing health gate dumps container logs"
+
+# --- docker failures honour the exit-code contract ---------------------------
+new_box
+mkdir -p "$box/tmp"
+printf 'not-a-real-image' | gzip > "$box/tmp/image.tar.gz"
+export FAKE_LOAD_RC=1
+run_deploy abc123
+assert "$rc" 1 "a failed docker load exits 1, not docker's own status"
+assert_contains "$out" "deploy:" "a failed load reports in the script's own error format"
+refute_contains "$(cat "$DOCKER_LOG")" "compose up" "a failed load never starts the service"
+
+new_box
+export FAKE_COMPOSE_UP_RC=1
+run_deploy abc123
+assert "$rc" 1 "a failed compose up exits 1, not docker's own status"
+assert_contains "$out" "deploy:" "a failed start reports in the script's own error format"
+
+# The trap must fire even when the run dies before the normal cleanup point.
+new_box
+mkdir -p "$box/tmp"
+printf 'not-a-real-image' | gzip > "$box/tmp/image.tar.gz"
+export FAKE_IMAGE_INSPECT_RC=1
+run_deploy abc123
+assert "$rc" 1 "an unknown tag still fails"
+# shellcheck disable=SC2015 # deliberate: notok/ok always return 0, so C can never double-fire
+[ -f "$box/tmp/image.tar.gz" ] \
+  && notok "the EXIT trap removes the tarball even on a failed run" \
+  || ok "the EXIT trap removes the tarball even on a failed run"
 
 echo
 echo "$pass passed, $fail failed"

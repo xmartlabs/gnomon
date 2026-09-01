@@ -57,7 +57,7 @@ EOF
 
 load_image() {
   if [ -f "$TARBALL" ]; then
-    gunzip -c "$TARBALL" | docker load
+    gunzip -c "$TARBALL" | docker load || die "failed to load $TARBALL — the tarball may be truncated or corrupt. Re-run the deploy to ship a fresh copy."
     rm -f "$TARBALL"
   fi
   docker image inspect "$IMAGE_REPO:$TAG" >/dev/null 2>&1 || die \
@@ -95,7 +95,7 @@ PREVIOUS_TAG="$(current_tag)"
 write_env "$TAG" "$PREVIOUS_TAG"
 
 echo "deploy: starting $IMAGE_REPO:$TAG on port $HTTP_PORT"
-docker compose up -d --remove-orphans
+docker compose up -d --remove-orphans || die "docker compose up failed for $IMAGE_REPO:$TAG — check for a port conflict on $HTTP_PORT or a malformed app.env, then re-run."
 
 if healthy; then
   echo "deploy: healthy — http://127.0.0.1:$HTTP_PORT/ is serving $IMAGE_REPO:$TAG"
