@@ -1,0 +1,38 @@
+# Host-side service definition for the self-hosted dashboard. Copied to
+# ~/gnomon by .github/workflows/dashboard-deploy.yml; deploy.sh drives it.
+#
+# Interpolated from ~/gnomon/.env, which deploy.sh generates on the box.
+# Container secrets come from ~/gnomon/app.env, which the workflow renders.
+name: gnomon
+
+services:
+  dashboard:
+    image: gnomon-dashboard:${IMAGE_TAG}
+    # The image declares USER node (uid 1000), but with a bind mount the HOST
+    # directory's ownership wins — the Dockerfile's `chown node:node /data`
+    # only touched the image layer. Running as the deploy user's own uid:gid
+    # keeps ~/gnomon/data writable by the container and readable (and
+    # backup-able) by the operator without sudo, whatever uid they happen to be.
+    user: "${DEPLOY_UID}:${DEPLOY_GID}"
+    ports:
+      - "${HTTP_PORT}:3000"
+    env_file: app.env
+    # One mount covers ALL dashboard state: src/lib/paths.ts routes the SQLite
+    # DB and its WAL sidecars, the persisted jwt-secret, and the coach cache
+    # through a single dataDir().
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+    healthcheck:
+      # node is the only HTTP-capable binary in node:22-bookworm-slim — there
+      # is no curl and no wget — so `docker compose ps` can still tell the
+      # truth about this container months from now.
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
