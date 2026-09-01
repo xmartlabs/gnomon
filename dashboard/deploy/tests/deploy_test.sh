@@ -116,7 +116,7 @@ new_box
 run_deploy abc123
 env_file="$(cat "$box/.env")"
 assert_contains "$env_file" "IMAGE_TAG=abc123"        "first deploy records the new tag"
-assert_contains "$env_file" "PREVIOUS_TAG="           "first deploy leaves PREVIOUS_TAG empty"
+assert "$(sed -n 's/^PREVIOUS_TAG=//p' <<<"$env_file")" "" "first deploy leaves PREVIOUS_TAG empty"
 assert_contains "$env_file" "DEPLOY_UID=$(id -u)"     ".env carries the deploy user's uid"
 assert_contains "$env_file" "DEPLOY_GID=$(id -g)"     ".env carries the deploy user's gid"
 assert_contains "$env_file" "HTTP_PORT=80"            "HTTP_PORT defaults to 80"
