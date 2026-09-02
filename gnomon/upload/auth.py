@@ -1,3 +1,4 @@
+import html
 import http.server
 import json
 import time
@@ -38,13 +39,13 @@ _SHARE_AUTH_TIMEOUT = 120
 _WEB_AUTH_TIMEOUT = 600
 
 
-_SUCCESS_PAGE = b"""\
+_SUCCESS_PAGE_TEMPLATE = b"""\
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>xl-ai-insights \xe2\x80\x94 authenticated</title>
+<title>__BRAND_TITLE__ \xe2\x80\x94 authenticated</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Outfit:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
@@ -98,7 +99,7 @@ _SUCCESS_PAGE = b"""\
 </head>
 <body>
   <div class="card">
-    <div class="brand"><span class="dot"></span> xl-ai-insights \xc2\xb7 mirdash</div>
+    <div class="brand"><span class="dot"></span> __BRAND_LINE__</div>
     <div class="check"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
     <h1>You\xe2\x80\x99re authenticated</h1>
     <p class="sub">Signed in with your XL account. Close this tab and head back to your terminal \xe2\x80\x94 it\xe2\x80\x99s computing your build profile and sharing it now.</p>
@@ -110,7 +111,22 @@ _SUCCESS_PAGE = b"""\
 """
 
 
-def _capture_cli_token(port=8799, timeout=_SHARE_AUTH_TIMEOUT):
+def _render_success_page(brand="xl-ai-insights"):
+    """Render the authentication success page for a caller's brand."""
+    brand = str(brand or "xl-ai-insights")
+    escaped_brand = html.escape(brand)
+    brand_line = f"{brand} · mirdash" if brand == "xl-ai-insights" else brand
+    return (
+        _SUCCESS_PAGE_TEMPLATE.replace(b"__BRAND_TITLE__", escaped_brand.encode("utf-8"))
+        .replace(b"__BRAND_LINE__", html.escape(brand_line).encode("utf-8"))
+    )
+
+
+# Keep the legacy private constant available to callers that inspect it.
+_SUCCESS_PAGE = _render_success_page()
+
+
+def _capture_cli_token(port=8799, timeout=_SHARE_AUTH_TIMEOUT, *, brand="xl-ai-insights"):
     """Start a one-shot HTTP server on 127.0.0.1:<port>.
 
     Waits up to *timeout* seconds for a single GET /callback?token=<JWT>
@@ -132,7 +148,7 @@ def _capture_cli_token(port=8799, timeout=_SHARE_AUTH_TIMEOUT):
             if parsed.path == "/callback" and tokens:
                 captured["tokens"] = tokens
                 captured["history"] = _history_from_query(params)
-                body = _SUCCESS_PAGE
+                body = _render_success_page(brand)
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))

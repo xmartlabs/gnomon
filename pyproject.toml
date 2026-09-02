@@ -15,6 +15,7 @@ dependencies = []
 
 [project.scripts]
 xl-ai-insights = "gnomon.cli.insights:main"
+gnomon = "gnomon.cli.gnomon_cli:main"
 
 [tool.setuptools]
 packages = ["gnomon", "gnomon.cli", "gnomon.upload", "gnomon.sources", "gnomon.analysis", "gnomon.scoring", "gnomon.output"]
