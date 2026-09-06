@@ -1,0 +1,121 @@
+name: dashboard-deploy
+
+# Manual only. ci.yml already runs the dashboard unit and e2e suites on every
+# PR and every push to main, so this workflow is the SECOND place the code is
+# tested, not the first — it builds and ships without re-running them. What it
+# keeps is deploy.sh's health gate, which catches what CI cannot see: an image
+# that builds green but will not boot against this box's env and volume.
+# Design: docs/specs/2026-09-01-dashboard-vm-deploy-design.md
+on:
+  workflow_dispatch:
+
+# Two deploys must never interleave over the same tag flip — and cancelling one
+# mid-flight is worse still, since it can leave the box between images.
+concurrency:
+  group: dashboard-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      SSH_PORT: ${{ vars.DEPLOY_SSH_PORT || '22' }}
+      HTTP_PORT: ${{ vars.HTTP_PORT || '80' }}
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the image tag
+        id: tag
+        run: echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      # With no test gate ahead of it, the build is the whole critical path, and
+      # its slowest step is compiling the better-sqlite3 native addon — hence
+      # the layer cache.
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./dashboard
+          load: true
+          tags: gnomon-dashboard:${{ steps.tag.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Save the image
+        run: docker save "gnomon-dashboard:${{ steps.tag.outputs.tag }}" | gzip > image.tar.gz
+
+      # Rendered to a file and copied, never echoed through ssh: a secret on a
+      # remote command line is visible in `ps` to every other user on the box
+      # and lands in the remote shell history.
+      - name: Render app.env
+        env:
+          TEAM_TOKEN: ${{ secrets.TEAM_TOKEN }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+          MAX_INGEST_BYTES: ${{ secrets.MAX_INGEST_BYTES }}
+        run: |
+          if [ -z "$TEAM_TOKEN" ]; then
+            echo "::error::TEAM_TOKEN secret is unset — the container refuses to boot without it."
+            exit 1
+          fi
+          umask 077
+          : > app.env
+          # Only non-empty values are written: an unset optional key must read
+          # as unset, not as an empty string the app has to defend against.
+          for key in TEAM_TOKEN JWT_SECRET LLM_API_KEY LLM_MODEL MAX_INGEST_BYTES; do
+            value="${!key}"
+            [ -n "$value" ] || continue
+            printf '%s=%s\n' "$key" "$value" >> app.env
+          done
+
+      - name: Install the SSH key and pinned host key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          if [ -z "$DEPLOY_SSH_KNOWN_HOSTS" ]; then
+            echo "::error::DEPLOY_SSH_KNOWN_HOSTS is unset. This job hands TEAM_TOKEN to whatever answers at DEPLOY_HOST, so an unpinned host key is not acceptable. Generate it with: ssh-keyscan -p <port> <host>"
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          umask 077
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      # The guard runs BEFORE the mkdir: the repo's own quickstart tells
+      # self-hosters to `git clone ... && cd gnomon`, which from $HOME makes
+      # ~/gnomon a checkout whose docker-compose.yml and .env this deploy would
+      # overwrite — and that .env holds the quickstart's TEAM_TOKEN.
+      - name: Create the remote directories
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            'if [ -e ~/gnomon/.git ]; then echo "FATAL: ~/gnomon is a git checkout. This deploy would overwrite its docker-compose.yml and .env. Move the checkout elsewhere." >&2; exit 1; fi; mkdir -p ~/gnomon/data ~/gnomon/tmp'
+
+      - name: Copy the release
+        run: |
+          scp -i ~/.ssh/deploy_key -P "$SSH_PORT" -o StrictHostKeyChecking=yes \
+            dashboard/deploy/docker-compose.yml dashboard/deploy/deploy.sh app.env \
+            "$DEPLOY_USER@$DEPLOY_HOST:gnomon/"
+          scp -i ~/.ssh/deploy_key -P "$SSH_PORT" -o StrictHostKeyChecking=yes \
+            image.tar.gz "$DEPLOY_USER@$DEPLOY_HOST:gnomon/tmp/"
+
+      # deploy.sh owns everything from here: load, tag bookkeeping, compose up,
+      # health gate, rollback, prune.
+      - name: Deploy
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd ~/gnomon && chmod 600 app.env && chmod +x deploy.sh && HTTP_PORT=$HTTP_PORT ./deploy.sh ${{ steps.tag.outputs.tag }}"
+
+      - name: Remove key material
+        if: always()
+        run: rm -f ~/.ssh/deploy_key ~/.ssh/known_hosts app.env

@@ -38,3 +38,4 @@ docs/superpowers/
 .atl/
 .codegraph/
 stats_baseline.json
+.claude/settings.local.json

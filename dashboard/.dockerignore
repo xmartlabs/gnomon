@@ -3,6 +3,10 @@ node_modules
 test-results
 playwright-report
 
+# Host deployment files. They sit in the build context otherwise, where they
+# are never used but do bust the layer cache on every deploy-script edit.
+deploy
+
 # Never ship a developer's local state into the build context. The WAL/SHM
 # sidecars carry the same uploaded summary data as the .db itself, and .env.*
 # variants hold the team token.
