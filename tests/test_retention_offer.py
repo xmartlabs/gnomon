@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 from gnomon.cli import insights as _insights
+from gnomon.cli import upload_pipeline as _upload_pipeline
 from gnomon.cli.insights import offer_retention_config
 
 
@@ -192,7 +193,7 @@ class TestRetentionOfferWiring(unittest.TestCase):
             stack.enter_context(mock.patch.object(_insights, "_main_web"))
             stack.enter_context(mock.patch.object(_insights, "_main_console"))
             stack.enter_context(mock.patch.object(
-                _insights, "_DEFAULT_SETTINGS_PATH", self.settings_path))
+                _upload_pipeline, "_DEFAULT_SETTINGS_PATH", self.settings_path))
             if patch_sources:
                 stack.enter_context(mock.patch(
                     "gnomon.cli.local.discover_sources", return_value=sources))
@@ -207,7 +208,7 @@ class TestRetentionOfferWiring(unittest.TestCase):
             offer = None
             if stub_offer:
                 offer = stack.enter_context(
-                    mock.patch.object(_insights, "offer_retention_config"))
+                    mock.patch.object(_upload_pipeline, "offer_retention_config"))
             stack.enter_context(contextlib.redirect_stdout(stdout))
             try:
                 _insights.main(argv)

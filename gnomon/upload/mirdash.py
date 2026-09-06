@@ -86,26 +86,69 @@ def _gnomon_config():
     return {}
 
 
-def _resolve_mirdash_base(argv):
-    """Return the mirdash base URL (no trailing slash).
+def _cli_option_value(argv, option):
+    """Return the first non-empty value supplied for an option."""
+    argv = argv or []
+    for index, arg in enumerate(argv):
+        if arg.startswith(option + "="):
+            value = arg[len(option) + 1 :].strip()
+        elif arg == option and index + 1 < len(argv):
+            value = str(argv[index + 1]).strip()
+        else:
+            continue
+        if value and not (arg == option and value.startswith("--")):
+            return value
+    return ""
 
-    Precedence (first match wins):
-      1. --mirdash-base=URL CLI flag
-      2. env GNOMON_MIRDASH_BASE
-      3. ~/.config/gnomon/config.json key 'mirdash_base'
-      4. baked default https://mirdash.xmartlabs.com
+
+def _clean_dashboard_url(value):
+    """Normalize a configured dashboard URL, preserving an unset value."""
+    if value is None:
+        return None
+    value = str(value).strip()
+    return value.rstrip("/") if value else None
+
+
+def resolve_dashboard_url(argv, default=None):
+    """Resolve the dashboard URL from CLI, environment, config, or default.
+
+    Precedence (first set value wins):
+      1. --dashboard-url[=URL]
+      2. GNOMON_DASHBOARD_URL
+      3. --mirdash-base[=URL] (backward compatibility)
+      4. GNOMON_MIRDASH_BASE (backward compatibility)
+      5. config ``dashboard_url``
+      6. config ``mirdash_base`` (backward compatibility)
+      7. ``default``
     """
-    for a in argv:
-        m = re.match(r"--mirdash-base=(.+)$", a)
-        if m:
-            return m.group(1).rstrip("/")
-    env = os.environ.get("GNOMON_MIRDASH_BASE", "").strip()
-    if env:
-        return env.rstrip("/")
-    cfg = _gnomon_config().get("mirdash_base", "").strip()
-    if cfg:
-        return cfg.rstrip("/")
-    return _DEFAULT_MIRDASH_BASE
+    value = _cli_option_value(argv, "--dashboard-url")
+    if value:
+        return _clean_dashboard_url(value)
+
+    value = os.environ.get("GNOMON_DASHBOARD_URL", "")
+    if str(value).strip():
+        return _clean_dashboard_url(value)
+
+    value = _cli_option_value(argv, "--mirdash-base")
+    if value:
+        return _clean_dashboard_url(value)
+
+    value = os.environ.get("GNOMON_MIRDASH_BASE", "")
+    if str(value).strip():
+        return _clean_dashboard_url(value)
+
+    cfg = _gnomon_config()
+    for key in ("dashboard_url", "mirdash_base"):
+        value = cfg.get(key) if isinstance(cfg, dict) else None
+        if value is not None and str(value).strip():
+            return _clean_dashboard_url(value)
+
+    return _clean_dashboard_url(default)
+
+
+def _resolve_mirdash_base(argv):
+    """Return the legacy mirdash base URL using the generic resolver."""
+    return resolve_dashboard_url(argv, default=_DEFAULT_MIRDASH_BASE)
 
 
 # Maximum batch size supported by the mirdash auth endpoint.
