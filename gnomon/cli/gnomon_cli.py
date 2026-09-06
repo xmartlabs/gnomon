@@ -3,16 +3,22 @@
 import sys
 
 from gnomon.cli import local
+import datetime
+import re
+
 from gnomon.cli.upload_pipeline import (
     _main_console,
     _main_web,
     _maybe_offer_retention,
+    _print_dry_run_plan,
 )
 from gnomon.upload.mirdash import (
     _absolutize_dir_flags,
     _resolve_output_dir,
     decide_mode,
+    month_windows,
     parse_window,
+    plan_upload,
     resolve_dashboard_url,
 )
 
@@ -97,14 +103,29 @@ def main(argv=None):
         print(_HELP_TEXT)
         raise SystemExit(0)
 
+    quiet = "--quiet" in argv
+    dry_run = "--dry-run" in argv
     output_dir = _resolve_output_dir(argv)
+
     if "--local" in argv:
         local.main(argv=_local_argv(argv), output_dir=output_dir)
         return
 
+    window_months = parse_window(argv)
+    mode, token_count = decide_mode(argv)
+
+    if dry_run and mode in ("force", "backfill"):
+        today = datetime.date.today()
+        windows = month_windows(token_count, today, window_months=window_months)
+        if mode == "backfill":
+            plan_pairs = [label for _, _, label in windows]
+        else:
+            plan_pairs = plan_upload(today, [], force=True)
+        _print_dry_run_plan(mode, windows, plan_pairs)
+        raise SystemExit(0)
+
     dashboard_url = resolve_dashboard_url(argv)
     if not dashboard_url:
-        # Preserve the useful local artifact even when there is nowhere to upload.
         local.main(argv=_local_argv(argv), output_dir=output_dir)
         print(
             "dashboard URL required to upload; use --local or --dashboard-url=URL",
@@ -112,13 +133,9 @@ def main(argv=None):
         )
         raise SystemExit(1)
 
-    quiet = "--quiet" in argv
-    dry_run = "--dry-run" in argv
     no_open = "--no-open" in argv
     verbose = "--verbose" in argv
     console = "--console" in argv
-    window_months = parse_window(argv)
-    mode, token_count = decide_mode(argv)
     runner = _main_console if console else _main_web
 
     _maybe_offer_retention(dry_run, quiet, argv)

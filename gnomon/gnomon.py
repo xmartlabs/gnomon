@@ -6,7 +6,7 @@ import tempfile
 
 from gnomon.cli import local
 from gnomon.cli.upload_pipeline import _main_console, _main_web
-from gnomon.upload.mirdash import _upload_summary
+from gnomon.upload.mirdash import _upload_summary, decide_mode
 
 
 def _source_list(sources):
@@ -45,6 +45,10 @@ class Gnomon:
         argv = list(kwargs.pop("argv", self.sources))
         if "--summary" not in argv:
             argv.append("--summary")
+        if "--no-open" not in argv:
+            argv.append("--no-open")
+        if self.window_months != 1 and not any(a.startswith("--window") for a in argv):
+            kwargs.setdefault("window_months", self.window_months)
         _append_options(argv, kwargs)
 
         temporary = None
@@ -76,7 +80,8 @@ class Gnomon:
 
         argv = list(kwargs.pop("argv", self.sources))
         window_months = kwargs.pop("window_months", self.window_months)
-        token_count = kwargs.pop("token_count", 1)
+        _, default_token_count = decide_mode(argv)
+        token_count = kwargs.pop("token_count", default_token_count)
         paxel_forward = kwargs.pop("paxel_forward", list(argv))
         pipeline = _main_console if console else _main_web
         return pipeline(
