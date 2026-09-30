@@ -9,7 +9,7 @@ def pick_archetype(stats, scores):
     score = aq.get("aq_0_100", 0)
     pillars = aq.get("pillars", [])
     gap = min(pillars, key=lambda p: p["score"])["name"].lower() if pillars else None
-    g = f" Your thinnest axis is {gap} — that's where the next gain is." if gap else ""
+    g = f" Your thinnest pillar is {gap} — that's where the next gain is." if gap else ""
     if score >= 75:
         q = "You operate at the top — broad machinery, well used." + g
     elif score >= 60:

@@ -138,6 +138,14 @@ def _mcp_html(aq):
     cli_pct = (cli_calls * 100.0 / total) if total else 0.0
     mcp_pct = (mcp_calls * 100.0 / total) if total else 0.0
     ratio = "all-CLI (no MCP)" if mcp_calls == 0 else _ratio(reading.get("ratio"))
+    if mcp_calls > cli_calls:
+        note = ("Ratio <b>{ratio}:1</b> — MCP carries more of your tool traffic this month."
+                .format(ratio=_text(ratio)))
+    else:
+        note = ("Ratio <b>{ratio}</b> CLI-first. CLI is token-cheap and scriptable — you reach "
+                "for it on repeatable work and reserve MCP for what CLI can't do (browser, "
+                "design canvas, device control). Right instinct, not a gap."
+                .format(ratio=_text(ratio)))
     return (
         '<div class="reading" data-reading="mcp_vs_cli" data-graded="false">'
         '<h3 class="reading-title">MCP vs CLI · described, not graded</h3>'
@@ -147,10 +155,7 @@ def _mcp_html(aq):
         '<span class="mcp-segment mcp" style="width:{mcp_width}">'
         'MCP · {mcp_calls} · {mcp_distinct} servers</span>'
         '</div>'
-        '<p class="reading-note">Ratio <b>{ratio}</b> CLI-first. CLI is token-cheap '
-        'and scriptable — you reach for it on repeatable work and reserve MCP for '
-        'what CLI can\'t do (browser, design canvas, device control). Right instinct, '
-        'not a gap.</p>'
+        '<p class="reading-note">{note}</p>'
         '</div>'
     ).format(
         cli_width=_width(cli_pct),
@@ -159,7 +164,7 @@ def _mcp_html(aq):
         cli_distinct=_text("{:,}".format(cli_distinct)),
         mcp_calls=_text("{:,}".format(mcp_calls)),
         mcp_distinct=_text("{:,}".format(mcp_distinct)),
-        ratio=_text(ratio),
+        note=note,
     )
 
 

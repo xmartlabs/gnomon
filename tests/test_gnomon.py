@@ -165,7 +165,7 @@ class TestComputeAqV2(unittest.TestCase):
         s.setdefault("velocity", {})
         arch, quote = paxel.pick_archetype(s, {"Planning": 7.5, "Execution": 7.3, "Engineering": 6.0})
         self.assertEqual(arch, aq["tier"])
-        self.assertIn("thinnest axis", quote)   # the gap is surfaced, not hidden
+        self.assertIn("thinnest pillar", quote)   # the gap is surfaced, not hidden
 
     def _orch(self, aq):
         breadth = next(p for p in aq["pillars"] if p["name"] == "Breadth")
