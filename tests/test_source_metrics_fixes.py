@@ -1,5 +1,6 @@
 import os, sys, json, io, sqlite3, tempfile, shutil, contextlib, unittest
 from unittest import mock
+from tests._clock import legacy_all_history
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import paxel
@@ -352,7 +353,8 @@ class TestCodexFanoutTimestamp(unittest.TestCase):
         argv = ["paxel.py", "--include-low-volume", "--no-open",
                 "--since=2026-03-01", "--until=2026-03-31"]
         buf = io.StringIO()
-        with mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
+        with legacy_all_history(), \
+                mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
                 mock.patch.object(sys, "argv", argv), \
                 contextlib.redirect_stdout(buf):
             paxel.main()
@@ -518,7 +520,8 @@ class TestCodexUsageNotAssistantTurn(unittest.TestCase):
         )
         argv = ["paxel.py", "--include-low-volume", "--no-open"]
         buf = io.StringIO()
-        with mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
+        with legacy_all_history(), \
+                mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
                 mock.patch.object(sys, "argv", argv), \
                 contextlib.redirect_stdout(buf):
             paxel.main()

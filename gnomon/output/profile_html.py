@@ -1,8 +1,10 @@
 import base64
 import os
 import re
+from typing import Optional
 
 from gnomon.config import OUT_DIR, _pretty_model
+from gnomon.cli.period import Period
 from gnomon.analysis.quotes import _safe_quote
 from gnomon.scoring.gstack import (
     REPO_URL, SCORE_NOTES, SCORE_NOTES_SHORT,
@@ -118,8 +120,11 @@ def _hero_lead(archetype):
     return "You're" if (archetype or "")[:4].lower() == "the " else "You're a"
 
 
-def write_profile_html(stats, archetype, quote, scores, voice=None, output_dir=None):
+def write_profile_html(stats, archetype, quote, scores, voice=None, output_dir=None, *,
+                       period: Optional[Period] = None, trend: Optional[dict] = None):
     import html as _h
+    if period is None:
+        period = Period("all_history", None, None, None, "All history", None, None)
     v, vel, b, r, t, st, c = (stats["volume"], stats["velocity"], stats["behavior"],
                               stats["rhythm"], stats["tools"], stats["stack"], stats["corpus"])
     _dir = output_dir or OUT_DIR

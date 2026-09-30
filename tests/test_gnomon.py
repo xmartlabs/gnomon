@@ -1,6 +1,7 @@
 import os, sys, unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import paxel
+from tests._clock import legacy_all_history
 from gnomon.scoring.aq import PLANNING_PRACTICE_TARGET
 
 
@@ -1176,7 +1177,8 @@ class TestBuildSummaryPayloadFields(unittest.TestCase):
             OPENCODE_DIR=empty, CURSOR_DIR=empty,
             CURSOR_DB=os.path.join(empty, "nope.vscdb"),
         )
-        with mock.patch.multiple(paxel, **overrides), \
+        with legacy_all_history(), \
+                mock.patch.multiple(paxel, **overrides), \
                 mock.patch.object(sys, "argv", ["paxel.py", "claude",
                                                   "--include-low-volume", "--no-open"]), \
                 contextlib.redirect_stdout(io.StringIO()):
@@ -1449,7 +1451,8 @@ class TestAntigravityDirOverride(unittest.TestCase):
                     mock.patch.object(local, "discover_sources", return_value=[]), \
                     mock.patch.object(local, "antigravity_summary", return_value=None), \
                     contextlib.redirect_stdout(io.StringIO()):
-                local.main([source, f"--{source}-dir=/tmp/ide", "--no-open"])
+                with legacy_all_history():
+                    local.main([source, f"--{source}-dir=/tmp/ide", "--no-open"])
                 self.assertEqual(getattr(discovery, attr), "/tmp/ide")
 
     def test_root_resolves_to_conversations(self):
@@ -1471,7 +1474,8 @@ class TestAntigravityDirOverride(unittest.TestCase):
                 mock.patch.object(local, "antigravity_summary") as summary, \
                 mock.patch.object(local, "export_antigravity_ide") as export, \
                 contextlib.redirect_stdout(io.StringIO()):
-            local.main(["antigravity-ide", "--antigravity-ide-dir=/missing", "--no-open"])
+            with legacy_all_history():
+                local.main(["antigravity-ide", "--antigravity-ide-dir=/missing", "--no-open"])
         summary.assert_not_called()
         export.assert_not_called()
 

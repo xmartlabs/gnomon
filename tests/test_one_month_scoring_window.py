@@ -38,6 +38,7 @@ import unittest
 from contextlib import redirect_stdout
 from datetime import datetime, timedelta, timezone
 from unittest import mock
+from tests._clock import legacy_all_history
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -249,7 +250,8 @@ class TestSummaryPublishesTheSelfHealSeries(unittest.TestCase):
         )
         argv = ["paxel.py", "--summary", "--include-low-volume", "--no-open",
                 "--since=2026-07-01", "--until=2026-07-31"]
-        with mock.patch.multiple(paxel, OUT_DIR=out, **src_dirs), \
+        with legacy_all_history(), \
+                mock.patch.multiple(paxel, OUT_DIR=out, **src_dirs), \
                 mock.patch("gnomon.coverage.HISTORY_PATH",
                            os.path.join(tmp, "no-history.jsonl")), \
                 mock.patch("gnomon.cli.accumulator.git_churn", return_value=_NO_CHURN), \

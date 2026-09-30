@@ -28,6 +28,7 @@ from gnomon.scoring.aq import (
 from gnomon.scoring.archetype import pick_archetype
 from gnomon.scoring.inputs import SCORING_INPUTS_VERSION, build_scoring_inputs
 from gnomon.cli.accumulator import Accumulator, event_in_window
+from gnomon.cli.period import resolve_period
 from gnomon.coverage import month_index as _coverage_month_index, coverage_for as _coverage_for
 from gnomon.output.summary import build_summary
 from gnomon.output.report import write_report
@@ -306,6 +307,7 @@ def main(argv=None, output_dir=None):
         _out_dir = OUT_DIR
 
     _t_main_start = time.monotonic()
+    period = resolve_period(argv)
 
     # Sources to analyze: pass names as args (e.g. `python3 paxel.py claude`) to
     # restrict; default is every detected source. ("claude" keeps it to your own
@@ -341,7 +343,7 @@ def main(argv=None, output_dir=None):
         selected = [s for s in selected if s != "antigravity-ide"]
     _t0_disc = time.monotonic()
     sources = discover_sources(selected)
-    since_dt, until_dt = parse_window(argv)
+    since_dt, until_dt = period.since, period.until
     # Apply the source-volume policy to every scoring run. With no explicit window,
     # the preflight counts the complete available history; --include-low-volume bypasses
     # only the threshold while still requiring in-window activity.
@@ -589,7 +591,9 @@ def main(argv=None, output_dir=None):
     rage_pool = _quote_pool([(sc, tx) for sc, tx in crashout_cands if len(tx.split()) <= 9])
     cuff_pool = _quote_pool(cryptic_cands)
     voice = {"goto": goto, "crashouts": rage_pool, "cryptics": cuff_pool}
-    write_profile_html(stats, archetype, quote, scores, voice, output_dir=_out_dir)
+    trend = None
+    write_profile_html(stats, archetype, quote, scores, voice, output_dir=_out_dir,
+                       period=period, trend=trend)
     print("\nWrote stats.json, report.md, narrative_input.md, profile.html to", _out_dir)
     if "--no-open" not in argv:
         _open_in_browser(os.path.join(_out_dir, "profile.html"))

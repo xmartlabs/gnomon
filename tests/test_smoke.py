@@ -19,6 +19,7 @@ import subprocess
 import contextlib
 import unittest
 from unittest import mock
+from tests._clock import legacy_all_history
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -62,7 +63,8 @@ def _run(testcase, args):
     # policy so the parser/metric assertions continue to exercise their data.
     argv = ["paxel.py"] + args + ["--include-low-volume", "--no-open"]
     buf = io.StringIO()
-    with mock.patch.multiple(paxel, OUT_DIR=out, **SRC_DIRS), \
+    with legacy_all_history(), \
+            mock.patch.multiple(paxel, OUT_DIR=out, **SRC_DIRS), \
             mock.patch.object(sys, "argv", argv), \
             contextlib.redirect_stdout(buf):
         paxel.main()
@@ -1225,7 +1227,8 @@ def _run_single_source(testcase, source_name, gemini_dir=None, claude_dir=None):
     testcase.addCleanup(shutil.rmtree, out, ignore_errors=True)
     buf = io.StringIO()
     argv = ["paxel.py", source_name, "--include-low-volume", "--no-open"]
-    with mock.patch.multiple(paxel, OUT_DIR=out, **dirs), \
+    with legacy_all_history(), \
+            mock.patch.multiple(paxel, OUT_DIR=out, **dirs), \
             mock.patch.object(sys, "argv", argv), \
             contextlib.redirect_stdout(buf):
         paxel.main()
@@ -1337,6 +1340,7 @@ def _run_claude_transcript(testcase, rows, extra_argv=None, spy_git_churn=None):
     argv = ["paxel.py", "claude", "--include-low-volume", "--no-open"] + (extra_argv or [])
     buf = io.StringIO()
     patches = [
+        legacy_all_history(),
         mock.patch.multiple(paxel, OUT_DIR=out, **dirs),
         mock.patch.object(sys, "argv", argv),
         contextlib.redirect_stdout(buf),

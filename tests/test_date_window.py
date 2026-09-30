@@ -14,6 +14,7 @@ import tempfile
 import unittest
 from datetime import datetime, timezone
 from unittest import mock
+from tests._clock import legacy_all_history
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -46,7 +47,8 @@ def _run(testcase, args):
     testcase.addCleanup(shutil.rmtree, out, ignore_errors=True)
     argv = ["paxel.py"] + list(args) + ["--include-low-volume", "--no-open"]
     buf = io.StringIO()
-    with mock.patch.multiple(paxel, OUT_DIR=out, **WIN_SRC_DIRS), \
+    with legacy_all_history(), \
+            mock.patch.multiple(paxel, OUT_DIR=out, **WIN_SRC_DIRS), \
             mock.patch.object(sys, "argv", argv), \
             io.StringIO() as _sink, \
             __import__("contextlib").redirect_stdout(buf):
@@ -205,7 +207,8 @@ class TestWindowedGitChurnBounds(unittest.TestCase):
         out = tempfile.mkdtemp(prefix="paxel-churn-")
         self.addCleanup(shutil.rmtree, out, ignore_errors=True)
         argv = ["paxel.py"] + list(args) + ["--include-low-volume", "--no-open"]
-        with mock.patch.multiple(paxel, OUT_DIR=out, **WIN_SRC_DIRS), \
+        with legacy_all_history(), \
+                mock.patch.multiple(paxel, OUT_DIR=out, **WIN_SRC_DIRS), \
                 mock.patch.object(paxel, "git_churn", fake_git_churn), \
                 mock.patch.object(sys, "argv", argv), \
                 __import__("contextlib").redirect_stdout(io.StringIO()):
@@ -320,7 +323,8 @@ class TestNoWindowIdentity(unittest.TestCase):
         out = tempfile.mkdtemp(prefix="paxel-ident-")
         self.addCleanup(shutil.rmtree, out, ignore_errors=True)
         argv = ["paxel.py"] + list(args) + ["--include-low-volume", "--no-open"]
-        with mock.patch.multiple(paxel, OUT_DIR=out, **WIN_SRC_DIRS), \
+        with legacy_all_history(), \
+                mock.patch.multiple(paxel, OUT_DIR=out, **WIN_SRC_DIRS), \
                 mock.patch.object(sys, "argv", argv), \
                 __import__("contextlib").redirect_stdout(io.StringIO()):
             paxel.main()
@@ -380,7 +384,8 @@ class TestWindowedCursorJsonlNotDropped(unittest.TestCase):
         out = tempfile.mkdtemp(prefix="paxel-curout-")
         self.addCleanup(shutil.rmtree, out, ignore_errors=True)
         argv = ["paxel.py"] + list(args) + ["--include-low-volume", "--no-open"]
-        with mock.patch.multiple(paxel, OUT_DIR=out, **src_dirs), \
+        with legacy_all_history(), \
+                mock.patch.multiple(paxel, OUT_DIR=out, **src_dirs), \
                 mock.patch.object(sys, "argv", argv), \
                 __import__("contextlib").redirect_stdout(io.StringIO()):
             paxel.main()
