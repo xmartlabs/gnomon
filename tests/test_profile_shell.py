@@ -27,7 +27,8 @@ class TestProfileShell(unittest.TestCase):
         self.assertIn('href="https://github.com/xmartlabs/gnomon"', page)
         self.assertIn("Generated on this machine by gnomon", page)
         self.assertIn(brand.CAPTION, page)
-        self.assertEqual(json.loads(page.split("var CARD=", 1)[1].split(";", 1)[0]), {})
+        card = json.loads(page.split("var CARD=", 1)[1].split(";", 1)[0])
+        self.assertEqual(card["theme"], "light")   # the poster is always light (ADR 13)
         for old in ("Roadmap", "paxel", "Max Schilling", "Merriweather", "Josefin Sans"):
             self.assertNotIn(old, page)
 

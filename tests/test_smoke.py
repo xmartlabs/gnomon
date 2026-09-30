@@ -168,13 +168,14 @@ class TestPipeline(unittest.TestCase):
         self.assertNotIn("Josefin Sans", html)
         self.assertNotIn("#ED7379", html)
         self.assertNotIn("#D14E57", html)
-        # The poster hook remains a valid JSON payload for later section tickets.
+        # The poster payload is valid JSON, always light, and carries no gstack (ADR 13, 23).
         card_line = next((ln for ln in html.splitlines()
                           if ln.strip().startswith("var CARD=")), None)
         self.assertIsNotNone(card_line, "var CARD= line not found in profile.html")
         card_json = card_line.strip()[len("var CARD="):].rstrip(";")
         card = json.loads(card_json)
-        self.assertEqual(card, {})
+        self.assertEqual(card["theme"], "light")
+        self.assertNotIn("Execution", card_json)
 
     def test_summary_flag(self):
         # --summary writes the shareable subset of docs/metrics-evaluation.md: the 8
