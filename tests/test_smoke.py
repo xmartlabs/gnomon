@@ -136,8 +136,11 @@ class TestPipeline(unittest.TestCase):
         self.assertTrue(os.path.exists(prof), "profile.html was not written")
         with open(prof, encoding="utf-8") as fh:
             html = fh.read()
-        self.assertIn("scorecard", html.lower())
-        self.assertIn('class="steerread"', html, "Steering reading block missing")
+        self.assertIn('<header class="gn-masthead">', html)
+        self.assertIn('<title>gnomon · Local profile</title>', html)
+        self.assertIn("Generated on this machine by gnomon", html)
+        for old in ("Roadmap", "paxel", "Max Schilling", "scorecard"):
+            self.assertNotIn(old, html)
         # stats.json must be valid JSON
         with open(os.path.join(out, "stats.json"), encoding="utf-8") as fh:
             json.load(fh)
@@ -157,21 +160,21 @@ class TestPipeline(unittest.TestCase):
         _, out = _run(self, [])
         with open(os.path.join(out, "profile.html"), encoding="utf-8") as fh:
             html = fh.read()
-        # exactly the three scored axes render as bar rows
-        for axis in SCORED_AXES:
-            self.assertIn(f'<span class="name">{axis}</span>', html)
-        # Steering is DESCRIBED, never a scored bar row
-        self.assertNotIn('<span class="name">Steering</span>', html)
-        # the article fix: no archetype should read "You're a The Architect"
-        self.assertNotIn("You're a The ", html)
-        # the poster's embedded CARD payload must be valid JSON (guards the _js() escaper)
+        self.assertIn('id="activity"', html)
+        self.assertIn('id="portrait"', html)
+        self.assertNotIn("Which model do you reach for?", html)
+        self.assertNotIn("stat-strip", html)
+        self.assertNotIn("Merriweather", html)
+        self.assertNotIn("Josefin Sans", html)
+        self.assertNotIn("#ED7379", html)
+        self.assertNotIn("#D14E57", html)
+        # The poster hook remains a valid JSON payload for later section tickets.
         card_line = next((ln for ln in html.splitlines()
                           if ln.strip().startswith("var CARD=")), None)
         self.assertIsNotNone(card_line, "var CARD= line not found in profile.html")
         card_json = card_line.strip()[len("var CARD="):].rstrip(";")
         card = json.loads(card_json)
-        self.assertEqual({s[0] for s in card["scores"]}, SCORED_AXES)
-        self.assertIn("steering", card)              # described row present on the poster too
+        self.assertEqual(card, {})
 
     def test_summary_flag(self):
         # --summary writes the shareable subset of docs/metrics-evaluation.md: the 8
