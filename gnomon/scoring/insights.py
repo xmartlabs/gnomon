@@ -5,6 +5,12 @@ from gnomon.analysis.metrics import _review_skill_uses
 from gnomon.scoring.gstack import _clamp
 
 
+_EDGE_DIMENSION = {
+    "Add a reflex": "Engineering",
+    "Stop the grind": "Engineering",
+}
+
+
 def steering_reading(stats):
     """Steering is DESCRIBED, not graded (see compute_scores for why). We report how you run
     agents — long leash vs short leash — as a fact, with no implied good/bad. Returns a short
@@ -148,7 +154,7 @@ def _growth_edges_pool(stats, scores):
     """Build the sorted+sliced pool of growth edges as dicts.
 
     Returns a list of up to 3 dicts with keys:
-        priority, eyebrow, title, advice_html, axis
+        priority, eyebrow, title, advice_html, axis, dimension
     sorted ascending by priority (lowest = most urgent), already sliced to [:3].
     axis is the AQ axis name string for AQ-driven edges, else None.
     Single source of truth for both the HTML wrapper and the structured emitter.
@@ -166,7 +172,7 @@ def _growth_edges_pool(stats, scores):
     rev = _review_skill_uses(st.get("skills_all") or st.get("top_skills", []))
     tdd = sk("test", "tdd", "qa") + b.get("shell_test_runs", 0)   # named test skills + CLI test runs
     err = b.get("error_rate_per_100_tools") or 0  # None (unmeasured) treated as 0 for edge thresholds
-    raw = []   # (priority, eyebrow, title, advice_html, axis)
+    raw = []   # (priority, eyebrow, title, advice_html, axis, dimension)
 
     # NO steering edge: hands-on cadence has no good/bad end (it's described, not scored — see
     # steering_reading), so telling an autonomous operator to "steer harder" is exactly the
@@ -182,7 +188,7 @@ def _growth_edges_pool(stats, scores):
             f'<code>npm test</code>. If you test some other way we can\'t see, skip this. If tests really '
             f'are thin, make the double-check a <i>regression test</i>: one for every bug you fix. '
             f'(gstack\'s <code>/qa</code> does this.)',
-            None))
+            None, _EDGE_DIMENSION["Add a reflex"]))
 
     # High iteration is only "whack-a-mole" if it's THRASH — so we require an elevated error rate
     # alongside it. A clean deep-iterator (low errors) is doing deliberate work, not flailing, and
@@ -194,7 +200,7 @@ def _growth_edges_pool(stats, scores):
             f'past 15 edits, next to ~<b>{err}</b> errors per 100 tool calls — that pairing reads as '
             f'retry-thrash more than deliberate iteration. When a file resists past ~15 tries, find the root '
             f'cause before the next edit. (gstack names this <code>/investigate</code>.)',
-            None))
+            None, _EDGE_DIMENSION["Stop the grind"]))
 
     if scores.get("Planning", 10) < 6:
         raw.append((scores.get("Planning", 10), "Plan first",
@@ -202,7 +208,7 @@ def _growth_edges_pool(stats, scores):
             f'Planning is <b>{scores.get("Planning")}</b>. Sketch the plan and reframe the ask <i>before</i> '
             f'writing code — it\'s the cheapest place to catch a wrong turn. '
             f'(gstack front-loads this with <code>/office-hours</code> + <code>/autoplan</code>.)',
-            None))
+            None, "Planning"))
 
     eng_skills = _review_skill_uses(st.get("skills_all") or st.get("top_skills", [])) + sk("qa", "investigate", "retro")
     if scores.get("Engineering", 10) < 6 and eng_skills < sess * 0.3:
@@ -211,7 +217,7 @@ def _growth_edges_pool(stats, scores):
             f'Engineering is <b>{scores.get("Engineering")}</b>. Add one deliberate review-and-test pass on '
             f'every branch before you ship — that\'s where craft compounds. '
             f'(gstack\'s back half: <code>/review</code>, <code>/qa</code>, <code>/investigate</code>, <code>/retro</code>.)',
-            None))
+            None, "Engineering"))
 
     # AQ-driven edges: any AQ axis filled under 45% of its weight is a candidate. Advised
     # axes only — excluded on purpose: Verification (covered by the review/test edge above),
@@ -261,7 +267,7 @@ def _growth_edges_pool(stats, scores):
             made = _aq_advice(p.get("name", ""), a.get("name", ""), a.get("signals", {}))
             if made:
                 eb, title, adv = made
-                raw.append((2.5 + fill * 5, eb, title, adv, a.get("name", "")))
+                raw.append((2.5 + fill * 5, eb, title, adv, a.get("name", ""), None))
 
     if not raw:
         worst = min(scores, key=scores.get) if scores else ""
@@ -272,18 +278,19 @@ def _growth_edges_pool(stats, scores):
             raw.append((8.5, "Closest to an edge", f'Your softest axis is {worst}',
                 f'Nothing jumped out as a single clear next-step, but <b>{worst}</b> at <b>{wv}</b> is your '
                 f'lowest axis — the cheapest place to gain. See how {worst} is scored above and lean there.',
-                None))
+                None, worst))
         else:
             raw.append((9.0, "Go deeper",
                 "You're balanced — your edge is depth",
                 'You\'re even across the build sprint, so the next gear isn\'t a weak spot to patch — it\'s depth. '
                 'Add a short retro after each session and let the learnings compound session over session. '
                 '(gstack names this <code>/retro</code> — the Reflect stage.)',
-                None))
+                None, None))
 
     raw.sort(key=lambda x: x[0])
-    return [{"priority": pri, "eyebrow": eb, "title": title, "advice_html": adv, "axis": axis}
-            for pri, eb, title, adv, axis in raw[:3]]
+    return [{"priority": pri, "eyebrow": eb, "title": title, "advice_html": adv,
+             "axis": axis, "dimension": dimension}
+            for pri, eb, title, adv, axis, dimension in raw[:3]]
 
 
 def growth_edges(stats, scores):
