@@ -405,6 +405,54 @@ Todo vacío muestra una línea gris al estilo `EmptyState` del v2, que dice qué
 
 ---
 
+## ADR 22 — El mes en curso sigue siendo calendario aunque el upload use 30 días móviles
+
+2026-09-30 · Durante la implementación
+
+**Contexto**
+El ADR 10 se apoyó en un dato equivocado: que `xl-ai-insights` sube el mes calendario en curso. En realidad, para el mes en curso usa una ventana móvil de 30 días que termina hoy y la etiqueta con el mes (`_anchor_window` en `gnomon/upload/mirdash.py`). Solo los meses cerrados usan el mes calendario.
+
+**Decisión**
+El perfil local mantiene el mes calendario en curso del ADR 10. Se acepta que el AQ del mes en curso difiera del número del dashboard hasta que el mes cierre; para los meses cerrados coinciden.
+
+**Alternativas consideradas**
+- Ventana móvil de 30 días, igual que el upload → coincidiría siempre con el dashboard y evitaría el salto de principio de mes, pero la "página de septiembre" incluiría días de agosto. El usuario prefirió que la página hable de un mes calendario.
+- Cambiar el upload a mes calendario → toca el contrato con el dashboard y estaba fuera del alcance de la spec.
+
+**Consecuencias**
+- ➕ La etiqueta del período es literal: el mes que dice es el mes que cubre.
+- ➖ Durante el mes en curso, el número local y el del dashboard no coinciden. La igualdad con `xl-ai-insights` solo se garantiza para meses cerrados.
+- ➖ A principio de mes el AQ se mueve mucho (ya anotado en el ADR 10).
+
+---
+
+## ADR 23 — Resoluciones del diseño hi-fi
+
+2026-09-30 · Durante la implementación
+
+**Contexto**
+El diseño de alta fidelidad (canvas, artboards `ProfileLight`, `ProfileDark`, `ProfileEmpty` y `Poster`) resolvió visualmente puntos que la spec y los ADR no cubrían. El usuario los confirmó todos.
+
+**Decisión**
+1. Los ejes del AQ se muestran en escala 0–100, no como "puntos / máximo del eje", para no exponer los pesos (ADR 8).
+2. Los edges de origen gstack sin dimensión única ("Add a reflex", "Stop the grind") se rotulan "gstack · Engineering". "Go deeper" se rotula "gstack · Balanced".
+3. En el perfil, el consejo de los edges del AQ no abre con "<Pilar> · <Eje> is your thinnest AQ signal", que repite el tag de origen.
+4. La frase del hero dice "thinnest pillar" y no "thinnest axis", porque nombra un pilar.
+5. En multi-fuente, la tendencia marca los valores aproximados con un prefijo "≈" y una línea debajo de la gráfica. La marca se aplica por mes.
+6. La sección de rasgos del Retrato se llama "Curiosities".
+7. El póster no incluye gstack ni la frase del pilar.
+8. La lectura MCP vs CLI usa un texto neutral cuando MCP lidera; "CLI-first" solo aparece cuando CLI lidera.
+
+**Alternativas consideradas**
+- Mostrar "puntos / máximo del eje" → permite sumar ejes para llegar al pilar, pero revela los pesos que el ADR 8 decidió ocultar.
+- Dejar el copy del código tal cual (puntos 3, 4 y 8) → el tag repetido, la palabra "axis" para un pilar y "CLI-first" cuando MCP lidera son errores de copy, no decisiones.
+
+**Consecuencias**
+- ➕ Cierra las ambigüedades del diseño antes de implementarlas.
+- ➖ Con los ejes en 0–100, el lector no puede reconstruir el score del pilar sumando ejes.
+
+---
+
 ## Glosario
 
 | Término | Significado |

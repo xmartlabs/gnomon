@@ -120,6 +120,19 @@ Salvo que se diga otra cosa, "una corrida local" es `--local` sobre los fixtures
 - [ ] [antes] Given un AQ, When se genera el perfil, Then cada pilar muestra su peso ("/ 30 weight").
       [ahora] Given un AQ, When se genera el perfil, Then ningún pilar muestra peso.
 
+#### Delta 2026-09-30 (ADR 22 y 23)
+
+- [ ] [antes] Given un corpus de una sola fuente, When se compara el AQ titular con el de `xl-ai-insights` para el mismo mes y los mismos transcripts, Then los dos valores son iguales.
+      [ahora] Given un corpus de una sola fuente y un mes cerrado, When se compara el AQ de ese mes en el perfil con el de `xl-ai-insights`, Then los dos valores son iguales. Para el mes en curso no se exige igualdad: el upload usa 30 días móviles (ADR 22).
+- [ ] Given un AQ, When se muestra el desglose, Then cada eje muestra su valor en escala 0–100 y ningún texto revela el máximo del eje.
+- [ ] Given un edge "Add a reflex" o "Stop the grind", When se muestra, Then su tag de origen es "gstack · Engineering". Given "Go deeper", Then es "gstack · Balanced".
+- [ ] Given un edge con `axis` de un eje del AQ, When se muestra en el perfil, Then su consejo no contiene "is your thinnest AQ signal".
+- [ ] Given un AQ con pilares, When se genera el perfil, Then la frase del hero dice "thinnest pillar" y no contiene "thinnest axis".
+- [ ] Given un corpus con más de una fuente, When se genera la tendencia, Then cada valor mensual aproximado lleva el prefijo "≈" y debajo de la gráfica hay una línea que lo explica.
+- [ ] Given una corrida local, When se genera el Retrato, Then la sección de rasgos se titula "Curiosities".
+- [ ] Given una corrida local, When se descarga la imagen, Then el póster no contiene el scorecard gstack ni la frase del pilar.
+- [ ] Given más llamadas MCP que CLI, When se muestra la lectura MCP vs CLI, Then el texto no dice "CLI-first".
+
 ### REMOVED
 
 - [ ] La card "Which model do you reach for?". La reemplaza "Models used". No hay datos que migrar: el perfil se regenera en cada corrida.
