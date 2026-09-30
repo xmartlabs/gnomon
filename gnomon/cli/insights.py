@@ -13,6 +13,7 @@ import webbrowser
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from gnomon.config import BASE
+from gnomon.cli.period import resolve_period
 from gnomon.scoring.versioning import SCORE_CONTRACT_ID
 from gnomon.upload.auth import _capture_cli_token, _wait_for_auth_tokens, _SHARE_AUTH_TIMEOUT, _WEB_AUTH_TIMEOUT
 from gnomon.upload.mirdash import (
@@ -39,7 +40,10 @@ _HELP_TEXT = """Usage:
     xl-ai-insights -h
 
     source        e.g. claude, codex, gemini -- same as paxel.py (default: all)
-    --local       run local analysis only (no login, no upload)
+    --local       run local analysis only (no login, no upload; default: current calendar month)
+    --since=DATE  local profile start (use without --until for full history from DATE)
+    --until=DATE  local profile end day (inclusive)
+    --last=SPAN    local profile rolling window (for example: 30d, 2w, 1m)
     --include-low-volume
                   include sources with fewer than 10 in-window sessions
     --allow-stale-cli
@@ -679,7 +683,9 @@ def main(argv=None):
         if "--summary" not in local_argv:
             local_argv.append("--summary")
         output_dir = _resolve_output_dir(argv)
-        _maybe_offer_retention(dry_run, quiet, local_argv)
+        period = resolve_period(local_argv)
+        _maybe_offer_retention(dry_run, quiet, local_argv,
+                               default_window=(period.since, period.until))
         local_main(argv=local_argv, output_dir=output_dir)
         return
 

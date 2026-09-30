@@ -7,7 +7,7 @@ from typing import List, NamedTuple, Optional
 from gnomon.sources.discovery import parse_window
 
 
-DEFAULT_PERIOD: str = "all_history"
+DEFAULT_PERIOD: str = "current_month"
 
 
 class Period(NamedTuple):
