@@ -20,6 +20,9 @@ xl-ai-insights = "gnomon.cli.insights:main"
 packages = ["gnomon", "gnomon.cli", "gnomon.upload", "gnomon.sources", "gnomon.analysis", "gnomon.scoring", "gnomon.output", "gnomon.output.profile", "gnomon.output.profile.sections"]
 py-modules = ["paxel", "xl_ai_insights", "progress_server"]
 
+[tool.setuptools.package-data]
+"gnomon.output.profile" = ["fonts/*.woff2", "fonts/OFL.txt"]
+
 # tern.png is not yet committed to the repo (the PNG asset is missing).
 # Once added, uncomment the stanza below to bundle it with the wheel:
 # [tool.setuptools.data-files]
