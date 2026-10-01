@@ -34,10 +34,11 @@ def render_page(ctx) -> str:
     </header>
     <main class="gn-main">
       <section id="hero" class="gn-section">{hero_html}</section>
-      <section id="trend" class="gn-section">{trend_html}</section>
       <section id="diagnosis" class="gn-section">{diagnosis_html}</section>
       <section id="aq-breakdown" class="gn-section">{breakdown_html}</section>
-      <section id="activity" class="gn-section">{activity_html}{readings_html}</section>
+      <section id="trend" class="gn-section">{trend_html}</section>
+      <section id="usage" class="gn-section">{models_html}<div class="gn-vrule" aria-hidden="true"></div>{readings_html}</section>
+      <section id="activity" class="gn-section">{activity_html}</section>
       <section id="portrait" class="gn-section">{portrait_html}{quotes_html}</section>
     </main>
     <footer class="gn-footer">
@@ -70,6 +71,7 @@ def render_page(ctx) -> str:
         diagnosis_html=diagnosis.render(ctx),
         breakdown_html=breakdown.render(ctx),
         activity_html=activity.render(ctx),
+        models_html=activity.render_models(ctx),
         readings_html=readings.render(ctx),
         portrait_html=portrait.render(ctx),
         quotes_html=quotes.render(ctx),

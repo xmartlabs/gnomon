@@ -6,24 +6,11 @@ from gnomon.config import _pretty_model
 
 
 CSS = """
-#activity {
+#usage {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) auto minmax(0, 1fr);
   align-items: start;
   column-gap: 40px;
-}
-#activity::after {
-  content: "";
-  grid-column: 2;
-  grid-row: 2;
-  width: 1px;
-  align-self: stretch;
-  margin-top: 32px;
-  background: var(--rule-default);
-}
-.activity-top {
-  grid-column: 1 / -1;
-  min-width: 0;
 }
 .activity-heading {
   display: flex;
@@ -32,35 +19,22 @@ CSS = """
   min-width: 0;
   margin-bottom: 4px;
 }
-.activity-volume-line {
-  margin-left: auto;
-  color: var(--text-secondary);
-  font: 400 13px/1.3 var(--font-figure);
-  text-align: right;
-}
 .activity-hint {
   margin-bottom: 28px;
 }
 .activity-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   column-gap: 40px;
   min-width: 0;
 }
-.activity-count,
-.activity-ship {
+.activity-count {
   display: flex;
   flex-direction: column;
   gap: 4px;
   min-width: 0;
   padding: 16px 0 20px;
   border-top: 1px solid var(--rule-subtle);
-}
-.activity-ship {
-  display: block;
-}
-.activity-ship .gn-label {
-  margin-bottom: 8px;
 }
 .activity-value {
   min-width: 0;
@@ -76,11 +50,7 @@ CSS = """
   font-size: 13px;
   line-height: 1.5;
 }
-.activity-count[data-group="volume"] .activity-label {
-  color: var(--text-secondary);
-}
-.activity-detail,
-.activity-ship p {
+.activity-detail {
   margin: 0;
   color: var(--text-secondary);
   font-size: 13px;
@@ -88,10 +58,7 @@ CSS = """
   text-wrap: pretty;
 }
 .models-section {
-  grid-column: 1;
-  grid-row: 2;
   min-width: 0;
-  margin-top: 32px;
 }
 .models-heading {
   display: flex;
@@ -167,13 +134,11 @@ CSS = """
   font-size: 15px;
 }
 @media (max-width: 960px) {
-  .activity-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .activity-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 760px) {
-  #activity { grid-template-columns: 1fr; }
-  #activity::after { display: none; }
-  .activity-heading { flex-wrap: wrap; }
-  .activity-volume-line { margin-left: 0; text-align: left; }
+  #usage { grid-template-columns: 1fr; row-gap: 32px; }
+  #usage > .gn-vrule { display: none; }
 }
 @media (max-width: 480px) {
   .activity-grid { grid-template-columns: 1fr; }
@@ -260,16 +225,6 @@ def _count_html(key, label, value, detail="", value_override=None, group="count"
     )
 
 
-def _top_tool(tools):
-    entries = (tools or {}).get("top_tools") or []
-    if not entries:
-        return None, None
-    first = entries[0]
-    if isinstance(first, (list, tuple)) and len(first) >= 2:
-        return first[0], first[1]
-    return None, None
-
-
 _TOP_MODELS = 5
 
 
@@ -335,17 +290,14 @@ def _models_total(stats):
 
 
 def render(ctx) -> str:
-    """Render the period-scoped activity metrics published in ``stats``."""
+    """Render the period's activity counts: git lines, subagents, prompts, sessions, errors."""
     stats = getattr(ctx, "stats", None) or {}
     period = getattr(ctx, "period", None)
     volume = stats.get("volume") or {}
     velocity = stats.get("velocity") or {}
     behavior = stats.get("behavior") or {}
-    tools = stats.get("tools") or {}
 
     sessions = _count(volume.get("total_sessions"))
-    prompts = _count(volume.get("total_prompts"))
-    tool_calls = _count(volume.get("tool_calls_total"))
     recovery_pct = _pct(behavior.get("error_recovery_ratio"))
     recovery_text = (
         "{}% recovered".format(recovery_pct)
@@ -357,82 +309,39 @@ def render(ctx) -> str:
         if error_rate is not None else "Error rate not measured for this source.")
     delegate_actions = _count(behavior.get("delegate_actions"))
     per_session = round(delegate_actions / float(max(sessions, 1)), 1)
-    background = _count(behavior.get("background_tasks"))
-    scheduled = _count(behavior.get("scheduled_actions"))
-    depth_max = behavior.get("iteration_depth_max")
-    depth_mean = behavior.get("iteration_depth_mean")
-    depth_detail = (
-        "{} files went past 15 edits. Your typical file, though? About {:.1f}.".format(
-            _number_text(behavior.get("files_hammered_over_15x")), float(depth_mean))
-        if depth_mean is not None else "Iteration depth not measured for this source.")
-    top_tool, top_tool_calls = _top_tool(tools)
-    if top_tool is None:
-        top_tool_label = "not measured for this source"
-        top_tool_detail = ""
-    else:
-        top_tool_label = top_tool
-        top_tool_detail = "{} calls — more than any other tool.".format(
-            _number_text(top_tool_calls))
-    shell_lines = velocity.get("shell_authored_lines_est")
 
+    counts = "".join((
+        _count_html("git_lines", "lines committed to git", velocity.get("git_churn_total")),
+        _count_html("subagents", "subagents", delegate_actions,
+                    "About {} per session.".format(per_session)),
+        _count_html("prompts", "prompts", volume.get("total_prompts")),
+        _count_html("sessions", "sessions", sessions),
+        _count_html("errors", "errors · {}".format(recovery_text),
+                    behavior.get("tool_errors"), error_detail),
+    ))
     return (
-        '<div class="activity-top">'
         '<div class="activity-heading">'
         '<h2 class="gn-section-title" id="act-h">{heading}</h2>'
-        '<span class="activity-volume-line">{sessions} sessions · {prompts} prompts · '
-        '{tool_calls} tool calls</span>'
         '</div>'
-        '<p class="gn-section-hint activity-hint">Counts and readings — none of these are '
-        'graded.</p>'
-        '<div class="activity-grid">{volume_html}'
-        '<div class="activity-ship"><div class="gn-label">How much did you ship?</div>'
-        '<p>Edit/Write touched {edit_write_lines} lines and the shell ~{shell_text} more — '
-        'but only {git_lines} actually landed in committed git history. That committed '
-        'number is the honest one.</p></div>'
-        '{counts_html}</div>'
-        '</div>'
+        '<p class="gn-section-hint activity-hint">Counts — none of these are graded.</p>'
+        '<div class="activity-grid">{counts}</div>'
+    ).format(heading=_text(_period_heading(period)), counts=counts)
+
+
+def render_models(ctx) -> str:
+    """Render the Models used composition for the period."""
+    stats = getattr(ctx, "stats", None) or {}
+    period = getattr(ctx, "period", None)
+    total = _models_total(stats)
+    return (
         '<div class="models-section">'
-        '<div class="models-heading"><h3 class="gn-label">Models used · share of turns</h3>'
-        '<span class="models-total">{models_total}</span></div>'
-        '{models_html}{models_note}'
+        '<div class="models-heading"><h2 class="gn-label">Models used · share of turns</h2>'
+        '<span class="models-total">{total}</span></div>'
+        '{rows}{note}'
         '</div>'
     ).format(
-        heading=_text(_period_heading(period)),
-        sessions=_number_text(sessions), prompts=_number_text(prompts),
-        tool_calls=_number_text(tool_calls),
-        volume_html="".join((
-            _count_html("git_lines", "lines committed to git",
-                        velocity.get("git_churn_total"), group="volume"),
-            _count_html("edit_write_lines", "lines via Edit/Write",
-                        velocity.get("tool_churn_edit_write"), group="volume"),
-            _count_html("shell_lines", "lines in the shell", shell_lines, group="volume",
-                        value_override=(
-                            "~" + _number_text(shell_lines) if shell_lines is not None
-                            else None)),
-        )),
-        counts_html="".join((
-            _count_html(
-                "subagents", "subagents", delegate_actions,
-                "About {} per session, plus {} background tasks and {} scheduled "
-                "runs.".format(
-                    per_session, _number_text(background), _number_text(scheduled))),
-            _count_html(
-                "errors", "errors · {}".format(recovery_text),
-                behavior.get("tool_errors"), error_detail),
-            _count_html(
-                "max_edits", "max edits on one file", depth_max, depth_detail,
-                value_override=(_number_text(depth_max) + "×" if depth_max is not None
-                                else None)),
-            _count_html("go_to_tool", "go-to tool", top_tool, top_tool_detail,
-                        value_override=top_tool_label),
-        )),
-        edit_write_lines=_number_text(velocity.get("tool_churn_edit_write")),
-        shell_text=_number_text(shell_lines),
-        git_lines=_number_text(velocity.get("git_churn_total")),
-        models_total=_text(_models_total(stats)),
-        models_note=(
-            '<p class="models-note">{}</p>'.format(_text(
-                _models_note(stats, period)))
-            if _models_total(stats) else ""),
-        models_html=_models_html(stats, period),
+        total=_text(total),
+        rows=_models_html(stats, period),
+        note=('<p class="models-note">{}</p>'.format(_text(_models_note(stats, period)))
+              if total else ""),
     )

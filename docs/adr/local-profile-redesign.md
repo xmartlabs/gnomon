@@ -481,6 +481,38 @@ Con el perfil ya implementado y generado con datos reales, el usuario revisó la
 
 ---
 
+## ADR 25 — Nuevo orden de la página y Activity con cinco conteos
+
+2026-10-01 · Revisión del usuario sobre el perfil generado con datos reales
+
+**Supersede:** ADR 20 (orden de la página), ADR 11 y ADR 12 en lo que entra en Activity
+
+**Contexto**
+Con la página implementada, el usuario redefinió el orden de las filas y qué muestra cada una.
+
+**Decisión**
+El orden de la página es:
+1. Hero, sin cambios.
+2. How you work | What to work on.
+3. Desglose del AQ: los 4 pilares.
+4. AQ evolution by month | Next level: cuántos puntos faltan para el próximo tier, con una barra entre el piso del tier actual y el del siguiente. Si el tier es Elite, dice que es el nivel más alto.
+5. Models used | MCP vs CLI arriba y Tool diversity abajo.
+6. Activity, con cinco conteos: lines committed to git, subagents, prompts, sessions, errors.
+7. Portrait.
+
+Salen de la página Steering, las líneas vía Edit/Write, las líneas en el shell, "How much did you ship?", el máximo de ediciones sobre un archivo, la go-to tool y la línea de volumen (sessions · prompts · tool calls) del encabezado de Activity.
+
+**Alternativas consideradas**
+- La tendencia arriba, debajo del hero (ADR 20) → el usuario prefiere que el diagnóstico (moves, edges y pilares) vaya primero y la evolución después.
+- Activity con todos los conteos anteriores → el usuario eligió un set corto.
+
+**Consecuencias**
+- ➕ Cada fila responde una sola pregunta, y la tendencia gana un dato accionable: la distancia al próximo nivel.
+- ➖ Steering y los conteos que salieron solo quedan en `stats.json`.
+- ➖ El orden ya no sigue la secuencia "¿dónde estoy? → ¿hacia dónde voy?" del ADR 20: la evolución queda debajo del desglose.
+
+---
+
 ## Glosario
 
 | Término | Significado |

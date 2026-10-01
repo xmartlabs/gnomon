@@ -1,18 +1,13 @@
-"""Activity readings that are described, rather than graded."""
+"""MCP vs CLI and tool diversity: readings that are described, rather than graded."""
 
 import html
-
-from gnomon.scoring.insights import steering_reading
 
 
 CSS = """
 .readings {
-  grid-column: 3;
-  grid-row: 2;
   display: flex;
   min-width: 0;
   flex-direction: column;
-  margin-top: 32px;
 }
 .reading {
   min-width: 0;
@@ -28,23 +23,6 @@ CSS = """
 }
 .reading-title {
   margin: 0 0 12px;
-}
-.reading-value {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: 15px;
-  line-height: 1.5;
-}
-.reading-value strong {
-  font-weight: 600;
-}
-.reading-gloss {
-  color: var(--text-secondary);
-}
-.reading-detail {
-  margin: 4px 0 0;
-  color: var(--text-tertiary);
-  font: 400 12px/1.5 var(--font-figure);
 }
 .reading-note {
   margin: 10px 0 0;
@@ -92,9 +70,6 @@ CSS = """
   color: var(--text-secondary);
   font-size: 13px;
 }
-@media (max-width: 760px) {
-  .readings { grid-column: 1; grid-row: auto; }
-}
 """
 
 
@@ -131,25 +106,6 @@ def _width(value):
     if value.is_integer():
         return str(int(value)) + "%"
     return "%.2f%%" % value
-
-
-def _steering_html(stats):
-    try:
-        reading = steering_reading(stats)
-    except (KeyError, TypeError, ZeroDivisionError):
-        return ""
-    return (
-        '<div class="reading" data-reading="steering" data-graded="false">'
-        '<h3 class="gn-label reading-title">Steering · described, not graded</h3>'
-        '<p class="reading-value"><strong>{label}</strong> '
-        '<span class="reading-gloss">— {gloss}</span></p>'
-        '<p class="reading-detail">{detail}</p>'
-        '</div>'
-    ).format(
-        label=_text(reading["label"]),
-        gloss=_text(reading["gloss"]),
-        detail=_text(reading["detail"]),
-    )
 
 
 def _mcp_html(aq):
@@ -222,13 +178,9 @@ def _entropy(value):
 
 
 def render(ctx) -> str:
-    """Render Steering, and AQ sidechain readings when AQ data is available."""
+    """Render MCP vs CLI above tool diversity; both are described, not graded."""
     stats = getattr(ctx, "stats", None) or {}
-    steering = _steering_html(stats)
-    if not steering:
-        return ""
-    readings = [steering]
     aq = stats.get("agentic")
-    if aq:
-        readings.extend((_mcp_html(aq), _diversity_html(aq)))
-    return '<div class="readings">{}</div>'.format("".join(readings))
+    if not aq:
+        return ""
+    return '<div class="readings">{}{}</div>'.format(_mcp_html(aq), _diversity_html(aq))

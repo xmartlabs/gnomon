@@ -4,7 +4,7 @@ import unittest
 
 from gnomon.cli.period import Period
 from gnomon.output.profile.context import ProfileContext
-from gnomon.output.profile.sections.activity import render
+from gnomon.output.profile.sections.activity import render, render_models
 
 
 def _context(stats, period=None):
@@ -42,53 +42,50 @@ def _stats():
 
 
 class TestProfileActivity(unittest.TestCase):
-    def test_renders_period_counts_and_models(self):
+    def test_renders_the_five_period_counts_in_order(self):
         page = render(_context(_stats()))
 
         self.assertIn("Activity · Jun 2026", page)
-        self.assertIn("3 sessions · 20 prompts · 100 tool calls", page)
-        self.assertIn("Counts and readings — none of these are graded.", page)
-        self.assertIn("How much did you ship?", page)
-        for key in (
-            "git_lines", "edit_write_lines", "shell_lines", "subagents",
-            "errors", "max_edits", "go_to_tool",
-        ):
-            self.assertIn('class="activity-count" data-key="{}"'.format(key), page)
+        self.assertIn("Counts — none of these are graded.", page)
+        keys = ("git_lines", "subagents", "prompts", "sessions", "errors")
+        positions = [page.index('class="activity-count" data-key="{}"'.format(key))
+                     for key in keys]
+        self.assertEqual(positions, sorted(positions))
+        self.assertEqual(page.count('class="activity-count"'), 5)
+        self.assertIn('data-key="prompts" data-value="20"', page)
+        self.assertIn('data-key="sessions" data-value="3"', page)
         self.assertIn('data-key="errors" data-value="5"', page)
         self.assertIn("errors · 75% recovered", page)
         self.assertIn("Roughly 4.2 per 100 tool calls", page)
-        self.assertIn("18", page)
-        self.assertIn("2 files went past 15 edits", page)
+        for gone in ("edit_write_lines", "shell_lines", "max_edits", "go_to_tool",
+                     "How much did you ship?", "Models used"):
+            self.assertNotIn(gone, page)
+
+    def test_models_render_on_their_own(self):
+        page = render_models(_context(_stats()))
 
         self.assertIn('data-model="Opus 4.7" data-turns="60" data-pct="60"', page)
         self.assertIn('data-model="GPT 5.4" data-turns="40" data-pct="40"', page)
         self.assertLess(page.index('data-model="Opus 4.7"'), page.index('data-model="GPT 5.4"'))
         self.assertIn("Every model you used in Jun 2026, largest first.", page)
-        self.assertIn("Bash&lt;read&gt;", page)
 
-    def test_custom_window_uses_window_model_note(self):
+    def test_custom_window_uses_window_wording(self):
         period = Period("custom", None, None, None, "this window", None, None)
-        page = render(_context(_stats(), period))
-
-        self.assertIn("Activity · this window", page)
-        self.assertIn("Every model you used in this window, largest first.", page)
+        self.assertIn("Activity · this window", render(_context(_stats(), period)))
+        self.assertIn("Every model you used in this window, largest first.",
+                      render_models(_context(_stats(), period)))
 
     def test_null_metrics_keep_unmeasured_wording(self):
         stats = _stats()
         stats["behavior"]["error_recovery_ratio"] = None
         stats["behavior"]["error_rate_per_100_tools"] = None
-        stats["behavior"]["fanout_median"] = None
-        stats["behavior"]["iteration_depth_max"] = None
-        stats["behavior"]["iteration_depth_mean"] = None
-        stats["tools"]["top_tools"] = []
         stats["stack"]["models"] = []
         page = render(_context(stats))
 
-        self.assertGreaterEqual(page.count("not measured for this source"), 5)
-        self.assertIn('data-key="errors"', page)
-        self.assertIn('data-key="go_to_tool"', page)
-        self.assertIn('class="gn-empty model-empty">not measured for this source', page)
-
+        self.assertIn("errors · not measured for this source", page)
+        self.assertIn("Error rate not measured for this source.", page)
+        self.assertIn('class="gn-empty model-empty">not measured for this source',
+                      render_models(_context(stats)))
 
 
 class TestModelsUsedTopFive(unittest.TestCase):
@@ -97,7 +94,7 @@ class TestModelsUsedTopFive(unittest.TestCase):
         stats["stack"] = {"models": [
             ["m-a", 500], ["m-b", 300], ["<synthetic>", 250], ["m-c", 100],
             ["m-d", 50], ["m-e", 30], ["m-f", 15], ["m-g", 5]]}
-        page = render(_context(stats))
+        page = render_models(_context(stats))
         models = page.split('id="models-used"', 1)[1]
         self.assertEqual(models.count('class="model-row"'), 6)
         self.assertIn('data-model="Others" data-turns="20"', models)
@@ -107,7 +104,7 @@ class TestModelsUsedTopFive(unittest.TestCase):
         self.assertIn("Your 5 most-used models in Jun 2026", page)
 
     def test_five_or_fewer_models_have_no_others_row(self):
-        page = render(_context(_stats()))
+        page = render_models(_context(_stats()))
         self.assertNotIn('data-model="Others"', page)
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""Contract tests for the T10 Activity readings."""
+"""Contract tests for the MCP vs CLI and tool diversity readings."""
 
 import unittest
 
@@ -32,26 +32,23 @@ def _stats(agentic=True):
 
 
 class TestProfileReadings(unittest.TestCase):
-    def test_renders_all_three_readings_as_ungraded(self):
+    def test_renders_mcp_above_tool_diversity_as_ungraded(self):
         page = render(_context(_stats()))
-        for name in ("steering", "mcp_vs_cli", "tool_diversity"):
-            self.assertIn('data-reading="{}"'.format(name), page)
-            self.assertIn('data-graded="false"', page)
-        self.assertIn("Steering · described, not graded", page)
+        self.assertLess(page.index('data-reading="mcp_vs_cli"'),
+                        page.index('data-reading="tool_diversity"'))
+        self.assertEqual(page.count('data-graded="false"'), 2)
         self.assertIn("MCP vs CLI · described, not graded", page)
         self.assertIn("Tool diversity · described, not graded", page)
         self.assertIn("High range available, concentrated use. Not penalized.", page)
+        self.assertNotIn("Steering", page)
 
     def test_zero_mcp_is_all_cli_with_zero_width_mcp_segment(self):
         page = render(_context(_stats()))
         self.assertIn("all-CLI (no MCP)", page)
         self.assertIn('class="mcp-segment mcp" style="width:0%"', page)
 
-    def test_without_agentic_data_only_steering_is_rendered(self):
-        page = render(_context(_stats(agentic=False)))
-        self.assertIn('data-reading="steering"', page)
-        self.assertNotIn('data-reading="mcp_vs_cli"', page)
-        self.assertNotIn('data-reading="tool_diversity"', page)
+    def test_without_agentic_data_nothing_is_rendered(self):
+        self.assertEqual(render(_context(_stats(agentic=False))), "")
 
 
 if __name__ == "__main__":

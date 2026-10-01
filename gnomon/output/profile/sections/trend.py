@@ -2,11 +2,68 @@
 
 import html
 
+from gnomon.scoring.aq import TIER_FLOORS
+
 
 _CHART_HEIGHT = 110
 
 
 CSS = """
+.trend-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) auto minmax(0, 1fr);
+  align-items: start;
+  gap: 40px;
+  min-width: 0;
+}
+.trend-next {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.trend-next-figure {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 12px;
+}
+.trend-next-points {
+  font: 500 40px/.88 var(--font-figure);
+  letter-spacing: -.025em;
+  color: var(--text-primary);
+}
+.trend-next-unit {
+  color: var(--text-secondary);
+  font-size: 15px;
+}
+.trend-next-bar {
+  position: relative;
+  height: 8px;
+  margin-top: 12px;
+  background: var(--chart-track);
+}
+.trend-next-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: var(--chart-1);
+}
+.trend-next-scale {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-tertiary);
+  font: 400 11px/1.3 var(--font-figure);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.trend-next-note {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
 .trend-heading {
   margin-bottom: 20px;
 }
@@ -55,6 +112,8 @@ CSS = """
   white-space: nowrap;
 }
 @media (max-width: 760px) {
+  .trend-grid { grid-template-columns: 1fr; gap: 24px; }
+  .trend-grid > .gn-vrule { display: none; }
   .trend-chart { gap: 8px; }
 }
 """
@@ -119,18 +178,58 @@ def _column(point):
     )
 
 
+def _next_level_html(ctx):
+    """How many AQ points separate the headline score from the next tier."""
+    aq = ((getattr(ctx, "stats", None) or {}).get("agentic") or {})
+    score = aq.get("aq_0_100")
+    if score is None:
+        return ""
+    score = _number(score)
+    floors = list(reversed(TIER_FLOORS))          # lowest tier first
+    index = max(i for i, (_, floor) in enumerate(floors) if score >= floor)
+    tier, floor = floors[index]
+    head = '<span class="gn-label">Next level</span>'
+    if index == len(floors) - 1:
+        return (
+            '<div class="trend-next" data-next-tier="">{head}'
+            '<p class="trend-next-note">{tier} is the top level. Keep it there: the AQ is '
+            'scored month by month.</p></div>'
+        ).format(head=head, tier=_text(tier))
+    next_tier, next_floor = floors[index + 1]
+    missing = next_floor - score
+    progress = (score - floor) * 100.0 / (next_floor - floor)
+    return (
+        '<div class="trend-next" data-next-tier="{next_tier}" data-points="{missing}">{head}'
+        '<div class="trend-next-figure"><span class="trend-next-points">{missing}</span>'
+        '<span class="trend-next-unit">{unit} to {next_tier}</span></div>'
+        '<div class="trend-next-bar" role="img" aria-label="{score} of {next_floor} for '
+        '{next_tier}"><span class="trend-next-fill" style="width:{width:.0f}%"></span></div>'
+        '<div class="trend-next-scale"><span>{tier} · {floor}</span>'
+        '<span>{next_tier} · {next_floor}</span></div>'
+        '<p class="trend-next-note">Your AQ is {score}. {next_tier} starts at {next_floor}.</p>'
+        '</div>'
+    ).format(head=head, missing=_number_text(missing),
+             unit="point" if missing == 1 else "points", next_tier=_text(next_tier),
+             next_floor=next_floor, tier=_text(tier), floor=floor,
+             score=_number_text(score), width=max(0.0, min(100.0, progress)))
+
+
 def render(ctx) -> str:
-    """Render the sparse, oldest-first monthly AQ trend."""
+    """Render the monthly AQ trend, with the distance to the next tier beside it."""
     trend = getattr(ctx, "trend", None) or {}
     points = trend.get("points") or []
-    if not points:
-        return '<p class="gn-empty">No months with activity yet.</p>'
+    chart = (
+        '<div class="trend-chart" role="img" aria-label="{aria_label}">{columns}</div>'.format(
+            aria_label=_text(_aria_label(points)),
+            columns="".join(_column(point) for point in points))
+        if points else '<p class="gn-empty">No months with activity yet.</p>')
     return (
-        '<div class="gn-section-head trend-heading">'
-        '<h2>AQ evolution by month</h2>'
+        '<div class="trend-grid">'
+        '<div class="trend-main">'
+        '<div class="gn-section-head trend-heading"><h2>AQ evolution by month</h2></div>'
+        '{chart}'
         '</div>'
-        '<div class="trend-chart" role="img" aria-label="{aria_label}">{columns}</div>'
-    ).format(
-        aria_label=_text(_aria_label(points)),
-        columns="".join(_column(point) for point in points),
-    )
+        '<div class="gn-vrule" aria-hidden="true"></div>'
+        '{next_level}'
+        '</div>'
+    ).format(chart=chart, next_level=_next_level_html(ctx))

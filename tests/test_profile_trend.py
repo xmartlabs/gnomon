@@ -64,10 +64,31 @@ class TestProfileTrend(unittest.TestCase):
         self.assertNotIn("AQ per month", page)
 
     def test_empty_trend_uses_the_profile_empty_state(self):
-        self.assertEqual(
-            render(SimpleNamespace(trend=None)),
-            '<p class="gn-empty">No months with activity yet.</p>',
-        )
+        page = render(SimpleNamespace(trend=None, stats={}))
+        self.assertIn('<p class="gn-empty">No months with activity yet.</p>', page)
+        self.assertNotIn('class="trend-next"', page)
+
+
+def _aq_context(score):
+    return SimpleNamespace(trend=None, stats={"agentic": {"aq_0_100": score}})
+
+
+class TestNextLevel(unittest.TestCase):
+    def test_points_to_the_next_tier(self):
+        page = render(_aq_context(74))
+        self.assertIn('data-next-tier="Advanced" data-points="1"', page)
+        self.assertIn("1</span><span class=\"trend-next-unit\">point to Advanced", page)
+        self.assertIn("Your AQ is 74. Advanced starts at 75.", page)
+
+    def test_tier_floor_counts_as_reaching_it(self):
+        page = render(_aq_context(60))
+        self.assertIn('data-next-tier="Advanced" data-points="15"', page)
+        self.assertIn("Proficient · 60", page)
+
+    def test_top_tier_has_no_next_level(self):
+        page = render(_aq_context(91))
+        self.assertIn('data-next-tier=""', page)
+        self.assertIn("Elite is the top level.", page)
 
 
 if __name__ == "__main__":

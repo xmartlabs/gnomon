@@ -143,6 +143,15 @@ Salvo que se diga otra cosa, "una corrida local" es `--local` sobre los fixtures
 - [ ] Given más de 5 modelos en el período, When se genera "Models used", Then hay 5 filas más una fila "Others" con la suma del resto. Given una entrada `<synthetic>`, Then no aparece y no cuenta en el total.
 - [ ] Given `--since` y `--until` que cubren exactamente un mes calendario, When se genera el perfil, Then el período se rotula como ese mes ("Sep 2026").
 
+#### Delta 2026-10-01b (ADR 25)
+
+- [ ] [antes] Given una corrida local, When se genera la página, Then el orden es hero, tendencia, diagnóstico, desglose, Activity, Portrait.
+      [ahora] Given una corrida local, When se genera la página, Then el orden es hero, diagnóstico, desglose, tendencia + next level, models + readings, Activity, Portrait.
+- [ ] Given un AQ por debajo de 88, When se genera la tendencia, Then a la derecha dice cuántos puntos faltan para el próximo tier, con el piso del tier actual y el del siguiente. Given un AQ ≥ 88, Then dice que Elite es el nivel más alto.
+- [ ] Given una corrida local, When se genera Activity, Then muestra exactamente cinco conteos, en este orden: lines committed to git, subagents, prompts, sessions, errors.
+- [ ] Given una corrida local, When se genera la página, Then no aparecen Steering, líneas vía Edit/Write, líneas en el shell, "How much did you ship?", máximo de ediciones ni go-to tool.
+- [ ] Given AQ con lecturas, When se genera la fila de modelos, Then a la derecha va MCP vs CLI arriba y Tool diversity abajo.
+
 ### REMOVED
 
 - [ ] La card "Which model do you reach for?". La reemplaza "Models used". No hay datos que migrar: el perfil se regenera en cada corrida.
