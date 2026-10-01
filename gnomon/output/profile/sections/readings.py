@@ -7,69 +7,93 @@ from gnomon.scoring.insights import steering_reading
 
 CSS = """
 .readings {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 32px;
-  margin-top: 40px;
+  grid-column: 3;
+  grid-row: 2;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  margin-top: 32px;
 }
 .reading {
   min-width: 0;
-  padding-top: 12px;
-  border-top: 1px solid var(--rule-default);
+  padding: 20px 0;
+  border-top: 1px solid var(--rule-subtle);
+}
+.reading:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.reading:last-child {
+  padding-bottom: 0;
 }
 .reading-title {
-  margin: 0 0 16px;
-  color: var(--text-primary);
-  font-size: 14px;
-  font-weight: 600;
+  margin: 0 0 12px;
 }
 .reading-value {
-  margin: 0 0 4px;
+  margin: 0;
   color: var(--text-primary);
-  font-family: var(--font-figure);
-  font-size: 24px;
-  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  line-height: 1.5;
 }
-.reading-gloss,
-.reading-detail,
-.reading-note {
+.reading-value strong {
+  font-weight: 600;
+}
+.reading-gloss {
+  color: var(--text-secondary);
+}
+.reading-detail {
   margin: 4px 0 0;
+  color: var(--text-tertiary);
+  font: 400 12px/1.5 var(--font-figure);
+}
+.reading-note {
+  margin: 10px 0 0;
   color: var(--text-secondary);
   font-size: 13px;
-}
-.reading-detail,
-.reading-note {
-  color: var(--text-tertiary);
+  line-height: 1.5;
+  text-wrap: pretty;
 }
 .reading-note b {
-  color: var(--text-secondary);
-  font-weight: 600;
+  font-weight: inherit;
 }
 .mcp-bar {
   display: flex;
+  gap: 2px;
+  height: 8px;
   min-width: 0;
-  height: 32px;
-  margin: 8px 0 10px;
-  overflow: hidden;
-  background: var(--chart-track);
 }
 .mcp-segment {
-  display: flex;
+  flex: 0 1 auto;
   min-width: 0;
-  align-items: center;
-  overflow: hidden;
-  padding: 0 10px;
-  color: var(--text-inverse);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 .mcp-segment.cli { background: var(--chart-1); }
-.mcp-segment.mcp { background: var(--chart-2); }
-@media (max-width: 820px) {
-  .readings { grid-template-columns: 1fr; gap: 24px; }
+.mcp-segment.mcp { background: var(--chart-3); }
+.mcp-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  color: var(--text-primary);
+  font: 400 12px/1.4 var(--font-figure);
+}
+.mcp-labels span + span {
+  color: var(--text-secondary);
+  text-align: right;
+}
+.diversity-figures {
+  display: flex;
+  gap: 32px;
+}
+.diversity-value {
+  color: var(--text-primary);
+  font: 500 28px/1.15 var(--font-figure);
+}
+.diversity-label {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+@media (max-width: 760px) {
+  .readings { grid-column: 1; grid-row: auto; }
 }
 """
 
@@ -116,9 +140,9 @@ def _steering_html(stats):
         return ""
     return (
         '<div class="reading" data-reading="steering" data-graded="false">'
-        '<h3 class="reading-title">Steering · described, not graded</h3>'
-        '<p class="reading-value">{label}</p>'
-        '<p class="reading-gloss">{gloss}</p>'
+        '<h3 class="gn-label reading-title">Steering · described, not graded</h3>'
+        '<p class="reading-value"><strong>{label}</strong> '
+        '<span class="reading-gloss">— {gloss}</span></p>'
         '<p class="reading-detail">{detail}</p>'
         '</div>'
     ).format(
@@ -137,23 +161,25 @@ def _mcp_html(aq):
     total = cli_calls + mcp_calls
     cli_pct = (cli_calls * 100.0 / total) if total else 0.0
     mcp_pct = (mcp_calls * 100.0 / total) if total else 0.0
-    ratio = "all-CLI (no MCP)" if mcp_calls == 0 else _ratio(reading.get("ratio"))
+    ratio = "all-CLI (no MCP)" if mcp_calls == 0 else _ratio(reading.get("ratio")) + ":1"
     if mcp_calls > cli_calls:
-        note = ("Ratio <b>{ratio}:1</b> — MCP carries more of your tool traffic this month."
+        note = ("Ratio <b>{ratio}</b> — MCP carries more of your tool traffic this month."
                 .format(ratio=_text(ratio)))
     else:
         note = ("Ratio <b>{ratio}</b> CLI-first. CLI is token-cheap and scriptable — you reach "
                 "for it on repeatable work and reserve MCP for what CLI can't do (browser, "
-                "design canvas, device control). Right instinct, not a gap."
+                "design canvas, device control)."
                 .format(ratio=_text(ratio)))
     return (
         '<div class="reading" data-reading="mcp_vs_cli" data-graded="false">'
-        '<h3 class="reading-title">MCP vs CLI · described, not graded</h3>'
-        '<div class="mcp-bar" role="img" aria-label="CLI and MCP calls">'
-        '<span class="mcp-segment cli" style="width:{cli_width}">'
-        'CLI · {cli_calls} · {cli_distinct} tools</span>'
-        '<span class="mcp-segment mcp" style="width:{mcp_width}">'
-        'MCP · {mcp_calls} · {mcp_distinct} servers</span>'
+        '<h3 class="gn-label reading-title">MCP vs CLI · described, not graded</h3>'
+        '<div class="mcp-bar" role="img" aria-label="CLI {cli_calls} calls, MCP {mcp_calls} calls">'
+        '<span class="mcp-segment cli" style="width:{cli_width}"></span>'
+        '<span class="mcp-segment mcp" style="width:{mcp_width}"></span>'
+        '</div>'
+        '<div class="mcp-labels">'
+        '<span>CLI · {cli_calls} calls · {cli_distinct} {cli_noun}</span>'
+        '<span>MCP · {mcp_calls} · {mcp_distinct} {mcp_noun}</span>'
         '</div>'
         '<p class="reading-note">{note}</p>'
         '</div>'
@@ -162,8 +188,10 @@ def _mcp_html(aq):
         mcp_width=_width(mcp_pct),
         cli_calls=_text("{:,}".format(cli_calls)),
         cli_distinct=_text("{:,}".format(cli_distinct)),
+        cli_noun="tool" if cli_distinct == 1 else "tools",
         mcp_calls=_text("{:,}".format(mcp_calls)),
         mcp_distinct=_text("{:,}".format(mcp_distinct)),
+        mcp_noun="server" if mcp_distinct == 1 else "servers",
         note=note,
     )
 
@@ -174,12 +202,23 @@ def _diversity_html(aq):
     entropy = reading.get("entropy", 0)
     return (
         '<div class="reading" data-reading="tool_diversity" data-graded="false">'
-        '<h3 class="reading-title">Tool diversity · described, not graded</h3>'
-        '<p class="reading-value">{distinct} distinct tools</p>'
-        '<p class="reading-detail">Entropy {entropy} · High range available, '
-        'concentrated use. Not penalized.</p>'
+        '<h3 class="gn-label reading-title">Tool diversity · described, not graded</h3>'
+        '<div class="diversity-figures">'
+        '<div><div class="diversity-value">{distinct}</div>'
+        '<div class="diversity-label">distinct tools</div></div>'
+        '<div><div class="diversity-value">{entropy}</div>'
+        '<div class="diversity-label">entropy</div></div>'
         '</div>'
-    ).format(distinct=_text("{:,}".format(distinct)), entropy=_text(entropy))
+        '<p class="reading-note">High range available, concentrated use. Not penalized.</p>'
+        '</div>'
+    ).format(distinct=_text("{:,}".format(distinct)), entropy=_text(_entropy(entropy)))
+
+
+def _entropy(value):
+    try:
+        return "{:.2f}".format(float(value))
+    except (TypeError, ValueError):
+        return str(value)
 
 
 def render(ctx) -> str:

@@ -6,164 +6,177 @@ from gnomon.config import _pretty_model
 
 
 CSS = """
+#activity {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) auto minmax(0, 1fr);
+  align-items: start;
+  column-gap: 40px;
+}
+#activity::after {
+  content: "";
+  grid-column: 2;
+  grid-row: 2;
+  width: 1px;
+  align-self: stretch;
+  margin-top: 32px;
+  background: var(--rule-default);
+}
+.activity-top {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
 .activity-heading {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 24px;
+  gap: 16px;
   min-width: 0;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
-.activity-heading h2 {
-  min-width: 0;
-  margin: 0;
-  color: var(--text-primary);
-  font-size: 24px;
-  line-height: 1.2;
-}
-.activity-hint {
-  flex: 0 1 auto;
-  min-width: 0;
-  margin: 0;
-  color: var(--text-tertiary);
-  font-size: 13px;
+.activity-volume-line {
+  margin-left: auto;
+  color: var(--text-secondary);
+  font: 400 13px/1.3 var(--font-figure);
   text-align: right;
 }
-.activity-summary {
-  margin: 0 0 32px;
-  color: var(--text-secondary);
-  font-size: 14px;
+.activity-hint {
+  margin-bottom: 28px;
 }
-.activity-volume,
-.activity-counts {
+.activity-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  column-gap: 40px;
   min-width: 0;
 }
-.activity-count {
+.activity-count,
+.activity-ship {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   min-width: 0;
-  padding-top: 12px;
-  border-top: 1px solid var(--rule-strong);
+  padding: 16px 0 20px;
+  border-top: 1px solid var(--rule-subtle);
 }
-.activity-label {
+.activity-ship {
   display: block;
-  min-width: 0;
-  overflow-wrap: anywhere;
-  color: var(--text-secondary);
-  font-size: 13px;
+}
+.activity-ship .gn-label {
+  margin-bottom: 8px;
 }
 .activity-value {
-  display: block;
   min-width: 0;
-  margin-top: 8px;
   overflow-wrap: anywhere;
   color: var(--text-primary);
-  font-family: var(--font-figure);
-  font-size: 28px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 500;
-  line-height: 1.1;
+  font: 500 28px/1.15 var(--font-figure);
+  letter-spacing: -.025em;
 }
-.activity-detail {
+.activity-label {
   min-width: 0;
-  margin: 8px 0 0;
-  color: var(--text-tertiary);
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
   font-size: 13px;
-  line-height: 1.45;
-}
-.activity-note {
-  margin: 28px 0 32px;
-  color: var(--text-secondary);
-  font-size: 14px;
   line-height: 1.5;
 }
-.activity-note strong {
-  color: var(--text-primary);
-  font-weight: 600;
+.activity-count[data-group="volume"] .activity-label {
+  color: var(--text-secondary);
 }
-.activity-counts {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  row-gap: 32px;
+.activity-detail,
+.activity-ship p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  text-wrap: pretty;
 }
 .models-section {
+  grid-column: 1;
+  grid-row: 2;
   min-width: 0;
-  margin-top: 56px;
+  margin-top: 32px;
 }
 .models-heading {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 24px;
+  gap: 12px;
   min-width: 0;
   margin-bottom: 20px;
 }
-.models-heading h3 {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: 18px;
-  line-height: 1.2;
-}
-.models-note {
-  min-width: 0;
-  margin: 0;
+.models-total {
+  margin-left: auto;
   color: var(--text-tertiary);
-  font-size: 13px;
-  text-align: right;
+  font: 400 11px/1.2 var(--font-figure);
+  letter-spacing: .1em;
+}
+#models-used {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 .model-row {
-  display: grid;
-  grid-template-columns: minmax(0, 180px) minmax(0, 1fr) 90px;
-  align-items: center;
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   min-width: 0;
-  padding: 12px 0;
-  border-top: 1px solid var(--rule-subtle);
 }
-.model-name,
-.model-meta {
+.model-line {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+.model-name {
   min-width: 0;
   overflow-wrap: anywhere;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 15px;
 }
-.model-meta {
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
+.model-turns {
+  flex: none;
+  color: var(--text-tertiary);
+  font: 400 11px/1.2 var(--font-figure);
+  letter-spacing: .1em;
+}
+.model-pct {
+  margin-left: auto;
+  flex: none;
+  color: var(--text-primary);
+  font: 500 15px/1.3 var(--font-figure);
 }
 .model-bar {
-  min-width: 0;
+  position: relative;
   height: 8px;
-  overflow: hidden;
   background: var(--chart-track);
 }
 .model-fill {
-  height: 100%;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
 }
 .model-fill.model-1 { background: var(--chart-1); }
 .model-fill.model-2 { background: var(--chart-2); }
 .model-fill.model-3 { background: var(--chart-3); }
 .model-fill.model-4 { background: var(--chart-4); }
+.models-note {
+  margin: 16px 0 0;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  line-height: 1.5;
+}
 .model-empty {
   margin: 0;
-  font-size: 14px;
+  font-size: 15px;
 }
-@media (max-width: 820px) {
-  .activity-heading,
-  .models-heading { display: block; }
-  .activity-hint,
-  .models-note { margin-top: 8px; text-align: left; }
-  .activity-volume { grid-template-columns: 1fr; }
-  .activity-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 960px) {
+  .activity-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-@media (max-width: 560px) {
-  .activity-counts { grid-template-columns: 1fr; }
-  .model-row { grid-template-columns: minmax(0, 1fr) 72px; }
-  .model-bar { grid-column: 1 / -1; grid-row: 2; }
-  .model-meta { grid-column: 2; grid-row: 1; }
+@media (max-width: 760px) {
+  #activity { grid-template-columns: 1fr; }
+  #activity::after { display: none; }
+  .activity-heading { flex-wrap: wrap; }
+  .activity-volume-line { margin-left: 0; text-align: left; }
+}
+@media (max-width: 480px) {
+  .activity-grid { grid-template-columns: 1fr; }
 }
 """
 
@@ -227,17 +240,18 @@ def _period_heading(period):
     return "Activity · {}".format(_period_label(period))
 
 
-def _count_html(key, label, value, detail="", value_override=None):
+def _count_html(key, label, value, detail="", value_override=None, group="count"):
     shown = value_override if value_override is not None else _metric_text(value)
     return (
-        '<div class="activity-count" data-key="{key}" data-value="{value}">'
-        '<span class="activity-label">{label}</span>'
+        '<div class="activity-count" data-key="{key}" data-value="{value}" data-group="{group}">'
         '<strong class="activity-value">{shown}</strong>'
+        '<span class="activity-label">{label}</span>'
         '{detail_html}'
         '</div>'
     ).format(
         key=_text(key),
         value=_text("" if value is None else value),
+        group=_text(group),
         label=_text(label),
         shown=_text(shown),
         detail_html=(
@@ -270,20 +284,32 @@ def _models_html(stats, period):
 
     rows = []
     for index, (name, turns) in enumerate(normalized):
-        pct = int(round(turns * 100.0 / total))
+        share = turns * 100.0 / total
+        pct = int(round(share))
         color_index = min(index + 1, 4)
         rows.append(
             '<div class="model-row" data-model="{model}" data-turns="{turns}" '
             'data-pct="{pct}">'
+            '<div class="model-line">'
             '<span class="model-name">{model}</span>'
-            '<div class="model-bar" role="img" aria-label="{pct}% of turns">'
+            '<span class="model-turns">{turns_text} turns</span>'
+            '<span class="model-pct">{pct}%</span>'
+            '</div>'
+            '<div class="model-bar" role="img" aria-label="{model}: {pct}% of turns">'
             '<span class="model-fill model-{color}" style="width:{width}%"></span>'
             '</div>'
-            '<span class="model-meta">{pct}% · {turns} turns</span>'
             '</div>'.format(
-                model=_text(name), turns=turns, pct=pct, color=color_index,
-                width=max(0, min(100, pct))))
+                model=_text(name), turns=turns, turns_text="{:,}".format(turns), pct=pct,
+                color=color_index, width="{:.1f}".format(max(0.0, min(100.0, share)))))
     return '<div id="models-used">{}</div>'.format("".join(rows))
+
+
+def _models_total(stats):
+    total = 0
+    for entry in (stats.get("stack") or {}).get("models") or []:
+        if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+            total += _count(entry[1])
+    return "{:,} turns".format(total) if total else ""
 
 
 def render(ctx) -> str:
@@ -302,47 +328,65 @@ def render(ctx) -> str:
     recovery_text = (
         "{}% recovered".format(recovery_pct)
         if recovery_pct is not None else "not measured for this source")
-    error_rate = _metric_text(behavior.get("error_rate_per_100_tools"), " per 100 tools")
+    error_rate = behavior.get("error_rate_per_100_tools")
+    error_detail = (
+        "Roughly {} per 100 tool calls — and you kept going after almost all of them.".format(
+            _number_text(error_rate))
+        if error_rate is not None else "Error rate not measured for this source.")
     delegate_actions = _count(behavior.get("delegate_actions"))
     per_session = round(delegate_actions / float(max(sessions, 1)), 1)
     background = _count(behavior.get("background_tasks"))
     scheduled = _count(behavior.get("scheduled_actions"))
+    depth_max = behavior.get("iteration_depth_max")
+    depth_mean = behavior.get("iteration_depth_mean")
+    depth_detail = (
+        "{} files went past 15 edits. Your typical file, though? About {:.1f}.".format(
+            _number_text(behavior.get("files_hammered_over_15x")), float(depth_mean))
+        if depth_mean is not None else "Iteration depth not measured for this source.")
     top_tool, top_tool_calls = _top_tool(tools)
     if top_tool is None:
         top_tool_label = "not measured for this source"
         top_tool_detail = ""
     else:
         top_tool_label = top_tool
-        top_tool_detail = "{} calls".format(_number_text(top_tool_calls))
+        top_tool_detail = "{} calls — more than any other tool.".format(
+            _number_text(top_tool_calls))
+    shell_lines = velocity.get("shell_authored_lines_est")
 
     return (
+        '<div class="activity-top">'
         '<div class="activity-heading">'
-        '<h2>{heading}</h2>'
-        '<p class="activity-hint">Counts and readings — none of these are graded.</p>'
+        '<h2 class="gn-section-title" id="act-h">{heading}</h2>'
+        '<span class="activity-volume-line">{sessions} sessions · {prompts} prompts · '
+        '{tool_calls} tool calls</span>'
         '</div>'
-        '<p class="activity-summary">{sessions} sessions · {prompts} prompts · '
-        '{tool_calls} tool calls</p>'
-        '<div class="activity-volume">{volume_html}</div>'
-        '<p class="activity-note"><strong>How much did you ship?</strong> '
-        'Edit/Write touched <b>{edit_write_lines}</b> lines and the shell '
-        '~{shell_lines} more — but only <b>{git_lines}</b> actually landed in '
-        'committed git history. That committed number is the honest one.</p>'
-        '<div class="activity-counts">{counts_html}</div>'
+        '<p class="gn-section-hint activity-hint">Counts and readings — none of these are '
+        'graded.</p>'
+        '<div class="activity-grid">{volume_html}'
+        '<div class="activity-ship"><div class="gn-label">How much did you ship?</div>'
+        '<p>Edit/Write touched {edit_write_lines} lines and the shell ~{shell_text} more — '
+        'but only {git_lines} actually landed in committed git history. That committed '
+        'number is the honest one.</p></div>'
+        '{counts_html}</div>'
+        '</div>'
         '<div class="models-section">'
-        '<div class="models-heading"><h3>Models used</h3>'
-        '<p class="models-note">{models_note}</p></div>'
-        '{models_html}'
+        '<div class="models-heading"><h3 class="gn-label">Models used · share of turns</h3>'
+        '<span class="models-total">{models_total}</span></div>'
+        '{models_html}{models_note}'
         '</div>'
     ).format(
         heading=_text(_period_heading(period)),
         sessions=_number_text(sessions), prompts=_number_text(prompts),
         tool_calls=_number_text(tool_calls),
         volume_html="".join((
-            _count_html("git_lines", "git lines", velocity.get("git_churn_total")),
-            _count_html("edit_write_lines", "Edit/Write lines",
-                        velocity.get("tool_churn_edit_write")),
-            _count_html("shell_lines", "shell lines",
-                        velocity.get("shell_authored_lines_est")),
+            _count_html("git_lines", "lines committed to git",
+                        velocity.get("git_churn_total"), group="volume"),
+            _count_html("edit_write_lines", "lines via Edit/Write",
+                        velocity.get("tool_churn_edit_write"), group="volume"),
+            _count_html("shell_lines", "lines in the shell", shell_lines, group="volume",
+                        value_override=(
+                            "~" + _number_text(shell_lines) if shell_lines is not None
+                            else None)),
         )),
         counts_html="".join((
             _count_html(
@@ -352,20 +396,21 @@ def render(ctx) -> str:
                     per_session, _number_text(background), _number_text(scheduled))),
             _count_html(
                 "errors", "errors · {}".format(recovery_text),
-                behavior.get("tool_errors"), error_rate),
+                behavior.get("tool_errors"), error_detail),
             _count_html(
-                "max_edits", "max edits on one file",
-                behavior.get("iteration_depth_max"),
-                "mean {} edits · {} files hammered >15×".format(
-                    _metric_text(behavior.get("iteration_depth_mean")),
-                    _number_text(behavior.get("files_hammered_over_15x")))),
+                "max_edits", "max edits on one file", depth_max, depth_detail,
+                value_override=(_number_text(depth_max) + "×" if depth_max is not None
+                                else None)),
             _count_html("go_to_tool", "go-to tool", top_tool, top_tool_detail,
                         value_override=top_tool_label),
         )),
         edit_write_lines=_number_text(velocity.get("tool_churn_edit_write")),
-        shell_lines=_number_text(velocity.get("shell_authored_lines_est")),
+        shell_text=_number_text(shell_lines),
         git_lines=_number_text(velocity.get("git_churn_total")),
-        models_note=_text(
-            "Every model you used in {}, largest first.".format(_period_label(period))),
+        models_total=_text(_models_total(stats)),
+        models_note=(
+            '<p class="models-note">{}</p>'.format(_text(
+                "Every model you used in {}, largest first.".format(_period_label(period))))
+            if _models_total(stats) else ""),
         models_html=_models_html(stats, period),
     )

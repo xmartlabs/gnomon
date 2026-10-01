@@ -56,9 +56,9 @@ class TestProfileActivity(unittest.TestCase):
             self.assertIn('class="activity-count" data-key="{}"'.format(key), page)
         self.assertIn('data-key="errors" data-value="5"', page)
         self.assertIn("errors · 75% recovered", page)
-        self.assertIn("4.2 per 100 tools", page)
+        self.assertIn("Roughly 4.2 per 100 tool calls", page)
         self.assertIn("18", page)
-        self.assertIn("2 files hammered &gt;15×", page)
+        self.assertIn("2 files went past 15 edits", page)
 
         self.assertIn('data-model="Opus 4.7" data-turns="60" data-pct="60"', page)
         self.assertIn('data-model="GPT 5.4" data-turns="40" data-pct="40"', page)
