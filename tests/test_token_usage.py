@@ -19,6 +19,7 @@ import sys
 import tempfile
 import unittest
 from unittest import mock
+from tests._clock import legacy_all_history
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -106,7 +107,8 @@ def _run_with_events(testcase, events, extra_src_dirs=None):
 
     argv = ["paxel.py", "--include-low-volume", "--no-open"]
     buf = io.StringIO()
-    with mock.patch.multiple(paxel, OUT_DIR=out, **src_overrides), \
+    with legacy_all_history(), \
+            mock.patch.multiple(paxel, OUT_DIR=out, **src_overrides), \
             mock.patch.object(sys, "argv", argv), \
             contextlib.redirect_stdout(buf):
         paxel.main()
@@ -559,7 +561,8 @@ class TestGeminiTokenMapping(unittest.TestCase):
             CURSOR_DIR=empty,
             CURSOR_DB=os.path.join(empty, "nope.vscdb"),
         )
-        with mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
+        with legacy_all_history(), \
+                mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
                 mock.patch.object(sys, "argv", argv), \
                 contextlib.redirect_stdout(buf):
             paxel.main()
@@ -639,7 +642,8 @@ class TestCodexTokenMapping(unittest.TestCase):
         )
         argv = ["paxel.py", "--include-low-volume", "--no-open"]
         buf = io.StringIO()
-        with mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
+        with legacy_all_history(), \
+                mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
                 mock.patch.object(sys, "argv", argv), \
                 contextlib.redirect_stdout(buf):
             paxel.main()
@@ -736,7 +740,8 @@ class TestCursorTokenExtraction(unittest.TestCase):
         )
         argv = ["paxel.py", "--include-low-volume", "--no-open"]
         buf = io.StringIO()
-        with mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
+        with legacy_all_history(), \
+                mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
                 mock.patch.object(sys, "argv", argv), \
                 contextlib.redirect_stdout(buf):
             paxel.main()
@@ -769,7 +774,8 @@ class TestCursorTokenExtraction(unittest.TestCase):
         )
         argv = ["paxel.py", "--include-low-volume", "--no-open"]
         buf = io.StringIO()
-        with mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
+        with legacy_all_history(), \
+                mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
                 mock.patch.object(sys, "argv", argv), \
                 contextlib.redirect_stdout(buf):
             paxel.main()
@@ -861,7 +867,8 @@ class TestCodexMonthlyTokenAttribution(unittest.TestCase):
         )
         argv = ["paxel.py", "--include-low-volume", "--no-open"]
         buf = io.StringIO()
-        with mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
+        with legacy_all_history(), \
+                mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
                 mock.patch.object(sys, "argv", argv), \
                 contextlib.redirect_stdout(buf):
             paxel.main()

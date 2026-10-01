@@ -189,6 +189,8 @@ class TestRetentionOfferWiring(unittest.TestCase):
         with contextlib.ExitStack() as stack:
             stack.enter_context(mock.patch.object(
                 _insights, "_check_latest_cli_release", return_value={"status": "current"}))
+            # The --local path runs the real local main; keep its outputs out of the repo root.
+            stack.enter_context(mock.patch("gnomon.cli.local.OUT_DIR", self._source_tmp.name))
             stack.enter_context(mock.patch.object(_insights, "_main_web"))
             stack.enter_context(mock.patch.object(_insights, "_main_console"))
             stack.enter_context(mock.patch.object(

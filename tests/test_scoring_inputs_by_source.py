@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from unittest import mock
+from tests._clock import legacy_all_history
 
 import paxel
 from gnomon.scoring.versioning import SCORING_INPUTS_VERSION
@@ -67,7 +68,8 @@ class TestPerSourceChurnIsolation(unittest.TestCase):
                     ANTIGRAVITY_CLI_DIR=empty, ANTIGRAVITY_IDE_DIR=empty, ANTIGRAVITY_DB=os.path.join(empty, "nope.vscdb"),
                     PI_DIR=empty, OPENCODE_DIR=empty, CURSOR_DIR=empty,
                     CURSOR_DB=os.path.join(empty, "no.vscdb"))
-        with mock.patch.multiple(paxel, OUT_DIR=out, **dirs), \
+        with legacy_all_history(), \
+                mock.patch.multiple(paxel, OUT_DIR=out, **dirs), \
                 mock.patch.object(paxel, "git_churn", spy), \
                 mock.patch.object(sys, "argv",
                                   ["paxel.py", "claude", "gemini", "--include-low-volume",
