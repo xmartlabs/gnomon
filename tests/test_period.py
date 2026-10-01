@@ -18,6 +18,21 @@ class TestResolvePeriod(unittest.TestCase):
         self.assertEqual(period.until.date().isoformat(), "2026-06-01")
         self.assertEqual(period.label, "2026-03-01 → 2026-05-31")
 
+    def test_whole_calendar_month_window_reads_as_the_month(self):
+        period = resolve_period(["--since=2026-09-01", "--until=2026-09-30"])
+        self.assertEqual(period.kind, "custom")
+        self.assertEqual(period.month_key, "2026-09")
+        self.assertEqual(period.label, "Sep 2026")
+        self.assertIsNone(period.days_elapsed)
+
+    def test_partial_month_window_keeps_the_date_range(self):
+        for argv in (["--since=2026-09-01", "--until=2026-09-29"],
+                     ["--since=2026-09-02", "--until=2026-09-30"],
+                     ["--since=2026-08-01", "--until=2026-09-30"]):
+            period = resolve_period(argv)
+            self.assertIsNone(period.month_key, argv)
+            self.assertIn("→", period.label, argv)
+
     def test_current_month_has_progress_metadata(self):
         now = datetime.fromisoformat("2026-06-20T12:00:00").astimezone()
         with mock.patch("gnomon.cli.period.DEFAULT_PERIOD", "current_month"), \

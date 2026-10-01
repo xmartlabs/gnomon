@@ -223,7 +223,7 @@ def _pct(value):
 def _period_label(period):
     kind = getattr(period, "kind", "all_history")
     month_key = getattr(period, "month_key", None)
-    if kind == "current_month" and month_key:
+    if month_key:
         try:
             year, month = month_key.split("-")
             months = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
