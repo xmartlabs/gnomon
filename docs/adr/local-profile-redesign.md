@@ -453,6 +453,34 @@ El diseño de alta fidelidad (canvas, artboards `ProfileLight`, `ProfileDark`, `
 
 ---
 
+## ADR 24 — Ajustes de la revisión sobre la página implementada
+
+2026-10-01 · Revisión del usuario sobre el perfil generado con datos reales
+
+**Supersede:** ADR 9 y ADR 23.5 (marca de aproximado), ADR 12 (lista completa de modelos), ADR 14 (footer sin crédito)
+
+**Contexto**
+Con el perfil ya implementado y generado con datos reales, el usuario revisó la página y pidió recortes de texto y un cambio de crédito. Con datos reales, la lista de modelos mostraba 17 filas, entre ellas `<synthetic>`, que no es un modelo.
+
+**Decisión**
+1. El label del AQ en el hero dice solo "AQ", sin el mes.
+2. La tendencia se titula "AQ evolution by month", sin la cantidad de meses ni la columna de texto a la derecha. No hay ningún texto ni marca de aproximado.
+3. El desglose se titula "Agentic Quotient · 4 pillars", sin la frase de escala.
+4. El footer no tiene la frase de rúbrica ("Counts are measured…"). El link al repo se reemplaza por "Built by Xmartlabs" con el isotipo de Xmartlabs, que linkea a xmartlabs.com. El link al repo queda en el masthead y en el caption.
+5. "Models used" muestra los 5 modelos más usados y una fila "Others" con el resto. Las entradas internas como `<synthetic>` no cuentan ni en la lista ni en el total.
+6. Una ventana que cubre exactamente un mes calendario se rotula como ese mes ("Sep 2026").
+
+**Alternativas consideradas**
+- Mantener la marca de aproximado en la tendencia → el usuario prefirió no exponer esa distinción. El dato sigue en `stats.json` y como atributo del DOM.
+- Mostrar todos los modelos, o todos los de más del 1% → con datos reales la lista se vuelve ruido.
+
+**Consecuencias**
+- ➕ Menos texto explicativo en la página, en línea con los recortes del ADR 19.
+- ➖ En multi-fuente, el lector no ve que los meses de la tendencia son aproximados.
+- ➖ El perfil vuelve a llevar un crédito de organización en el footer; el ADR 14 solo excluía el crédito al upstream.
+
+---
+
 ## Glosario
 
 | Término | Significado |

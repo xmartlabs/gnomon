@@ -42,8 +42,7 @@ def render_page(ctx) -> str:
     </main>
     <footer class="gn-footer">
       <span class="gn-footer-brand">{mark}Generated on this machine by gnomon</span>
-      <p class="gn-footer-note">Counts are measured from your transcripts; tier and scores are a rubric. Raw metrics in <code>stats.json</code>.</p>
-      <a class="gn-footer-repo" href="{repo_url}">{repo_label}</a>
+      <a class="gn-footer-built" href="{built_by_url}">{built_by_label}{xl_mark}</a>
     </footer>
   </div>
   <script>
@@ -60,7 +59,9 @@ def render_page(ctx) -> str:
         dark_css=theme.DARK_CSS,
         section_css=_section_css(),
         repo_url=brand.REPO_URL,
-        repo_label=html.escape(brand.REPO_LABEL),
+        built_by_url=brand.BUILT_BY_URL,
+        built_by_label=html.escape(brand.BUILT_BY_LABEL),
+        xl_mark=brand.XMARTLABS_MARK_SVG,
         mark=brand.MARK_SVG,
         lock=brand.LOCK_SVG,
         toggle=theme.render_toggle(),

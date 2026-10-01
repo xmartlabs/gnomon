@@ -3,7 +3,7 @@
 import unittest
 from types import SimpleNamespace
 
-from gnomon.output.profile.sections.trend import CSS, render
+from gnomon.output.profile.sections.trend import render
 
 
 def _context(points):
@@ -33,7 +33,8 @@ class TestProfileTrend(unittest.TestCase):
             _point("2026-06", "Jun", 74, in_progress=True),
         ]))
 
-        self.assertIn("AQ by month · 6 months", page)
+        self.assertIn("<h2>AQ evolution by month</h2>", page)
+        self.assertNotIn("6 months", page)
         self.assertEqual(page.count('class="trend-col"'), 6)
         self.assertIn(
             'data-month="2026-06" data-aq="74" data-in-progress="true" '
@@ -47,20 +48,20 @@ class TestProfileTrend(unittest.TestCase):
     def test_sparse_trend_renders_only_months_with_activity(self):
         page = render(_context([_point("2026-06", "Jun", 74, in_progress=True)]))
 
-        self.assertIn("AQ by month · 1 month", page)
+        self.assertIn("<h2>AQ evolution by month</h2>", page)
         self.assertEqual(page.count('class="trend-col"'), 1)
         self.assertIn('data-month="2026-06"', page)
 
-    def test_marks_approximate_points_and_explains_the_mark(self):
+    def test_approximate_points_render_like_any_other(self):
         page = render(_context([
             _point("2026-05", "May", 71, approximate=True),
             _point("2026-06", "Jun", 74, in_progress=True),
         ]))
 
-        self.assertIn('data-approximate="true"', page)
-        self.assertIn('<span class="trend-value">≈71</span>', page)
-        self.assertIn("Approximate values combine multiple sources.", page)
-        self.assertIn('border-top: 1px solid var(--rule-default)', CSS)
+        self.assertIn('<span class="trend-value">71</span>', page)
+        self.assertNotIn("≈", page)
+        self.assertNotIn("pproximate", page.replace('data-approximate=', ''))
+        self.assertNotIn("AQ per month", page)
 
     def test_empty_trend_uses_the_profile_empty_state(self):
         self.assertEqual(

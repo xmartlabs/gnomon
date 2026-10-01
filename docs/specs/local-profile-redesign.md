@@ -133,6 +133,16 @@ Salvo que se diga otra cosa, "una corrida local" es `--local` sobre los fixtures
 - [ ] Given una corrida local, When se descarga la imagen, Then el póster no contiene el scorecard gstack ni la frase del pilar.
 - [ ] Given más llamadas MCP que CLI, When se muestra la lectura MCP vs CLI, Then el texto no dice "CLI-first".
 
+#### Delta 2026-10-01 (ADR 24)
+
+- [ ] Given una corrida local, When se genera el hero, Then el label del AQ es "AQ", sin mes.
+- [ ] [antes] Given un corpus multi-fuente, When se genera la tendencia, Then los valores aproximados llevan "≈" y una nota.
+      [ahora] Given cualquier corpus, When se genera la tendencia, Then se titula "AQ evolution by month", no muestra cantidad de meses ni texto lateral, y no contiene "≈" ni "approximate".
+- [ ] Given una corrida local, When se genera el desglose, Then se titula "Agentic Quotient · 4 pillars" y no contiene la frase de escala 0–100.
+- [ ] Given una corrida local, When se genera el footer, Then dice "Built by Xmartlabs" con el isotipo y linkea a xmartlabs.com, y no contiene "Raw metrics" ni el link al repo.
+- [ ] Given más de 5 modelos en el período, When se genera "Models used", Then hay 5 filas más una fila "Others" con la suma del resto. Given una entrada `<synthetic>`, Then no aparece y no cuenta en el total.
+- [ ] Given `--since` y `--until` que cubren exactamente un mes calendario, When se genera el perfil, Then el período se rotula como ese mes ("Sep 2026").
+
 ### REMOVED
 
 - [ ] La card "Which model do you reach for?". La reemplaza "Models used". No hay datos que migrar: el perfil se regenera en cada corrida.

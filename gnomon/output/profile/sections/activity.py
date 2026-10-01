@@ -270,45 +270,67 @@ def _top_tool(tools):
     return None, None
 
 
-def _models_html(stats, period):
-    stack = stats.get("stack") or {}
-    models = stack.get("models") or []
-    normalized = []
-    for entry in models:
+_TOP_MODELS = 5
+
+
+def _model_counts(stats):
+    """(raw name, turns) per model, most-used first, without internal "<…>" entries."""
+    counts = []
+    for entry in (stats.get("stack") or {}).get("models") or []:
         if isinstance(entry, (list, tuple)) and len(entry) >= 2:
-            name, turns = entry[0], _count(entry[1])
-            normalized.append((_pretty_model(name), turns))
-    total = sum(turns for _, turns in normalized)
-    if not normalized or not total:
+            name = str(entry[0])
+            if name.startswith("<"):   # e.g. "<synthetic>": harness bookkeeping, not a model
+                continue
+            counts.append((name, _count(entry[1])))
+    return sorted(counts, key=lambda item: -item[1])
+
+
+def _models_html(stats, period):
+    counts = _model_counts(stats)
+    total = sum(turns for _, turns in counts)
+    if not counts or not total:
         return '<p class="gn-empty model-empty">not measured for this source</p>'
 
+    shown = [(_pretty_model(name), turns) for name, turns in counts[:_TOP_MODELS]]
+    rest = counts[_TOP_MODELS:]
+    if rest:
+        shown.append(("Others", sum(turns for _, turns in rest)))
+
     rows = []
-    for index, (name, turns) in enumerate(normalized):
+    for index, (name, turns) in enumerate(shown):
+        is_others = bool(rest) and index == len(shown) - 1
         share = turns * 100.0 / total
         pct = int(round(share))
-        color_index = min(index + 1, 4)
+        color_index = 4 if is_others else min(index + 1, 4)
+        turns_text = "{:,} turns".format(turns)
+        if is_others:
+            turns_text += " · {} {}".format(len(rest), "model" if len(rest) == 1 else "models")
         rows.append(
             '<div class="model-row" data-model="{model}" data-turns="{turns}" '
             'data-pct="{pct}">'
             '<div class="model-line">'
             '<span class="model-name">{model}</span>'
-            '<span class="model-turns">{turns_text} turns</span>'
+            '<span class="model-turns">{turns_text}</span>'
             '<span class="model-pct">{pct}%</span>'
             '</div>'
             '<div class="model-bar" role="img" aria-label="{model}: {pct}% of turns">'
             '<span class="model-fill model-{color}" style="width:{width}%"></span>'
             '</div>'
             '</div>'.format(
-                model=_text(name), turns=turns, turns_text="{:,}".format(turns), pct=pct,
+                model=_text(name), turns=turns, turns_text=_text(turns_text), pct=pct,
                 color=color_index, width="{:.1f}".format(max(0.0, min(100.0, share)))))
     return '<div id="models-used">{}</div>'.format("".join(rows))
 
 
+def _models_note(stats, period):
+    if len(_model_counts(stats)) > _TOP_MODELS:
+        return "Your {} most-used models in {}; the rest are grouped in Others.".format(
+            _TOP_MODELS, _period_label(period))
+    return "Every model you used in {}, largest first.".format(_period_label(period))
+
+
 def _models_total(stats):
-    total = 0
-    for entry in (stats.get("stack") or {}).get("models") or []:
-        if isinstance(entry, (list, tuple)) and len(entry) >= 2:
-            total += _count(entry[1])
+    total = sum(turns for _, turns in _model_counts(stats))
     return "{:,} turns".format(total) if total else ""
 
 
@@ -410,7 +432,7 @@ def render(ctx) -> str:
         models_total=_text(_models_total(stats)),
         models_note=(
             '<p class="models-note">{}</p>'.format(_text(
-                "Every model you used in {}, largest first.".format(_period_label(period))))
+                _models_note(stats, period)))
             if _models_total(stats) else ""),
         models_html=_models_html(stats, period),
     )

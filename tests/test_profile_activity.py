@@ -90,5 +90,25 @@ class TestProfileActivity(unittest.TestCase):
         self.assertIn('class="gn-empty model-empty">not measured for this source', page)
 
 
+
+class TestModelsUsedTopFive(unittest.TestCase):
+    def test_shows_top_five_and_groups_the_rest_in_others(self):
+        stats = _stats()
+        stats["stack"] = {"models": [
+            ["m-a", 500], ["m-b", 300], ["<synthetic>", 250], ["m-c", 100],
+            ["m-d", 50], ["m-e", 30], ["m-f", 15], ["m-g", 5]]}
+        page = render(_context(stats))
+        models = page.split('id="models-used"', 1)[1]
+        self.assertEqual(models.count('class="model-row"'), 6)
+        self.assertIn('data-model="Others" data-turns="20"', models)
+        self.assertIn("20 turns · 2 models", models)
+        self.assertNotIn("synthetic", page)
+        self.assertIn("1,000 turns", page)   # the total leaves "<synthetic>" out
+        self.assertIn("Your 5 most-used models in Jun 2026", page)
+
+    def test_five_or_fewer_models_have_no_others_row(self):
+        page = render(_context(_stats()))
+        self.assertNotIn('data-model="Others"', page)
+
 if __name__ == "__main__":
     unittest.main()

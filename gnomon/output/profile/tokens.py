@@ -141,11 +141,12 @@ a:hover { color: var(--accent-hover); }
   font: 500 11px/1.2 var(--font-figure); letter-spacing: .1em; text-transform: uppercase;
 }
 .gn-footer-brand .gn-mark { width: 14px; height: 14px; align-self: center; }
-.gn-footer-note { margin: 0; color: var(--text-tertiary); font-size: 13px; line-height: 1.5; }
-.gn-footer-note code { font-family: var(--font-mono); }
-.gn-footer-repo {
-  margin-left: auto; flex: none; font-size: 13px; border-bottom: 1px solid currentColor;
+.gn-footer-built {
+  margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 8px;
+  color: var(--text-secondary); font-size: 13px; text-decoration: none; border-bottom: 0;
 }
+.gn-footer-built:hover { color: var(--text-primary); }
+.gn-xl-mark { width: 14px; height: 15px; flex: none; }
 .gn-fig-xl, .gn-fig-md, .gn-fig-sm, [data-figure] {
   font-family: var(--font-figure);
   font-variant-numeric: tabular-nums;

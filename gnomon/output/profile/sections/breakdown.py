@@ -237,21 +237,6 @@ _PILLARS_INFO = ("Breadth: how much machinery you move. Craft: how well. Efficie
                  "return on each intervention. Savvy: judgment.")
 
 
-def _period_label(ctx):
-    period = getattr(ctx, "period", None)
-    month_key = getattr(period, "month_key", None)
-    if month_key:
-        try:
-            year, month = month_key.split("-")
-            return "{} {}".format(("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug",
-                                   "Sep", "Oct", "Nov", "Dec")[int(month) - 1], year)
-        except (ValueError, IndexError):
-            pass
-    if getattr(period, "kind", None) == "custom":
-        return "this window"
-    return "all history"
-
-
 def render(ctx) -> str:
     """Render all four AQ pillars, including axes a source cannot measure."""
     stats = getattr(ctx, "stats", None) or {}
@@ -262,10 +247,7 @@ def render(ctx) -> str:
     edges = _edge_numbers(ctx)
     rendered = "".join(_pillar_html(ctx, pillar, edges) for pillar in pillars)
     return (
-        '<div class="gn-section-head"><h2 id="aq-h">Agentic Quotient · 4 pillars, 12 axes</h2>'
+        '<div class="gn-section-head"><h2 id="aq-h">Agentic Quotient · 4 pillars</h2>'
         '{info}</div>'
-        '<p class="gn-section-hint aq-breakdown-hint">Every pillar and axis on a 0–100 scale '
-        'for {period}. Axes tagged EDGE are the source of an item in What to work on.</p>'
         '<div class="aq-pillars">{pillars}</div>'
-    ).format(info=info_button(_PILLARS_INFO), period=_text(_period_label(ctx)),
-             pillars=rendered)
+    ).format(info=info_button(_PILLARS_INFO), pillars=rendered)

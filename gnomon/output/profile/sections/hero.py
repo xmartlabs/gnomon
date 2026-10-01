@@ -250,19 +250,6 @@ def _delta_html(ctx):
                 previous=_text(delta.get("prev_label", "previous month")))
 
 
-def _month_label(period):
-    """Return "Sep 2026" for a calendar month, else the period's own label."""
-    month_key = getattr(period, "month_key", None)
-    if month_key:
-        try:
-            year, month = month_key.split("-")
-            return "{} {}".format(_MONTHS[int(month) - 1], year)
-        except (ValueError, IndexError):
-            pass
-    return getattr(period, "label", "") or "All history"
-
-
-_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 _X_ICON = (
     '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true">'
@@ -367,7 +354,7 @@ def render(ctx) -> str:
         '</div>'
         '<div class="hero-scores">'
         '<div class="hero-aq-block">'
-        '<span class="gn-label">AQ · {month}</span>'
+        '<span class="gn-label">AQ</span>'
         '<div class="hero-aq-line">'
         '<span id="hero-aq" class="gn-fig-xl">{aq}</span>'
         '<span class="hero-aq-scale">/100</span>'
@@ -383,7 +370,7 @@ def render(ctx) -> str:
         '</div>{share}{limited}{script}'
     ).format(
         kind=_text(period.kind), days=_text(days), period=_text(period.label),
-        tier=_text(tier), month=_text(_month_label(period)),
+        tier=_text(tier),
         aq=_text(_number(aq.get("aq_0_100"))), delta=_delta_html(ctx),
         sentence=sentence_html, limited=limited, gstack=gstack,
         info=info_button(_GSTACK_INFO), share=share, script=_share_script(caption))
