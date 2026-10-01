@@ -55,7 +55,7 @@ class TestProfileBreakdown(unittest.TestCase):
         self.assertEqual(page.count('class="aq-pillar"'), 4)
         self.assertEqual(page.count('class="aq-axis"'), 12)
         self.assertEqual(page.count('class="gn-bar"'), 12)
-        self.assertIn("Axes shown on a 0–100 scale.", page)
+        self.assertIn("on a 0–100 scale", page)
         self.assertIn("81", page)
         self.assertNotIn("30 weight", page)
         self.assertNotIn("35 weight", page)

@@ -2,11 +2,8 @@
 
 import html
 
-from gnomon.scoring.gstack import (
-    AQ_AXIS_NOTES,
-    AQ_PILLAR_NOTES,
-    savvy_cursor_model_mix_note,
-)
+from gnomon.output.profile.ui import info_button
+from gnomon.scoring.gstack import savvy_cursor_model_mix_note
 
 
 # Keep this order in step with the axis lists assembled by compute_aq().  A dropped axis is
@@ -21,42 +18,23 @@ _CANONICAL_AXES = {
 
 
 CSS = """
-#aq-breakdown {
-  margin-top: 64px;
-}
-.aq-breakdown-heading {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 32px;
-}
-.aq-breakdown-heading h2 {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: 24px;
-  line-height: 1.2;
-}
 .aq-breakdown-hint {
-  margin: 0;
-  color: var(--text-tertiary);
-  font-size: 13px;
+  margin-bottom: 28px;
 }
 .aq-pillars {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 48px 40px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 40px;
 }
 .aq-pillar {
   min-width: 0;
-  padding-top: 16px;
-  border-top: 1px solid var(--rule-strong);
+  padding-top: 12px;
+  border-top: 2px solid var(--rule-strong);
 }
 .aq-pillar-header {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 8px;
   min-width: 0;
   margin-bottom: 20px;
 }
@@ -64,84 +42,102 @@ CSS = """
   min-width: 0;
   overflow-wrap: anywhere;
   color: var(--text-primary);
-  font-size: 18px;
+  font-size: 19px;
   font-weight: 600;
 }
 .aq-pillar-score {
-  flex: 0 0 auto;
+  margin-left: auto;
   color: var(--text-primary);
-  font-family: var(--font-figure);
-  font-size: 20px;
-  font-variant-numeric: tabular-nums;
+  font: 500 28px/1.15 var(--font-figure);
+  letter-spacing: -.025em;
+}
+.aq-pillar-scale {
+  color: var(--text-tertiary);
+  font: 400 11px/1.2 var(--font-figure);
+}
+.aq-axes {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 .aq-axis {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   min-width: 0;
-  padding: 12px 0;
-  border-top: 1px solid var(--rule-subtle);
 }
 .aq-axis-header {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 8px;
   min-width: 0;
 }
 .aq-axis-name {
   min-width: 0;
   overflow-wrap: anywhere;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-size: 13px;
+  line-height: 1.3;
+}
+.aq-axis[data-measured="false"] .aq-axis-name {
+  color: var(--text-tertiary);
 }
 .aq-axis-value {
-  flex: 0 0 auto;
+  margin-left: auto;
+  flex: none;
   color: var(--text-primary);
-  font-family: var(--font-figure);
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-}
-.aq-axis[data-edge="01"],
-.aq-axis[data-edge="02"],
-.aq-axis[data-edge="03"] {
-  border-left: 3px solid var(--accent);
-  padding-left: 12px;
+  font: 500 15px/1.3 var(--font-figure);
 }
 .aq-axis-edge {
-  display: inline-block;
-  margin-left: 8px;
+  display: inline-flex;
+  height: 18px;
+  flex: none;
+  align-items: center;
+  padding: 0 5px;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
   color: var(--accent);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: .04em;
-  text-transform: uppercase;
+  font: 500 10px/1 var(--font-mono);
+  letter-spacing: .08em;
 }
 .gn-bar {
+  position: relative;
   height: 6px;
-  margin-top: 8px;
-  overflow: hidden;
   background: var(--chart-track);
 }
 .gn-bar-fill {
-  display: block;
-  height: 100%;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
   background: var(--chart-1);
 }
 .aq-axis-unmeasured {
-  margin: 8px 0 0;
-  font-size: 13px;
+  color: var(--text-tertiary);
+  font: 400 11px/1.3 var(--font-figure);
+  letter-spacing: .04em;
+}
+.aq-axis-unmeasured::before {
+  content: "\\2014\\00a0";
 }
 .aq-pillar-note {
   margin: 16px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule-subtle);
   color: var(--text-tertiary);
   font-size: 13px;
+  line-height: 1.5;
+  text-wrap: pretty;
 }
 .aq-pillar-note strong {
   color: var(--text-secondary);
-  font-weight: 600;
+  font-weight: 500;
 }
-@media (max-width: 760px) {
+@media (max-width: 960px) {
+  .aq-pillars { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px; }
+}
+@media (max-width: 560px) {
   .aq-pillars { grid-template-columns: 1fr; gap: 32px; }
-  .aq-breakdown-heading { display: block; }
-  .aq-breakdown-hint { margin-top: 8px; }
 }
 """
 
@@ -185,27 +181,33 @@ def _edge_numbers(ctx):
 def _axis_html(name, axis, measured, edge_number):
     attrs = ' class="aq-axis" data-axis="{name}" data-measured="{measured}" data-edge="{edge}"'.format(
         name=_text(name), measured="true" if measured else "false", edge=_text(edge_number))
-    title = _text(AQ_AXIS_NOTES.get(name, ""))
-    label = '<span class="aq-axis-name" title="{title}">{name}</span>'.format(
-        title=title, name=_text(name))
+    label = '<span class="aq-axis-name">{name}</span>'.format(name=_text(name))
     edge = ('<span class="aq-axis-edge">EDGE {}</span>'.format(_text(edge_number))
             if edge_number else "")
     if not measured:
+        value = ""
         body = '<span class="gn-empty aq-axis-unmeasured">not measured for this source</span>'
     else:
-        value = _axis_value(axis)
+        shown = _axis_value(axis)
         try:
-            width = max(0, min(100, int(value)))
+            width = max(0, min(100, int(shown)))
         except ValueError:
             width = 0
+        value = '<span class="aq-axis-value">{}</span>'.format(_text(shown))
         body = (
-            '<span class="aq-axis-value">{value}</span>'
-            '<div class="gn-bar" role="progressbar" aria-valuemin="0" '
+            '<div class="gn-bar" role="progressbar" aria-label="{name}" aria-valuemin="0" '
             'aria-valuemax="100" aria-valuenow="{value}">'
             '<span class="gn-bar-fill" style="width:{width}%"></span></div>'
-        ).format(value=_text(value), width=width)
-    return '<div{attrs}><div class="aq-axis-header">{label}{edge}</div>{body}</div>'.format(
-        attrs=attrs, label=label, edge=edge, body=body)
+        ).format(name=_text(name), value=_text(shown), width=width)
+    return '<div{attrs}><div class="aq-axis-header">{label}{edge}{value}</div>{body}</div>'.format(
+        attrs=attrs, label=label, edge=edge, value=value, body=body)
+
+
+def _pillar_score(value):
+    try:
+        return str(int(round(float(value))))
+    except (TypeError, ValueError):
+        return ""
 
 
 def _pillar_html(ctx, pillar, edges):
@@ -220,14 +222,34 @@ def _pillar_html(ctx, pillar, edges):
             note = '<p class="aq-pillar-note"><strong>{}</strong> {}</p>'.format(
                 _text(cursor_note[0]), _text(cursor_note[1]))
     return (
-        '<div class="aq-pillar" data-pillar="{name}" title="{title}">'
+        '<div class="aq-pillar" data-pillar="{name}">'
         '<div class="aq-pillar-header">'
         '<span class="aq-pillar-name">{name}</span>'
-        '<span class="aq-pillar-score">{score} / 100</span>'
-        '</div>{axes}{note}</div>'
+        '<span class="aq-pillar-score">{score}</span>'
+        '<span class="aq-pillar-scale">/100</span>'
+        '</div><div class="aq-axes">{axes}</div>{note}</div>'
     ).format(
-        name=_text(name), title=_text(AQ_PILLAR_NOTES.get(name, "")),
-        score=_text(pillar.get("score", "")), axes=axes, note=note)
+        name=_text(name), score=_text(_pillar_score(pillar.get("score"))), axes=axes,
+        note=note)
+
+
+_PILLARS_INFO = ("Breadth: how much machinery you move. Craft: how well. Efficiency: the "
+                 "return on each intervention. Savvy: judgment.")
+
+
+def _period_label(ctx):
+    period = getattr(ctx, "period", None)
+    month_key = getattr(period, "month_key", None)
+    if month_key:
+        try:
+            year, month = month_key.split("-")
+            return "{} {}".format(("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug",
+                                   "Sep", "Oct", "Nov", "Dec")[int(month) - 1], year)
+        except (ValueError, IndexError):
+            pass
+    if getattr(period, "kind", None) == "custom":
+        return "this window"
+    return "all history"
 
 
 def render(ctx) -> str:
@@ -240,8 +262,10 @@ def render(ctx) -> str:
     edges = _edge_numbers(ctx)
     rendered = "".join(_pillar_html(ctx, pillar, edges) for pillar in pillars)
     return (
-        '<div class="aq-breakdown-heading">'
-        '<h2>AQ breakdown</h2>'
-        '<p class="aq-breakdown-hint">Axes shown on a 0–100 scale.</p>'
-        '</div><div class="aq-pillars">{}</div>'
-    ).format(rendered)
+        '<div class="gn-section-head"><h2 id="aq-h">Agentic Quotient · 4 pillars, 12 axes</h2>'
+        '{info}</div>'
+        '<p class="gn-section-hint aq-breakdown-hint">Every pillar and axis on a 0–100 scale '
+        'for {period}. Axes tagged EDGE are the source of an item in What to work on.</p>'
+        '<div class="aq-pillars">{pillars}</div>'
+    ).format(info=info_button(_PILLARS_INFO), period=_text(_period_label(ctx)),
+             pillars=rendered)
