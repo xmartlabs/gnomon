@@ -3,18 +3,17 @@
 import html
 import json
 
-from gnomon.output.profile import brand, fonts, poster, theme, tokens
+from gnomon.output.profile import brand, fonts, poster, theme, tokens, ui
 from gnomon.output.profile.sections import activity, breakdown, diagnosis, hero, portrait, quotes, readings, trend
 
 
 def _section_css():
     return "".join(module.CSS for module in (
-        hero, trend, diagnosis, breakdown, activity, readings, portrait, quotes))
+        ui, hero, trend, diagnosis, breakdown, activity, readings, portrait, quotes))
 
 
 def render_page(ctx) -> str:
     """Render the shell in the fixed v2 section order."""
-    caption = html.escape(ctx.caption)
     card = json.dumps(poster.poster_data(ctx), separators=(",", ":"))
     return """<!doctype html>
 <html lang="en">
@@ -28,9 +27,9 @@ def render_page(ctx) -> str:
 <body>
   <div class="gn-shell">
     <header class="gn-masthead">
-      <a class="gn-brand" href="{repo_url}">{mark}<span>gnomon</span></a>
+      <a class="gn-brand" href="{repo_url}" aria-label="gnomon on GitHub">{mark}<span>gnomon</span></a>
       <span class="gn-masthead-label">Local profile</span>
-      <span class="gn-masthead-note">Generated on this machine · nothing uploaded</span>
+      <span class="gn-masthead-note">{lock}Generated on this machine · nothing uploaded</span>
       {toggle}
     </header>
     <main class="gn-main">
@@ -42,8 +41,9 @@ def render_page(ctx) -> str:
       <section id="portrait" class="gn-section">{portrait_html}{quotes_html}</section>
     </main>
     <footer class="gn-footer">
-      <p>Generated on this machine by gnomon · stats.json · <a href="{repo_url}">{repo_label}</a></p>
-      <p class="gn-caption">{caption}</p>
+      <span class="gn-footer-brand">{mark}Generated on this machine by gnomon</span>
+      <p class="gn-footer-note">Counts are measured from your transcripts; tier and scores are a rubric. Raw metrics in <code>stats.json</code>.</p>
+      <a class="gn-footer-repo" href="{repo_url}">{repo_label}</a>
     </footer>
   </div>
   <script>
@@ -62,6 +62,7 @@ def render_page(ctx) -> str:
         repo_url=brand.REPO_URL,
         repo_label=html.escape(brand.REPO_LABEL),
         mark=brand.MARK_SVG,
+        lock=brand.LOCK_SVG,
         toggle=theme.render_toggle(),
         hero_html=hero.render(ctx),
         trend_html=trend.render(ctx),
@@ -71,7 +72,6 @@ def render_page(ctx) -> str:
         readings_html=readings.render(ctx),
         portrait_html=portrait.render(ctx),
         quotes_html=quotes.render(ctx),
-        caption=caption,
         card=card,
         poster_js=poster.POSTER_JS,
     )

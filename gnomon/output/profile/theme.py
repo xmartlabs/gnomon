@@ -79,10 +79,10 @@ def render_toggle() -> str:
     fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
     aria-hidden="true" hidden>
     <circle cx="10" cy="10" r="3.6"></circle>
-    <path d="M10 1.8v1.9M10 16.3v1.9M3.8 3.8l1.35 1.35M14.85 14.85l1.35 1.35M1.8 10h1.9M16.3 10h1.9M3.8 16.2l1.35-1.35M14.85 5.15L16.2 3.8"></path>
+    <path d="M10 1.5v2M10 16.5v2M1.5 10h2M16.5 10h2M4 4l1.4 1.4M14.6 14.6L16 16M4 16l1.4-1.4M14.6 5.4L16 4"></path>
   </svg>
   <svg data-theme-icon="moon" width="17" height="17" viewBox="0 0 20 20"
-    fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"
+    fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
     aria-hidden="true">
     <path d="M16.3 12.4A7 7 0 0 1 7.6 3.7a7 7 0 1 0 8.7 8.7z"></path>
   </svg>
@@ -94,13 +94,19 @@ def render_toggle() -> str:
   var sun = button.querySelector('[data-theme-icon="sun"]');
   var moon = button.querySelector('[data-theme-icon="moon"]');
 
+  // SVG elements have no ``hidden`` IDL property, so set the attribute itself.
+  function show(icon, visible) {
+    if (icon.toggleAttribute) icon.toggleAttribute("hidden", !visible);
+    icon.hidden = !visible;
+  }
+
   function sync() {
     var dark = document.documentElement.dataset.theme === "dark";
     button.setAttribute("aria-label", dark
       ? "Switch to light theme"
       : "Switch to dark theme");
-    sun.hidden = !dark;
-    moon.hidden = dark;
+    show(sun, dark);
+    show(moon, !dark);
   }
 
   button.addEventListener("click", function () {
