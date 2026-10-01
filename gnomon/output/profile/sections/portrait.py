@@ -8,68 +8,96 @@ TRAITS_LABEL = "Curiosities"
 
 
 CSS = """\
+#portrait {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) auto minmax(0, 1fr);
+  align-items: start;
+  column-gap: 40px;
+}
+#portrait::after {
+  content: "";
+  grid-column: 2;
+  grid-row: 2;
+  width: 1px;
+  align-self: stretch;
+  background: var(--rule-default);
+}
 .portrait-heading {
-  margin: 64px 0 32px;
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 40px;
 }
 .portrait-heading h2 {
   margin: 0;
+  color: var(--text-primary);
   font-size: 32px;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-}
-.portrait-hint {
-  max-width: 720px;
-  margin: 8px 0 0;
-  color: var(--text-secondary);
-}
-.traits-column {
-  min-width: 0;
-}
-.traits-column h3 {
-  margin: 0;
-  font-size: 24px;
+  font-weight: 600;
   line-height: 1.15;
   letter-spacing: -0.015em;
 }
+.portrait-hint {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.5;
+}
+.traits-column {
+  grid-column: 1;
+  grid-row: 2;
+  min-width: 0;
+}
+.traits-column h3 {
+  margin: 0 0 16px;
+  color: var(--text-tertiary);
+  font: 500 11px/1.2 var(--font-figure);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
 .trait-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 40px;
   min-width: 0;
 }
 .trait {
   min-width: 0;
-  padding: 20px;
-  border: 1px solid var(--rule-default);
-  background: var(--surface-raised);
+  padding: 16px 0 24px;
+  border-top: 1px solid var(--rule-subtle);
 }
 .trait-question {
   margin: 0 0 10px;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   font: 500 11px/1.2 var(--font-figure);
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 .trait-answer {
   min-width: 0;
-  margin: 0 0 8px;
+  margin: 0;
   overflow-wrap: anywhere;
   color: var(--text-primary);
-  font-size: 20px;
-  line-height: 1.25;
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.3;
 }
 .trait-detail {
-  margin: 0;
+  margin: 6px 0 0;
   color: var(--text-secondary);
   font-size: 13px;
-  line-height: 1.45;
+  line-height: 1.5;
+  text-wrap: pretty;
 }
-@media (max-width: 900px) {
-  .trait-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.trait-detail b {
+  font-weight: inherit;
 }
-@media (max-width: 560px) {
+@media (max-width: 760px) {
+  #portrait { grid-template-columns: 1fr; }
+  #portrait::after { display: none; }
+}
+@media (max-width: 480px) {
   .trait-grid {
     grid-template-columns: 1fr;
   }

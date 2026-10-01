@@ -7,72 +7,89 @@ from gnomon.scoring.gstack import _js
 
 CSS = """\
 .quotes-column {
-  margin-top: 40px;
+  grid-column: 3;
+  grid-row: 2;
   min-width: 0;
 }
 .quotes-column h3 {
-  margin: 0;
-  font-size: 24px;
-  line-height: 1.15;
-  letter-spacing: -0.015em;
+  margin: 0 0 6px;
+  color: var(--text-tertiary);
+  font: 500 11px/1.2 var(--font-figure);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 .quotes-hint {
-  max-width: 720px;
-  margin: 8px 0 20px;
-  color: var(--text-secondary);
-}
-.quote-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-  min-width: 0;
+  margin: 0 0 16px;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  line-height: 1.5;
+  text-wrap: pretty;
 }
 .quote-card {
   min-width: 0;
-  padding: 20px;
-  border: 1px solid var(--rule-default);
-  background: var(--surface-raised);
+  padding: 16px 0 20px;
+  border-top: 1px solid var(--rule-subtle);
+}
+.quote-head {
+  display: flex;
+  min-height: 24px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 .quote-label {
-  margin: 0 0 12px;
-  color: var(--text-secondary);
+  margin: 0;
+  color: var(--text-tertiary);
   font: 500 11px/1.2 var(--font-figure);
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 .quote-text {
   min-width: 0;
-  margin: 0 0 12px;
+  margin: 0;
   overflow-wrap: anywhere;
   color: var(--text-primary);
-  font-size: 18px;
-  line-height: 1.4;
+  font-size: 19px;
+  font-style: italic;
+  font-weight: 600;
+  line-height: 1.35;
+  text-wrap: pretty;
 }
 .quote-detail {
-  margin: 0;
+  margin: 6px 0 0;
   color: var(--text-secondary);
   font-size: 13px;
+  line-height: 1.5;
+  text-wrap: pretty;
 }
 .quote-card .gn-empty {
   margin: 0;
-  font-size: 14px;
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+.quote-card .gn-empty::before {
+  content: "\\2014\\00a0";
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
 }
 .reroll {
-  margin-left: 8px;
-  padding: 2px 7px;
+  height: 24px;
+  margin-left: auto;
+  padding: 0 8px;
   border: 1px solid var(--rule-default);
-  background: var(--surface-raised);
-  color: var(--text-accent);
-  font: 500 11px/1.2 var(--font-ui);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--accent);
+  font: 400 11px/1 var(--font-figure);
   cursor: pointer;
 }
 .reroll:hover {
   background: var(--surface-hover);
 }
 @media (max-width: 760px) {
-  .quote-grid {
-    grid-template-columns: 1fr;
-  }
+  .quotes-column { grid-column: 1; grid-row: auto; margin-top: 32px; }
 }
 """
 
@@ -110,8 +127,9 @@ def _quote_card(label, target, quote, pool, empty_text, detail=None, quote_js=No
 
     if quote:
         reroll = (
-            ' <button type="button" class="reroll" data-target="{}">'
-            '&#8635; another</button>'.format(target)
+            '<button type="button" class="reroll" data-target="{0}" '
+            'aria-label="Show another {1} quote">&#8635; another</button>'.format(
+                target, {"crashout": "crash-out", "cuff": "off-the-cuff"}.get(target, target))
             if len(pool) > 1 else ""
         )
         body = (
@@ -125,9 +143,20 @@ def _quote_card(label, target, quote, pool, empty_text, detail=None, quote_js=No
 
     return (
         '<div class="quote-card" data-quote="{target}">'
-        '<p class="quote-label">{label}{reroll}</p>{body}</div>'.format(
+        '<div class="quote-head"><p class="quote-label">{label}</p>{reroll}</div>'
+        '{body}</div>'.format(
             target=target, label=label, reroll=reroll, body=body)
     )
+
+
+def _source_phrase(ctx):
+    period = getattr(ctx, "period", None)
+    kind = getattr(period, "kind", None)
+    if kind == "current_month" or getattr(period, "month_key", None):
+        return "this month's prompts"
+    if kind == "custom":
+        return "this window's prompts"
+    return "your prompts"
 
 
 def _goto_data(value):
@@ -197,8 +226,8 @@ def render(ctx) -> str:
     return (
         '<div class="quotes-column">'
         '<h3>In your own words</h3>'
-        '<p class="quotes-hint">Pulled verbatim from your real prompts '
-        '(filtered for secrets &amp; PII). Hit &#8635; another to reroll.</p>'
-        '<div class="quote-grid">{}</div>'
-        '</div>{}'.format("".join(cards), script)
+        '<p class="quotes-hint">Verbatim from {}, filtered for secrets and PII. '
+        'The off-the-cuff line goes on the shared image — reroll until you like it.</p>'
+        '{}'
+        '</div>{}'.format(_source_phrase(ctx), "".join(cards), script)
     )

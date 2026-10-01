@@ -85,7 +85,7 @@ class TestProfilePortrait(unittest.TestCase):
     def test_css_uses_tokens_instead_of_hex_colors(self):
         self.assertNotRegex(portrait.CSS, r"#[0-9a-fA-F]{3,8}")
         self.assertIn("var(--text-secondary)", portrait.CSS)
-        self.assertIn("var(--surface-raised)", portrait.CSS)
+        self.assertIn("var(--rule-subtle)", portrait.CSS)
 
 
 if __name__ == "__main__":
