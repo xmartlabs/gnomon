@@ -54,7 +54,8 @@ class TestProfileHero(unittest.TestCase):
 
         self.assertIn(
             'id="hero-delta" class="hero-delta" data-delta="+4" '
-            'data-direction="up">▲ +4 vs May</span>', page)
+            'data-direction="up"><span aria-hidden="true">▲</span><span>+4</span>'
+            '<span class="hero-delta-prev">vs May</span></span>', page)
 
     def test_missing_previous_month_is_first_month(self):
         page = render(_context(trend={"points": [
@@ -80,9 +81,9 @@ class TestProfileHero(unittest.TestCase):
         page = render(_context(stats=_stats(tool_calls=0)))
 
         self.assertIn('id="hero-limited"', page)
-        self.assertIn("Limited data.", page)
-        self.assertNotIn("var(--negative)", page.split("<p id=\"hero-limited\"", 1)[1].split(
-            "</p>", 1)[0])
+        self.assertIn("Limited data", page)
+        self.assertNotIn("var(--negative)", page.split('<div id="hero-limited"', 1)[1].split(
+            "</p></div>", 1)[0])
 
 
 if __name__ == "__main__":

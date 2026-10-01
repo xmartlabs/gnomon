@@ -4,170 +4,191 @@ import html
 import json
 from urllib.parse import quote
 
+from gnomon.output.profile.ui import info_button
 from gnomon.scoring.gstack import _evidence
 from gnomon.scoring.trend import aq_delta
 
 
 CSS = """
-#hero {
-  padding: 64px 0 48px;
-  border-bottom: 1px solid var(--rule-default);
-}
 .hero-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(240px, .8fr);
-  gap: 48px;
+  display: flex;
+  align-items: flex-end;
+  gap: 40px;
   min-width: 0;
 }
-.hero-primary,
-.hero-secondary,
-.hero-gstack,
-.hero-gstack-score {
+.hero-primary {
+  flex: 1;
   min-width: 0;
+  max-width: 560px;
 }
 .hero-period {
-  margin: 0 0 20px;
-  color: var(--text-secondary);
-  font-size: 13px;
+  margin: 0 0 16px;
+  color: var(--text-tertiary);
+  font: 500 12px/1.2 var(--font-figure);
+  letter-spacing: .1em;
+  text-transform: uppercase;
 }
 .hero-tier {
-  max-width: 12em;
   margin: 0;
   color: var(--text-primary);
-  font-size: clamp(36px, 5vw, 56px);
-  line-height: 1.02;
-  letter-spacing: -.025em;
-}
-.hero-score-label {
-  margin: 36px 0 8px;
-  color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 56px;
   font-weight: 600;
-  letter-spacing: .1em;
-  text-transform: uppercase;
+  line-height: 1.05;
+  letter-spacing: -.02em;
 }
-.hero-aq-line {
+.hero-sentence {
+  margin: 20px 0 0;
+  color: var(--text-secondary);
+  font-size: 19px;
+  font-style: italic;
+  font-weight: 600;
+  line-height: 1.35;
+  text-wrap: pretty;
+}
+.hero-scores {
   display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 20px;
+  align-items: flex-end;
+  gap: 32px;
+  margin-left: auto;
   min-width: 0;
 }
-.hero-aq {
-  color: var(--text-primary);
-}
-.hero-delta {
-  color: var(--text-secondary);
-  font: 500 14px/1.3 var(--font-figure);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.hero-delta[data-direction="up"] { color: var(--positive); }
-.hero-delta[data-direction="down"] { color: var(--negative); }
-.hero-delta[data-direction="flat"] { color: var(--text-secondary); }
-.hero-sentence {
-  max-width: 42em;
-  margin: 24px 0 0;
-  color: var(--text-secondary);
-  font-size: 17px;
-  line-height: 1.5;
-}
-.hero-secondary {
-  align-self: end;
-}
-.hero-gstack {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--rule-strong);
-}
-.hero-gstack-heading {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 0 20px;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-}
-.hero-gstack-info {
-  display: inline-grid;
-  width: 16px;
-  height: 16px;
-  place-items: center;
-  border: 1px solid var(--rule-default);
-  border-radius: 50%;
-  color: var(--text-tertiary);
-  font: 500 11px/1 var(--font-figure);
-  letter-spacing: 0;
-  cursor: help;
-}
-.hero-gstack-score {
+.hero-aq-block {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
-.hero-gstack-score .gn-fig-sm {
+.hero-aq-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.hero-aq { color: var(--text-primary); }
+.hero-aq-scale,
+.hero-gstack-scale {
+  color: var(--text-secondary);
+  font: 400 13px/1.2 var(--font-figure);
+}
+.hero-gstack-scale {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  letter-spacing: 0;
+}
+.hero-delta,
+#hero-delta.gn-empty {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  color: var(--text-secondary);
+  font: 500 16px/1.3 var(--font-figure);
+  white-space: nowrap;
+}
+#hero-delta.gn-empty { color: var(--text-tertiary); }
+#hero-delta.gn-empty::before { content: "\\2014"; }
+.hero-delta[data-direction="up"] { color: var(--positive); }
+.hero-delta[data-direction="down"] { color: var(--negative); }
+.hero-delta[data-direction="flat"] { color: var(--text-secondary); }
+.hero-delta-prev {
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+.hero-gstack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.hero-gstack-heading {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.hero-gstack-scores {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+}
+.hero-gstack-score {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  column-gap: 2px;
+  row-gap: 4px;
+  min-width: 0;
   color: var(--text-primary);
 }
 .hero-gstack-label {
+  grid-column: 1 / -1;
   color: var(--text-secondary);
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-.hero-limited {
-  margin: 24px 0 0;
-  color: var(--text-tertiary);
-  font-size: 13px;
-}
-.hero-limited strong {
-  color: var(--text-secondary);
-  font-weight: 600;
+  font: 400 13px/1.5 var(--font-ui);
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 .hero-share {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 40px;
-  padding-top: 20px;
-  border-top: 1px solid var(--rule-subtle);
+  gap: 8px;
+  margin-top: 32px;
 }
-.hero-share-label {
-  margin-right: 4px;
-  color: var(--text-tertiary);
-  font-size: 13px;
-}
+.hero-share-label { margin-right: 8px; }
 .hero-share a,
 .hero-share button {
   display: inline-flex;
-  min-height: 34px;
+  height: 32px;
   align-items: center;
-  justify-content: center;
-  padding: 7px 12px;
-  border: 1px solid var(--rule-default);
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--rule-strong);
   border-radius: 2px;
-  background: var(--surface-page);
+  background: var(--surface-raised);
   color: var(--text-primary);
-  font: 500 13px/1.2 var(--font-ui);
+  font: 500 13px/1 var(--font-ui);
   cursor: pointer;
 }
 .hero-share a:hover,
 .hero-share button:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-  text-decoration: none;
+  background: var(--surface-hover);
+  color: var(--text-primary);
 }
-@media (max-width: 760px) {
-  .hero-grid { grid-template-columns: 1fr; gap: 40px; }
-  .hero-secondary { align-self: auto; }
+.hero-limited {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 24px;
+  margin-top: 40px;
+  padding: 16px 0;
+  border-top: 1px solid var(--rule-default);
+  border-bottom: 1px solid var(--rule-default);
 }
-@media (max-width: 420px) {
-  .hero-gstack { grid-template-columns: 1fr; gap: 20px; }
+.hero-limited-badge {
+  display: inline-flex;
+  height: 22px;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  padding: 0 8px;
+  border: 1px solid var(--warning);
+  border-radius: 2px;
+  color: var(--warning);
+  font: 500 12px/1 var(--font-figure);
+  white-space: nowrap;
+}
+.hero-limited p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+@media (max-width: 960px) {
+  .hero-grid { flex-direction: column; align-items: stretch; gap: 40px; }
+  .hero-scores { margin-left: 0; flex-wrap: wrap; }
+}
+@media (max-width: 560px) {
+  .hero-tier { font-size: 40px; }
+  .hero-scores { flex-direction: column; align-items: flex-start; }
+  .hero-scores > .gn-vrule { display: none; }
+  .hero-limited { grid-template-columns: 1fr; gap: 12px; }
 }
 """
 
@@ -223,9 +244,35 @@ def _delta_html(ctx):
     else:
         direction, glyph, signed = "flat", "=", "0"
     return ('<span id="hero-delta" class="hero-delta" data-delta="{value}" '
-            'data-direction="{direction}">{glyph} {signed} vs {previous}</span>').format(
+            'data-direction="{direction}"><span aria-hidden="true">{glyph}</span>'
+            '<span>{signed}</span><span class="hero-delta-prev">vs {previous}</span></span>').format(
                 value=_text(signed), direction=direction, glyph=glyph, signed=_text(signed),
                 previous=_text(delta.get("prev_label", "previous month")))
+
+
+def _month_label(period):
+    """Return "Sep 2026" for a calendar month, else the period's own label."""
+    month_key = getattr(period, "month_key", None)
+    if month_key:
+        try:
+            year, month = month_key.split("-")
+            return "{} {}".format(_MONTHS[int(month) - 1], year)
+        except (ValueError, IndexError):
+            pass
+    return getattr(period, "label", "") or "All history"
+
+
+_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+_X_ICON = (
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true">'
+    '<path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73'
+    '-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 '
+    '19.77Z"></path></svg>'
+)
+
+_GSTACK_INFO = ("gstack scores how you build, 0 to 10. It is separate from the AQ, "
+                "which scores how you operate agents.")
 
 
 def _share_script(caption):
@@ -277,13 +324,21 @@ def render(ctx) -> str:
     caption = getattr(ctx, "caption", "") or ""
     limited = ""
     if _evidence_level(stats) < 0.5:
-        limited = ('<p id="hero-limited" class="hero-limited"><strong>Limited data.</strong> '
-                   'The read is directional until there is enough activity to judge habits.</p>')
+        volume = stats.get("volume") or {}
+        limited = (
+            '<div id="hero-limited" class="hero-limited" role="note">'
+            '<span class="hero-limited-badge"><span aria-hidden="true">!</span>Limited data</span>'
+            '<p>Just {sessions:,} sessions and {calls:,} tool calls here — not enough to read '
+            'your habits with confidence, so these scores lean toward the middle. '
+            'Run more and check back.</p></div>'
+        ).format(sessions=int(volume.get("total_sessions") or 0),
+                 calls=int(volume.get("tool_calls_total") or 0))
 
     dimensions = ("Execution", "Planning", "Engineering")
     gstack = "".join(
         '<span class="gn-fig-sm hero-gstack-score" data-dimension="{name}" '
         'aria-label="{name} score">{score}'
+        '<span class="hero-gstack-scale">/10</span>'
         '<span class="hero-gstack-label">{name}</span>'
         '</span>'.format(name=_text(name), score=_text(_score(ctx.scores, name)))
         for name in dimensions
@@ -291,36 +346,44 @@ def render(ctx) -> str:
     caption_attr = _text(caption)
     share = (
         '<div class="hero-share" data-caption="{caption}">'
-        '<span class="hero-share-label">Share</span>'
+        '<span class="gn-label hero-share-label">Share</span>'
         '<a id="share-x" href="https://x.com/intent/tweet?text={encoded}" '
-        'target="_blank" rel="noopener">Post on X</a>'
+        'target="_blank" rel="noopener">{x_icon}Post on X</a>'
         '<button id="share-copy" type="button">Copy caption</button>'
         '<button id="share-img" type="button">Download image</button>'
         '</div>'
-    ).format(caption=caption_attr, encoded=quote(caption, safe=""))
+    ).format(caption=caption_attr, encoded=quote(caption, safe=""), x_icon=_X_ICON)
+    sentence = getattr(ctx, "quote", "") or ""
+    sentence_html = (
+        '<p id="hero-sentence" class="hero-sentence">\u201c{}\u201d</p>'.format(_text(sentence))
+        if sentence else '<p id="hero-sentence" class="hero-sentence" hidden></p>')
     return (
         '<div class="hero-grid">'
         '<div class="hero-primary">'
         '<p id="hero-period" class="hero-period" data-period-kind="{kind}" '
         'data-days-elapsed="{days}">{period}</p>'
         '<h1 id="hero-tier" class="hero-tier">You\'re {tier}.</h1>'
-        '<p class="hero-score-label">Agentic Quotient</p>'
+        '{sentence}'
+        '</div>'
+        '<div class="hero-scores">'
+        '<div class="hero-aq-block">'
+        '<span class="gn-label">AQ · {month}</span>'
         '<div class="hero-aq-line">'
-        '<span id="hero-aq" class="gn-fig-xl">{aq}</span>{delta}'
+        '<span id="hero-aq" class="gn-fig-xl">{aq}</span>'
+        '<span class="hero-aq-scale">/100</span>'
+        '</div>{delta}'
         '</div>'
-        '<p id="hero-sentence" class="hero-sentence">{sentence}</p>'
-        '{limited}'
-        '</div>'
-        '<div class="hero-secondary">'
+        '<div class="gn-vrule" aria-hidden="true"></div>'
         '<div id="hero-gstack" class="hero-gstack">'
-        '<p class="hero-gstack-heading">gstack <span class="hero-gstack-info" '
-        'title="A 0–10 read on how you build, separate from AQ." aria-label="About gstack scores">i</span></p>'
-        '{gstack}'
+        '<div class="hero-gstack-heading"><span class="gn-label">gstack · how you build</span>'
+        '{info}</div>'
+        '<div class="hero-gstack-scores">{gstack}</div>'
         '</div>'
         '</div>'
-        '</div>{share}{script}'
+        '</div>{share}{limited}{script}'
     ).format(
         kind=_text(period.kind), days=_text(days), period=_text(period.label),
-        tier=_text(tier), aq=_text(_number(aq.get("aq_0_100"))), delta=_delta_html(ctx),
-        sentence=_text(getattr(ctx, "quote", "") or ""), limited=limited, gstack=gstack,
-        share=share, script=_share_script(caption))
+        tier=_text(tier), month=_text(_month_label(period)),
+        aq=_text(_number(aq.get("aq_0_100"))), delta=_delta_html(ctx),
+        sentence=sentence_html, limited=limited, gstack=gstack,
+        info=info_button(_GSTACK_INFO), share=share, script=_share_script(caption))

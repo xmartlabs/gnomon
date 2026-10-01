@@ -3,62 +3,40 @@
 import html
 
 
-_CHART_HEIGHT = 120
-_TREND_NOTE = "Monthly AQ, calculated from the activity in each month."
+_CHART_HEIGHT = 110
+_MONTH_DAYS_NOTE = ("Each column is that month's AQ, scored on that month's sessions only.")
 
 
 CSS = """
-#trend {
-  margin-top: 64px;
+.trend-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: 40px;
+  min-width: 0;
 }
 .trend-heading {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 24px;
-  min-width: 0;
-  margin-bottom: 8px;
-}
-.trend-heading h2 {
-  min-width: 0;
-  margin: 0;
-  color: var(--text-primary);
-  font-size: 24px;
-  line-height: 1.2;
-}
-.trend-note {
-  min-width: 0;
-  margin: 0;
-  color: var(--text-tertiary);
-  font-size: 13px;
-  text-align: right;
+  margin-bottom: 20px;
 }
 .trend-chart {
   display: flex;
   align-items: flex-end;
-  gap: var(--space-5);
+  gap: 16px;
   min-width: 0;
   height: 176px;
-  padding: 20px 0 0;
-  border-bottom: 1px solid var(--rule-strong);
 }
 .trend-col {
   display: flex;
   flex: 1 1 0;
+  max-width: 88px;
   min-width: 0;
-  height: 100%;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-3);
+  gap: 6px;
 }
 .trend-value {
-  min-width: 0;
   color: var(--text-secondary);
-  font-family: var(--font-figure);
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.2;
+  font: 500 13px/1.3 var(--font-figure);
   white-space: nowrap;
 }
 .trend-bar {
@@ -72,28 +50,33 @@ CSS = """
 .trend-col[data-in-progress="true"] .trend-bar {
   background: var(--chart-1);
 }
-.trend-label,
-.trend-progress {
-  min-width: 0;
-  overflow-wrap: anywhere;
+.trend-label {
   color: var(--text-tertiary);
-  font-family: var(--font-figure);
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  line-height: 1.2;
-  text-align: center;
+  font: 400 11px/1.3 var(--font-figure);
+  letter-spacing: .1em;
   text-transform: uppercase;
 }
 .trend-progress {
-  min-height: 13px;
-  color: var(--text-primary);
-  font-family: var(--font-ui);
-  font-size: 12px;
-  letter-spacing: 0;
-  text-transform: none;
+  height: 14px;
+  color: var(--text-secondary);
+  font: 400 11px/14px var(--font-figure);
+  white-space: nowrap;
+}
+.trend-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 20px;
+}
+.trend-note {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.5;
+  text-wrap: pretty;
 }
 .trend-approx-note {
-  margin: 12px 0 0;
+  margin: 16px 0 0;
   padding-top: 8px;
   border-top: 1px solid var(--rule-default);
   color: var(--text-tertiary);
@@ -102,10 +85,11 @@ CSS = """
 .trend-approx-mark {
   font-family: var(--font-figure);
 }
-@media (max-width: 680px) {
-  .trend-heading { display: block; }
-  .trend-note { margin-top: 8px; text-align: left; }
-  .trend-chart { gap: var(--space-2); }
+@media (max-width: 760px) {
+  .trend-grid { grid-template-columns: 1fr; gap: 24px; }
+  .trend-grid > .gn-vrule { display: none; }
+  .trend-chart { gap: 8px; }
+  .trend-aside { padding-bottom: 0; }
 }
 """
 
@@ -163,8 +147,8 @@ def _column(point):
         'data-in-progress="{in_progress}" data-approximate="{approximate}">'
         '<span class="trend-value">{display_value}</span>'
         '<div class="trend-bar" style="height:{height}px" aria-hidden="true"></div>'
-        '<span class="trend-progress">{progress}</span>'
         '<span class="trend-label">{label}</span>'
+        '<span class="trend-progress">{progress}</span>'
         '</div>'
     ).format(
         month=_text(point.get("month", "")),
@@ -176,6 +160,28 @@ def _column(point):
         progress=_text(progress),
         label=_text(point.get("label", point.get("month", ""))),
     )
+
+
+def _aside(ctx, points):
+    """Return the label and note shown beside the chart."""
+    period = getattr(ctx, "period", None)
+    last = points[-1]
+    label = str(last.get("label", last.get("month", "")))
+    if last.get("in_progress"):
+        days = getattr(period, "days_elapsed", None)
+        total = getattr(period, "days_in_month", None)
+        if days and total:
+            covers = "{} covers {} of {} days".format(label, days, total)
+        else:
+            covers = "{} is still in progress".format(label)
+        if len(points) == 1:
+            note = ("{}. It's your first month on record, so there is no delta yet — the "
+                    "trend adds a column as each month closes.").format(covers)
+        else:
+            note = "{} and keeps moving until the month closes. {}".format(
+                covers, _MONTH_DAYS_NOTE)
+        return "{} · in progress".format(label), note
+    return "AQ per month", _MONTH_DAYS_NOTE
 
 
 def render(ctx) -> str:
@@ -193,18 +199,28 @@ def render(ctx) -> str:
         'Approximate values combine multiple sources.</p>'
         if approximate else ""
     )
+    aside_label, aside_note = _aside(ctx, points)
     return (
-        '<div class="trend-heading">'
+        '<div class="trend-grid">'
+        '<div class="trend-main">'
+        '<div class="gn-section-head trend-heading">'
         '<h2>AQ by month · {count} {month_word}</h2>'
-        '<p class="trend-note">{trend_note}</p>'
         '</div>'
         '<div class="trend-chart" role="img" aria-label="{aria_label}">{columns}</div>'
         '{note}'
+        '</div>'
+        '<div class="gn-vrule" aria-hidden="true"></div>'
+        '<div class="trend-aside">'
+        '<span class="gn-label">{aside_label}</span>'
+        '<p class="trend-note">{aside_note}</p>'
+        '</div>'
+        '</div>'
     ).format(
         count=count,
         month_word=month_word,
-        trend_note=_text(_TREND_NOTE),
         aria_label=_text(_aria_label(points)),
         columns="".join(_column(point) for point in points),
         note=note,
+        aside_label=_text(aside_label),
+        aside_note=_text(aside_note),
     )

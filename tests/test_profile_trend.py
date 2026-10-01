@@ -39,7 +39,7 @@ class TestProfileTrend(unittest.TestCase):
             'data-month="2026-06" data-aq="74" data-in-progress="true" '
             'data-approximate="false"', page)
         self.assertIn("in progress", page)
-        self.assertIn('style="height:89px"', page)
+        self.assertIn('style="height:81px"', page)
         self.assertIn("AQ by month: Jan AQ 58", page)
         self.assertIn("Jun AQ 74 in progress", page)
         self.assertNotIn("≈", page)
