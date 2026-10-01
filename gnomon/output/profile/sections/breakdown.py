@@ -29,7 +29,6 @@ CSS = """
 .aq-pillar {
   min-width: 0;
   padding-top: 12px;
-  border-top: 2px solid var(--rule-strong);
 }
 .aq-pillar-header {
   display: flex;

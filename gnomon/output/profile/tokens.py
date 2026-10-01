@@ -125,10 +125,9 @@ a:hover { color: var(--accent-hover); }
 .gn-theme-toggle:hover { background: var(--surface-hover); }
 .gn-main { min-width: 0; padding-top: 56px; }
 .gn-section { min-width: 0; }
-#diagnosis, #aq-breakdown, #trend, #usage, #activity {
+#diagnosis, #aq-breakdown, #trend, #usage, #activity, #portrait {
   margin-top: 48px; padding-top: 48px; border-top: 1px solid var(--rule-default);
 }
-#portrait { margin-top: 72px; padding-top: 24px; border-top: 2px solid var(--rule-strong); }
 .gn-footer {
   display: flex; align-items: baseline; gap: 24px;
   margin-top: 72px; padding-top: 20px;
