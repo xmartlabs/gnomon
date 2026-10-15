@@ -384,17 +384,21 @@ def main(argv=None, output_dir=None):
     # Antigravity IDE fallback: if no IDE SQLite DBs were discovered (older Antigravity
     # versions that only expose data via the Language Server), try the LS CORTEX export.
     # The LS path masks model identity but still captures volume/tools/timestamps.
+    # The volume gate runs here, before _admit_sources, so an in-window drop is recorded
+    # now and merged into the low-volume report below.
     _ide_dbs_found = any(s == "antigravity-ide" for s, _, _ in sources)
+    _ide_conversations = antigravity.get("conversations", 0) if antigravity else 0
+    antigravity_dropped = {}
     if (not _ide_dbs_found and not _ide_dir_override
-            and "antigravity-ide" in selected and antigravity
-            and antigravity.get("conversations", 0) > 0
-            and ide_window_overlaps(antigravity, since_dt, until_dt)
-            and (include_low_volume
-                 or antigravity.get("conversations", 0) >= LOW_VOLUME_SESSION_THRESHOLD)):
-        export_path = export_antigravity_ide(os.path.join(_out_dir, "_antigravity_ide"))
-        if export_path:
-            sources.append(("antigravity-ide", export_path, "antigravity-ide-export"))
-            print(f"  Antigravity IDE history folded in via LS ({antigravity['conversations']} conversations)")
+            and "antigravity-ide" in selected and _ide_conversations > 0
+            and ide_window_overlaps(antigravity, since_dt, until_dt)):
+        if include_low_volume or _ide_conversations >= LOW_VOLUME_SESSION_THRESHOLD:
+            export_path = export_antigravity_ide(os.path.join(_out_dir, "_antigravity_ide"))
+            if export_path:
+                sources.append(("antigravity-ide", export_path, "antigravity-ide-export"))
+                print(f"  Antigravity IDE history folded in via LS ({antigravity['conversations']} conversations)")
+        else:
+            antigravity_dropped["antigravity-ide"] = _ide_conversations
     by_src = Counter(s for s, _, _ in sources)
     print(f"Found {len(sources)} transcript files across "
           f"{', '.join(f'{k}:{v}' for k, v in by_src.items()) or 'no sources'}")
@@ -414,6 +418,7 @@ def main(argv=None, output_dir=None):
     sources, low_volume_dropped = _admit_sources(
         sources, since_dt, until_dt, cursor_twins,
         include_low_volume=include_low_volume)
+    low_volume_dropped = dict(sorted({**low_volume_dropped, **antigravity_dropped}.items()))
     if low_volume_dropped:
         detail = ", ".join(f"{src} ({n} session{'' if n == 1 else 's'})"
                            for src, n in low_volume_dropped.items())

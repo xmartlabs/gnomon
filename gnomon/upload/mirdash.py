@@ -176,6 +176,18 @@ def _format_low_volume_notice(by_label):
     return "\n".join(lines)
 
 
+def _format_low_volume_skipped(by_label):
+    """Extra terminal lines for a run that shared some months while the low-volume filter
+    emptied others; lists only the filtered months.
+
+    ``by_label`` maps month label -> low-volume result dict."""
+    return "\n".join(
+        f"  skipped {label} -- below the low-volume threshold "
+        f"(sessions: {_describe_low_volume(r)}); "
+        "re-run with --include-low-volume to include it"
+        for label, r in sorted(by_label.items()))
+
+
 def _result_report_url(value):
     if isinstance(value, dict):
         report_url = value.get("reportUrl")

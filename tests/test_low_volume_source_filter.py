@@ -317,6 +317,42 @@ class TestAntigravityLowVolumeGate(unittest.TestCase):
         }, extra=("--include-low-volume",))
         export.assert_called_once()
 
+    def _run_gate_summary(self, summary):
+        root = tempfile.mkdtemp(prefix="gnomon-antigravity-gate-drop-")
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        stdout = io.StringIO()
+        with mock.patch.object(local, "discover_sources", return_value=[]), \
+                mock.patch.object(local, "antigravity_summary", return_value=summary), \
+                mock.patch.object(local, "export_antigravity_ide", return_value=None) as export, \
+                contextlib.redirect_stdout(stdout):
+            local.main(["antigravity-ide", f"--since={WINDOW_SINCE}",
+                        f"--until={WINDOW_UNTIL}", "--no-open", "--summary"],
+                       output_dir=root)
+        export.assert_not_called()
+        with open(os.path.join(root, "low_volume.json"), encoding="utf-8") as fh:
+            return json.load(fh), stdout.getvalue()
+
+    def test_low_activity_fallback_drop_is_reported(self):
+        sidecar, out = self._run_gate_summary({
+            "conversations": 3,
+            "first": "2026-06-15T12:00:00+00:00",
+            "last": "2026-06-20T12:00:00+00:00",
+        })
+        self.assertEqual(sidecar, {"threshold": 10, "dropped": {"antigravity-ide": 3}})
+        self.assertIn("low-volume: left out antigravity-ide (3 sessions)", out)
+
+    def test_fallback_without_window_activity_is_not_reported(self):
+        for summary in (
+            {"conversations": 0, "first": None, "last": None},
+            # Conversations outside the window: the overlap check rejects them.
+            {"conversations": 3, "first": "2026-03-01T12:00:00+00:00",
+             "last": "2026-03-02T12:00:00+00:00"},
+        ):
+            with self.subTest(summary=summary):
+                sidecar, out = self._run_gate_summary(summary)
+                self.assertEqual(sidecar["dropped"], {})
+                self.assertNotIn("low-volume:", out)
+
     def test_discarded_antigravity_summary_is_not_published(self):
         root = tempfile.mkdtemp(prefix="gnomon-antigravity-empty-summary-")
         self.addCleanup(shutil.rmtree, root, ignore_errors=True)
