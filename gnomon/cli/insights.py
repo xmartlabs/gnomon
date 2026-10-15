@@ -436,8 +436,9 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
     guarded_count = sum(1 for r in results.values() if _is_archived_only(r))
     failed = sum(1 for r in results.values() if r in (_UPLOAD_ERROR, _PAXEL_ERROR))
     low_volume = {windows[i][2]: r for i, r in results.items() if _is_low_volume(r)}
-    # Windows that ran but found no sessions; never-scheduled windows are absent.
-    empty = [windows[i][2] for i, r in results.items() if r is None]
+    # Windows that ran but found no sessions (never-scheduled windows are absent);
+    # --quiet keeps these routine skips silent, unlike the actionable low-volume ones.
+    empty = [] if quiet else [windows[i][2] for i, r in results.items() if r is None]
     last_report_url = None
     last_guarded_url = None
     for i in sorted(results):
@@ -619,8 +620,9 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
     guarded_count = sum(1 for r, _ in results.values() if _is_archived_only(r))
     failed = sum(1 for r, _ in results.values() if r in (_UPLOAD_ERROR, _PAXEL_ERROR))
     low_volume = {windows[i][2]: r for i, (r, _) in results.items() if _is_low_volume(r)}
-    # Windows that ran but found no sessions; never-scheduled windows are absent.
-    empty = [windows[i][2] for i, (r, _) in results.items() if r is None]
+    # Windows that ran but found no sessions (never-scheduled windows are absent);
+    # --quiet keeps these routine skips silent, unlike the actionable low-volume ones.
+    empty = [] if quiet else [windows[i][2] for i, (r, _) in results.items() if r is None]
     last_report_url = None
     last_summary = None
     for i in sorted(results):
