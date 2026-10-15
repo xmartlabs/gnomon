@@ -23,7 +23,7 @@ from gnomon.upload.mirdash import (
     month_windows, plan_upload, windows_for_anchors,
     default_producible_coverage_for,
     _is_report_url, _is_archived_only, _result_report_url, _upload_window, _upload_window_web,
-    _is_low_volume, _format_low_volume_notice, _format_low_volume_skipped,
+    _is_low_volume, _format_low_volume_notice, _format_skipped_months,
     _PAXEL_ERROR, _UPLOAD_ERROR, _format_summary, PayloadTooLarge,
     # Re-exported so tests can patch them as attributes of this module and so the
     # web fallback to console mode keeps a stable surface. months_to_upload is
@@ -436,6 +436,8 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
     guarded_count = sum(1 for r in results.values() if _is_archived_only(r))
     failed = sum(1 for r in results.values() if r in (_UPLOAD_ERROR, _PAXEL_ERROR))
     low_volume = {windows[i][2]: r for i, r in results.items() if _is_low_volume(r)}
+    # Windows that ran but found no sessions; never-scheduled windows are absent.
+    empty = [windows[i][2] for i, r in results.items() if r is None]
     last_report_url = None
     last_guarded_url = None
     for i in sorted(results):
@@ -472,17 +474,17 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
             print(f"  Existing report: {full_report}")
     elif failed:
         print(f"  error: {failed}/{len(windows)} months failed to upload -- nothing was shared")
-    elif low_volume and uploaded_count:
+    elif uploaded_count:
         # Auto mode anchors the report to the current window, so an earlier month can
-        # upload while the current one was emptied by the low-volume filter.
+        # upload while the current one was empty or emptied by the low-volume filter.
         if not quiet:
             print(f"  [ok] {uploaded_count}/{len(windows)} months uploaded")
     elif low_volume:
         print(_format_low_volume_notice(low_volume))
     else:
         print("  nothing to share (no sessions found)")
-    if low_volume and (uploaded_count or guarded_count):
-        print(_format_low_volume_skipped(low_volume))
+    if (low_volume or empty) and (uploaded_count or guarded_count):
+        print(_format_skipped_months(low_volume, empty))
 
     server.shutdown()
     # Hard-fail only when nothing made it through; partial success still
@@ -617,6 +619,8 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
     guarded_count = sum(1 for r, _ in results.values() if _is_archived_only(r))
     failed = sum(1 for r, _ in results.values() if r in (_UPLOAD_ERROR, _PAXEL_ERROR))
     low_volume = {windows[i][2]: r for i, (r, _) in results.items() if _is_low_volume(r)}
+    # Windows that ran but found no sessions; never-scheduled windows are absent.
+    empty = [windows[i][2] for i, (r, _) in results.items() if r is None]
     last_report_url = None
     last_summary = None
     for i in sorted(results):
@@ -642,8 +646,8 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
                 print(block)
         full_report = urllib.parse.urljoin(mirdash_base + "/", last_report_url)
         print(f"  Report ready: {full_report}")
-        if low_volume:
-            print(_format_low_volume_skipped(low_volume))
+        if low_volume or empty:
+            print(_format_skipped_months(low_volume, empty))
         if not no_open:
             try:
                 webbrowser.open(full_report)
@@ -657,8 +661,8 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
 
     if guarded_count:
         print(f"  guarded {guarded_count}/{len(windows)} months -- live profile unchanged")
-        if low_volume:
-            print(_format_low_volume_skipped(low_volume))
+        if low_volume or empty:
+            print(_format_skipped_months(low_volume, empty))
         return
 
     # Mirror the web loop: a real failure must not be reported as "nothing to share".
@@ -666,11 +670,15 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
         print(f"  error: {failed}/{len(windows)} months failed to upload -- nothing was shared")
         sys.exit(1)
 
-    if low_volume:
+    if uploaded_count:
         # Auto mode anchors the report to the current window, so an earlier month can
-        # upload while the current one was emptied by the low-volume filter.
-        print(_format_low_volume_skipped(low_volume) if uploaded_count
-              else _format_low_volume_notice(low_volume))
+        # upload while the current one was empty or emptied by the low-volume filter.
+        if low_volume or empty:
+            print(_format_skipped_months(low_volume, empty))
+        sys.exit(0)
+
+    if low_volume:
+        print(_format_low_volume_notice(low_volume))
         sys.exit(0)
 
     print("  nothing to share (no sessions found)")

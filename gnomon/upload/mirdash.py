@@ -176,16 +176,20 @@ def _format_low_volume_notice(by_label):
     return "\n".join(lines)
 
 
-def _format_low_volume_skipped(by_label):
-    """Extra terminal lines for a run that shared some months while the low-volume filter
-    emptied others; lists only the filtered months.
+def _format_skipped_months(low_volume, empty=()):
+    """Extra terminal lines for a run that shared some months while others were skipped,
+    either emptied by the low-volume filter or with no activity at all; lists only the
+    skipped months, in month order.
 
-    ``by_label`` maps month label -> low-volume result dict."""
-    return "\n".join(
-        f"  skipped {label} -- below the low-volume threshold "
-        f"(sessions: {_describe_low_volume(r)}); "
-        "re-run with --include-low-volume to include it"
-        for label, r in sorted(by_label.items()))
+    ``low_volume`` maps month label -> low-volume result dict; ``empty`` holds the labels
+    of months that came back with no sessions."""
+    lines = {label: f"  skipped {label} -- no activity" for label in empty}
+    lines.update({
+        label: f"  skipped {label} -- below the low-volume threshold "
+               f"(sessions: {_describe_low_volume(r)}); "
+               "re-run with --include-low-volume to include it"
+        for label, r in low_volume.items()})
+    return "\n".join(lines[label] for label in sorted(lines))
 
 
 def _result_report_url(value):
