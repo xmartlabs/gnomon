@@ -373,7 +373,11 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
       icon.className = 'icon-wrap icon-progress';
       h1.textContent = 'Nothing to upload';
       h1.style.color = 'var(--text-muted)';
-      sub.textContent = 'No activity found in the selected period.';
+      sub.textContent = data.lowVolume > 0
+        ? 'Sessions were found, but each tool had fewer than ' +
+          (data.lowVolumeThreshold || 10) + ' per month. ' +
+          'Re-run with --include-low-volume to include them.'
+        : 'No activity found in the selected period.';
     }
 
     if (!isBatch && uploaded > 0 && failedCount === 0) {

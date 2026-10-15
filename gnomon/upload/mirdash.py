@@ -10,6 +10,7 @@ import sys
 import tempfile
 import urllib.parse
 
+from gnomon.config import LOW_VOLUME_FILE
 from gnomon.scoring.aq import DEFAULT_SCORING_WINDOW_MONTHS
 from gnomon.scoring.versioning import SCORE_CONTRACT_ID
 from gnomon.coverage import COVERAGE_RANK, flag_for_counts, month_index, probe_month
@@ -135,6 +136,44 @@ def _is_report_url(value):
 
 def _is_archived_only(value):
     return isinstance(value, dict) and value.get("outcome") == "archived_only"
+
+
+def _is_low_volume(value):
+    """True when a window came back empty only because the low-volume filter dropped
+    every source that had sessions in it (a skip, not a failure)."""
+    return isinstance(value, dict) and value.get("outcome") == "low_volume"
+
+
+# Private key _run_paxel uses to hand the low-volume sidecar to the upload functions;
+# they pop it before anything can serialize the summary.
+_LOW_VOLUME_KEY = "_low_volume"
+
+
+def _take_low_volume(summary):
+    """Pop the low-volume sidecar off a paxel summary; a result dict when it explains an
+    empty window, else None."""
+    info = summary.pop(_LOW_VOLUME_KEY, None)
+    if not isinstance(info, dict) or not info.get("dropped") or not _summary_is_empty(summary):
+        return None
+    return {"outcome": "low_volume", "dropped": info["dropped"],
+            "threshold": info.get("threshold")}
+
+
+def _describe_low_volume(result):
+    """'claude 4, cursor 2' -- per-source session counts left out by the filter."""
+    return ", ".join(f"{src} {n}" for src, n in result["dropped"].items())
+
+
+def _format_low_volume_notice(by_label):
+    """Final terminal message when every month was emptied by the low-volume filter.
+
+    ``by_label`` maps month label -> low-volume result dict."""
+    threshold = next(iter(by_label.values())).get("threshold") or "the threshold"
+    lines = [f"  nothing to share -- sessions were found, but every tool had fewer than "
+             f"{threshold} sessions per month (sessions per tool):"]
+    lines += [f"    {label}: {_describe_low_volume(r)}" for label, r in sorted(by_label.items())]
+    lines.append("  re-run with --include-low-volume to include them")
+    return "\n".join(lines)
 
 
 def _result_report_url(value):
@@ -875,6 +914,12 @@ def _run_paxel(paxel_src, paxel_args, verbose, quiet=False, output_dir=None, fil
         print(f"  error: could not read summary.json: {exc}")
         return None
 
+    try:
+        with open(os.path.join(tmp, LOW_VOLUME_FILE), encoding="utf-8") as fh:
+            summary[_LOW_VOLUME_KEY] = json.load(fh)
+    except (OSError, ValueError):
+        pass  # older paxel, or nothing to report -- the window just reads as empty
+
     if resolved_output_dir:
         resolved_output_dir = _copy_artifacts(tmp, resolved_output_dir, file_prefix=file_prefix)
 
@@ -979,6 +1024,13 @@ def _upload_window(mirdash_base, token, paxel_src, paxel_args_base, since, until
         print(f"  skip {label} -- paxel error")
         return (_PAXEL_ERROR, None)
 
+    low_volume = _take_low_volume(summary)
+    if low_volume:
+        if not quiet:
+            print(f"  skip {label} -- below the low-volume threshold "
+                  f"(sessions: {_describe_low_volume(low_volume)})")
+        return (low_volume, None)
+
     if _summary_is_empty(summary):
         if not quiet:
             print(f"  skip {label} -- no activity")
@@ -1028,6 +1080,12 @@ def _upload_window_web(mirdash_base, token, paxel_src, paxel_args_base, since, u
         # not a "skip" (which the UI reserves for genuinely empty windows).
         server.push_event("error_msg", {"month": label, "label": label, "message": "paxel error"})
         return _PAXEL_ERROR
+
+    low_volume = _take_low_volume(summary)
+    if low_volume:
+        server.push_event("skipped", {"month": label, "label": label, "reason": "low volume",
+                                      "dropped": low_volume["dropped"]})
+        return low_volume
 
     if _summary_is_empty(summary):
         server.push_event("skipped", {"month": label, "label": label, "reason": "no activity"})

@@ -10,7 +10,7 @@ import time
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 
-from gnomon.config import BASE, OUT_DIR, parse_ts, line_count, strip_injections, pctile, _open_in_browser
+from gnomon.config import BASE, OUT_DIR, LOW_VOLUME_FILE, parse_ts, line_count, strip_injections, pctile, _open_in_browser
 from gnomon.sources import iter_events
 from gnomon.sources.discovery import (
     ALL_SOURCES, _DIR_FLAGS,
@@ -182,9 +182,13 @@ def _source_session_ids(sources, since_dt, until_dt, cursor_twins):
     return dict(ids_by_source)
 
 
-def _filter_low_volume_sources(sources, since_dt, until_dt, cursor_twins,
-                               include_low_volume=False):
-    """Drop sources without in-window activity or below the session threshold."""
+def _admit_sources(sources, since_dt, until_dt, cursor_twins, include_low_volume=False):
+    """Split sources into (admitted entries, low-volume drops).
+
+    The drops map each source that HAD in-window sessions but fell below the threshold
+    to its session count, so callers can tell "filtered out" apart from "nothing there".
+    Sources with no in-window activity at all are dropped without being reported.
+    """
     ids_by_source = _source_session_ids(sources, since_dt, until_dt, cursor_twins)
     if include_low_volume:
         eligible = set(ids_by_source)
@@ -193,7 +197,16 @@ def _filter_low_volume_sources(sources, since_dt, until_dt, cursor_twins,
             src for src, session_ids in ids_by_source.items()
             if len(session_ids) >= LOW_VOLUME_SESSION_THRESHOLD
         }
-    return [entry for entry in sources if entry[0] in eligible]
+    dropped = {src: len(session_ids) for src, session_ids in sorted(ids_by_source.items())
+               if src not in eligible}
+    return [entry for entry in sources if entry[0] in eligible], dropped
+
+
+def _filter_low_volume_sources(sources, since_dt, until_dt, cursor_twins,
+                               include_low_volume=False):
+    """Drop sources without in-window activity or below the session threshold."""
+    return _admit_sources(sources, since_dt, until_dt, cursor_twins,
+                          include_low_volume=include_low_volume)[0]
 
 
 def _claude_history_preflight(argv, default_window=None):
@@ -398,9 +411,15 @@ def main(argv=None, output_dir=None):
 
     # Source admission is decided before the final corpus accumulator is built so every
     # published aggregate, AQ signal, per-source slice, and payload share one source set.
-    sources = _filter_low_volume_sources(
+    sources, low_volume_dropped = _admit_sources(
         sources, since_dt, until_dt, cursor_twins,
         include_low_volume=include_low_volume)
+    if low_volume_dropped:
+        detail = ", ".join(f"{src} ({n} session{'' if n == 1 else 's'})"
+                           for src, n in low_volume_dropped.items())
+        print(f"  low-volume: left out {detail} -- fewer than "
+              f"{LOW_VOLUME_SESSION_THRESHOLD} sessions in this window; "
+              "pass --include-low-volume to include them")
     # The read-only IDE summary is shareable metadata only when the corresponding
     # source survived admission; otherwise it would leak omitted Antigravity activity
     # into an otherwise empty or CLI-only payload.
@@ -602,6 +621,11 @@ def main(argv=None, output_dir=None):
         with open(os.path.join(_out_dir, "summary.json"), "w", encoding="utf-8") as f:
             json.dump(summary, f, indent=2, default=str)
         print("  wrote summary.json (shareable subset -- measured metrics + monthly progression)")
+        # Local-only sidecar (never uploaded): lets the upload wrapper explain an empty
+        # window as "filtered by volume" instead of "no sessions found".
+        with open(os.path.join(_out_dir, LOW_VOLUME_FILE), "w", encoding="utf-8") as f:
+            json.dump({"threshold": LOW_VOLUME_SESSION_THRESHOLD,
+                       "dropped": low_volume_dropped}, f)
     # "In your own words" — pick the go-to phrase (most-repeated short prompt seen in >=2
     # sessions), most cryptic, biggest crash-out. VERBATIM, never stored in stats.json.
     goto = None

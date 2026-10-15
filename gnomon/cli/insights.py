@@ -23,6 +23,7 @@ from gnomon.upload.mirdash import (
     month_windows, plan_upload, windows_for_anchors,
     default_producible_coverage_for,
     _is_report_url, _is_archived_only, _result_report_url, _upload_window, _upload_window_web,
+    _is_low_volume, _format_low_volume_notice,
     _PAXEL_ERROR, _UPLOAD_ERROR, _format_summary, PayloadTooLarge,
     # Re-exported so tests can patch them as attributes of this module and so the
     # web fallback to console mode keeps a stable surface. months_to_upload is
@@ -434,6 +435,7 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
     uploaded_count = sum(1 for r in results.values() if _is_report_url(r))
     guarded_count = sum(1 for r in results.values() if _is_archived_only(r))
     failed = sum(1 for r in results.values() if r in (_UPLOAD_ERROR, _PAXEL_ERROR))
+    low_volume = {windows[i][2]: r for i, r in results.items() if _is_low_volume(r)}
     last_report_url = None
     last_guarded_url = None
     for i in sorted(results):
@@ -448,6 +450,8 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
         "uploaded": uploaded_count,
         "guarded": guarded_count,
         "failed": failed,
+        "lowVolume": len(low_volume),
+        "lowVolumeThreshold": next(iter(low_volume.values()))["threshold"] if low_volume else None,
         "total": len(windows),
         "noOpen": no_open,
     })
@@ -468,6 +472,8 @@ def _main_web(argv, mirdash_base, mode, token_count, paxel_forward, no_open, qui
             print(f"  Existing report: {full_report}")
     elif failed:
         print(f"  error: {failed}/{len(windows)} months failed to upload -- nothing was shared")
+    elif low_volume:
+        print(_format_low_volume_notice(low_volume))
     else:
         print("  nothing to share (no sessions found)")
 
@@ -603,6 +609,7 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
     uploaded_count = sum(1 for r, _ in results.values() if _is_report_url(r))
     guarded_count = sum(1 for r, _ in results.values() if _is_archived_only(r))
     failed = sum(1 for r, _ in results.values() if r in (_UPLOAD_ERROR, _PAXEL_ERROR))
+    low_volume = {windows[i][2]: r for i, (r, _) in results.items() if _is_low_volume(r)}
     last_report_url = None
     last_summary = None
     for i in sorted(results):
@@ -647,6 +654,10 @@ def _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open,
     if failed:
         print(f"  error: {failed}/{len(windows)} months failed to upload -- nothing was shared")
         sys.exit(1)
+
+    if low_volume:
+        print(_format_low_volume_notice(low_volume))
+        sys.exit(0)
 
     print("  nothing to share (no sessions found)")
     sys.exit(0)

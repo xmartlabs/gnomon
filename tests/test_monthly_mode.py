@@ -8,8 +8,10 @@ Covers:
   - current-month orchestration: non-empty upload, empty-fallback, total-empty exit
 """
 
+import contextlib
 import datetime
 import calendar
+import io
 import os
 import sys
 import threading
@@ -555,6 +557,23 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         self.assertEqual(mock_upload.call_count, 2)
         self.assertEqual(exit_code, 1)
 
+    def test_console_all_months_low_volume_reports_filter_not_missing_sessions(self):
+        history = TestWebContractBridgeOrchestration._bridge_history()
+        low = {"threshold": 10, "dropped": {"claude": 4, "cursor": 2}}
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            _, upload, exit_code = self._run_main(
+                ["--no-open"],
+                [dict(_make_summary(sessions=0), _low_volume=low),
+                 dict(_make_summary(sessions=0), _low_volume=low)],
+                [], ["previous-token", "current-token"], history, True,
+            )
+        self.assertEqual(upload.call_count, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("claude 4, cursor 2", stdout.getvalue())
+        self.assertIn("--include-low-volume", stdout.getvalue())
+        self.assertNotIn("no sessions found", stdout.getvalue())
+
     def test_console_bridge_enforces_cardinality_exceptions_and_current_success(self):
         history = TestWebContractBridgeOrchestration._bridge_history()
         paxel, upload, exit_code = self._run_main(
@@ -685,6 +704,17 @@ class TestWebContractBridgeOrchestration(unittest.TestCase):
         ][-1]
         self.assertEqual(done["uploaded"], 1)
         self.assertEqual(done["guarded"], 1)
+        self.assertIsNone(exit_code)
+
+    def test_web_all_months_low_volume_reports_filter_not_missing_sessions(self):
+        low = {"outcome": "low_volume", "threshold": 10, "dropped": {"claude": 4}}
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            server, _, exit_code = self._run_web(self._bridge_history(), [low, low])
+        done = [c.args[1] for c in server.push_event.call_args_list if c.args[0] == "done"][-1]
+        self.assertEqual((done["lowVolume"], done["lowVolumeThreshold"]), (2, 10))
+        self.assertIn("sessions were found", stdout.getvalue())
+        self.assertNotIn("no sessions found", stdout.getvalue())
         self.assertIsNone(exit_code)
 
     def test_web_bridge_enforces_cardinality_exceptions_and_current_success(self):
