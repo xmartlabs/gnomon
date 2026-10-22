@@ -229,11 +229,11 @@
       <div class="srcs-head" aria-hidden="true"><span class="label">Tool</span><span class="label">Reads from</span><span class="label">Notes</span></div>
       <ul class="srcs" aria-label="Supported tools">
         <li><span class="src-name">Claude Code</span><span class="src-path">~/.claude/projects/</span><span class="src-note">Fullest signal coverage</span></li>
-        <li><span class="src-name">Codex CLI</span><span class="src-path">~/.codex/</span><span class="src-note">Valid profile, fewer signals than Claude Code</span></li>
-        <li><span class="src-name">Cursor</span><span class="src-path">state.vscdb and ~/.cursor/projects/</span><span class="src-note">App and <code>cursor-agent</code> CLI. The CLI stores no tokens, so Token economy and Model mix are left out.</span></li>
-        <li><span class="src-name">Gemini CLI</span><span class="src-path">~/.gemini/</span><span class="src-note">Valid profile, fewer signals than Claude Code</span></li>
+        <li><span class="src-name">Codex CLI</span><span class="src-path">~/.codex/sessions/</span><span class="src-note">Valid profile, fewer signals than Claude Code</span></li>
+        <li><span class="src-name">Cursor</span><span class="src-path">state.vscdb and ~/.cursor/projects/</span><span class="src-note">App and <code>cursor-agent</code> CLI. Model mix is left out because Cursor bills a flat rate per request.</span></li>
+        <li><span class="src-name">Gemini CLI</span><span class="src-path">~/.gemini/tmp/</span><span class="src-note">Valid profile, fewer signals than Claude Code</span></li>
         <li><span class="src-name">Google Antigravity CLI</span><span class="src-path">~/.gemini/antigravity-cli/</span><span class="src-note">Scored fully offline</span></li>
-        <li><span class="src-name">Google Antigravity IDE</span><span class="src-path">The IDE's local language server</span><span class="src-note">The IDE hides model and token data, so those axes are left out</span></li>
+        <li><span class="src-name">Google Antigravity IDE</span><span class="src-path">~/.gemini/antigravity-ide/</span><span class="src-note">The IDE hides the model and records no subagents, so Model mix and Orchestration are left out</span></li>
         <li><span class="src-name">opencode</span><span class="src-path">Its local session files</span><span class="src-note">Parsed where present</span></li>
         <li><span class="src-name">Pi</span><span class="src-path">Its local session files</span><span class="src-note">Parsed where present</span></li>
       </ul>

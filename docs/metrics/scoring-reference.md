@@ -100,7 +100,7 @@ Source: `gnomon/scoring/replay.py`.
 
 Uploads are serialized and checked before the POST against the 900 KiB ingest limit (`900 * 1024` bytes), the same limit the dashboard's ingest route enforces. An oversized payload raises `PayloadTooLarge`. It is never truncated or uploaded in part.
 
-A heavy real payload (eight sources, several months) measured at about 90% of the limit. The biggest fields are `scoring_inputs_by_source` and `profiles_by_source`, which is why the merged-corpus block that would make multi-source replay exact is not shipped.
+A heavy real payload (eight sources, several months) measured at about 89% of the limit. The biggest fields are `scoring_inputs_by_source` and `profiles_by_source`, which is why the merged-corpus block that would make multi-source replay exact is not shipped.
 
 `payload_features` says what a payload carries: `supported`, `emitted`, `omitted` (a list of `{feature, reason}`), and `recency_blend.enabled`. Since version 11, `bucket_scoring_inputs` is listed in `omitted` with reason `recency_blend_removed`, so a reader can tell "this runtime no longer blends" from a budget trim or an older client.
 

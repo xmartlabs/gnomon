@@ -116,3 +116,18 @@ A sharing run writes the same files to a new temporary directory, keeps it after
 ### Use it as monthly feedback
 
 `summary.json` is built for a low-cost feedback loop: run gnomon once a month and compare the result with your own earlier months. Read the measured counts, such as the planning ratio, error rate and compounding writes, next to the scores, and look at the month-over-month direction rather than at lifetime totals, which a plan's monthly limits can cap. The AQ is a learning aid, so compare a person with their own past months, not with each other.
+
+The eight measured signals that read best month over month, in order:
+
+| Signal in `summary.json` | What it shows |
+|---|---|
+| `behavior.planning_ratio_explore_to_doing` | Whether the agent explores and plans before it produces, or edits blind |
+| `behavior.error_recovery_ratio` and `error_rate_per_100_tools` | Resilience: does the work get stuck or recover |
+| `behavior.iteration_depth_*` | Edits per file before the work settles; a low mean with a high p90 means knowing when to persist |
+| `velocity.git_churn_total` against `tool_churn` | What actually reached git compared with what the agent touched |
+| `behavior.fanout_median` and `delegate_actions` | Whether work is orchestrated across agents in parallel or done in series |
+| `stack.compounding_writes` | Investment in agent instructions, memory and decision records |
+| `stack.skills_*` and `tools.mcp_servers_distinct` | Breadth of the agent toolkit in use |
+| `progression.monthly` | The direction over time: growing adoption, a plateau, or drop-off |
+
+These are ratios, medians and direct counts, so they compare fairly across months with different amounts of use.

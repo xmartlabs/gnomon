@@ -33,11 +33,11 @@ class TestPublicDocumentationContract(unittest.TestCase):
         self.assertNotIn("default 6", self.usage)
 
     def test_docs_separate_scoring_window_from_evidence_window(self):
-        for document in (self.reference,):
-            normalized = " ".join(document.split())
-            self.assertIn("noticed_stats_monthly", normalized)
-            self.assertIn("context.window_months", normalized)
-            self.assertIn("six-month evidence", normalized)
+        document = self.reference
+        normalized = " ".join(document.split())
+        self.assertIn("noticed_stats_monthly", normalized)
+        self.assertIn("context.window_months", normalized)
+        self.assertIn("six-month evidence", normalized)
 
     def test_public_docs_publish_current_contract_only(self):
         expected = (
@@ -46,38 +46,38 @@ class TestPublicDocumentationContract(unittest.TestCase):
             "GStack version 19",
             SCORE_CONTRACT_ID,
         )
-        for document in (self.reference,):
-            for phrase in expected:
-                with self.subTest(phrase=phrase):
-                    self.assertIn(phrase, document)
-            self.assertNotIn("scoring inputs version 17", document)
-            self.assertNotIn("17:17:17", document)
-            self.assertNotIn("96.8%", document)
+        document = self.reference
+        for phrase in expected:
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, document)
+        self.assertNotIn("scoring inputs version 17", document)
+        self.assertNotIn("17:17:17", document)
+        self.assertNotIn("96.8%", document)
 
     def test_public_docs_explain_actions_per_prompt_inputs(self):
-        for document in (self.reference,):
-            normalized = " ".join(document.split())
-            for phrase in (
-                "actions_per_prompt",
-                "top-level tool calls",
-                "total_instructions",
-                "sidechain_tool_calls",
-                "tool_calls_total",
-            ):
-                with self.subTest(phrase=phrase):
-                    self.assertIn(phrase, normalized)
+        document = self.reference
+        normalized = " ".join(document.split())
+        for phrase in (
+            "actions_per_prompt",
+            "top-level tool calls",
+            "total_instructions",
+            "sidechain_tool_calls",
+            "tool_calls_total",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, normalized)
 
     def test_public_docs_explain_withheld_steering_states(self):
-        for document in (self.reference,):
-            normalized = " ".join(document.split())
-            for state in (
-                "withheld_unvalidated_band",
-                "unmeasured_sidechain_labels",
-                "scored",
-            ):
-                with self.subTest(state=state):
-                    self.assertIn(state, normalized)
-            self.assertIn("renormalized", normalized)
+        document = self.reference
+        normalized = " ".join(document.split())
+        for state in (
+            "withheld_unvalidated_band",
+            "unmeasured_sidechain_labels",
+            "scored",
+        ):
+            with self.subTest(state=state):
+                self.assertIn(state, normalized)
+        self.assertIn("renormalized", normalized)
         self.assertFalse(STEERING_LEVERAGE_BAND_VALIDATED)
 
     def test_scoring_reference_documents_partial_terms_and_evidence_floor(self):
