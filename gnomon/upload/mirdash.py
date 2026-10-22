@@ -61,7 +61,7 @@ _DEFAULT_MIRDASH_BASE = "https://mirdash.xmartlabs.com"
 # follow-up, not a blocker for this change. See
 # tests/test_payload_budget.py::WorstCasePayloadBudget for the assertions this
 # capability's own footprint is held to, and
-# docs/metrics-by-source.md's "Upload payload budget" section for the full
+# docs/metrics/scoring-reference.md's "Upload payload budget" section for the full
 # writeup.
 _INGEST_MAX_BYTES = 900 * 1024
 

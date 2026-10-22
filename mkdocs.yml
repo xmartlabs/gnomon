@@ -21,9 +21,6 @@ exclude_docs: |
   adr/
   data/
   requirements.txt
-  scoring-philosophy.md
-  metrics-evaluation.md
-  metrics-by-source.md
 
 theme:
   name: material
@@ -97,6 +94,7 @@ nav:
       - GStack scorecard: metrics/gstack.md
       - Insights & trend: metrics/insights.md
       - Rubric at a glance: metrics/rubric.md
+      - Scoring reference: metrics/scoring-reference.md
   - Sources:
       - Supported tools: sources/supported-tools.md
       - What each source measures: sources/coverage.md

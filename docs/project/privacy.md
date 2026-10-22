@@ -34,6 +34,8 @@ A sharing run uploads exactly the `summary.json` that `xl-ai-insights --local` w
 
 ## What is not uploaded
 
+Prompts and file contents are not uploaded. In detail:
+
 - Your prompts and the agent's replies.
 - File contents and file paths.
 - Verbatim quotes from your sessions. `profile.html` shows a few of your prompts, but it stays on your machine.
@@ -41,4 +43,4 @@ A sharing run uploads exactly the `summary.json` that `xl-ai-insights --local` w
 
 ## Names you should know about
 
-The upload does include names. Skill names, MCP server names and subagent names are chosen by you or your team, and they may contain a project, customer or environment name. Model names such as `claude-opus-4` or `gpt-5.4` are included too. If a name is sensitive, run `--local` and read `summary.json` before you share.
+The upload does include names: raw custom skill and MCP server names, and subagent names. These are user-chosen identifiers, picked by you or your team, and they may contain a project, customer or environment name. Model names such as `claude-opus-4` or `gpt-5.4` are included too. If a name is sensitive, run `--local` and read `summary.json` before you share.

@@ -530,7 +530,7 @@ def main(argv=None, output_dir=None):
     # No bucket_scoring_inputs block ships any more: nothing computes a recency blend, so
     # there is no bucket to persist for a later replay. Named in `omitted` rather than
     # silently absent, so a reader branching on `omitted` alone (as
-    # docs/metrics-by-source.md documents) can tell "this runtime no longer blends" apart
+    # docs/metrics/scoring-reference.md documents) can tell "this runtime no longer blends" apart
     # from "budget-trimmed" or "older client that never had the capability".
     _payload_omitted.append({"feature": "bucket_scoring_inputs",
                              "reason": "recency_blend_removed"})

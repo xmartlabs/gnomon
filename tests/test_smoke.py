@@ -178,7 +178,7 @@ class TestPipeline(unittest.TestCase):
         self.assertNotIn("Execution", card_json)
 
     def test_summary_flag(self):
-        # --summary writes the shareable subset of docs/metrics-evaluation.md: the 8
+        # --summary writes the shareable subset of docs/get-started/usage.md: the 8
         # measured metrics + monthly progression + profile + noticed_stats, and NOTHING
         # verbatim (prompts / quotes / skill names) — safe-to-share by construction.
         _, out = _run(self, ["--summary"])

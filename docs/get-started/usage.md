@@ -82,7 +82,7 @@ These apply when you run `xl-ai-insights` without `--local`, which uploads your 
 | Flag | What it does |
 |------|--------------|
 | `--window=N` | Score each uploaded month over the trailing N calendar months (default 1) |
-| `--backfill[=N]` | Upload each of the last N months (default 6, at most 12) |
+| `--backfill[=N]` | Upload each of the last N months (6 when N is omitted, at most 12) |
 | `--force` | Re-upload every month, up to the last 12, ignoring what the server already has |
 | `--dry-run` | Show what would be uploaded, and why, without uploading |
 | `--mirdash-base=URL` | Upload to another server, such as your [self-hosted dashboard](../teams/dashboard.md#point-the-cli-at-your-dashboard) |
@@ -112,3 +112,7 @@ A local run writes these files to the current directory, or to `--output-dir`:
 These files hold data derived from your own transcripts. gnomon's repository ignores them in git; if you run gnomon inside another repository, don't commit them. `narrative_input.md` contains verbatim excerpts, so don't share it.
 
 A sharing run writes the same files to a new temporary directory, keeps it after the run and prints its path unless you pass `--quiet`.
+
+### Use it as monthly feedback
+
+`summary.json` is built for a low-cost feedback loop: run gnomon once a month and compare the result with your own earlier months. Read the measured counts, such as the planning ratio, error rate and compounding writes, next to the scores, and look at the month-over-month direction rather than at lifetime totals, which a plan's monthly limits can cap. The AQ is a learning aid, so compare a person with their own past months, not with each other.

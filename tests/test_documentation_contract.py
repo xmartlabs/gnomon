@@ -17,20 +17,23 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 class TestPublicDocumentationContract(unittest.TestCase):
     def setUp(self):
-        self.readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.metrics = (ROOT / "docs" / "metrics-by-source.md").read_text(
+        # Pages of the published docs site (mkdocs.yml). Each pinned phrase lives on the
+        # page a reader goes to for it, not in README.md.
+        self.usage = (ROOT / "docs" / "get-started" / "usage.md").read_text(
             encoding="utf-8")
-        self.philosophy = (ROOT / "docs" / "scoring-philosophy.md").read_text(
+        self.privacy = (ROOT / "docs" / "project" / "privacy.md").read_text(
+            encoding="utf-8")
+        self.reference = (ROOT / "docs" / "metrics" / "scoring-reference.md").read_text(
             encoding="utf-8")
 
-    def test_help_and_readme_publish_the_one_month_default(self):
+    def test_help_and_usage_page_publish_the_one_month_default(self):
         self.assertIn("default 1", _HELP_TEXT)
-        self.assertIn("default 1", self.readme)
+        self.assertIn("default 1", self.usage)
         self.assertNotIn("default 6", _HELP_TEXT)
-        self.assertNotIn("default 6", self.readme)
+        self.assertNotIn("default 6", self.usage)
 
     def test_docs_separate_scoring_window_from_evidence_window(self):
-        for document in (self.readme, self.metrics):
+        for document in (self.reference,):
             normalized = " ".join(document.split())
             self.assertIn("noticed_stats_monthly", normalized)
             self.assertIn("context.window_months", normalized)
@@ -43,7 +46,7 @@ class TestPublicDocumentationContract(unittest.TestCase):
             "GStack version 19",
             SCORE_CONTRACT_ID,
         )
-        for document in (self.readme, self.metrics):
+        for document in (self.reference,):
             for phrase in expected:
                 with self.subTest(phrase=phrase):
                     self.assertIn(phrase, document)
@@ -52,7 +55,7 @@ class TestPublicDocumentationContract(unittest.TestCase):
             self.assertNotIn("96.8%", document)
 
     def test_public_docs_explain_actions_per_prompt_inputs(self):
-        for document in (self.readme, self.metrics):
+        for document in (self.reference,):
             normalized = " ".join(document.split())
             for phrase in (
                 "actions_per_prompt",
@@ -65,7 +68,7 @@ class TestPublicDocumentationContract(unittest.TestCase):
                     self.assertIn(phrase, normalized)
 
     def test_public_docs_explain_withheld_steering_states(self):
-        for document in (self.readme, self.metrics):
+        for document in (self.reference,):
             normalized = " ".join(document.split())
             for state in (
                 "withheld_unvalidated_band",
@@ -77,14 +80,14 @@ class TestPublicDocumentationContract(unittest.TestCase):
             self.assertIn("renormalized", normalized)
         self.assertFalse(STEERING_LEVERAGE_BAND_VALIDATED)
 
-    def test_metrics_documents_partial_terms_and_evidence_floor(self):
-        normalized = " ".join(self.metrics.split())
+    def test_scoring_reference_documents_partial_terms_and_evidence_floor(self):
+        normalized = " ".join(self.reference.split())
         self.assertIn("partial_terms", normalized)
         self.assertIn("{scored, total, weight_scored}", normalized)
         self.assertIn("insufficient denominator drops the term", normalized)
 
-    def test_metrics_documents_source_coverage_and_replay_limits(self):
-        normalized = " ".join(self.metrics.split())
+    def test_scoring_reference_documents_source_coverage_and_replay_limits(self):
+        normalized = " ".join(self.reference.split())
         for phrase in (
             "Metric × source",
             "sidechain_label_state",
@@ -112,18 +115,18 @@ class TestPublicDocumentationContract(unittest.TestCase):
         self.assertIn('"16:16:16"', calibration)
         self.assertNotIn("REUBICATIONS", source)
 
-    def test_readme_discloses_raw_identifiers_without_overclaiming_privacy(self):
-        self.assertIn("custom skill and MCP server names", self.readme)
-        self.assertIn("user-chosen identifiers", self.readme)
-        self.assertIn("Prompts and file contents are not uploaded", self.readme)
-        self.assertNotIn("No prompts, no quotes, no project names are ever sent", self.readme)
+    def test_privacy_page_discloses_raw_identifiers_without_overclaiming_privacy(self):
+        self.assertIn("custom skill and MCP server names", self.privacy)
+        self.assertIn("user-chosen identifiers", self.privacy)
+        self.assertIn("Prompts and file contents are not uploaded", self.privacy)
+        self.assertNotIn("No prompts, no quotes, no project names are ever sent", self.privacy)
 
-    def test_readme_model_mix_describes_explicit_provider_tiers(self):
-        self.assertIn("explicit provider tier tables", self.readme)
-        self.assertNotIn("no hard-coded model names", self.readme)
+    def test_scoring_reference_model_mix_describes_explicit_provider_tiers(self):
+        self.assertIn("explicit provider tier tables", self.reference)
+        self.assertNotIn("no hard-coded model names", self.reference)
 
-    def test_philosophy_publishes_executable_targets_as_product_hypotheses(self):
-        normalized = " ".join(self.philosophy.split())
+    def test_scoring_reference_publishes_executable_targets_as_product_hypotheses(self):
+        normalized = " ".join(self.reference.split())
         self.assertIn("Planning readiness | Grade ordered planning readiness only on "
                       "eligible non-trivial changes and target 50% coverage", normalized)
         self.assertIn("Context Intelligence | Target evidence gathering before the first "
@@ -172,8 +175,8 @@ class TestPublicDocumentationContract(unittest.TestCase):
         self.assertIn("coverage", note.lower())
         self.assertIn("review", note.lower())
 
-    def test_philosophy_describes_ordered_planning_redesign(self):
-        normalized = " ".join(self.philosophy.split())
+    def test_scoring_reference_describes_ordered_planning_redesign(self):
+        normalized = " ".join(self.reference.split())
         self.assertIn("doc, config, lockfile, and test-only sessions are excluded", normalized)
         self.assertIn("at least three distinct plan/task steps", normalized)
         self.assertIn("consume-once", normalized)
