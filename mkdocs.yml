@@ -1,0 +1,84 @@
+site_name: gnomon
+site_description: Measure how well your team works with AI coding agents.
+site_url: https://xmartlabs.github.io/gnomon/
+repo_url: https://github.com/xmartlabs/gnomon
+repo_name: xmartlabs/gnomon
+edit_uri: edit/main/docs/
+copyright: MIT License · Built by Xmartlabs
+
+docs_dir: docs
+
+# Internal working docs stay in the repo but are never published.
+exclude_docs: |
+  plans/
+  specs/
+  superpowers/
+  design/
+  adr/
+  data/
+  requirements.txt
+  scoring-philosophy.md
+  metrics-evaluation.md
+  metrics-by-source.md
+
+theme:
+  name: material
+  custom_dir: overrides
+
+plugins:
+  - search
+  - macros:
+      module_name: overrides/macros
+
+markdown_extensions:
+  - attr_list
+  - md_in_html
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.snippets:
+      base_path: [".", "docs"]
+      check_paths: true
+
+nav:
+  - Home: index.md
+  - Get started:
+      - Why gnomon: get-started/why-gnomon.md
+      - Install & quick start: get-started/install.md
+      - Usage & outputs: get-started/usage.md
+  - Metrics:
+      - How scoring works: metrics/index.md
+      - Breadth:
+          - metrics/breadth/index.md
+          - Orchestration: metrics/breadth/orchestration.md
+          - Skill fluency: metrics/breadth/skill-fluency.md
+          - Tool command: metrics/breadth/tool-command.md
+          - Discipline: metrics/breadth/discipline.md
+      - Craft:
+          - metrics/craft/index.md
+          - Verification: metrics/craft/verification.md
+          - Grounding: metrics/craft/grounding.md
+          - Context intelligence: metrics/craft/context-intelligence.md
+          - Compounding: metrics/craft/compounding.md
+      - Efficiency:
+          - metrics/efficiency/index.md
+          - Recovery: metrics/efficiency/recovery.md
+          - Steering leverage: metrics/efficiency/steering-leverage.md
+      - Savvy:
+          - metrics/savvy/index.md
+          - Model mix: metrics/savvy/model-mix.md
+          - Token economy: metrics/savvy/token-economy.md
+      - GStack scorecard: metrics/gstack.md
+      - Insights & trend: metrics/insights.md
+      - Rubric at a glance: metrics/rubric.md
+  - Sources:
+      - Supported tools: sources/index.md
+      - What each source measures: sources/coverage.md
+  - Teams:
+      - Sharing a profile: teams/sharing.md
+      - Self-hosted dashboard: teams/dashboard.md
+  - Project:
+      - Privacy: project/privacy.md
+      - miraudit: project/miraudit.md
+      - Contributing: project/contributing.md
