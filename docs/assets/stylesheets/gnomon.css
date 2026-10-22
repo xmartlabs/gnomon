@@ -135,3 +135,85 @@ code, kbd, pre, .gn-fig { font-family: var(--font-figure); font-variant-numeric:
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
+
+/* ===== Metric components (rendered by overrides/macros.py) ===== */
+.md-typeset .gn-note { font-size: 0.65rem; color: var(--text-tertiary); max-width: 34rem; }
+.md-typeset .gn-tag { font: 500 0.5rem/1 var(--font-figure); letter-spacing: 0.08em; text-transform: uppercase; color: var(--warning); background: var(--warning-subtle); padding: 2px 5px; border-radius: var(--radius-sm); margin-left: 4px; white-space: nowrap; }
+.md-typeset .gn-equation { font-size: 0.8rem; margin: 1rem 0 0.4rem; }
+
+/* Formula: a spec sheet, not a card. */
+.gn-formula { margin: 0.9rem 0 0.4rem; border-top: var(--rule-width-strong) solid var(--rule-strong); max-width: 34rem; }
+.gn-formula__row { display: grid; grid-template-columns: 3.2rem minmax(0, 1fr) auto; gap: 0.8rem; align-items: baseline; padding: 0.6rem 0; border-bottom: var(--rule-width) solid var(--rule-default); }
+.gn-formula__w { font-size: 1rem; font-weight: 500; letter-spacing: -0.02em; }
+.gn-formula__t { font-size: 0.75rem; }
+.gn-formula__t small { display: block; color: var(--text-secondary); font-size: 0.65rem; margin-top: 2px; line-height: 1.45; }
+.gn-formula__target { font-size: 0.6rem; color: var(--text-secondary); text-align: right; max-width: 11rem; }
+
+/* Signature: the rubric is a calibrated scale. */
+.gn-scale { margin: 1.4rem 0 0; max-width: 40rem; }
+.gn-scale__ticks { position: relative; height: 26px; }
+.gn-scale__ticks i { position: absolute; bottom: 0; width: 1px; height: 6px; background: var(--rule-default); }
+.gn-scale__ticks i.major { height: 12px; background: var(--text-decorative); }
+.gn-scale__ticks i.cut { height: 22px; width: 2px; background: var(--rule-strong); }
+.gn-scale__ticks b { position: absolute; top: 2px; transform: translateX(6px); font: 500 10px var(--font-figure); color: var(--text-secondary); }
+.gn-scale__track { display: flex; height: 10px; background: var(--chart-track); }
+.gn-scale__track span { display: block; height: 100%; border-right: 2px solid var(--md-default-bg-color); }
+.gn-scale__track span:last-child { border-right: 0; }
+.gn-scale__bands { display: flex; }
+.gn-band { padding: 0.7rem 0.4rem 0 0.4rem; border-left: var(--rule-width) solid var(--rule-default); min-width: 0; }
+.gn-band:first-child { border-left: 0; padding-left: 0; }
+.md-typeset .gn-band__name { color: var(--text-primary); margin-bottom: 2px; font-size: 9px; letter-spacing: 0.05em; }
+.gn-band__range { font-size: 0.55rem; color: var(--text-tertiary); margin-bottom: 0.5rem; }
+.md-typeset .gn-band__look { font-size: 0.65rem; line-height: 1.45; margin: 0 0 0.5rem; }
+.md-typeset .gn-band__next { font-size: 0.65rem; line-height: 1.45; color: var(--text-secondary); margin: 0; }
+.gn-band__next::before { content: "→ "; color: var(--accent-mark); font-family: var(--font-figure); }
+.gn-not-scored { border-left: var(--rule-width-strong) solid var(--neutral); padding: 0.2rem 0 0.2rem 0.8rem; margin: 1rem 0; }
+
+/* Axis pages: content plus an "at a glance" rail. */
+.md-content__inner:has(> .gn-rail) { display: grid; grid-template-columns: minmax(0, 1fr) 12.5rem; column-gap: 2.4rem; }
+.md-content__inner:has(> .gn-rail) > * { grid-column: 1; }
+.md-content__inner > .gn-rail { grid-column: 2; grid-row: 1 / span 40; align-self: start; position: sticky; top: 3.6rem; border-left: var(--rule-width) solid var(--rule-default); padding: 0.4rem 0 1rem 1.2rem; margin-top: 2.6rem; }
+.gn-stat { margin-bottom: 1.3rem; }
+.gn-stat__v { font: 500 2rem/0.9 var(--font-figure); letter-spacing: -0.025em; color: var(--text-primary); }
+.gn-stat__v small { font-size: 0.8rem; color: var(--text-secondary); letter-spacing: 0; }
+.gn-stat__v--muted { font: 600 0.8rem/1.2 var(--font-ui); color: var(--text-secondary); }
+.gn-stat__k { font-size: 0.65rem; color: var(--text-secondary); margin-top: 0.3rem; }
+.gn-rail .gn-label { display: block; }
+.md-typeset .gn-cov-list { list-style: none; padding: 0; margin: 0.4rem 0 0; font-size: 0.65rem; }
+.md-typeset .gn-cov-list li, [dir=ltr] .md-typeset .gn-cov-list li { display: flex; justify-content: space-between; align-items: baseline; gap: 0.6rem; padding: 0.35rem 0; margin: 0; border-bottom: var(--rule-width) solid var(--rule-subtle); }
+.gn-cov-list .gn-cov__s { flex: 0 0 auto; max-width: 55%; }
+.gn-cov-list .gn-cov { flex: 0 1 auto; min-width: 0; }
+.gn-cov__s { font: 500 0.55rem/1.4 var(--font-figure); letter-spacing: 0.06em; text-transform: uppercase; }
+.gn-cov { text-align: right; }
+.gn-cov--full { color: var(--text-primary); }
+.gn-cov--partial { color: var(--text-secondary); }
+.gn-cov--none { color: var(--neutral); }
+
+/* Pillar pages: list of axes. */
+.md-typeset .gn-axes { list-style: none; padding: 0; margin: 1rem 0; border-top: var(--rule-width-strong) solid var(--rule-strong); max-width: 34rem; }
+[dir=ltr] .md-typeset .gn-axes li, .md-typeset .gn-axes li { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: 0.8rem; padding: 0.6rem 0; margin: 0; border-bottom: var(--rule-width) solid var(--rule-default); }
+.gn-axes__w { font-size: 0.9rem; font-weight: 500; }
+.gn-axes__t small { display: block; color: var(--text-secondary); font-size: 0.65rem; line-height: 1.45; }
+
+/* Matrices (rubric at a glance, source coverage). */
+.gn-matrix { overflow-x: auto; }
+.md-typeset .gn-matrix table { font-size: 0.6rem; border-collapse: collapse; min-width: 44rem; }
+.md-typeset .gn-matrix th, .md-typeset .gn-matrix td { padding: 0.45rem 0.5rem; border-bottom: var(--rule-width) solid var(--rule-default); vertical-align: top; text-align: left; }
+.md-typeset .gn-matrix thead th { font: 500 0.5rem/1.2 var(--font-figure); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-secondary); border-bottom: var(--rule-width-strong) solid var(--rule-strong); }
+.md-typeset .gn-matrix tbody th .gn-label { display: block; margin-top: 2px; font-size: 0.45rem; }
+
+@media (min-width: 76.25em) {
+  .md-nav--primary > .md-nav__title { display: none; }
+}
+@media (max-width: 76.25em) {
+  .md-content__inner:has(> .gn-rail) { display: flex; flex-direction: column; }
+  .md-content__inner > .gn-rail { order: 99; }
+  .md-content__inner > .gn-rail { position: static; border-left: 0; border-top: var(--rule-width) solid var(--rule-default); padding: 1rem 0 0; margin-top: 2rem; }
+}
+@media (max-width: 38em) {
+  .gn-scale__ticks, .gn-scale__track { display: none; }
+  .gn-scale__bands { flex-direction: column; }
+  .gn-band, .gn-band:first-child { width: auto !important; border-left: var(--rule-width-strong) solid var(--chart-track); padding: 0.5rem 0 0.7rem 0.7rem; margin-bottom: 0.2rem; }
+  .gn-formula__row { grid-template-columns: 2.6rem minmax(0, 1fr); }
+  .gn-formula__target { grid-column: 2; text-align: left; }
+}

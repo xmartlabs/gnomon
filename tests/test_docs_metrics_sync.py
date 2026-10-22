@@ -131,6 +131,36 @@ class DocsMetricsSyncTest(unittest.TestCase):
         self.assertEqual(model_mix["gemini"], "partial")
         self.assertEqual(model_mix["claude"], "full")
 
+    def test_effective_weight_redistributes_withheld_axis(self):
+        macros = _load_macros()
+        self.assertEqual(macros.effective_weight(self.data, "recovery"), 100.0)
+        self.assertEqual(macros.effective_weight(self.data, "verification"), 35.0)
+
+    def test_share_of_aq(self):
+        macros = _load_macros()
+        self.assertEqual(macros.share_of_aq(self.data, "verification"), 12)
+        self.assertEqual(macros.share_of_aq(self.data, "recovery"), 20)
+        self.assertEqual(macros.share_of_aq(self.data, "steering-leverage"), 0)
+
+    def test_rendered_components_use_data(self):
+        macros = _load_macros()
+        rail = macros.render_axis_rail(self.data, "verification")
+        self.assertIn('Gemini CLI</span><span class="gn-cov gn-cov--none">Not scored</span>',
+                      macros.render_axis_rail(self.data, "orchestration"))
+        self.assertIn("Partial (Tested change sessions)", rail)
+        self.assertNotIn(">0<", rail)
+        self.assertIn("(effective; base 50%)", macros.render_axis_rail(self.data, "recovery"))
+        scale = macros.render_rubric_scale(self.data, "verification")
+        for band in find_axis_rubric(self.data, "verification"):
+            self.assertIn(band["looks_like"], scale)
+        self.assertIn("Not scored yet", macros.render_rubric_scale(self.data, "steering-leverage"))
+        formula = macros.render_formula(self.data, "context-intelligence")
+        self.assertIn("Provisional", formula)
+
+
+def find_axis_rubric(data, axis_id):
+    return next(a for a in _axes(data) if a["id"] == axis_id)["rubric"]
+
 
 if __name__ == "__main__":
     unittest.main()
