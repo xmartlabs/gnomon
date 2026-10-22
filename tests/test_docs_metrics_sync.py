@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 
 from gnomon import config
-from gnomon.scoring import aq, versioning
+from gnomon.scoring import aq, gstack, versioning
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_PATH = ROOT / "docs" / "data" / "metrics.json"
@@ -130,6 +130,24 @@ class DocsMetricsSyncTest(unittest.TestCase):
         self.assertEqual(model_mix["cursor"], "none")
         self.assertEqual(model_mix["gemini"], "partial")
         self.assertEqual(model_mix["claude"], "full")
+
+    def test_gstack_constants_match_code(self):
+        gs = self.data["gstack"]
+        constants = dict(gs["evidence_constants"])
+        for axis in gs["axes"]:
+            self.assertAlmostEqual(sum(t["share"] for t in axis["terms"]), 1.0, places=2)
+            for term in axis["terms"]:
+                constants.update(term.get("constants", {}))
+        for name, value in constants.items():
+            with self.subTest(constant=name):
+                self.assertEqual(getattr(gstack, name), value)
+
+    def test_gstack_verdict_bands_match_code(self):
+        for band in self.data["gstack"]["verdicts"]:
+            with self.subTest(verdict=band["name"]):
+                self.assertEqual(gstack._axis_verdict(band["floor"]), band["name"])
+                if band["floor"] > 0:
+                    self.assertNotEqual(gstack._axis_verdict(band["floor"] - 0.01), band["name"])
 
     def test_effective_weight_redistributes_withheld_axis(self):
         macros = _load_macros()

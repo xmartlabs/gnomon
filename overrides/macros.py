@@ -233,6 +233,45 @@ def render_pillars_table(data, base_url=""):
             f'<div class="gn-formula" role="table" aria-label="AQ pillars">{rows}</div>')
 
 
+def _term_rows(terms):
+    return "".join(
+        '<div class="gn-formula__row" role="row">'
+        f'<span class="gn-formula__w gn-fig" role="cell">{_pct(t["share"])}</span>'
+        f'<span class="gn-formula__t" role="cell">{_e(t["name"])}<small>{_e(t["definition"])}</small></span>'
+        f'<span class="gn-formula__target gn-fig" role="cell">{_e(t["target_label"])}</span></div>'
+        for t in terms)
+
+
+def render_gstack(data):
+    """The three GStack axes with their terms, then the verdict bands."""
+    gs = data["gstack"]
+    parts = []
+    for axis in gs["axes"]:
+        parts.append(f'<h3>{_e(axis["name"])}</h3><p>{_e(axis["summary"])}</p>'
+                     f'<div class="gn-formula" role="table" aria-label="{_e(axis["name"])} formula">'
+                     f'{_term_rows(axis["terms"])}</div>')
+    verdicts = gs["verdicts"]
+    rows = []
+    for i, band in enumerate(verdicts):
+        upper = "10" if i == 0 else f'below {verdicts[i - 1]["floor"]:g}'
+        rows.append(f'<tr><td class="gn-fig">{band["floor"]:g} – {upper}</td>'
+                    f'<td>{_e(band["name"].capitalize())}</td></tr>')
+    parts.append('<h3>Verdicts</h3><p>Each axis scores 0 to 10 and gets a verdict:</p>'
+                 f'<table><thead><tr><th>Score</th><th>Verdict</th></tr></thead><tbody>{"".join(rows)}</tbody></table>'
+                 f'<p class="gn-note">{_e(gs["evidence_note"])} Source: <code>{_e(gs["code_ref"])}</code></p>')
+    return "".join(parts)
+
+
+def render_levels(data):
+    """The level names and score ranges as a table."""
+    levels = data["levels"]
+    rows = []
+    for i, lvl in enumerate(levels):
+        upper = levels[i + 1]["floor"] - 1 if i + 1 < len(levels) else 100
+        rows.append(f'<tr><td>{_e(lvl["name"])}</td><td class="gn-fig">{lvl["floor"]}–{upper}</td></tr>')
+    return f'<table><thead><tr><th>Level</th><th>AQ score</th></tr></thead><tbody>{"".join(rows)}</tbody></table>'
+
+
 def render_coverage_matrix(data, base_url=""):
     """Source x axis matrix of what each source can measure."""
     sources = list(data["sources"].items())
@@ -294,6 +333,14 @@ def define_env(env):
     @env.macro
     def pillars_table():
         return render_pillars_table(data, base_url())
+
+    @env.macro
+    def gstack_scorecard():
+        return render_gstack(data)
+
+    @env.macro
+    def levels_table():
+        return render_levels(data)
 
     @env.macro
     def coverage_matrix():
