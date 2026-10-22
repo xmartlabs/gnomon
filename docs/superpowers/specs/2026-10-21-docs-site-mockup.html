@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verification · gnomon docs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --grey-0:#FFFFFF;--grey-25:#FBFBFB;--grey-50:#F4F5F5;--grey-100:#E9EAEA;--grey-200:#D5D7D7;--grey-300:#B4B7B7;--grey-400:#8B8F8F;--grey-500:#6A6E6E;--grey-600:#4E5252;--grey-700:#383B3B;--grey-800:#232626;--grey-900:#141616;--grey-950:#0A0B0B;
+  --blue-50:#EBF2FC;--blue-100:#CFE0F7;--blue-200:#9EC2EF;--blue-300:#6BA1E4;--blue-500:#2A78D6;--blue-600:#1F60B0;--blue-700:#17498A;--blue-800:#103361;--blue-900:#0A2242;
+  --text-primary:var(--grey-900);--text-secondary:var(--grey-500);--text-tertiary:#6E7272;--text-decorative:var(--grey-400);--text-accent:var(--blue-600);
+  --surface-page:var(--grey-0);--surface-sunken:var(--grey-50);--surface-hover:var(--grey-50);--surface-accent-subtle:var(--blue-50);
+  --rule-strong:var(--grey-900);--rule-default:var(--grey-200);--rule-subtle:var(--grey-100);
+  --accent:var(--blue-600);--accent-mark:var(--blue-500);
+  --chart-1:var(--blue-500);--chart-2:var(--blue-300);--chart-3:var(--blue-100);--chart-track:var(--grey-100);
+  --neutral:var(--grey-400);
+  --font-ui:"Archivo","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --font-figure:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --focus-ring:var(--blue-500);
+}
+[data-theme="dark"]{
+  --text-primary:var(--grey-50);--text-secondary:var(--grey-400);--text-tertiary:#9AA0A0;--text-decorative:var(--grey-500);--text-accent:var(--blue-200);
+  --surface-page:var(--grey-950);--surface-sunken:var(--grey-900);--surface-hover:var(--grey-800);--surface-accent-subtle:var(--blue-900);
+  --rule-strong:var(--grey-300);--rule-default:var(--grey-700);--rule-subtle:var(--grey-800);
+  --accent:var(--blue-300);--accent-mark:var(--blue-300);
+  --chart-1:var(--blue-300);--chart-2:var(--blue-500);--chart-3:var(--blue-800);--chart-track:var(--grey-800);
+  --neutral:var(--grey-500);--focus-ring:var(--blue-300);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--surface-page);color:var(--text-primary);font:400 15px/1.5 var(--font-ui);-webkit-font-smoothing:antialiased}
+a{color:var(--text-accent);text-decoration:none}
+a:hover{text-decoration:underline}
+:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+.label{font:500 11px/1.2 var(--font-figure);letter-spacing:.1em;text-transform:uppercase;color:var(--text-secondary)}
+code,.fig{font-family:var(--font-figure);font-variant-numeric:tabular-nums}
+code{font-size:13px;background:var(--surface-sunken);padding:1px 5px;border-radius:2px}
+
+/* masthead */
+.mast{display:flex;align-items:center;gap:24px;height:56px;padding:0 32px;border-bottom:1px solid var(--rule-default)}
+.mark{display:flex;align-items:center;gap:10px;font:600 17px/1 var(--font-ui);letter-spacing:-.015em}
+.mark svg{display:block}
+.mast .grow{flex:1}
+.search{font:400 13px var(--font-ui);color:var(--text-tertiary);border:1px solid var(--rule-default);border-radius:3px;padding:6px 10px;width:240px;background:transparent}
+.toggle{font:500 11px var(--font-figure);letter-spacing:.1em;text-transform:uppercase;background:none;border:1px solid var(--rule-default);color:var(--text-secondary);padding:6px 10px;border-radius:3px;cursor:pointer}
+
+/* shell: asymmetric, never equal */
+.shell{display:grid;grid-template-columns:236px minmax(0,1fr) 248px;max-width:1280px;margin:0 auto}
+nav.side{border-right:1px solid var(--rule-default);padding:28px 20px 48px 32px;font-size:14px}
+nav.side .grp{margin:0 0 22px}
+nav.side .grp .label{display:block;margin:0 0 8px}
+nav.side a{display:block;color:var(--text-secondary);padding:3px 0}
+nav.side a:hover{color:var(--text-primary);text-decoration:none}
+nav.side .sub{padding-left:12px;border-left:1px solid var(--rule-subtle);margin:2px 0 6px}
+nav.side .sub a{font-size:13px}
+nav.side a.on{color:var(--text-primary);font-weight:600;position:relative}
+nav.side a.on::before{content:"";position:absolute;left:-13px;top:4px;bottom:4px;width:2px;background:var(--accent-mark)}
+nav.side .muted{white-space:nowrap;display:inline-block;color:var(--text-tertiary);font-style:normal;font-family:var(--font-figure);font-size:10px;letter-spacing:.08em;text-transform:uppercase;margin-left:6px}
+
+main{padding:36px 48px 80px;min-width:0}
+.crumb{margin-bottom:14px}
+h1{font:600 40px/1.1 var(--font-ui);letter-spacing:-.02em;margin:0 0 14px}
+.thesis{font-size:19px;line-height:1.45;color:var(--text-primary);max-width:620px;margin:0 0 36px}
+h2{font:600 19px/1.3 var(--font-ui);letter-spacing:-.01em;margin:44px 0 12px}
+p{max-width:640px;margin:0 0 12px}
+.rule{height:1px;background:var(--rule-default);border:0;margin:40px 0 0}
+
+/* formula: spec-sheet, not a card */
+.formula{margin:18px 0 8px;border-top:2px solid var(--rule-strong);max-width:640px}
+.formula .row{display:grid;grid-template-columns:64px 1fr auto;gap:16px;align-items:baseline;padding:12px 0;border-bottom:1px solid var(--rule-default)}
+.formula .w{font:500 20px/1 var(--font-figure);letter-spacing:-.02em}
+.formula .t{font-size:15px}
+.formula .t small{display:block;color:var(--text-secondary);font-size:13px;margin-top:2px}
+.formula .target{font:500 12px var(--font-figure);color:var(--text-secondary);white-space:nowrap}
+
+/* ===== SIGNATURE: the rubric is a calibrated scale ===== */
+.scale{margin:28px 0 0;max-width:760px}
+.ticks{position:relative;height:26px}
+.ticks i{position:absolute;bottom:0;width:1px;background:var(--rule-default);height:6px}
+.ticks i.major{height:12px;background:var(--text-decorative)}
+.ticks i.cut{height:22px;width:2px;background:var(--rule-strong)}
+.ticks b{position:absolute;top:2px;transform:translateX(6px);font:500 10px var(--font-figure);color:var(--text-secondary);letter-spacing:.04em}
+.track{display:flex;height:10px;background:var(--chart-track)}
+.track span{display:block;height:100%;border-right:2px solid var(--surface-page)}
+.track span:last-child{border-right:0}
+.bands{display:flex;margin-top:0}
+.band{padding:14px 12px 0 10px;border-left:1px solid var(--rule-default);min-width:0}
+.band:first-child{border-left:0;padding-left:0}
+.band .label{color:var(--text-primary);margin-bottom:4px}
+.band .rng{font:400 11px var(--font-figure);color:var(--text-tertiary);margin-bottom:10px}
+.band .look{font-size:13px;line-height:1.45;margin:0 0 10px;color:var(--text-primary)}
+.band .next{font-size:13px;line-height:1.45;color:var(--text-secondary);margin:0}
+.band .next::before{content:"→ ";color:var(--accent-mark);font-family:var(--font-figure)}
+.band.top .next::before{content:""}
+.scale-note{font-size:13px;color:var(--text-tertiary);margin-top:18px;max-width:640px}
+
+/* right spec rail */
+aside.rail{border-left:1px solid var(--rule-default);padding:36px 32px 48px 24px}
+.stat{margin-bottom:28px}
+.stat .v{font:500 40px/.9 var(--font-figure);letter-spacing:-.025em}
+.stat .v small{font-size:16px;color:var(--text-secondary);letter-spacing:0}
+.stat .k{font-size:13px;color:var(--text-secondary);margin-top:6px}
+.src{list-style:none;padding:0;margin:8px 0 0;font-size:13px}
+.src li{display:grid;grid-template-columns:1fr auto;gap:8px;padding:7px 0;border-bottom:1px solid var(--rule-subtle)}
+.src .s{font:500 11px var(--font-figure);letter-spacing:.06em;text-transform:uppercase}
+.src .full{color:var(--text-primary)}
+.src .part{color:var(--text-secondary)}
+.src .none{color:var(--neutral)}
+.rail .label{display:block}
+.rail p{font-size:13px;color:var(--text-secondary)}
+
+@media (max-width:1080px){.shell{grid-template-columns:220px minmax(0,1fr)}aside.rail{grid-column:2;border-left:0;border-top:1px solid var(--rule-default);padding:28px 48px}}
+@media (max-width:760px){
+  .shell{grid-template-columns:1fr}nav.side{display:none}main{padding:28px 20px}aside.rail{grid-column:1;padding:24px 20px}
+  .mast{padding:0 20px}.search{display:none}
+  .ticks,.track{display:none}
+  .bands{flex-direction:column}.band{width:auto!important;border-left:2px solid var(--chart-track);padding:10px 0 14px 14px;margin-bottom:4px}
+  .band:first-child{padding-left:14px;border-left:2px solid var(--chart-track)}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header class="mast">
+  <div class="mark">
+    <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><polygon points="4,19 11,3 11,19" fill="var(--accent-mark)"/><polygon points="11,19 11,3 18,19" fill="var(--blue-200)"/></svg>
+    gnomon <span class="label" style="margin-left:4px">docs</span>
+  </div>
+  <div class="grow"></div>
+  <input class="search" placeholder="Search docs" aria-label="Search docs">
+  <button class="toggle" onclick="var h=document.documentElement;h.dataset.theme=h.dataset.theme==='dark'?'light':'dark'">Theme</button>
+</header>
+
+<div class="shell">
+  <nav class="side" aria-label="Documentation">
+    <div class="grp"><span class="label">Get started</span>
+      <a href="#">Why gnomon</a><a href="#">Install &amp; quick start</a><a href="#">Usage &amp; outputs</a>
+    </div>
+    <div class="grp"><span class="label">Metrics</span>
+      <a href="#">How scoring works</a>
+      <a href="#">Breadth</a>
+      <div class="sub"><a href="#">Orchestration</a><a href="#">Skill fluency</a><a href="#">Tool command</a><a href="#">Discipline</a></div>
+      <a href="#">Craft</a>
+      <div class="sub"><a href="#" class="on" aria-current="page">Verification</a><a href="#">Grounding</a><a href="#">Context intelligence</a><a href="#">Compounding</a></div>
+      <a href="#">Efficiency</a>
+      <div class="sub"><a href="#">Recovery</a><a href="#">Steering leverage <span class="muted">not scored</span></a></div>
+      <a href="#">Savvy</a>
+      <div class="sub"><a href="#">Model mix</a><a href="#">Token economy</a></div>
+      <a href="#">GStack scorecard</a><a href="#">Insights &amp; trend</a><a href="#">Rubric at a glance</a>
+    </div>
+    <div class="grp"><span class="label">Sources</span>
+      <a href="#">Supported tools</a><a href="#">What each source measures</a>
+    </div>
+    <div class="grp"><span class="label">Teams</span>
+      <a href="#">Sharing a profile</a><a href="#">Self-hosted dashboard</a>
+    </div>
+    <div class="grp"><span class="label">Project</span>
+      <a href="#">Privacy</a><a href="#">miraudit</a><a href="#">Contributing</a>
+    </div>
+  </nav>
+
+  <main>
+    <div class="crumb label">Metrics / Craft</div>
+    <h1>Verification</h1>
+    <p class="thesis">Did anyone check the agent's work before it shipped? Verification counts the change sessions that ran a test and the times a review skill looked at the result.</p>
+
+    <h2>Why it matters</h2>
+    <p>An agent writes plausible code faster than a person can read it. Without a test run or a review pass in the same session, defects reach the main branch just as fast. Teams that verify inside the session catch them while the context is still loaded.</p>
+
+    <h2>How it's computed</h2>
+    <p>Two halves of equal weight. When a source can't record one half, the other carries the full axis. It is not scored as zero.</p>
+    <div class="formula" role="table" aria-label="Verification formula">
+      <div class="row" role="row"><span class="w" role="cell">50%</span><span class="t" role="cell">Tested change sessions<small>Share of change sessions that also ran a test command. Needs at least 5 change sessions in the month.</small></span><span class="target" role="cell">full credit at 100%</span></div>
+      <div class="row" role="row"><span class="w" role="cell">50%</span><span class="t" role="cell">Review skill use<small>Review-type skills (code review, security review…) per tool call. Planning reviews don't count.</small></span><span class="target" role="cell">full credit at 4 / 1,000 calls</span></div>
+    </div>
+    <p style="font-size:13px;color:var(--text-tertiary)">A change session is one that wrote code and touched 2 or more files, changed 80 or more lines, or made 10 or more substantive calls. Source: <code>gnomon/scoring/aq.py</code></p>
+
+    <h2>Rubric</h2>
+    <p>Where you sit on the axis, what that usually looks like, and the one habit that moves you up.</p>
+
+    <div class="scale" aria-label="Verification rubric scale, 0 to 100">
+      <div class="ticks" aria-hidden="true">
+        <!-- minor every 5, major every 25, cut-offs at level floors -->
+        <i style="left:0%" class="major"></i><i style="left:5%"></i><i style="left:10%"></i><i style="left:15%"></i><i style="left:20%"></i>
+        <i style="left:25%" class="cut"></i><i style="left:30%"></i><i style="left:35%"></i><i style="left:40%"></i>
+        <i style="left:45%" class="cut"></i><i style="left:50%" class="major"></i><i style="left:55%"></i>
+        <i style="left:60%" class="cut"></i><i style="left:65%"></i><i style="left:70%"></i>
+        <i style="left:75%" class="cut"></i><i style="left:80%"></i><i style="left:85%"></i>
+        <i style="left:88%" class="cut"></i><i style="left:95%"></i><i style="left:100%" class="major" style="left:calc(100% - 1px)"></i>
+        <b style="left:25%">25</b><b style="left:45%">45</b><b style="left:60%">60</b><b style="left:75%">75</b><b style="left:88%">88</b>
+      </div>
+      <div class="track" aria-hidden="true">
+        <span style="width:25%;background:var(--chart-track)"></span>
+        <span style="width:20%;background:var(--chart-3)"></span>
+        <span style="width:15%;background:var(--chart-3)"></span>
+        <span style="width:15%;background:var(--chart-2)"></span>
+        <span style="width:13%;background:var(--chart-2)"></span>
+        <span style="width:12%;background:var(--chart-1)"></span>
+      </div>
+      <div class="bands">
+        <div class="band" style="width:25%"><div class="label">Novice</div><div class="rng">0–24</div><p class="look">Changes ship without a test run or a review.</p><p class="next">Run the test suite once before you close a change.</p></div>
+        <div class="band" style="width:20%"><div class="label">Apprentice</div><div class="rng">25–44</div><p class="look">Tests run, mostly after something broke.</p><p class="next">Make "run tests" the last step of every change.</p></div>
+        <div class="band" style="width:15%"><div class="label">Adequate</div><div class="rng">45–59</div><p class="look">About half the changes are tested.</p><p class="next">Ask the agent to run tests itself.</p></div>
+        <div class="band" style="width:15%"><div class="label">Proficient</div><div class="rng">60–74</div><p class="look">Most changes tested. Reviews are rare.</p><p class="next">Add a review skill on multi-file diffs.</p></div>
+        <div class="band" style="width:13%"><div class="label">Advanced</div><div class="rng">75–87</div><p class="look">Tested and often reviewed.</p><p class="next">Review every non-trivial change.</p></div>
+        <div class="band top" style="width:12%"><div class="label">Elite</div><div class="rng">88–100</div><p class="look">Every change is tested and reviewed.</p></div>
+      </div>
+    </div>
+    <p class="scale-note">Levels use the same cut-offs as the overall AQ tiers, so a level means the same thing on every axis.</p>
+
+    <h2>How to improve</h2>
+    <p>Write the test command into your project instructions (<code>CLAUDE.md</code>, <code>AGENTS.md</code>) so the agent runs it unprompted. Install a review skill and call it before you merge.</p>
+    <hr class="rule">
+  </main>
+
+  <aside class="rail" aria-label="At a glance">
+    <div class="stat"><div class="v fig">35<small>%</small></div><div class="k">of the Craft pillar</div></div>
+    <div class="stat"><div class="v fig">12<small>%</small></div><div class="k">of the total AQ score</div></div>
+    <span class="label">Measured in</span>
+    <ul class="src">
+      <li><span class="s">Claude Code</span><span class="full">Both halves</span></li>
+      <li><span class="s">Codex</span><span class="full">Both halves</span></li>
+      <li><span class="s">Cursor</span><span class="full">Both halves</span></li>
+      <li><span class="s">opencode</span><span class="part">Tests only</span></li>
+      <li><span class="s">Antigravity</span><span class="part">Reviews only</span></li>
+      <li><span class="s">Gemini · Pi</span><span class="none">Not scored</span></li>
+    </ul>
+    <p style="margin-top:16px">"Not scored" removes the axis from the profile. It never counts as a zero.</p>
+  </aside>
+</div>
+</body>
+</html>

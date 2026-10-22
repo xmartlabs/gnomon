@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gnomon · See how well your team works with AI agents</title>
+<meta name="description" content="gnomon reads the agent sessions already on each developer's machine and scores how they work with AI coding agents. Built by Xmartlabs.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 8 L32 52 L8 52 Z' fill='%239EC2EF'/%3E%3Cpath d='M32 8 L44 52 L32 52 Z' fill='%232A78D6'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!--
+  Landing mockup for https://xmartlabs.github.io/gnomon/ (approval artifact, not production).
+  Tokens are copied from docs/design/design-system-v2/design_system/tokens/*.css (light theme).
+  QA hooks: ?renderer=svg forces the static fallback; ?phase=0..1 freezes the sun at that point of its sweep.
+-->
+<style>
+:root{
+  --grey-0:#FFFFFF;--grey-25:#FBFBFB;--grey-50:#F4F5F5;--grey-100:#E9EAEA;--grey-200:#D5D7D7;--grey-300:#B4B7B7;--grey-400:#8B8F8F;--grey-500:#6A6E6E;--grey-600:#4E5252;--grey-700:#383B3B;--grey-800:#232626;--grey-900:#141616;--grey-950:#0A0B0B;
+  --blue-50:#EBF2FC;--blue-100:#CFE0F7;--blue-200:#9EC2EF;--blue-300:#6BA1E4;--blue-400:#4189DC;--blue-500:#2A78D6;--blue-600:#1F60B0;--blue-700:#17498A;--blue-800:#103361;--blue-900:#0A2242;
+
+  --text-primary:var(--grey-900);--text-secondary:var(--grey-500);--text-tertiary:#6E7272;--text-accent:var(--blue-600);
+  --surface-page:var(--grey-0);--surface-sunken:var(--grey-50);--surface-hover:var(--grey-50);
+  --rule-strong:var(--grey-900);--rule-default:var(--grey-200);--rule-subtle:var(--grey-100);
+  --accent:var(--blue-600);--accent-hover:var(--blue-700);--accent-pressed:var(--blue-800);--accent-on:var(--grey-0);
+  --accent-mark:var(--blue-500);--accent-mark-shadow:var(--blue-200);
+  --chart-1:var(--blue-500);--chart-2:var(--blue-300);--chart-3:var(--blue-100);--chart-track:var(--grey-100);
+  --focus-ring:var(--blue-500);
+
+  --font-ui:"Archivo","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --font-figure:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --layout-max:1180px;--gutter:32px;
+  --ease-out:cubic-bezier(.22,.61,.36,1);
+  --duration-fast:120ms;
+}
+@media (prefers-reduced-motion:reduce){:root{--duration-fast:0ms}}
+
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+@media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
+body{margin:0;background:var(--surface-page);color:var(--text-primary);font:400 16px/1.55 var(--font-ui);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+a{color:var(--accent);text-decoration:none;border-bottom:1px solid currentColor;transition:color var(--duration-fast) var(--ease-out)}
+a:hover{color:var(--accent-hover)}
+:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+::selection{background:var(--blue-50)}
+p{margin:0}
+ul,ol{margin:0;padding:0;list-style:none}
+h1,h2,h3{margin:0;font-weight:600}
+code{font-family:var(--font-figure);font-size:.875em;background:var(--surface-sunken);padding:1px 5px;border-radius:2px}
+
+.wrap{max-width:calc(var(--layout-max) + 2*var(--gutter));margin:0 auto;padding:0 var(--gutter)}
+.label{font:500 11px/1.2 var(--font-figure);letter-spacing:.1em;text-transform:uppercase;color:var(--text-tertiary)}
+.display{font-family:var(--font-ui);font-stretch:125%;font-weight:600;letter-spacing:-.035em;text-wrap:balance}
+.fig{font-family:var(--font-figure);font-variant-numeric:tabular-nums}
+.skip{position:absolute;left:16px;top:-48px;z-index:20;background:var(--surface-page);padding:8px 12px;border:1px solid var(--rule-strong)}
+.skip:focus{top:12px}
+
+/* controls (DS Button: primary, sizes sm / lg) */
+.btn{display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 16px;border:1px solid var(--accent);border-radius:2px;background:var(--accent);color:var(--accent-on);font:500 15px/1 var(--font-ui);white-space:nowrap;transition:background-color var(--duration-fast) var(--ease-out),border-color var(--duration-fast) var(--ease-out)}
+.btn:hover{background:var(--accent-hover);border-color:var(--accent-hover);color:var(--accent-on)}
+.btn:active{background:var(--accent-pressed);border-color:var(--accent-pressed)}
+.btn-lg{height:48px;padding:0 22px;font-size:16px}
+.btn-sm{height:32px;padding:0 12px;font-size:13px}
+.go{font-weight:500;white-space:nowrap}
+.go span{font-family:var(--font-figure);margin-left:6px}
+
+/* masthead */
+.mast{position:relative;z-index:5;border-bottom:1px solid var(--rule-default);background:var(--surface-page)}
+.mast-in{display:flex;align-items:center;gap:28px;height:64px}
+.brand{display:flex;align-items:center;gap:10px;color:var(--text-primary);border:0}
+.brand:hover{color:var(--text-primary)}
+.brand svg{display:block}
+.wordmark{font:600 19px/1 var(--font-ui);letter-spacing:-.03em}
+.brand-group{display:flex;align-items:center;gap:12px}
+.by{border:0;color:var(--text-tertiary)}
+.by:hover{color:var(--text-primary)}
+.mast-nav{display:flex;gap:24px;margin-left:auto;font-size:14px}
+.mast-nav a{color:var(--text-secondary);border:0}
+.mast-nav a:hover{color:var(--text-primary)}
+.mast-docs{display:none;font-size:14px;margin-left:auto;color:var(--text-secondary);border:0}
+
+/* ===== hero: the page is the dial plate ===== */
+.hero{position:relative;overflow:hidden;min-height:clamp(660px,calc(100svh - 64px),980px);display:flex;flex-direction:column;justify-content:flex-end;border-bottom:1px solid var(--rule-default)}
+.dial{position:absolute;inset:0;z-index:0;pointer-events:none}
+.dial canvas,.dial svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+.dial svg{display:none}
+.dial.is-svg svg{display:block}
+.dial.is-svg canvas{display:none}
+.dial-labels{position:absolute;inset:0}
+.dl{position:absolute;left:0;top:0;white-space:nowrap;font:500 11px/1 var(--font-figure);letter-spacing:.04em;font-variant-numeric:tabular-nums;color:var(--grey-700);will-change:transform}
+.dl-name{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--grey-700);padding-bottom:3px;border-bottom:2px solid transparent}
+.dl-name.is-on{color:var(--text-primary);border-bottom-color:var(--accent-mark)}
+.hero-in{position:relative;z-index:1;width:100%;padding-top:32px;padding-bottom:32px}
+.hero-title{font-size:clamp(40px,4.75vw,68px);line-height:.98;margin:16px 0 0}
+.hero-row{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:28px 56px;align-items:end;margin-top:28px}
+.lede{font-size:19px;line-height:1.5;max-width:34em;margin-top:24px;text-wrap:pretty}
+.hero-row .lede{font-size:18px;margin-top:0}
+.actions{display:flex;flex-wrap:wrap;align-items:center;gap:16px 28px;margin-top:32px}
+.hero-row .actions{margin-top:0}
+.hero-foot{display:flex;align-items:baseline;justify-content:space-between;gap:24px;margin-top:40px;padding-top:14px;border-top:1px solid var(--rule-subtle)}
+.etym{font-size:13px;color:var(--text-secondary);max-width:46em}
+.etym i{font-style:normal;color:var(--text-primary)}
+.motion-btn{font:500 11px/1 var(--font-figure);letter-spacing:.1em;text-transform:uppercase;color:var(--text-secondary);background:var(--surface-page);border:1px solid var(--rule-default);border-radius:2px;height:32px;padding:0 12px;cursor:pointer;white-space:nowrap}
+.motion-btn:hover{color:var(--text-primary);background:var(--surface-hover)}
+.motion-btn[hidden]{display:none}
+
+/* ===== sections ===== */
+.section{padding:104px 0;border-bottom:1px solid var(--rule-default)}
+.h2{font-size:clamp(30px,3.7vw,48px);line-height:1.04;max-width:20ch;margin-top:16px}
+.sub{font-size:18px;line-height:1.5;max-width:38em;margin-top:22px;text-wrap:pretty}
+.note{font-size:14px;color:var(--text-secondary);max-width:42em}
+.vrule{width:1px;background:var(--rule-default);align-self:stretch}
+
+/* formula + pillar ruler (column widths are the weights) */
+.formula{margin-top:48px;padding:22px 0 20px;border-top:2px solid var(--rule-strong);border-bottom:1px solid var(--rule-default);font:400 clamp(16px,2vw,26px)/1.35 var(--font-figure);letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.formula b{font-weight:500}
+.formula-note{font-size:14px;color:var(--text-secondary);margin-top:12px}
+.pillars{margin-top:56px}
+.pgrid{display:grid;grid-template-columns:30fr 35fr 20fr 15fr}
+.weights span{display:block;height:10px;background:var(--chart-1);border-right:2px solid var(--surface-page)}
+.weights span:last-child{border-right:0}
+.pillar{padding:18px 24px 0 16px;border-left:1px solid var(--rule-default);min-width:0}
+.pillar:first-child{border-left:0;padding-left:0}
+.pfig{font:500 56px/.9 var(--font-figure);letter-spacing:-.03em}
+.pfig small{font-size:20px;letter-spacing:0;color:var(--text-secondary);margin-left:2px}
+.pillar h3{font-size:20px;letter-spacing:-.01em;margin-top:18px}
+.pdesc{font-size:15px;line-height:1.5;margin-top:8px}
+.axes{margin-top:14px;border-top:1px solid var(--rule-subtle)}
+.axes li{font-size:14px;color:var(--text-secondary);padding:7px 0;border-bottom:1px solid var(--rule-subtle)}
+.axes .muted{display:block;font:500 10px/1.3 var(--font-figure);letter-spacing:.08em;text-transform:uppercase;color:var(--text-tertiary);margin-top:2px}
+.pbar{display:none}
+
+/* levels: the docs' calibrated scale, flat */
+.levels{margin-top:80px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,3fr);gap:40px}
+.levels h3{font-size:20px;letter-spacing:-.01em;margin-top:10px}
+.lv-txt{font-size:15px;margin-top:8px;color:var(--text-secondary)}
+.scale{min-width:0}
+.ticks{position:relative;height:28px}
+.ticks i{position:absolute;bottom:0;width:1px;height:6px;background:var(--rule-default)}
+.ticks i.major{height:12px;background:var(--grey-400)}
+.ticks i.cut{height:22px;width:2px;background:var(--rule-strong)}
+.ticks b{position:absolute;top:0;transform:translateX(6px);font:500 11px var(--font-figure);color:var(--text-secondary)}
+.track{display:flex;height:10px;background:var(--chart-track)}
+.track span{height:100%;border-right:2px solid var(--surface-page)}
+.track span:last-child{border-right:0}
+.bands{display:flex}
+.bands li{padding:12px 8px 0 10px;border-left:1px solid var(--rule-default);min-width:0}
+.bands li:first-child{border-left:0;padding-left:0}
+.bands .label{display:block;color:var(--text-primary)}
+.bands .rng{display:block;font:400 11px/1.6 var(--font-figure);color:var(--text-tertiary);margin-top:4px}
+
+.pair{display:grid;grid-template-columns:minmax(0,1.35fr) auto minmax(0,1fr);gap:48px;margin-top:80px}
+.pair h3,.split h3{font-size:22px;line-height:1.25;letter-spacing:-.01em;margin-top:12px}
+.ptxt{font-size:16px;margin-top:10px;max-width:36em}
+.facts{margin:64px 0 0;border-top:2px solid var(--rule-strong)}
+.facts div{display:grid;grid-template-columns:200px minmax(0,1fr);gap:24px;padding:16px 0;border-bottom:1px solid var(--rule-default)}
+.facts dt{font:500 11px/1.9 var(--font-figure);letter-spacing:.1em;text-transform:uppercase;color:var(--text-primary)}
+.facts dd{margin:0;font-size:16px}
+
+/* who it's for */
+.split>*,.pair>*,.ledger>*{min-width:0}
+.split{display:grid;grid-template-columns:minmax(0,1.15fr) auto minmax(0,1fr);gap:56px;margin-top:56px}
+.stxt{margin-top:12px;max-width:34em}
+.split .note{margin-top:16px}
+.split .go{display:inline-block;margin-top:22px}
+.cmd{display:flex;align-items:stretch;margin-top:20px;background:var(--surface-sunken);border-radius:2px;max-width:100%}
+.cmd code{flex:1;min-width:0;background:none;padding:14px 16px;font-size:13px;line-height:1.6;overflow-x:auto;white-space:pre}
+.copy{flex:none;font:500 11px/1 var(--font-figure);letter-spacing:.1em;text-transform:uppercase;color:var(--text-secondary);background:none;border:0;border-left:1px solid var(--rule-default);padding:0 14px;cursor:pointer}
+.copy:hover{color:var(--text-primary);background:var(--grey-100)}
+
+/* sources */
+.srcs-table{margin-top:48px;border-top:2px solid var(--rule-strong)}
+.srcs li,.srcs-head{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr) minmax(0,1.25fr);gap:24px;padding:14px 0;border-bottom:1px solid var(--rule-default);align-items:baseline}
+.srcs-head{padding:12px 0 10px}
+.src-name{font-weight:500}
+.src-path{font:400 13px/1.5 var(--font-figure);color:var(--text-primary);overflow-wrap:anywhere}
+.src-note{font-size:14px;color:var(--text-secondary)}
+.srcs-foot{display:flex;flex-wrap:wrap;justify-content:space-between;gap:16px 32px;margin-top:20px;align-items:baseline}
+
+/* privacy ledger */
+.ledger{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1.35fr);gap:48px;margin-top:48px}
+.ledger h3{font-size:20px;letter-spacing:-.01em;padding-bottom:12px;border-bottom:2px solid var(--rule-strong)}
+.ledger li{font-size:16px;padding:11px 0;border-bottom:1px solid var(--rule-default)}
+.ledger .lead-in{font-size:14px;color:var(--text-secondary);padding:12px 0 2px}
+.ledger-note{margin-top:28px}
+
+/* contact */
+.contact{padding:128px 0 120px;border-bottom:1px solid var(--rule-default)}
+.contact-title{font-size:clamp(44px,7vw,104px);line-height:.95;margin-top:20px;max-width:12ch}
+.contact .lede{max-width:30em}
+
+/* footer */
+.foot{padding:28px 0 40px}
+.foot-in{display:flex;flex-wrap:wrap;align-items:baseline;gap:12px 32px;font-size:13px;color:var(--text-secondary)}
+.foot-in nav{display:flex;gap:20px;margin-left:auto}
+.foot .brand{gap:8px}
+.foot .wordmark{font-size:15px}
+
+/* ===== responsive ===== */
+@media (max-width:1080px){
+  .mast-nav{gap:18px}
+  .pgrid.cols{grid-template-columns:1fr 1fr;row-gap:40px}
+  .pgrid.cols .pillar:nth-child(3){border-left:0;padding-left:0}
+  .weights{display:none}
+  .pbar{display:block;height:8px;background:var(--chart-track);margin-bottom:16px}
+  .pbar i{display:block;height:100%;background:var(--chart-1)}
+  .levels{grid-template-columns:1fr;gap:20px}
+}
+/* portrait tablets: the dial is sized by width, so size the hero to its content plus room for the dial */
+@media (min-width:761px) and (max-aspect-ratio:1/1){
+  .hero{min-height:0}
+  .hero-in{padding-top:calc(26vw + 92px)}
+}
+@media (max-width:480px){.mast .by{display:none}}
+@media (max-width:860px){
+  .mast-nav{display:none}
+  .mast-docs{display:inline}
+}
+@media (max-width:760px){
+  :root{--gutter:20px}
+  .mast-in{height:56px;gap:16px}
+  .brand-group{gap:10px}
+  .hero{min-height:0;display:block}
+  .dial{position:relative;inset:auto;aspect-ratio:2/1;min-height:180px}
+  .dl-num{display:none}
+  .dl-name{font-size:10px;letter-spacing:.08em}
+  .hero-in{padding-top:8px;padding-bottom:28px}
+  .hero-title{font-size:clamp(34px,10vw,46px)}
+  .lede{font-size:17px}
+  .hero-row{grid-template-columns:minmax(0,1fr)}
+  .hero-foot{margin-top:40px;flex-direction:column;align-items:flex-start}
+  .section{padding:72px 0}
+  .sub{font-size:17px}
+  .pgrid.cols{grid-template-columns:minmax(0,1fr);row-gap:32px}
+  .pgrid.cols .pillar{border-left:0;padding-left:0;padding-right:0}
+  .ticks,.track{display:none}
+  .bands{flex-direction:column}
+  .bands li{width:auto!important;border-left:2px solid var(--chart-track);padding:8px 0 10px 14px}
+  .bands li:first-child{border-left:2px solid var(--chart-track);padding-left:14px}
+  .bands li[data-tone="3"]{border-left-color:var(--chart-3)}
+  .bands li[data-tone="2"]{border-left-color:var(--chart-2)}
+  .bands li[data-tone="1"]{border-left-color:var(--chart-1)}
+  .pair,.split,.ledger{grid-template-columns:minmax(0,1fr);gap:36px}
+  .vrule{display:none}
+  .facts div{grid-template-columns:minmax(0,1fr);gap:4px}
+  .srcs-head{display:none}
+  .srcs li{grid-template-columns:minmax(0,1fr);gap:4px}
+  .contact{padding:88px 0 80px}
+  .foot-in nav{margin-left:0}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js" } }
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<!-- "Contact us" goes to the Xmartlabs contact page; utm_content marks the placement: header-cta, hero-cta, footer-cta. -->
+<header class="mast">
+  <div class="wrap mast-in">
+    <div class="brand-group">
+      <a class="brand" href="#top">
+        <svg width="24" height="24" viewBox="0 0 64 64" aria-hidden="true"><path d="M32 8 L32 52 L8 52 Z" fill="#9EC2EF"/><path d="M32 8 L44 52 L32 52 Z" fill="#2A78D6"/></svg>
+        <span class="wordmark">gnomon</span>
+      </a>
+      <a class="by label" href="https://www.xmartlabs.com/?utm_source=gnomon-docs&amp;utm_medium=landing&amp;utm_content=brand">by Xmartlabs</a>
+    </div>
+    <!-- Mockup: "docs" links point at the approved docs-page mockup. On the site they go to the MkDocs pages. -->
+    <nav class="mast-nav" aria-label="Page">
+      <a href="#measures">What it measures</a>
+      <a href="#sources">Sources</a>
+      <a href="#privacy">Privacy</a>
+      <a href="2026-10-21-docs-site-mockup.html">Docs</a>
+      <a href="https://github.com/xmartlabs/gnomon">GitHub</a>
+    </nav>
+    <a class="mast-docs" href="2026-10-21-docs-site-mockup.html">Docs</a>
+    <a class="btn btn-sm" href="https://www.xmartlabs.com/contact?utm_source=gnomon-docs&amp;utm_medium=landing&amp;utm_content=header-cta">Contact us</a>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero" id="top" aria-labelledby="hero-title">
+    <!-- Decorative: the AQ scale drawn as a sundial. Everything it shows is also in the page text. -->
+    <div class="dial" aria-hidden="true">
+      <canvas></canvas>
+      <svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none"></svg>
+      <div class="dial-labels"></div>
+    </div>
+    <div class="wrap hero-in">
+      <div class="hero-copy">
+        <p class="label">Agentic Quotient · 0–100</p>
+        <h1 id="hero-title" class="display hero-title">See how well your team works with AI agents.</h1>
+        <div class="hero-row">
+          <p class="lede">gnomon reads the agent sessions already saved on each developer's machine and scores how they work with Claude Code, Codex, Cursor and four other tools. Every formula is public, and nothing leaves the machine unless the developer chooses to share.</p>
+          <div class="actions">
+            <a class="btn btn-lg" href="https://www.xmartlabs.com/contact?utm_source=gnomon-docs&amp;utm_medium=landing&amp;utm_content=hero-cta">Contact us</a>
+            <a class="go" href="2026-10-21-docs-site-mockup.html">Read the docs<span aria-hidden="true">→</span></a>
+          </div>
+        </div>
+      </div>
+      <div class="hero-foot">
+        <p class="etym"><i>gnomon</i> (<span lang="el">γνώμων</span>): the part of a sundial that casts the shadow. It measures by what you cast.</p>
+        <button class="motion-btn" type="button" hidden>Pause motion</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="measures" aria-labelledby="measures-title">
+    <div class="wrap">
+      <p class="label">What it measures</p>
+      <h2 id="measures-title" class="display h2">One score from four pillars, with every weight in plain sight.</h2>
+      <p class="formula" role="img" aria-label="AQ equals 0.30 times Breadth, plus 0.35 times Craft, plus 0.20 times Efficiency, plus 0.15 times Savvy.">
+        <b>AQ</b> = 0.30·Breadth + 0.35·Craft + 0.20·Efficiency + 0.15·Savvy
+      </p>
+      <p class="formula-note">Each pillar scores 0–100 from its own axes, over one month of sessions.</p>
+
+      <div class="pillars">
+        <div class="pgrid weights" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        <div class="pgrid cols">
+          <div class="pillar">
+            <div class="pbar" aria-hidden="true"><i style="width:30%"></i></div>
+            <p class="pfig">30<small>%</small></p>
+            <h3>Breadth</h3>
+            <p class="pdesc">How much of the agent toolkit gets used: subagents, skills, MCP servers and CLIs, and planning before work.</p>
+            <ul class="axes"><li>Orchestration</li><li>Skill fluency</li><li>Tool command</li><li>Discipline</li></ul>
+          </div>
+          <div class="pillar">
+            <div class="pbar" aria-hidden="true"><i style="width:35%"></i></div>
+            <p class="pfig">35<small>%</small></p>
+            <h3>Craft</h3>
+            <p class="pdesc">Whether the agent's work is tested, reviewed and grounded, and whether lessons get written down for the next session.</p>
+            <ul class="axes"><li>Verification</li><li>Grounding</li><li>Context intelligence</li><li>Compounding</li></ul>
+          </div>
+          <div class="pillar">
+            <div class="pbar" aria-hidden="true"><i style="width:20%"></i></div>
+            <p class="pfig">20<small>%</small></p>
+            <h3>Efficiency</h3>
+            <p class="pdesc">How the work recovers after a tool call fails.</p>
+            <ul class="axes"><li>Recovery</li><li>Steering leverage<span class="muted">Measured, not scored yet</span></li></ul>
+          </div>
+          <div class="pillar">
+            <div class="pbar" aria-hidden="true"><i style="width:15%"></i></div>
+            <p class="pfig">15<small>%</small></p>
+            <h3>Savvy</h3>
+            <p class="pdesc">Choosing models and tools with cost in mind.</p>
+            <ul class="axes"><li>Model mix</li><li>Token economy</li></ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="levels">
+        <div class="levels-intro">
+          <p class="label">Levels</p>
+          <h3>Six levels, Novice to Elite.</h3>
+          <p class="lv-txt">The overall AQ places each developer on one ladder with fixed cut-offs.</p>
+        </div>
+        <div class="scale">
+          <div class="ticks" aria-hidden="true">
+            <i class="major" style="left:0"></i><i style="left:5%"></i><i style="left:10%"></i><i style="left:15%"></i><i style="left:20%"></i>
+            <i class="cut" style="left:25%"></i><i style="left:30%"></i><i style="left:35%"></i><i style="left:40%"></i>
+            <i class="cut" style="left:45%"></i><i class="major" style="left:50%"></i><i style="left:55%"></i>
+            <i class="cut" style="left:60%"></i><i style="left:65%"></i><i style="left:70%"></i>
+            <i class="cut" style="left:75%"></i><i style="left:80%"></i><i style="left:85%"></i>
+            <i class="cut" style="left:88%"></i><i style="left:90%"></i><i style="left:95%"></i><i class="major" style="left:calc(100% - 1px)"></i>
+            <b style="left:25%">25</b><b style="left:45%">45</b><b style="left:60%">60</b><b style="left:75%">75</b><b style="left:88%">88</b>
+          </div>
+          <div class="track" aria-hidden="true">
+            <span style="width:25%;background:var(--chart-track)"></span>
+            <span style="width:20%;background:var(--chart-3)"></span>
+            <span style="width:15%;background:var(--chart-3)"></span>
+            <span style="width:15%;background:var(--chart-2)"></span>
+            <span style="width:13%;background:var(--chart-2)"></span>
+            <span style="width:12%;background:var(--chart-1)"></span>
+          </div>
+          <ol class="bands">
+            <li style="width:25%" data-tone="0"><span class="label">Novice</span><span class="rng">0–24</span></li>
+            <li style="width:20%" data-tone="3"><span class="label">Apprentice</span><span class="rng">25–44</span></li>
+            <li style="width:15%" data-tone="3"><span class="label">Adequate</span><span class="rng">45–59</span></li>
+            <li style="width:15%" data-tone="2"><span class="label">Proficient</span><span class="rng">60–74</span></li>
+            <li style="width:13%" data-tone="2"><span class="label">Advanced</span><span class="rng">75–87</span></li>
+            <li style="width:12%" data-tone="1"><span class="label">Elite</span><span class="rng">88–100</span></li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="pair">
+        <div>
+          <p class="label">Fair across tools</p>
+          <h3>A missing signal is never a zero.</h3>
+          <p class="ptxt">Not every tool records every signal. When one can't, that part is left out and its weight moves to the parts that can be measured. Nobody loses points for the tool they use.</p>
+        </div>
+        <div class="vrule" aria-hidden="true"></div>
+        <div>
+          <p class="label">Second score</p>
+          <h3>How you build, scored apart.</h3>
+          <p class="ptxt">The GStack scorecard rates Execution, Planning and Engineering from 0 to 10, next to the AQ.</p>
+        </div>
+      </div>
+
+      <dl class="facts">
+        <div><dt>Open source</dt><dd>MIT license. The scoring code is public on GitHub, and the docs cite the code behind each formula.</dd></div>
+        <div><dt>Versioned</dt><dd>Every score carries a contract ID. Two scores compare only when their IDs match.</dd></div>
+        <div><dt>Reproducible</dt><dd>The miraudit skill re-derives a published score from the developer's own transcripts.</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="section" id="who" aria-labelledby="who-title">
+    <div class="wrap">
+      <p class="label">Who it's for</p>
+      <h2 id="who-title" class="display h2">Leads get the team view. Developers get their own profile.</h2>
+      <div class="split">
+        <div>
+          <p class="label">For engineering leads</p>
+          <h3>Find where the team is thin.</h3>
+          <p class="stxt">Each developer who runs gnomon gets a profile: an AQ, a score for every pillar and axis, and a level from Novice to Elite. When developers share to your self-hosted dashboard, you see the team: average AQ, how people spread across levels, pillar averages, model mix and the trend from month to month.</p>
+          <p class="stxt">The dashboard runs as one container with one volume, on your own server.</p>
+          <p class="note">gnomon scores how someone operates agents, not the person. It is a learning aid, not a productivity ranking.</p>
+          <a class="go" href="2026-10-21-docs-site-mockup.html">How scoring works<span aria-hidden="true">→</span></a>
+        </div>
+        <div class="vrule" aria-hidden="true"></div>
+        <div>
+          <p class="label">For developers</p>
+          <h3>Run one command and read your own profile.</h3>
+          <p class="stxt">gnomon reads the transcripts your agents already write to disk and opens your profile in the browser. The docs show how each number is computed and which habit moves it up.</p>
+          <div class="cmd">
+            <code id="install-cmd" data-copy="uvx --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights --local">uvx --from git+https://github.com/xmartlabs/gnomon@latest \
+  xl-ai-insights --local</code>
+            <button class="copy" type="button" aria-describedby="install-cmd" aria-live="polite">Copy</button>
+          </div>
+          <p class="note">Python 3 standard library only. With <code>--local</code>, it makes zero network calls.</p>
+          <a class="go" href="2026-10-21-docs-site-mockup.html">Install and quick start<span aria-hidden="true">→</span></a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="sources" aria-labelledby="sources-title">
+    <div class="wrap">
+      <p class="label">Sources</p>
+      <h2 id="sources-title" class="display h2">Reads the agents your team already uses.</h2>
+      <p class="sub">gnomon finds each tool's history where the tool already keeps it. Nothing gets installed inside the agents: no wrapper, no daemon.</p>
+      <div class="srcs-table">
+      <div class="srcs-head" aria-hidden="true"><span class="label">Tool</span><span class="label">Reads from</span><span class="label">Notes</span></div>
+      <ul class="srcs" aria-label="Supported tools">
+        <li><span class="src-name">Claude Code</span><span class="src-path">~/.claude/projects/</span><span class="src-note">Fullest signal coverage</span></li>
+        <li><span class="src-name">Codex CLI</span><span class="src-path">~/.codex/</span><span class="src-note">Valid profile, fewer signals than Claude Code</span></li>
+        <li><span class="src-name">Cursor</span><span class="src-path">state.vscdb and ~/.cursor/projects/</span><span class="src-note">App and <code>cursor-agent</code> CLI. The CLI stores no tokens, so Token economy and Model mix are left out.</span></li>
+        <li><span class="src-name">Gemini CLI</span><span class="src-path">~/.gemini/</span><span class="src-note">Valid profile, fewer signals than Claude Code</span></li>
+        <li><span class="src-name">Google Antigravity CLI</span><span class="src-path">~/.gemini/antigravity-cli/</span><span class="src-note">Scored fully offline</span></li>
+        <li><span class="src-name">Google Antigravity IDE</span><span class="src-path">The IDE's local language server</span><span class="src-note">The IDE hides model and token data, so those axes are left out</span></li>
+        <li><span class="src-name">opencode</span><span class="src-path">Its local session files</span><span class="src-note">Parsed where present</span></li>
+        <li><span class="src-name">Pi</span><span class="src-path">Its local session files</span><span class="src-note">Parsed where present</span></li>
+      </ul>
+      </div>
+      <div class="srcs-foot">
+        <p class="note">An axis a tool can't record is left out of that profile, never scored as zero.</p>
+        <a class="go" href="2026-10-21-docs-site-mockup.html">What each source measures<span aria-hidden="true">→</span></a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="privacy" aria-labelledby="privacy-title">
+    <div class="wrap">
+      <p class="label">Privacy</p>
+      <h2 id="privacy-title" class="display h2">The analysis runs on the developer's machine.</h2>
+      <p class="sub">With <code>--local</code>, gnomon makes zero network calls. Code churn comes from the local <code>git</code>. Sharing is a separate step that each developer opts into.</p>
+      <div class="ledger">
+        <div>
+          <h3>Never uploaded</h3>
+          <ul>
+            <li>Prompts</li>
+            <li>File contents</li>
+            <li>Verbatim quotes</li>
+            <li>File paths</li>
+            <li><code>narrative_input.md</code> and <code>stats.json</code></li>
+          </ul>
+        </div>
+        <div class="vrule" aria-hidden="true"></div>
+        <div>
+          <h3>Uploaded only when the developer shares</h3>
+          <p class="lead-in">One file, <code>summary.json</code>, with:</p>
+          <ul>
+            <li>Counts and ratios, such as error recovery, planning ratio and fan-out</li>
+            <li>The computed profile: AQ, archetype and scorecard</li>
+            <li>Names of the AI models used each month</li>
+            <li>Names of custom skills and MCP servers, which can include a project or customer name</li>
+          </ul>
+        </div>
+      </div>
+      <p class="note ledger-note">With the self-hosted dashboard, shared summaries go to your own server.</p>
+    </div>
+  </section>
+
+  <section class="contact" id="contact" aria-labelledby="contact-title">
+    <div class="wrap">
+      <p class="label">Contact</p>
+      <h2 id="contact-title" class="display contact-title">Bring gnomon to your team.</h2>
+      <p class="lede">gnomon is built by <a href="https://www.xmartlabs.com/?utm_source=gnomon-docs&amp;utm_medium=landing&amp;utm_content=brand">Xmartlabs</a>. Tell us about your team and the agents it uses, and we will get back to you.</p>
+      <div class="actions">
+        <a class="btn btn-lg" href="https://www.xmartlabs.com/contact?utm_source=gnomon-docs&amp;utm_medium=landing&amp;utm_content=footer-cta">Contact us</a>
+        <a class="go" href="2026-10-21-docs-site-mockup.html">Or start with the docs<span aria-hidden="true">→</span></a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-in">
+    <span class="brand"><svg width="18" height="18" viewBox="0 0 64 64" aria-hidden="true"><path d="M32 8 L32 52 L8 52 Z" fill="#9EC2EF"/><path d="M32 8 L44 52 L32 52 Z" fill="#2A78D6"/></svg><span class="wordmark">gnomon</span></span>
+    <p>MIT license. Built by <a href="https://www.xmartlabs.com/?utm_source=gnomon-docs&amp;utm_medium=landing&amp;utm_content=brand">Xmartlabs</a>. Forked from <a href="https://github.com/Photobombastic/paxel-local">paxel-local</a> by Max Schilling; the build axes come from <a href="https://github.com/garrytan/gstack">gstack</a>.</p>
+    <nav aria-label="Footer">
+      <a href="2026-10-21-docs-site-mockup.html">Docs</a>
+      <a href="https://github.com/xmartlabs/gnomon">GitHub</a>
+      <a href="https://github.com/xmartlabs/gnomon/blob/main/CONTRIBUTING.md">Contributing</a>
+    </nav>
+  </div>
+</footer>
+
+<script type="module">
+/* ============================================================
+   The sundial. Plain math is shared by both renderers:
+   WebGL (three.js, animated) and SVG (static: reduced motion,
+   no WebGL, or the CDN failing).
+   World: y up, the dial plate is y = 0, the gnomon stands at the origin.
+   ============================================================ */
+const D2R = Math.PI / 180;
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const easeOut = x => 1 - Math.pow(1 - clamp(x), 3);
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+const hex3 = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
+
+// Colours come straight from the design-system tokens.
+const COL = {
+  plate: '#FFFFFF',            // --surface-page: the page is the dial plate
+  hour: '#D5D7D7',             // --grey-200 hour lines
+  ring: '#B4B7B7',             // --grey-300
+  minor: '#B4B7B7',            // --grey-300 ticks every 5
+  major: '#6A6E6E',            // --grey-500 ticks at 0 / 50 / 100
+  cut: '#141616',              // --grey-900 level floors
+  bands: ['#E9EAEA', '#CFE0F7', '#CFE0F7', '#6BA1E4', '#6BA1E4', '#2A78D6'], // docs scale track
+  shadow: '#9EC2EF',           // --accent-mark-shadow (blue-200), applied as a multiply
+  faceShade: '#17498A',        // --blue-700: a face turned away from the sun
+  faceLit: '#4189DC'           // --blue-400: a face turned to the sun
+};
+
+// The gnomon is the mark built in 3D: the rod (a pyramid, ridge facing the viewer, wide face left,
+// narrow face right, mark paths M32 8 L32 52 L8 52 / M32 8 L44 52 L32 52) and the pale shadow it casts.
+const G = {
+  H: 3.8,
+  F: [0, 0.86], BL: [-2.07, -0.69], BR: [1.04, -0.69],
+  rHour0: 2.7, rTrack0: 9.3, rTrack1: 9.66, rTick0: 9.84,
+  minorLen: .42, majorLen: .82, cutIn: .38, cutLen: 1.16,
+  rNum: 11.6, rName: 12.9
+};
+const FLOORS = [25, 45, 60, 75, 88];
+const EDGES = [0, 25, 45, 60, 75, 88, 100];
+const LEVELS = [['Novice', 0, 25], ['Apprentice', 25, 45], ['Adequate', 45, 60], ['Proficient', 60, 75], ['Advanced', 75, 88], ['Elite', 88, 100]];
+const DAY = 54;              // seconds for the shadow to sweep 0 → 100
+const STILL_PHASE = 0.64;    // where the sun rests in the static frame
+
+const hero = document.querySelector('.hero');
+const dial = hero.querySelector('.dial');
+const canvas = dial.querySelector('canvas');
+const svg = dial.querySelector('svg');
+const labelBox = dial.querySelector('.dial-labels');
+const heroIn = hero.querySelector('.hero-in');
+const heroCopy = hero.querySelector('.hero-copy');
+const motionBtn = document.querySelector('.motion-btn');
+const params = new URLSearchParams(location.search);
+const fixedPhase = params.has('phase') ? clamp(parseFloat(params.get('phase')) || 0) : null;
+const forceSVG = params.get('renderer') === 'svg';
+const reduceMQ = matchMedia('(prefers-reduced-motion: reduce)');
+const narrowMQ = matchMedia('(max-width: 760px)');
+
+/* ---------- composition: where the dial sits, per layout ---------- */
+// The camera sits higher than the sun ever gets (36° vs 19.7°), so the shadow always shows past the apex.
+// rise(el, dist): screen pixels per world unit that the far labels climb above the dial centre.
+const farRise = (el, dist) => dist * Math.tan(el * D2R) * (1 - dist / (dist + G.rName));
+function compose(w, h) {
+  if (narrowMQ.matches) {
+    // Narrow: a 2:1 block that fits the arc, higher camera, level names only (numbers hidden in CSS).
+    const el = 55, dist = 30;
+    const unit = Math.min((w / 2 - 40) / G.rName, (h - 44) / (farRise(el, dist) + 1.1));
+    return { el, dist, unit, ox: w * 0.5, oy: h - 1.1 * unit - 10, mid: 90 * D2R, span: Math.PI };
+  }
+  const d = dial.getBoundingClientRect(), c = heroIn.getBoundingClientRect(), t = heroCopy.getBoundingClientRect();
+  const gut = parseFloat(getComputedStyle(heroIn).paddingLeft) || 32;
+  const left = c.left - d.left + gut, width = c.width - 2 * gut;
+  const el = 36, dist = 34, oy = t.top - d.top - 58;
+  const cap = clamp(w * 0.029, 46, 56);   // px per world unit, larger on big screens
+  const byHeight = Math.min((oy - 34) / farRise(el, dist), cap);
+  // Sit right of centre when there is room; slide toward the middle when the right side would crop the scale.
+  const ox = Math.max(w / 2, Math.min(left + width * 0.6, w - (byHeight * G.rName + 52)));
+  const unit = clamp(Math.min(byHeight, (Math.min(ox, w - ox) - 52) / G.rName), 12, cap);
+  return { el, dist, unit, ox, oy, mid: 90 * D2R, span: Math.PI };
+}
+
+// Direction on the plate for a scale value (x, z).
+function dirOf(v, comp) {
+  const a = comp.mid + comp.span * (0.5 - v / 100);
+  return [Math.cos(a), -Math.sin(a)];
+}
+
+// The sun for a point of its sweep: low at both ends, so shadows run long at "dawn" and "dusk".
+function sunAt(p, comp) {
+  const v = 100 * p;
+  const e = (8 + 11.7 * Math.sin(Math.PI * p)) * D2R;
+  return { v, e, dir: dirOf(v, comp) };
+}
+
+function hull(pts) {
+  const p = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lo = [], up = [];
+  for (const q of p) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+  for (let i = p.length - 1; i >= 0; i--) { const q = p[i]; while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); }
+  lo.pop(); up.pop();
+  return lo.concat(up);
+}
+
+// Shadow = convex hull of the base and the apex projected along the sunlight.
+function shadowPoly(sun, rise) {
+  const L = G.H * rise / Math.tan(sun.e);
+  return hull([G.F, G.BL, G.BR, [sun.dir[0] * L, sun.dir[1] * L]]);
+}
+
+// Faces of the rod with outward normals; tone follows the sun (Lambert, mixed between two ramp tokens).
+const V3 = {
+  sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]],
+  cross: (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]],
+  dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2],
+  norm: a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; }
+};
+const FACES = (() => {
+  const P = [0, G.H, 0], F = [G.F[0], 0, G.F[1]], BL = [G.BL[0], 0, G.BL[1]], BR = [G.BR[0], 0, G.BR[1]];
+  const c = [(F[0] + BL[0] + BR[0]) / 4, G.H / 4, (F[2] + BL[2] + BR[2]) / 4];
+  return [[P, BL, F], [P, F, BR], [P, BR, BL]].map(verts => {
+    let n = V3.norm(V3.cross(V3.sub(verts[1], verts[0]), V3.sub(verts[2], verts[0])));
+    const m = [0, 1, 2].map(i => (verts[0][i] + verts[1][i] + verts[2][i]) / 3 - c[i]);
+    if (V3.dot(n, m) < 0) n = n.map(x => -x);
+    return { verts, n };
+  });
+})();
+const SHADE = hex3(COL.faceShade), LIT = hex3(COL.faceLit);
+function faceTones(sun) {
+  const S = [-sun.dir[0] * Math.cos(sun.e), Math.sin(sun.e), -sun.dir[1] * Math.cos(sun.e)];
+  return FACES.map(fc => { const k = smooth(-0.05, 0.9, V3.dot(fc.n, S)); return SHADE.map((x, i) => x + (LIT[i] - x) * k); });
+}
+const rgbHex = c => '#' + c.map(x => Math.round(clamp(x) * 255).toString(16).padStart(2, '0')).join('');
+
+// Camera with a shift lens: it looks level, so the gnomon's ridge stays vertical, and the
+// frustum is shifted so the dial centre lands exactly on (ox, oy).
+function cameraFor(w, h, comp, az) {
+  const d = comp.dist, el = comp.el * D2R;
+  const tanX = w / (2 * comp.unit * d), tanY = tanX * h / w;
+  const hC = d * Math.tan(el), ca = Math.cos(az), sa = Math.sin(az);
+  const e = [sa * d, hC, ca * d], r = [ca, 0, -sa], u = [0, 1, 0], b = [sa, 0, ca];
+  const dot = (a, c) => a[0] * c[0] + a[1] * c[1] + a[2] * c[2];
+  const view = [r[0], u[0], b[0], 0, r[1], u[1], b[1], 0, r[2], u[2], b[2], 0, -dot(r, e), -dot(u, e), -dot(b, e), 1];
+  const world = [r[0], r[1], r[2], 0, u[0], u[1], u[2], 0, b[0], b[1], b[2], 0, e[0], e[1], e[2], 1];
+  const sx = 2 * comp.ox / w - 1, sy = (1 - 2 * comp.oy / h) + Math.tan(el) / tanY;
+  const n = 0.5, f = 500;
+  const proj = [1 / tanX, 0, 0, 0, 0, 1 / tanY, 0, 0, -sx, -sy, -(f + n) / (f - n), -1, 0, 0, -2 * f * n / (f - n), 0];
+  return { view, world, proj, w, h };
+}
+
+function project(cam, x, y, z) {
+  const v = cam.view, P = cam.proj;
+  const cx = v[0] * x + v[4] * y + v[8] * z + v[12];
+  const cy = v[1] * x + v[5] * y + v[9] * z + v[13];
+  const cz = v[2] * x + v[6] * y + v[10] * z + v[14];
+  const w = -cz;
+  return [((P[0] * cx + P[8] * cz) / w + 1) * cam.w / 2, (1 - (P[5] * cy + P[9] * cz) / w) * cam.h / 2];
+}
+
+/* ---------- HTML labels (crisp text over either renderer) ---------- */
+const labels = [];
+for (const v of EDGES) labels.push({ v, r: G.rNum, el: mk('dl dl-num', String(v)) });
+LEVELS.forEach(([name, a, b], i) => labels.push({ v: (a + b) / 2, r: G.rName, band: i, el: mk('dl dl-name', name) }));
+function mk(cls, text) { const s = document.createElement('span'); s.className = cls; s.textContent = text; labelBox.appendChild(s); return s; }
+let litBand = -1;
+function placeLabels(cam, comp, reveal, value) {
+  for (const L of labels) {
+    const d = dirOf(L.v, comp), [x, y] = project(cam, d[0] * L.r, 0, d[1] * L.r);
+    L.el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-50%)`;
+    L.el.style.opacity = clamp((reveal - L.v) / 8).toFixed(3);
+  }
+  const band = value == null ? -1 : LEVELS.findIndex(([, a, b]) => value >= a && (value < b || b === 100));
+  if (band !== litBand) {
+    labels.forEach(L => { if (L.band !== undefined) L.el.classList.toggle('is-on', L.band === band); });
+    litBand = band;
+  }
+}
+
+/* ---------- static renderer (SVG) ---------- */
+function drawSVG(p) {
+  const w = dial.clientWidth, h = dial.clientHeight;
+  if (!w || !h) return;
+  const comp = compose(w, h), cam = cameraFor(w, h, comp, 0);
+  const sun = sunAt(p, comp);
+  const pt = (x, z) => project(cam, x, 0, z);
+  const at = (v, r) => { const d = dirOf(v, comp); return pt(d[0] * r, d[1] * r); };
+  const f = n => n.toFixed(1);
+  const line = (a, b, col, sw) => `<line x1="${f(a[0])}" y1="${f(a[1])}" x2="${f(b[0])}" y2="${f(b[1])}" stroke="${col}" stroke-width="${sw}" stroke-linecap="butt"/>`;
+  const arc = (r, v0, v1) => { const pts = []; for (let i = 0; i <= 64; i++) pts.push(at(v0 + (v1 - v0) * i / 64, r)); return pts; };
+  const poly = pts => pts.map(q => f(q[0]) + ',' + f(q[1])).join(' ');
+  const out = [];
+  for (const v of EDGES) out.push(line(at(v, G.rHour0), at(v, G.rTrack0 - .1), COL.hour, 1));
+  out.push(`<polyline points="${poly(arc(G.rHour0, 0, 100))}" fill="none" stroke="${COL.hour}" stroke-width="1"/>`);
+  LEVELS.forEach(([, a, b], i) => {
+    const gap = 0.05 / G.rTrack0 / comp.span * 100 * 2;
+    const a0 = a === 0 ? a : a + gap, b0 = b === 100 ? b : b - gap;
+    out.push(`<polygon points="${poly(arc(G.rTrack0, a0, b0).concat(arc(G.rTrack1, b0, a0)))}" fill="${COL.bands[i]}"/>`);
+  });
+  out.push(`<polyline points="${poly(arc(G.rTick0, 0, 100))}" fill="none" stroke="${COL.ring}" stroke-width="1"/>`);
+  for (let v = 0; v <= 100; v += 5) out.push(line(at(v, G.rTick0), at(v, G.rTick0 + G.minorLen), COL.minor, 1));
+  for (const v of [0, 50, 100]) out.push(line(at(v, G.rTick0), at(v, G.rTick0 + G.majorLen), COL.major, 1.4));
+  for (const v of FLOORS) out.push(line(at(v, G.rTrack0 - G.cutIn + .38), at(v, G.rTick0 + G.cutLen), COL.cut, 2));
+  const sh = shadowPoly(sun, 1).map(q => pt(q[0], q[1]));
+  out.push(`<polygon points="${poly(sh)}" fill="${COL.shadow}" style="mix-blend-mode:multiply"/>`);
+  const P = project(cam, 0, G.H, 0), F = pt(...G.F), BL = pt(...G.BL), BR = pt(...G.BR);
+  const [toneL, toneR] = faceTones(sun).map(rgbHex);
+  out.push(`<polygon points="${poly([P, BL, F])}" fill="${toneL}" stroke="${toneL}" stroke-width=".6" stroke-linejoin="round"/>`);
+  out.push(`<polygon points="${poly([P, F, BR])}" fill="${toneR}" stroke="${toneR}" stroke-width=".6" stroke-linejoin="round"/>`);
+  svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  svg.innerHTML = out.join('');
+  placeLabels(cam, comp, 200, sun.v);
+}
+
+function startSVG() {
+  dial.classList.add('is-svg');
+  motionBtn.hidden = true;
+  const p = fixedPhase ?? STILL_PHASE;
+  const redraw = () => drawSVG(p);
+  redraw();
+  new ResizeObserver(redraw).observe(dial);
+  if (document.fonts) document.fonts.ready.then(redraw);
+}
+
+/* ---------- live renderer (WebGL via three.js) ---------- */
+const PLATE_VS = /* glsl */`
+varying vec2 vP;
+void main() {
+  vec4 wp = modelMatrix * vec4(position, 1.0);
+  vP = wp.xz;
+  gl_Position = projectionMatrix * viewMatrix * wp;
+}`;
+
+const PLATE_FS = /* glsl */`
+uniform vec3 uPlate, uHour, uRing, uMinor, uMajor, uCut, uShadow;
+uniform vec3 uBand[6];
+uniform float uMid, uSpan, uReveal, uShadowAmt;
+uniform vec4 uEdge[6];
+uniform int uEdgeN;
+varying vec2 vP;
+
+const float R_HOUR0 = ${G.rHour0.toFixed(3)};
+const float R_TRACK0 = ${G.rTrack0.toFixed(3)};
+const float R_TRACK1 = ${G.rTrack1.toFixed(3)};
+const float R_TICK0 = ${G.rTick0.toFixed(3)};
+
+// Anti-aliased line from a distance field, never thinner than about a pixel.
+float aline(float d, float hw) {
+  float fw = max(fwidth(d), 1e-4);
+  float w = max(hw, 0.6 * fw);
+  return clamp(0.5 + (w - d) / fw, 0.0, 1.0) * (hw / w);
+}
+float radial(float r, float r0, float r1) {
+  float fw = max(fwidth(r), 1e-4);
+  return clamp((r - r0) / fw + 0.5, 0.0, 1.0) * clamp((r1 - r) / fw + 0.5, 0.0, 1.0);
+}
+
+void main() {
+  vec2 p = vP;
+  float r = length(p);
+  vec2 q = vec2(p.x, -p.y);
+  float c = cos(uMid), s = sin(uMid);
+  vec2 qr = vec2(q.x * c + q.y * s, -q.x * s + q.y * c);
+  float v = (0.5 - atan(qr.y, qr.x) / uSpan) * 100.0;
+  float perUnit = uSpan / 100.0 * r;                 // world length of one scale unit at r
+  float inArc = step(-1.0, v) * step(v, 101.0);
+  float inScale = step(0.0, v) * step(v, 100.0);
+  float shown = clamp((uReveal - v) / 3.0, 0.0, 1.0);
+
+  float dFloor = 1e3;
+  dFloor = min(dFloor, abs(v - 25.0)); dFloor = min(dFloor, abs(v - 45.0));
+  dFloor = min(dFloor, abs(v - 60.0)); dFloor = min(dFloor, abs(v - 75.0));
+  dFloor = min(dFloor, abs(v - 88.0));
+  float dEnds = min(abs(v), abs(v - 100.0));
+  float dMajor = min(dEnds, abs(v - 50.0));
+  float dMinor = abs(v - 5.0 * floor(v / 5.0 + 0.5));
+
+  vec3 col = uPlate;
+  // hour lines and the inner chapter ring
+  col = mix(col, uHour, aline(min(dFloor, dEnds) * perUnit, 0.013) * radial(r, R_HOUR0, R_TRACK0 - 0.1) * inArc * shown);
+  col = mix(col, uHour, aline(abs(r - R_HOUR0), 0.011) * inScale * shown);
+  // level track, with gaps at the floors
+  vec3 band = v < 25.0 ? uBand[0] : v < 45.0 ? uBand[1] : v < 60.0 ? uBand[2] : v < 75.0 ? uBand[3] : v < 88.0 ? uBand[4] : uBand[5];
+  float gap = 1.0 - aline(dFloor * perUnit, 0.05);
+  col = mix(col, band, radial(r, R_TRACK0, R_TRACK1) * inScale * gap * shown);
+  // tick ring, minor / major ticks, level cuts
+  col = mix(col, uRing, aline(abs(r - R_TICK0), 0.010) * inScale * shown);
+  col = mix(col, uMinor, aline(dMinor * perUnit, 0.016) * radial(r, R_TICK0, R_TICK0 + ${G.minorLen.toFixed(3)}) * inArc * shown);
+  col = mix(col, uMajor, aline(dMajor * perUnit, 0.022) * radial(r, R_TICK0, R_TICK0 + ${G.majorLen.toFixed(3)}) * inArc * shown);
+  col = mix(col, uCut, aline(dFloor * perUnit, 0.036) * radial(r, R_TRACK0 - 0.02, R_TICK0 + ${G.cutLen.toFixed(3)}) * shown);
+
+  // cast shadow: signed distance to the convex hull, multiplied like real shade
+  float sd = -1e3;
+  for (int i = 0; i < 6; i++) {
+    if (i >= uEdgeN) break;
+    sd = max(sd, dot(p - uEdge[i].xy, uEdge[i].zw));
+  }
+  float fw = max(fwidth(sd), 1e-4);
+  float inShadow = clamp(0.5 - sd / fw, 0.0, 1.0) * uShadowAmt;
+  col *= mix(vec3(1.0), uShadow, inShadow);
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+const FACE_VS = /* glsl */`
+attribute vec3 aColor;
+varying vec3 vC;
+void main() { vC = aColor; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const FACE_FS = /* glsl */`
+varying vec3 vC;
+void main() { gl_FragColor = vec4(vC, 1.0); }`;
+
+async function startGL() {
+  const THREE = await import('three');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setClearColor(COL.plate, 1);
+  const scene = new THREE.Scene();
+  const cam = new THREE.Camera();
+  cam.matrixAutoUpdate = false;
+
+  const v3 = h => new THREE.Vector3(...hex3(h));
+  const edges = Array.from({ length: 6 }, () => new THREE.Vector4());
+  const U = {
+    uPlate: { value: v3(COL.plate) }, uHour: { value: v3(COL.hour) }, uRing: { value: v3(COL.ring) },
+    uMinor: { value: v3(COL.minor) }, uMajor: { value: v3(COL.major) }, uCut: { value: v3(COL.cut) },
+    uShadow: { value: v3(COL.shadow) }, uBand: { value: COL.bands.map(v3) },
+    uMid: { value: 0 }, uSpan: { value: Math.PI }, uReveal: { value: -10 }, uShadowAmt: { value: 0 },
+    uEdge: { value: edges }, uEdgeN: { value: 0 }
+  };
+  const plate = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.ShaderMaterial({ uniforms: U, vertexShader: PLATE_VS, fragmentShader: PLATE_FS }));
+  plate.rotation.x = -Math.PI / 2;
+  scene.add(plate);
+
+  // The rod: three faces, each one flat colour per frame (no gradients across a face).
+  const pos = [];
+  for (const fc of FACES) for (const v of fc.verts) pos.push(...v);
+  const gGeo = new THREE.BufferGeometry();
+  gGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  const toneAttr = new THREE.Float32BufferAttribute(new Float32Array(27), 3);
+  gGeo.setAttribute('aColor', toneAttr);
+  const gnomon = new THREE.Mesh(gGeo, new THREE.ShaderMaterial({ vertexShader: FACE_VS, fragmentShader: FACE_FS, side: THREE.DoubleSide }));
+  scene.add(gnomon);
+
+  let W = 0, Hh = 0, comp = null;
+  let pixelRatio = Math.min(window.devicePixelRatio || 1, 2);   // capped at 2, stepped down if frames run slow
+  function resize() {
+    W = dial.clientWidth; Hh = dial.clientHeight;
+    if (!W || !Hh) return;
+    renderer.setPixelRatio(pixelRatio);
+    renderer.setSize(W, Hh, false);
+    comp = compose(W, Hh);
+    U.uMid.value = comp.mid; U.uSpan.value = comp.span;
+  }
+
+  function draw(t, still) {
+    if (!comp) return;
+    const reveal = still ? 200 : easeOut((t - 0.15) / 1.5) * 120 - 6;
+    const rise = still ? 1 : easeOut((t - 0.5) / 1.2);
+    const p = still ? (fixedPhase ?? STILL_PHASE) : (0.012 + t / DAY) % 1;
+    const az = still ? 0 : 2.2 * D2R * Math.sin(2 * Math.PI * (t - 1.7) / 46) * smooth(1.7, 5, t);
+    const fade = still ? 1 : smooth(0, 0.03, p) * (1 - smooth(0.965, 1, p));
+    const sun = sunAt(p, comp);
+    const c = cameraFor(W, Hh, comp, az);
+    cam.matrix.fromArray(c.world);
+    cam.matrixWorld.fromArray(c.world);
+    cam.matrixWorldInverse.fromArray(c.view);
+    cam.projectionMatrix.fromArray(c.proj);
+    cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
+    gnomon.scale.set(1, Math.max(rise, 1e-3), 1);
+    faceTones(sun).forEach((t, i) => { for (let k = 0; k < 3; k++) toneAttr.array.set(t, (i * 3 + k) * 3); });
+    toneAttr.needsUpdate = true;
+    const poly = shadowPoly(sun, rise);
+    U.uEdgeN.value = poly.length;
+    for (let i = 0; i < poly.length && i < 6; i++) {
+      const a = poly[i], b = poly[(i + 1) % poly.length], ex = b[0] - a[0], ez = b[1] - a[1], len = Math.hypot(ex, ez) || 1;
+      edges[i].set(a[0], a[1], ez / len, -ex / len);
+    }
+    U.uReveal.value = reveal;
+    U.uShadowAmt.value = rise * fade;
+    renderer.render(scene, cam);
+    placeLabels(c, comp, reveal, rise * fade > 0.5 ? sun.v : null);
+  }
+
+  // Still frame (reduced motion arrives later, or a ?phase= QA view).
+  const still = fixedPhase !== null;
+  let clock = 0, last = 0, raf = 0, running = false, paused = false, onScreen = true;
+  let frameMs = 16.7, slowFrames = 0;
+  const loop = now => {
+    raf = requestAnimationFrame(loop);
+    const dt = last ? now - last : 16.7;
+    clock += Math.min(0.1, dt / 1000);
+    last = now;
+    // After the intro, a sustained frame time above ~24 ms steps the resolution down (2 → 1.5 → 1).
+    frameMs = frameMs * 0.9 + Math.min(dt, 100) * 0.1;
+    if (clock > 2.5 && pixelRatio > 1) {
+      slowFrames = frameMs > 24 ? slowFrames + 1 : 0;
+      if (slowFrames > 45) { pixelRatio = Math.max(1, pixelRatio - 0.5); slowFrames = 0; resize(); }
+    }
+    draw(clock, false);
+  };
+  const start = () => { if (still || running || paused || !onScreen || document.hidden) return; running = true; last = 0; raf = requestAnimationFrame(loop); };
+  const stop = () => { running = false; cancelAnimationFrame(raf); };
+
+  resize();
+  new ResizeObserver(() => { resize(); if (!running) draw(clock, still); }).observe(dial);
+  canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); stop(); startSVG(); });
+  if (still) { draw(0, true); return; }
+
+  motionBtn.hidden = false;
+  motionBtn.addEventListener('click', () => {
+    paused = !paused;
+    motionBtn.textContent = paused ? 'Resume motion' : 'Pause motion';
+    paused ? stop() : start();
+  });
+  new IntersectionObserver(([en]) => { onScreen = en.isIntersecting; onScreen ? start() : stop(); }).observe(hero);
+  document.addEventListener('visibilitychange', () => (document.hidden ? stop() : start()));
+  reduceMQ.addEventListener('change', e => { if (e.matches) { paused = true; stop(); motionBtn.hidden = true; } });
+  start();
+}
+
+/* ---------- boot ---------- */
+function hasWebGL() {
+  try { return !!document.createElement('canvas').getContext('webgl2'); } catch (e) { return false; }
+}
+if (forceSVG || reduceMQ.matches || !hasWebGL()) startSVG();
+else startGL().catch(err => { console.warn('gnomon dial: falling back to the static frame', err); startSVG(); });
+
+/* ---------- copy the install command ---------- */
+const copyBtn = document.querySelector('.copy');
+copyBtn.addEventListener('click', async () => {
+  const text = document.getElementById('install-cmd').dataset.copy;
+  try { await navigator.clipboard.writeText(text); copyBtn.textContent = 'Copied'; }
+  catch (e) { const r = document.createRange(); r.selectNodeContents(document.getElementById('install-cmd')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); copyBtn.textContent = 'Selected'; }
+  setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1800);
+});
+</script>
+</body>
+</html>
