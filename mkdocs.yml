@@ -8,6 +8,10 @@ copyright: MIT License · Built by Xmartlabs
 
 docs_dir: docs
 
+# The landing (index.md) is reached through the logo, not the sidebar.
+not_in_nav: |
+  /index.md
+
 # Internal working docs stay in the repo but are never published.
 exclude_docs: |
   plans/
@@ -24,6 +28,28 @@ exclude_docs: |
 theme:
   name: material
   custom_dir: overrides
+  font: false
+  favicon: assets/landing/gnomon-mark-light.svg
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - search.suggest
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+extra_css:
+  - assets/stylesheets/gnomon.css
 
 plugins:
   - search
@@ -42,13 +68,12 @@ markdown_extensions:
       check_paths: true
 
 nav:
-  - Home: index.md
   - Get started:
       - Why gnomon: get-started/why-gnomon.md
       - Install & quick start: get-started/install.md
       - Usage & outputs: get-started/usage.md
   - Metrics:
-      - How scoring works: metrics/index.md
+      - How scoring works: metrics/how-scoring-works.md
       - Breadth:
           - metrics/breadth/index.md
           - Orchestration: metrics/breadth/orchestration.md
@@ -73,7 +98,7 @@ nav:
       - Insights & trend: metrics/insights.md
       - Rubric at a glance: metrics/rubric.md
   - Sources:
-      - Supported tools: sources/index.md
+      - Supported tools: sources/supported-tools.md
       - What each source measures: sources/coverage.md
   - Teams:
       - Sharing a profile: teams/sharing.md

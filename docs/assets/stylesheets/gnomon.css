@@ -1,0 +1,137 @@
+/* gnomon docs theme: design system v2 ("the instrument direction") on Material for MkDocs.
+   Token names and values are copied from docs/design/design-system-v2/design_system/tokens/.
+   Material's light scheme ("default") maps to the design system's light theme and
+   "slate" maps to its [data-theme="dark"] block. */
+
+:root {
+  --grey-0: #FFFFFF; --grey-25: #FBFBFB; --grey-50: #F4F5F5; --grey-100: #E9EAEA;
+  --grey-200: #D5D7D7; --grey-300: #B4B7B7; --grey-400: #8B8F8F; --grey-500: #6A6E6E;
+  --grey-600: #4E5252; --grey-700: #383B3B; --grey-800: #232626; --grey-900: #141616; --grey-950: #0A0B0B;
+  --blue-50: #EBF2FC; --blue-100: #CFE0F7; --blue-200: #9EC2EF; --blue-300: #6BA1E4; --blue-400: #4189DC;
+  --blue-500: #2A78D6; --blue-600: #1F60B0; --blue-700: #17498A; --blue-800: #103361; --blue-900: #0A2242;
+  --moss-100: #DCEDE3; --moss-500: #15734A; --clay-100: #F6E3DF; --clay-500: #A23B2A;
+  --ochre-100: #F5EBD4; --ochre-500: #8A6516;
+
+  --font-ui: "Archivo", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-figure: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --rule-width: 1px;
+  --rule-width-strong: 2px;
+  --radius-sm: 2px;
+  --radius-md: 3px;
+}
+
+[data-md-color-scheme="default"] {
+  --text-primary: var(--grey-900); --text-secondary: var(--grey-500); --text-tertiary: #6E7272;
+  --text-decorative: var(--grey-400); --text-accent: var(--blue-600);
+  --surface-page: var(--grey-0); --surface-sunken: var(--grey-50); --surface-hover: var(--grey-50);
+  --surface-accent-subtle: var(--blue-50);
+  --rule-strong: var(--grey-900); --rule-default: var(--grey-200); --rule-subtle: var(--grey-100);
+  --accent: var(--blue-600); --accent-hover: var(--blue-700);
+  --accent-mark: var(--blue-500); --accent-mark-shadow: var(--blue-200);
+  --positive: var(--moss-500); --negative: var(--clay-500); --warning: var(--ochre-500);
+  --warning-subtle: var(--ochre-100); --neutral: var(--grey-400);
+  --chart-1: var(--blue-500); --chart-2: var(--blue-300); --chart-3: var(--blue-100);
+  --chart-4: var(--grey-300); --chart-track: var(--grey-100);
+  --focus-ring: var(--blue-500);
+}
+
+[data-md-color-scheme="slate"] {
+  --text-primary: var(--grey-50); --text-secondary: var(--grey-400); --text-tertiary: #9AA0A0;
+  --text-decorative: var(--grey-500); --text-accent: var(--blue-200);
+  --surface-page: var(--grey-950); --surface-sunken: var(--grey-900); --surface-hover: var(--grey-800);
+  --surface-accent-subtle: var(--blue-900);
+  --rule-strong: var(--grey-300); --rule-default: var(--grey-700); --rule-subtle: var(--grey-800);
+  --accent: var(--blue-300); --accent-hover: var(--blue-200);
+  --accent-mark: var(--blue-300); --accent-mark-shadow: var(--blue-700);
+  --positive: #7FC79E; --negative: #D98A78; --warning: #D6AC5C;
+  --warning-subtle: #33280F; --neutral: var(--grey-500);
+  --chart-1: var(--blue-300); --chart-2: var(--blue-500); --chart-3: var(--blue-800);
+  --chart-4: var(--grey-600); --chart-track: var(--grey-800);
+  --focus-ring: var(--blue-300);
+}
+
+/* ---- Map Material's variables onto the tokens ---- */
+[data-md-color-scheme="default"],
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: var(--surface-page);
+  --md-primary-fg-color--light: var(--surface-page);
+  --md-primary-fg-color--dark: var(--surface-page);
+  --md-primary-bg-color: var(--text-primary);
+  --md-primary-bg-color--light: var(--text-secondary);
+  --md-accent-fg-color: var(--accent-hover);
+  --md-accent-fg-color--transparent: var(--surface-accent-subtle);
+  --md-default-bg-color: var(--surface-page);
+  --md-default-fg-color: var(--text-primary);
+  --md-default-fg-color--light: var(--text-secondary);
+  --md-default-fg-color--lighter: var(--text-decorative);
+  --md-default-fg-color--lightest: var(--rule-default);
+  --md-typeset-color: var(--text-primary);
+  --md-typeset-a-color: var(--text-accent);
+  --md-code-bg-color: var(--surface-sunken);
+  --md-code-fg-color: var(--text-primary);
+  --md-footer-bg-color: var(--surface-page);
+  --md-footer-bg-color--dark: var(--surface-page);
+  --md-footer-fg-color: var(--text-secondary);
+  --md-footer-fg-color--light: var(--text-secondary);
+  --md-footer-fg-color--lighter: var(--text-tertiary);
+  --md-shadow-z1: none;
+  --md-shadow-z2: none;
+  --md-shadow-z3: none;
+  --md-text-font-family: var(--font-ui);
+  --md-code-font-family: var(--font-figure);
+}
+
+body, input { font-family: var(--font-ui); font-feature-settings: normal; }
+code, kbd, pre, .gn-fig { font-family: var(--font-figure); font-variant-numeric: tabular-nums; }
+
+/* ---- Header: white page, hairline, no shadow ---- */
+.md-header {
+  background: var(--surface-page);
+  color: var(--text-primary);
+  border-bottom: var(--rule-width) solid var(--rule-default);
+  box-shadow: none;
+}
+.md-header__title { font-weight: 600; letter-spacing: -0.015em; }
+.md-header__button.md-logo { padding: 0.3rem; }
+.md-header__button.md-logo .gn-mark { width: 1.3rem; height: 1.3rem; display: block; }
+.md-tabs { background: var(--surface-page); color: var(--text-secondary); border-bottom: var(--rule-width) solid var(--rule-default); }
+.md-search__form { background: transparent; border: var(--rule-width) solid var(--rule-default); border-radius: var(--radius-md); }
+.md-search__form:hover { background: var(--surface-hover); }
+
+/* ---- Navigation: mono labels for sections, hairline separators ---- */
+.md-sidebar--primary .md-sidebar__scrollwrap { border-right: var(--rule-width) solid var(--rule-default); }
+.md-nav { font-size: 0.7rem; }
+.md-nav__item--section > .md-nav__link,
+.md-nav--primary > .md-nav__title {
+  font: 500 0.55rem/1.2 var(--font-figure);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.md-nav__link { color: var(--text-secondary); }
+.md-nav__link:hover, .md-nav__link:focus { color: var(--text-primary); }
+.md-nav__link--active, .md-nav__item .md-nav__link--active { color: var(--text-primary); font-weight: 600; }
+
+/* ---- Typeset ---- */
+.md-typeset { font-size: 0.75rem; line-height: 1.6; }
+.md-typeset h1 { font-weight: 600; font-size: 2rem; line-height: 1.1; letter-spacing: -0.02em; color: var(--text-primary); margin-bottom: 0.7rem; }
+.md-typeset h2 { font-weight: 600; font-size: 0.95rem; letter-spacing: -0.01em; margin-top: 2.2rem; }
+.md-typeset h3 { font-weight: 600; font-size: 0.8rem; }
+.md-typeset a { color: var(--text-accent); }
+.md-typeset a:hover { color: var(--accent-hover); text-decoration: underline; }
+.md-typeset code { border-radius: var(--radius-sm); font-size: 0.85em; }
+.md-typeset hr { border-bottom: var(--rule-width) solid var(--rule-default); }
+.md-typeset table:not([class]) { border: 0; border-top: var(--rule-width-strong) solid var(--rule-strong); border-radius: 0; box-shadow: none; font-size: 0.7rem; }
+.md-typeset table:not([class]) th { background: transparent; font: 500 0.55rem/1.2 var(--font-figure); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-secondary); }
+.md-typeset table:not([class]) td { border-top: var(--rule-width) solid var(--rule-default); }
+.md-typeset .admonition, .md-typeset details { border-radius: 0; box-shadow: none; border-width: 0 0 0 var(--rule-width-strong); font-size: 0.7rem; }
+
+/* Labels: 11px uppercase tracked mono. */
+.gn-label { font: 500 0.55rem/1.2 var(--font-figure); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-secondary); }
+.gn-thesis { font-size: 0.95rem; line-height: 1.45; color: var(--text-primary); max-width: 32rem; margin: 0 0 1.6rem; }
+
+:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
