@@ -23,9 +23,9 @@ Detailed design: `docs/superpowers/specs/2026-10-21-docs-site-design.md` · Step
 | T4 | Macro components (formula, scale, rail, matrix) | S1,S2,S8 | inline | done | RED: 3 errors (effective_weight/share_of_aq/renderers missing). GREEN: 15/15. Screenshots at 1440 (light and dark) and in a true 360px iframe: no overflow, scale stacks |
 | T5 | Axis and pillar pages | S1,S2,S3 | inline | done | 12 axis pages + 4 pillar pages built from one template; strict build 0; screenshots reviewed (Recovery effective 100%, Steering withheld, Breadth pillar) |
 | T6 | Scoring overview, GStack, insights, rubric matrix | S1,S2 | inline | done | 17/17 drift tests, GStack drift mutation-checked (2 deliberate mutations caught); strict build 0; screenshots reviewed |
-| T7 | Get started, sources, teams, project pages | S3,S5 | inline | pending | |
+| T7 | Get started, sources, teams, project pages | S3,S5 | delegated: Writer trigger (b), long-session context backstop | in progress | |
 | T8 | Landing as site home | S6,S7 | delegated: Writer trigger (a), an independent unit with a disjoint surface running parallel to T2–T7 | done | 5c0b0b5; writer: strict build 0, 60fps metal, reduced-motion/no-WebGL/CDN-blocked → SVG, no overflow 360/390; parent spot check: build exit 0 + screenshots reviewed. Safari/Firefox untested. Risk: item 6 (render covered by screenshots only) |
-| T9 | Docs workflow (Risk item 5, own commit) | S5 | inline | pending | |
+| T9 | Docs workflow (Risk item 5, own commit) | S5 | inline | done | 3d220fb; actionlint OK; RDD review (risk + resilience lenses), consent granted by the user: approved and acknowledged (lineage review-60bd8ed02849932e). The review left 4 non-blocking suggestions; see L12 |
 | T10 | Cut-over: delete legacy docs, shrink README, fix links (Risk item 3) | S4 | inline | pending (precondition: Pages enabled before merge) | |
 | T11 | Follow-up issues list (file only with OK) | S8 | inline | pending | |
 
@@ -44,3 +44,4 @@ Generar documentacion, una rubica /brainstorming"
 - **L9 (2026-10-22):** RDD assess on 4f4744d..5c0b0b5 returned risk medium and review_due false (`under_budget`); the slice stays pending.
 - **L10 (2026-10-22):** The front-matter key `axis` shadowed a macro called `axis`, because mkdocs-macros injects page meta as template variables. The macro was renamed to `axis_info`. Headless Chrome cannot shrink the window below about 500px, so mobile checks use a 360px iframe.
 - **L11 (2026-10-22):** Rubric bands are equal width under a proportional ruler, because proportional bands broke words in the 12–13% columns. A withheld axis hides "Measured in", since coverage is meaningless while it is not scored.
+- **L12 (2026-10-22):** Advisory suggestions from the docs.yml review, non-blocking and left as follow-up: R1-001, pin actions to commit SHAs (the other repo workflows use major tags too); R1-002, `persist-credentials: false` on checkout; R4-001, set `timeout-minutes` on the build job; R4-002, `cache: pip` on setup-python. The reviewed boundary advances to 3d220fb.
