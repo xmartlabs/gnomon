@@ -22,13 +22,13 @@ See the [rubric at a glance](rubric.md) for what each level looks like on each a
 
 ## A missing signal is never a zero
 
-Not every tool records every signal. Cursor, for example, does not report which model ran each turn. When a source cannot record something, gnomon leaves that term or axis out and spreads its weight over the parts it can measure. Nobody loses points for the tool they use. Each axis page lists what every source can measure, and [What each source measures](../sources/coverage.md) has the full matrix.
+Not every tool records every signal. Google Antigravity IDE, for example, hides which model ran each turn. When a source cannot record something, gnomon leaves that term or axis out and spreads its weight over the parts it can measure. Nobody loses points for the tool they use. Each axis page lists what every source can measure, and [What each source measures](../sources/coverage.md) has the full matrix.
 
 The same rule covers thin data. A share computed over fewer than 5 eligible sessions is noise (one session out of one is 100%), so it is left out rather than scored. A rate per tool call is scored only when the month has enough tool calls for the target to be reachable.
 
 ## What gets scored
 
-- **One calendar month.** Each score covers a trailing window of one calendar month by default. `--window=N` widens it to N months.
+- **One calendar month.** Each score covers a trailing window of one calendar month. When sharing a profile, `--window=N` widens it to N months; local runs (`--local`) always use one month.
 - **All tools together.** When a developer uses several tools, their sessions are merged and scored once, as one corpus. A per-tool breakdown is kept for diagnosis, but it is not the published score.
 - **Behaviour, not volume.** Prompts, sessions and tokens are shown, but they never raise the AQ by themselves. A small, careful month can score higher than a large, careless one.
 

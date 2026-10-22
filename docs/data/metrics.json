@@ -220,7 +220,7 @@
           "base_weight": 22,
           "status": "scored",
           "requires": [
-            "skills"
+            "skills|skill_reads"
           ],
           "thesis": "Does the developer reuse packaged know-how instead of re-explaining it? Skill fluency reads how many skills they use, how often, and whether process skills are part of the work.",
           "why": "Skills turn a team's best practices into something an agent loads on demand. A developer who leans on them gets consistent results without re-typing the same instructions, and the team's knowledge compounds instead of living in one person's head.",
@@ -253,7 +253,7 @@
               "requires": []
             }
           ],
-          "eligibility": "The rate term needs enough tool calls to be meaningful; below that it is left out rather than scored. A source that cannot report skill use drops this axis.",
+          "eligibility": "The rate term needs enough tool calls to be meaningful; below that it is left out rather than scored. Sources that report skills either as a first-class tool or by reading skill files are scored; a source that can do neither drops this axis.",
           "code_ref": "gnomon/scoring/aq.py",
           "rubric": [
             {

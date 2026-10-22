@@ -225,10 +225,10 @@ cannot pass for a finished one. `references/reporting.md` has the reasoning.
 **Copy the directory.** Verified.
 
 ```bash
-git clone <repo> /tmp/miraudit-src
-cp -r /tmp/miraudit-src/miraudit ~/.claude/skills/    # all your projects
+git clone https://github.com/xmartlabs/gnomon /tmp/gnomon-src
+cp -r /tmp/gnomon-src/skills/miraudit ~/.claude/skills/    # all your projects
 # or
-cp -r /tmp/miraudit-src/miraudit .claude/skills/      # this project only
+cp -r /tmp/gnomon-src/skills/miraudit .claude/skills/      # this project only
 ```
 
 **Via the skills CLI.** Verified, including that `scripts/` and `references/` come with it,

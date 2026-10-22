@@ -4,7 +4,7 @@ Manual deploy over SSH. GitHub Actions builds the image, ships it to the VM as a
 tarball, and `deploy.sh` switches the running container with a health gate and
 automatic rollback. No registry credentials live on the box.
 
-Design rationale: `docs/specs/2026-09-01-dashboard-vm-deploy-design.md`.
+Design rationale: [`docs/specs/2026-09-01-dashboard-vm-deploy-design.md`](https://github.com/xmartlabs/gnomon/blob/main/docs/specs/2026-09-01-dashboard-vm-deploy-design.md).
 
 ## One-time VM preparation
 

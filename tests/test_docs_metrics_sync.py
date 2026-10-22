@@ -83,7 +83,8 @@ class DocsMetricsSyncTest(unittest.TestCase):
     def test_requirements_are_known_capabilities(self):
         known = set().union(*config.SOURCE_CAPS.values())
         for axis in _axes(self.data):
-            needed = set(axis["requires"]).union(*(t["requires"] for t in axis["terms"]))
+            needed = {cap for req in axis["requires"] + [r for t in axis["terms"] for r in t["requires"]]
+                      for cap in req.split("|")}
             with self.subTest(axis=axis["id"]):
                 self.assertLessEqual(needed, known)
 
@@ -125,6 +126,11 @@ class DocsMetricsSyncTest(unittest.TestCase):
         orchestration = macros.coverage(self.data, "orchestration")
         for source_id in ("gemini", "pi", "opencode", "antigravity-ide"):
             self.assertEqual(orchestration[source_id], "none", source_id)
+
+        # aq.py build_pillar: Skill fluency is live with either `skills` or `skill_reads`.
+        skill_fluency = macros.coverage(self.data, "skill-fluency")
+        self.assertEqual(skill_fluency["cursor"], "full")
+        self.assertEqual(skill_fluency["gemini"], "none")
 
         model_mix = macros.coverage(self.data, "model-mix")
         self.assertEqual(model_mix["cursor"], "none")

@@ -2,7 +2,7 @@
 
 Thanks for considering a contribution. This repo hosts both the CLI (Python,
 stdlib-only) and the self-hosted team dashboard (Next.js) — see the root
-[README](README.md) for what each does.
+[README](https://github.com/xmartlabs/gnomon/blob/main/README.md) for what each does.
 
 A Code of Conduct and a security-reporting policy are coming soon; this file
 will link them once they exist.
@@ -47,7 +47,7 @@ Both suites gate every PR via `.github/workflows/ci.yml`.
 
 ### A test that will surprise you
 
-[`tests/test_documentation_contract.py`](tests/test_documentation_contract.py)
+[`tests/test_documentation_contract.py`](https://github.com/xmartlabs/gnomon/blob/main/tests/test_documentation_contract.py)
 reads `README.md`, `docs/metrics-by-source.md`, and `docs/scoring-philosophy.md`
 at runtime and asserts exact substrings are present (and a few are absent).
 Docs and code ship together here — editing README/docs prose can break CI just
