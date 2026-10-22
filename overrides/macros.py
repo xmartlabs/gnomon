@@ -117,7 +117,7 @@ def render_rubric_scale(data, axis_id):
     axis = find_axis(data, axis_id)
     if not axis["rubric"]:
         return ('<div class="gn-not-scored"><span class="gn-label">Not scored yet</span>'
-                f'<p>{_e(axis["eligibility"])}</p></div>')
+                "<p>Levels appear here once the band is validated against production data.</p></div>")
     floors = [lvl["floor"] for lvl in data["levels"]]
     edges = floors + [100]
     ticks = []
@@ -138,7 +138,7 @@ def render_rubric_scale(data, axis_id):
         track.append(f'<span style="width:{width}%;background:{ramp[i]}"></span>')
         nxt = f'<p class="gn-band__next">{_e(band["next"])}</p>' if band["next"] else ""
         bands.append(
-            f'<div class="gn-band" style="width:{width}%">'
+            '<div class="gn-band">'
             f'<div class="gn-label gn-band__name">{_e(band["level"])}</div>'
             f'<div class="gn-band__range gn-fig">{lo}–{upper}</div>'
             f'<p class="gn-band__look">{_e(band["looks_like"])}</p>{nxt}</div>')
@@ -165,6 +165,8 @@ def render_axis_rail(data, axis_id):
         stats = ('<div class="gn-stat"><div class="gn-stat__v gn-stat__v--muted">Not scored yet</div>'
                  f'<div class="gn-stat__k">base weight {axis["base_weight"]}% of {_e(pillar["name"])}, '
                  "carried by its sibling while withheld</div></div>")
+    if not _scored(axis):
+        return f'<aside class="gn-rail" aria-label="At a glance">{stats}</aside>'
     states = coverage(data, axis_id)
     items = []
     for source_id, source in data["sources"].items():

@@ -21,7 +21,7 @@ Detailed design: `docs/superpowers/specs/2026-10-21-docs-site-design.md` · Step
 | T2 | Theme on design system v2 | S3,S5 | inline | done | 58eb292; light/dark screenshots reviewed |
 | T3 | Metrics data file + drift test | S1,S2,S8 | inline | done | e435af8; RED: coverage() missing, plus axis regex matched pillar calls (16≠12). GREEN: 12/12 drift tests; full suite 1803 OK |
 | T4 | Macro components (formula, scale, rail, matrix) | S1,S2,S8 | inline | done | RED: 3 errors (effective_weight/share_of_aq/renderers missing). GREEN: 15/15. Screenshots at 1440 (light and dark) and in a true 360px iframe: no overflow, scale stacks |
-| T5 | Axis and pillar pages | S1,S2,S3 | inline | pending | |
+| T5 | Axis and pillar pages | S1,S2,S3 | inline | done | 12 axis pages + 4 pillar pages built from one template; strict build 0; screenshots reviewed (Recovery effective 100%, Steering withheld, Breadth pillar) |
 | T6 | Scoring overview, GStack, insights, rubric matrix | S1,S2 | inline | pending | |
 | T7 | Get started, sources, teams, project pages | S3,S5 | inline | pending | |
 | T8 | Landing as site home | S6,S7 | delegated: Writer trigger (a), an independent unit with a disjoint surface running parallel to T2–T7 | done | 5c0b0b5; writer: strict build 0, 60fps metal, reduced-motion/no-WebGL/CDN-blocked → SVG, no overflow 360/390; parent spot check: build exit 0 + screenshots reviewed. Safari/Firefox untested. Risk: item 6 (render covered by screenshots only) |
@@ -43,3 +43,4 @@ Generar documentacion, una rubica /brainstorming"
 - **L8 (2026-10-22):** Correction. Coverage claimed "Verification not scored on Gemini/Pi", which was wrong: test coverage depends on timestamped tool events (`accumulator.py:1199`), not on the source. Coverage is now derived from `SOURCE_CAPS` only, so Gemini, Pi and opencode are "partial (tests)". The spec and plan were corrected, and the JSON schema uses `constants` maps.
 - **L9 (2026-10-22):** RDD assess on 4f4744d..5c0b0b5 returned risk medium and review_due false (`under_budget`); the slice stays pending.
 - **L10 (2026-10-22):** The front-matter key `axis` shadowed a macro called `axis`, because mkdocs-macros injects page meta as template variables. The macro was renamed to `axis_info`. Headless Chrome cannot shrink the window below about 500px, so mobile checks use a 360px iframe.
+- **L11 (2026-10-22):** Rubric bands are equal width under a proportional ruler, because proportional bands broke words in the 12–13% columns. A withheld axis hides "Measured in", since coverage is meaningless while it is not scored.

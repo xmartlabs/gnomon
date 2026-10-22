@@ -159,8 +159,8 @@ code, kbd, pre, .gn-fig { font-family: var(--font-figure); font-variant-numeric:
 .gn-scale__track { display: flex; height: 10px; background: var(--chart-track); }
 .gn-scale__track span { display: block; height: 100%; border-right: 2px solid var(--md-default-bg-color); }
 .gn-scale__track span:last-child { border-right: 0; }
-.gn-scale__bands { display: flex; }
-.gn-band { padding: 0.7rem 0.4rem 0 0.4rem; border-left: var(--rule-width) solid var(--rule-default); min-width: 0; }
+.gn-scale__bands { display: flex; margin-top: 0.2rem; }
+.gn-band { flex: 1 1 0; padding: 0.7rem 0.5rem 0 0.5rem; border-left: var(--rule-width) solid var(--rule-default); min-width: 0; hyphens: auto; }
 .gn-band:first-child { border-left: 0; padding-left: 0; }
 .md-typeset .gn-band__name { color: var(--text-primary); margin-bottom: 2px; font-size: 9px; letter-spacing: 0.05em; }
 .gn-band__range { font-size: 0.55rem; color: var(--text-tertiary); margin-bottom: 0.5rem; }
@@ -191,7 +191,7 @@ code, kbd, pre, .gn-fig { font-family: var(--font-figure); font-variant-numeric:
 
 /* Pillar pages: list of axes. */
 .md-typeset .gn-axes { list-style: none; padding: 0; margin: 1rem 0; border-top: var(--rule-width-strong) solid var(--rule-strong); max-width: 34rem; }
-[dir=ltr] .md-typeset .gn-axes li, .md-typeset .gn-axes li { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: 0.8rem; padding: 0.6rem 0; margin: 0; border-bottom: var(--rule-width) solid var(--rule-default); }
+[dir=ltr] .md-typeset .gn-axes li, .md-typeset .gn-axes li { display: grid; grid-template-columns: 3.6rem minmax(0, 1fr); gap: 0.8rem; padding: 0.6rem 0; margin: 0; border-bottom: var(--rule-width) solid var(--rule-default); }
 .gn-axes__w { font-size: 0.9rem; font-weight: 500; }
 .gn-axes__t small { display: block; color: var(--text-secondary); font-size: 0.65rem; line-height: 1.45; }
 
