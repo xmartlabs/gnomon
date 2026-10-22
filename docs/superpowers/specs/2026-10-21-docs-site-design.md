@@ -179,7 +179,7 @@ The inventory is the starting point for content. Re-verify each item against the
   - Model mix (50): distinct models/3, off-top-model share at 0.30, and routing to a lower tier at 0.40.
   - Token economy (50): CLI ÷ (CLI + MCP) at 0.70.
 - **Outside AQ:** the GStack scorecard (`gstack.py:297-418`), archetype (`archetype.py`), signature moves and growth edges (`insights.py`), the trend (`trend.py`), model usage, and dashboard cost and team views (`dashboard/src/lib/metrics.ts`).
-- **Source capabilities:** `SOURCE_CAPS` in `gnomon/config.py:40-48` and `PLANNING_SESSION_SCOPE_BY_SOURCE`. For example, Verification is full on Claude, Codex, and Cursor; tests only on opencode; reviews only on Antigravity; and not scored on Gemini and Pi.
+- **Source capabilities:** `SOURCE_CAPS` in `gnomon/config.py:40-48` and `PLANNING_SESSION_SCOPE_BY_SOURCE`. For example, Verification is full on Claude, Codex, Cursor and both Antigravity variants, and partial (tests only) on Gemini, Pi and opencode, which cannot report review skills. Coverage is derived from `SOURCE_CAPS` only. Data-dependent gates (at least 5 sessions, timestamped tool events) are not source properties, so they are explained in each axis's eligibility text instead. *Corrected 2026-10-22: an earlier draft said "not scored on Gemini and Pi", which was wrong.*
 
 ## Keeping docs honest
 

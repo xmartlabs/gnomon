@@ -1,0 +1,372 @@
+{
+  "contract": "19:19:19",
+  "levels": [
+    {"name": "Novice", "floor": 0},
+    {"name": "Apprentice", "floor": 25},
+    {"name": "Adequate", "floor": 45},
+    {"name": "Proficient", "floor": 60},
+    {"name": "Advanced", "floor": 75},
+    {"name": "Elite", "floor": 88}
+  ],
+  "sources": {
+    "claude": {"label": "Claude Code", "caps": ["skills", "skill_reads", "toolsearch", "tasktool", "delegate", "model", "thinking", "linked_model_routing", "planning_signal"], "planning_scope": "measured"},
+    "codex": {"label": "Codex CLI", "caps": ["skills", "skill_reads", "delegate", "model", "thinking", "linked_model_routing", "planning_signal"], "planning_scope": "measured"},
+    "cursor": {"label": "Cursor", "caps": ["delegate", "skill_reads", "thinking", "planning_signal"], "planning_scope": "measured"},
+    "gemini": {"label": "Gemini CLI", "caps": ["model", "thinking"], "planning_scope": "unmeasured"},
+    "antigravity": {"label": "Google Antigravity CLI", "caps": ["delegate", "skills", "skill_reads", "model"], "planning_scope": "unmeasured"},
+    "antigravity-ide": {"label": "Google Antigravity IDE", "caps": ["skills", "skill_reads", "thinking"], "planning_scope": "unmeasured"},
+    "opencode": {"label": "opencode", "caps": ["model", "thinking"], "planning_scope": "measured"},
+    "pi": {"label": "Pi", "caps": ["model", "thinking"], "planning_scope": "unmeasured"}
+  },
+  "pillars": [
+    {
+      "id": "breadth",
+      "name": "Breadth",
+      "weight": 30,
+      "summary": "How much of the agent toolkit a developer actually uses: subagents, skills, MCP servers and CLIs, and planning before they build.",
+      "axes": [
+        {
+          "id": "orchestration",
+          "code_name": "Orchestration",
+          "name": "Orchestration",
+          "pillar": "breadth",
+          "page": "metrics/breadth/orchestration.md",
+          "base_weight": 33,
+          "status": "scored",
+          "requires": ["delegate"],
+          "thesis": "Does the developer split big work across subagents, and do it well? Orchestration reads how often large sessions delegate and how varied and wide that delegation is.",
+          "why": "One agent working alone on a large change runs out of context and attention. Splitting the work across a few specialised subagents keeps each one focused, and lets independent parts run in parallel. Management research on span of control lands at five to seven direct reports, which is where the fan-out target sits.",
+          "terms": [
+            {"name": "Delegation frequency", "share": 0.30, "definition": "Share of large sessions (3 or more code files written and 20 or more substantive calls) that delegated to a subagent. Its weight grows from 0 to 30% over the first 5 such sessions.", "target_label": "full credit at 78% of large sessions", "constants": {"ORCHESTRATION_FREQUENCY_TARGET": 0.78, "ORCHESTRATION_FULL_CONFIDENCE_SESSIONS": 5, "ORCHESTRATABLE_CODE_FILES": 3, "ORCHESTRATABLE_SUBSTANTIVE": 20}, "requires": []},
+            {"name": "Subagent variety", "share": 0.28, "definition": "Number of distinct subagent types used in the month.", "target_label": "full credit at 8 types", "constants": {"SUBAGENT_TYPES_DISTINCT_CEILING": 8}, "requires": []},
+            {"name": "Fan-out", "share": 0.28, "definition": "Median number of subagents dispatched from one session.", "target_label": "full credit at 5", "constants": {"FANOUT_CEILING": 5}, "requires": []},
+            {"name": "Team sessions", "share": 0.14, "definition": "Full credit when at least one session used 3 or more subagent types together; 0.6 when delegation happened with fewer; 0 when nothing was delegated.", "target_label": "full credit at 3 types in one session", "constants": {"HARNESS_TEAM_SESSION_TYPES": 3, "HARNESS_BELOW_TEAM_CREDIT": 0.6}, "requires": []}
+          ],
+          "eligibility": "The three quality terms (variety, fan-out, team sessions) share 70% of the axis once delegation frequency has full weight; before that they share the rest. A source that cannot delegate at all drops this axis.",
+          "code_ref": "gnomon/scoring/aq.py",
+          "rubric": [
+            {"level": "Novice", "looks_like": "Large changes run in a single agent thread from start to finish.", "next": "On your next multi-file change, hand one well-defined part to a subagent."},
+            {"level": "Apprentice", "looks_like": "Delegation happens now and then, usually one subagent of one kind.", "next": "Use a second subagent type, for example one to explore and one to review."},
+            {"level": "Adequate", "looks_like": "Some large sessions delegate, with two or three subagent types.", "next": "Delegate in most sessions that touch three or more code files."},
+            {"level": "Proficient", "looks_like": "Most large sessions delegate, typically fanning out to a few subagents.", "next": "Fan out to four or five subagents when the work splits cleanly."},
+            {"level": "Advanced", "looks_like": "Delegation is the default for large work, with a varied team of subagents.", "next": "Run sessions where three or more subagent types work together."},
+            {"level": "Elite", "looks_like": "Large work is routinely run as a team: varied specialists, wide fan-out, nearly every eligible session.", "next": ""}
+          ],
+          "improve": "Write the split into the prompt: name the parts and the subagent that owns each. Keep a small set of specialised subagents (explore, implement, review, test) so variety comes from real roles, not from novelty."
+        },
+        {
+          "id": "skill-fluency",
+          "code_name": "Skill fluency",
+          "name": "Skill fluency",
+          "pillar": "breadth",
+          "page": "metrics/breadth/skill-fluency.md",
+          "base_weight": 22,
+          "status": "scored",
+          "requires": ["skills"],
+          "thesis": "Does the developer reuse packaged know-how instead of re-explaining it? Skill fluency reads how many skills they use, how often, and whether process skills are part of the work.",
+          "why": "Skills turn a team's best practices into something an agent loads on demand. A developer who leans on them gets consistent results without re-typing the same instructions, and the team's knowledge compounds instead of living in one person's head.",
+          "terms": [
+            {"name": "Skill variety", "share": 0.40, "definition": "Number of distinct skills used in the month.", "target_label": "full credit at 40 skills", "constants": {"SKILLS_DISTINCT_CEILING": 40}, "requires": []},
+            {"name": "Skill use rate", "share": 0.30, "definition": "Skill uses per tool call.", "target_label": "full credit at 9 per 1,000 calls", "constants": {"SKILLS_TOTAL_PER_CALL_TARGET": 0.009}, "requires": []},
+            {"name": "Process skills", "share": 0.30, "definition": "Full credit when a process skill (subagent-driven development, brainstorming, writing plans, systematic debugging) was used; 0.6 otherwise.", "target_label": "full credit with any process skill", "requires": []}
+          ],
+          "eligibility": "The rate term needs enough tool calls to be meaningful; below that it is left out rather than scored. A source that cannot report skill use drops this axis.",
+          "code_ref": "gnomon/scoring/aq.py",
+          "rubric": [
+            {"level": "Novice", "looks_like": "Instructions are typed from scratch each time; skills are rarely or never used.", "next": "Install a few skills that match your daily work and call one this week."},
+            {"level": "Apprentice", "looks_like": "A handful of skills, used occasionally.", "next": "Add a process skill such as brainstorming or systematic debugging to your routine."},
+            {"level": "Adequate", "looks_like": "Skills are part of the work, but the same few cover most of it.", "next": "Reach for a skill whenever you notice yourself repeating an instruction."},
+            {"level": "Proficient", "looks_like": "Regular skill use across a growing set, including process skills.", "next": "Widen the set: domain, review, and release skills, not only process ones."},
+            {"level": "Advanced", "looks_like": "Skills are the normal way work starts, across a wide range of tasks.", "next": "Package your own recurring workflows as skills the team can use."},
+            {"level": "Elite", "looks_like": "A broad, frequently used skill library drives most sessions.", "next": ""}
+          ],
+          "improve": "Keep a short list of skills for your common tasks and invoke them by name. When you explain the same thing to an agent twice, turn it into a skill."
+        },
+        {
+          "id": "tool-command",
+          "code_name": "Tool command (MCP + CLI)",
+          "name": "Tool command",
+          "pillar": "breadth",
+          "page": "metrics/breadth/tool-command.md",
+          "base_weight": 28,
+          "status": "scored",
+          "requires": [],
+          "thesis": "Can the agent reach the systems the work depends on? Tool command counts the distinct MCP servers and command-line tools the agent used.",
+          "why": "An agent limited to reading and editing files guesses about everything else. Connecting it to the issue tracker, the database, the cloud console, or the design tool lets it check facts instead of inventing them.",
+          "terms": [
+            {"name": "MCP servers", "share": 0.50, "definition": "Number of distinct MCP servers called in the month.", "target_label": "full credit at 15 servers", "constants": {"MCP_SERVERS_DISTINCT_CEILING": 15}, "requires": []},
+            {"name": "Command-line tools", "share": 0.50, "definition": "Number of distinct CLI programs the agent ran in the month.", "target_label": "full credit at 40 CLIs", "constants": {"CLIS_DISTINCT_CEILING": 40}, "requires": []}
+          ],
+          "eligibility": "Measured for every source. ToolSearch calls are shown in the profile but not scored.",
+          "code_ref": "gnomon/scoring/aq.py",
+          "rubric": [
+            {"level": "Novice", "looks_like": "The agent reads and edits files and little else.", "next": "Connect one MCP server for a system you check by hand, such as the issue tracker."},
+            {"level": "Apprentice", "looks_like": "A couple of integrations and a few common CLIs.", "next": "Let the agent run the project's own tools: test runner, linter, package manager."},
+            {"level": "Adequate", "looks_like": "The agent uses the project's tooling and a few external systems.", "next": "Add servers for the places context lives: docs, designs, tickets."},
+            {"level": "Proficient", "looks_like": "A solid set of MCP servers and CLIs covering most daily systems.", "next": "Give the agent read access to production-adjacent tools: logs, metrics, databases."},
+            {"level": "Advanced", "looks_like": "The agent reaches most systems the work touches.", "next": "Fill the remaining gaps you still bridge by copying and pasting."},
+            {"level": "Elite", "looks_like": "The agent works across the whole toolchain without a human relaying information.", "next": ""}
+          ],
+          "improve": "List the systems you still copy information from by hand. Each one is a candidate MCP server or CLI the agent could call directly."
+        },
+        {
+          "id": "discipline",
+          "code_name": "Discipline",
+          "name": "Discipline",
+          "pillar": "breadth",
+          "page": "metrics/breadth/discipline.md",
+          "base_weight": 17,
+          "status": "scored",
+          "requires": [],
+          "thesis": "Does the developer plan before the agent builds? Discipline reads how often sessions start with a plan and how many real changes were planned first.",
+          "why": "A plan is where the human makes the decisions an agent cannot: scope, order, trade-offs. Changes that start from a written plan need fewer corrections and are easier to review, because the reviewer can check the result against the intent.",
+          "terms": [
+            {"name": "Planning habit", "share": 0.667, "definition": "Share of sessions that used plan mode or a planning skill.", "target_label": "full credit at 30% of sessions", "constants": {"PLANNING_PRACTICE_TARGET": 0.30}, "requires": ["planning_signal"]},
+            {"name": "Planned changes", "share": 0.333, "definition": "Share of change sessions that were preceded by a substantive plan (a plan file of 8 or more lines, or 3 or more steps) within the previous 72 hours.", "target_label": "full credit at 50% of change sessions", "constants": {"PLANNING_TARGET": 0.50, "PLAN_MIN_LINES": 8, "PLAN_MIN_STEPS": 3}, "requires": []}
+          ],
+          "eligibility": "A change session wrote code and touched 2 or more files, changed 80 or more lines, or made 10 or more substantive calls. Each share needs at least 5 eligible sessions in the month; with fewer it is left out rather than scored.",
+          "code_ref": "gnomon/scoring/aq.py",
+          "rubric": [
+            {"level": "Novice", "looks_like": "The agent starts writing code as soon as the request arrives.", "next": "Ask for a short plan before the next multi-file change."},
+            {"level": "Apprentice", "looks_like": "Plans appear occasionally, mostly for the biggest changes.", "next": "Use plan mode or a planning skill at the start of one session in five."},
+            {"level": "Adequate", "looks_like": "Planning happens regularly, but many changes still start without one.", "next": "Plan every change that touches more than one file."},
+            {"level": "Proficient", "looks_like": "Most substantial changes start from a plan.", "next": "Write plans with explicit steps so they can be checked off."},
+            {"level": "Advanced", "looks_like": "Planning is a habit and most changes trace back to a plan.", "next": "Plan in one session and implement in the next, so the plan stands on its own."},
+            {"level": "Elite", "looks_like": "Plans precede nearly all real changes, and planning is part of how sessions begin.", "next": ""}
+          ],
+          "improve": "Start sessions in plan mode, or with a planning skill, whenever the change is bigger than one file. Keep the plan in a file so later sessions can pick it up."
+        }
+      ]
+    },
+    {
+      "id": "craft",
+      "name": "Craft",
+      "weight": 35,
+      "summary": "The quality of how work is done: checking the agent's output, grounding it in evidence, and leaving knowledge behind for the next session.",
+      "axes": [
+        {
+          "id": "verification",
+          "code_name": "Verification",
+          "name": "Verification",
+          "pillar": "craft",
+          "page": "metrics/craft/verification.md",
+          "base_weight": 35,
+          "status": "scored",
+          "requires": [],
+          "thesis": "Did anyone check the agent's work before it shipped? Verification counts the change sessions that ran a test and the times a review skill looked at the result.",
+          "why": "An agent writes plausible code faster than a person can read it. Without a test run or a review pass in the same session, defects reach the main branch just as fast. Teams that verify inside the session catch them while the context is still loaded.",
+          "terms": [
+            {"name": "Tested change sessions", "share": 0.50, "definition": "Share of change sessions that also ran a test command.", "target_label": "full credit at 100%", "requires": []},
+            {"name": "Review skill use", "share": 0.50, "definition": "Review-type skills (code review, security review and similar) per tool call. Planning reviews don't count.", "target_label": "full credit at 4 per 1,000 calls", "constants": {"REVIEW_SKILLS_PER_CALL_TARGET": 0.004}, "requires": ["skill_reads"]}
+          ],
+          "eligibility": "A change session wrote code and touched 2 or more files, changed 80 or more lines, or made 10 or more substantive calls. The test share needs at least 5 change sessions and timestamped tool events; otherwise it is left out rather than scored.",
+          "code_ref": "gnomon/scoring/aq.py",
+          "rubric": [
+            {"level": "Novice", "looks_like": "Changes ship without a test run or a review.", "next": "Run the test suite once before you close a change."},
+            {"level": "Apprentice", "looks_like": "Tests run, mostly after something broke.", "next": "Make running the tests the last step of every change."},
+            {"level": "Adequate", "looks_like": "About half the changes are tested.", "next": "Ask the agent to run the tests itself."},
+            {"level": "Proficient", "looks_like": "Most changes are tested. Reviews are rare.", "next": "Add a review skill pass on multi-file diffs."},
+            {"level": "Advanced", "looks_like": "Changes are tested and often reviewed.", "next": "Review every non-trivial change."},
+            {"level": "Elite", "looks_like": "Every change is tested and reviewed.", "next": ""}
+          ],
+          "improve": "Write the test command into your project instructions (CLAUDE.md, AGENTS.md) so the agent runs it unprompted. Install a review skill and call it before you merge."
+        },
+        {
+          "id": "grounding",
+          "code_name": "Grounding",
+          "name": "Grounding",
+          "pillar": "craft",
+          "page": "metrics/craft/grounding.md",
+          "base_weight": 25,
+          "status": "scored",
+          "requires": [],
+          "thesis": "Does the agent look before it leaps? Grounding compares exploring and reasoning actions with doing actions.",
+          "why": "Edits made without reading the surrounding code are the main source of agent mistakes that look right and aren't. One explore or reasoning step for every action that changes something is a simple sign that the agent understood before it acted.",
+          "terms": [
+            {"name": "Explore-to-do ratio", "share": 1.0, "definition": "Explore actions (reads, searches, thinking) divided by doing actions (edits, writes, commands). Planning dispatches don't count as doing.", "target_label": "full credit at 1 to 1", "requires": []}
+          ],
+          "eligibility": "Measured for every source. Known limitation: in the corpora measured so far, almost everyone sits at or near full credit, so this axis separates people mainly below parity.",
+          "code_ref": "gnomon/scoring/aq.py",
+          "rubric": [
+            {"level": "Novice", "looks_like": "The agent edits far more than it reads.", "next": "Ask the agent to read the files it will change before editing."},
+            {"level": "Apprentice", "looks_like": "Some exploration, but edits usually come first.", "next": "Start sessions by asking the agent to map the relevant code."},
+            {"level": "Adequate", "looks_like": "Exploration happens, but well below one look per change.", "next": "Encourage the agent to search for callers before changing a function."},
+            {"level": "Proficient", "looks_like": "Most changes are preceded by reading and search.", "next": "Let the agent reason through the approach before it edits."},
+            {"level": "Advanced", "looks_like": "Exploration nearly matches action.", "next": "Keep the habit on small changes too, not only on large ones."},
+            {"level": "Elite", "looks_like": "At least one explore or reasoning step for every change.", "next": ""}
+          ],
+          "improve": "Give the agent a code map or index so exploring is cheap, and ask it to explain the current behaviour before it changes anything."
+        },
+        {
+          "id": "context-intelligence",
+          "code_name": "Context Intelligence",
+          "name": "Context intelligence",
+          "pillar": "craft",
+          "page": "metrics/craft/context-intelligence.md",
+          "base_weight": 20,
+          "status": "provisional",
+          "requires": [],
+          "thesis": "Does the agent check the team's knowledge before it writes? Context intelligence counts the change sessions where a knowledge or project tool was consulted before the code changed.",
+          "why": "Requirements live in tickets, docs and designs, not in the code. A change written without reading them meets the code's rules but misses the product's. Consulting the source of truth before writing is how agents stay aligned with what the team actually decided.",
+          "terms": [
+            {"name": "Grounded change sessions", "share": 1.0, "definition": "Share of change sessions where a knowledge or explore-class MCP call (Jira, Notion, Figma, a database and similar) came before a later edit in the same session.", "target_label": "full credit at 60% (provisional)", "constants": {"CONTEXT_INTELLIGENCE_TARGET": 0.60}, "requires": []}
+          ],
+          "eligibility": "Needs at least 5 change sessions and timestamped tool events; otherwise it is left out rather than scored. The 60% target is provisional: it has not yet been fitted to production data.",
+          "code_ref": "gnomon/scoring/aq.py",
+          "rubric": [
+            {"level": "Novice", "looks_like": "Code changes are written without consulting any ticket, doc or design.", "next": "Connect the issue tracker and have the agent read the ticket first."},
+            {"level": "Apprentice", "looks_like": "Context is pulled in occasionally, usually after a misunderstanding.", "next": "Start each change session by having the agent read the relevant ticket or spec."},
+            {"level": "Adequate", "looks_like": "About a third of changes start from team knowledge.", "next": "Connect the other places decisions live: docs, designs, data."},
+            {"level": "Proficient", "looks_like": "Many changes start from a ticket, doc or design.", "next": "Make reading the source of truth a written step in your project instructions."},
+            {"level": "Advanced", "looks_like": "Most changes are grounded in team knowledge.", "next": "Extend it to small changes, which are the ones most often written blind."},
+            {"level": "Elite", "looks_like": "Changes routinely start from the team's source of truth.", "next": ""}
+          ],
+          "improve": "Connect the systems where requirements live through MCP servers and tell the agent, in your project instructions, to read the ticket or spec before it edits."
+        },
+        {
+          "id": "compounding",
+          "code_name": "Compounding",
+          "name": "Compounding",
+          "pillar": "craft",
+          "page": "metrics/craft/compounding.md",
+          "base_weight": 20,
+          "status": "scored",
+          "requires": [],
+          "thesis": "Does each session leave the next one smarter? Compounding counts writes to the files and memories agents read at the start of every session.",
+          "why": "An agent forgets everything between sessions unless someone writes it down. Teams that update their agent instructions, memories and decision records turn each correction into a permanent improvement instead of repeating it next week.",
+          "terms": [
+            {"name": "Knowledge writes", "share": 0.60, "definition": "Writes to agent instruction and memory files (CLAUDE.md, AGENTS.md, GEMINI.md, memory folders, ADRs, Cursor rules, MCP memory) per tool call.", "target_label": "full credit at 1.8 per 1,000 calls", "constants": {"COMPOUNDING_WRITES_PER_CALL_TARGET": 0.0018}, "requires": []},
+            {"name": "Reflection skills", "share": 0.40, "definition": "Full credit when a retro, writing-plans or brainstorming skill was used; 0.6 otherwise.", "target_label": "full credit with any reflection skill", "requires": ["skill_reads"]}
+          ],
+          "eligibility": "The write rate needs enough tool calls to be meaningful; below that it is left out rather than scored.",
+          "code_ref": "gnomon/scoring/aq.py",
+          "rubric": [
+            {"level": "Novice", "looks_like": "Agent instructions and memories are never updated.", "next": "Create a project instruction file and add one rule you keep repeating."},
+            {"level": "Apprentice", "looks_like": "The instruction file exists but rarely changes.", "next": "When you correct the agent, add the correction to the instruction file."},
+            {"level": "Adequate", "looks_like": "Occasional updates after notable mistakes.", "next": "Run a short retro at the end of larger tasks."},
+            {"level": "Proficient", "looks_like": "Instructions and memories are updated regularly.", "next": "Record decisions as ADRs so the reasons survive, not only the rules."},
+            {"level": "Advanced", "looks_like": "Most sessions that teach something leave a written trace.", "next": "Share and review the instruction files with the team."},
+            {"level": "Elite", "looks_like": "Knowledge is captured continuously, and every session builds on the last.", "next": ""}
+          ],
+          "improve": "Treat the agent's instruction files as code: update them when you correct the agent, and review them with the team. End larger tasks with a short retro."
+        }
+      ]
+    },
+    {
+      "id": "efficiency",
+      "name": "Efficiency",
+      "weight": 20,
+      "summary": "How smoothly the work runs: how much the agent does per instruction, and how well it recovers when something fails.",
+      "axes": [
+        {
+          "id": "steering-leverage",
+          "code_name": "Steering leverage",
+          "name": "Steering leverage",
+          "pillar": "efficiency",
+          "page": "metrics/efficiency/steering-leverage.md",
+          "base_weight": 50,
+          "status": "not_scored",
+          "requires": [],
+          "thesis": "How much does the agent accomplish per instruction? Steering leverage reads top-level agent actions per human instruction.",
+          "why": "Too few actions per instruction means the developer is driving every step by hand. Too many can mean the agent wandered without a check-in. A healthy band sits in between. The band has not been validated against production data yet, so this axis is shown but not scored.",
+          "terms": [
+            {"name": "Actions per instruction", "share": 1.0, "definition": "Top-level agent actions per human instruction. Full credit inside the band, partial credit below it, and credit that decays to zero above it.", "target_label": "band 5 to 20 actions, decaying over 40 above", "constants": {"STEERING_LEVERAGE_BAND_MIN": 5, "STEERING_LEVERAGE_BAND_MAX": 20, "STEERING_LEVERAGE_DECAY_SPAN": 40}, "requires": []}
+          ],
+          "eligibility": "Not scored yet. While it is withheld, Recovery carries the whole Efficiency pillar. The value is still shown in the profile as a steering reading.",
+          "code_ref": "gnomon/scoring/aq.py",
+          "rubric": [],
+          "improve": "Give instructions that describe an outcome, not a single step, and let the agent work through it before you steer again."
+        },
+        {
+          "id": "recovery",
+          "code_name": "Recovery",
+          "name": "Recovery",
+          "pillar": "efficiency",
+          "page": "metrics/efficiency/recovery.md",
+          "base_weight": 50,
+          "status": "scored",
+          "requires": [],
+          "thesis": "When a tool call fails, does the work get back on track? Recovery reads how often errors are followed by a successful retry, and penalises storms of API retries.",
+          "why": "Agents hit errors all the time: a failing command, a wrong path, a flaky API. What matters is whether the session recovers or stalls. Frequent API retry storms usually point to a broken setup that wastes time and money for everyone on the team.",
+          "terms": [
+            {"name": "Error recovery", "share": 0.85, "definition": "Share of failed tool calls that were followed by a successful one.", "target_label": "full credit at 100%", "requires": []},
+            {"name": "API retry hygiene", "share": 0.15, "definition": "API errors and retries per 100 tool calls. Full credit at zero, no credit at the target or above.", "target_label": "no credit at 2 per 100 calls", "constants": {"API_RETRIES_PER_100_TOOLS_TARGET": 2.0}, "requires": []}
+          ],
+          "eligibility": "Measured for every source.",
+          "code_ref": "gnomon/scoring/aq.py",
+          "rubric": [
+            {"level": "Novice", "looks_like": "Failures usually stop the work until a human steps in.", "next": "When a command fails, ask the agent to read the error and try a fix."},
+            {"level": "Apprentice", "looks_like": "Some failures are recovered; many are abandoned.", "next": "Give the agent the commands it needs to diagnose: logs, test output, versions."},
+            {"level": "Adequate", "looks_like": "About half the failures are worked through.", "next": "Fix the setup problems that cause repeated API retries."},
+            {"level": "Proficient", "looks_like": "Most failures are recovered within the session.", "next": "Document known failure modes in the project instructions."},
+            {"level": "Advanced", "looks_like": "Failures rarely stall the work, and API retries are uncommon.", "next": "Remove the remaining flaky tools and environments."},
+            {"level": "Elite", "looks_like": "Nearly every failure is recovered, and the environment is clean.", "next": ""}
+          ],
+          "improve": "Make errors easy to read: clear test output, accessible logs, pinned tool versions. When the same failure repeats, fix the environment rather than retrying."
+        }
+      ]
+    },
+    {
+      "id": "savvy",
+      "name": "Savvy",
+      "weight": 15,
+      "summary": "Choosing the right model and the right tool for each job, with cost in mind.",
+      "axes": [
+        {
+          "id": "model-mix",
+          "code_name": "Model mix",
+          "name": "Model mix",
+          "pillar": "savvy",
+          "page": "metrics/savvy/model-mix.md",
+          "base_weight": 50,
+          "status": "scored",
+          "requires": ["model"],
+          "thesis": "Is each task given the right model? Model mix reads how many models are used, how much work moves off the default, and whether subagents run on cheaper models.",
+          "why": "The strongest model is not the right choice for every step. Routing simple, well-defined work to faster and cheaper models cuts cost and waiting time without hurting quality, and keeps the strongest model for the decisions that need it.",
+          "terms": [
+            {"name": "Model variety", "share": 0.35, "definition": "Number of distinct models used in the month.", "target_label": "full credit at 3 models", "constants": {"MODELS_DISTINCT_CEILING": 3}, "requires": []},
+            {"name": "Off-default share", "share": 0.35, "definition": "Share of turns that ran on a model other than your most-used one.", "target_label": "full credit at 30%", "constants": {"OFFLOAD_SHARE_TARGET": 0.30}, "requires": []},
+            {"name": "Cheaper subagents", "share": 0.30, "definition": "Share of completed, substantive subagent runs where the subagent used a lower-tier model than the session that launched it. Tiers are known for Anthropic and OpenAI models.", "target_label": "full credit at 40%", "constants": {"LINKED_ROUTING_SUCCESS_RATE_TARGET": 0.40}, "requires": ["linked_model_routing"]}
+          ],
+          "eligibility": "A source that does not record the model per turn drops this axis. Cursor records it but bills per request, so it is not scored there.",
+          "code_ref": "gnomon/scoring/aq.py",
+          "rubric": [
+            {"level": "Novice", "looks_like": "Every task runs on one model.", "next": "Try a faster model for a simple, well-defined task."},
+            {"level": "Apprentice", "looks_like": "A second model appears occasionally.", "next": "Pick a default cheaper model for routine work such as searches and small edits."},
+            {"level": "Adequate", "looks_like": "Two or three models in use, but most work stays on the default.", "next": "Move about a third of the turns to the model that fits them."},
+            {"level": "Proficient", "looks_like": "Work is spread across models with a clear default.", "next": "Run subagents on a cheaper tier than the lead session."},
+            {"level": "Advanced", "looks_like": "Models are chosen per task, and many subagents run cheaper.", "next": "Make cheaper subagent models the default in your agent definitions."},
+            {"level": "Elite", "looks_like": "Model choice matches the task, and delegation routinely uses cheaper tiers.", "next": ""}
+          ],
+          "improve": "Set the model in each subagent definition instead of inheriting the lead's, and keep the strongest model for planning, review and hard debugging."
+        },
+        {
+          "id": "token-economy",
+          "code_name": "Token economy",
+          "name": "Token economy",
+          "pillar": "savvy",
+          "page": "metrics/savvy/token-economy.md",
+          "base_weight": 50,
+          "status": "scored",
+          "requires": [],
+          "thesis": "Does the agent pick the lighter tool when it will do? Token economy reads the share of tool calls that went to command-line tools rather than MCP servers.",
+          "why": "MCP servers are powerful but expensive: their definitions and responses fill the context window. A command-line tool often does the same job with a fraction of the tokens. Preferring the CLI when it is enough keeps sessions faster, cheaper and less likely to lose focus.",
+          "terms": [
+            {"name": "CLI share", "share": 1.0, "definition": "Command-line tool calls divided by command-line plus MCP calls.", "target_label": "full credit at 70%", "constants": {"CLI_SHARE_TARGET": 0.70}, "requires": []}
+          ],
+          "eligibility": "Measured for every source.",
+          "code_ref": "gnomon/scoring/aq.py",
+          "rubric": [
+            {"level": "Novice", "looks_like": "Almost everything goes through MCP servers, even simple lookups.", "next": "Use the CLI equivalent for one frequent MCP task, such as git or GitHub."},
+            {"level": "Apprentice", "looks_like": "CLIs are used, but MCP calls dominate.", "next": "Prefer CLIs for anything a single shell command can answer."},
+            {"level": "Adequate", "looks_like": "A rough balance between CLI and MCP calls.", "next": "Disable MCP servers you rarely need so their definitions don't load every session."},
+            {"level": "Proficient", "looks_like": "CLIs handle most calls; MCP is used where it adds value.", "next": "Script repeated multi-step lookups into one command."},
+            {"level": "Advanced", "looks_like": "MCP is reserved for what only it can do.", "next": "Review which MCP calls remain and whether each needs to."},
+            {"level": "Elite", "looks_like": "Lightweight tools by default; MCP only where nothing else works.", "next": ""}
+          ],
+          "improve": "Install the CLIs your team relies on (gh, cloud CLIs, database clients) and mention them in your project instructions so the agent knows to use them."
+        }
+      ]
+    }
+  ]
+}

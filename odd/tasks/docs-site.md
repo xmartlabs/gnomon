@@ -17,14 +17,14 @@ Detailed design: `docs/superpowers/specs/2026-10-21-docs-site-design.md` · Step
 
 | ID | Task (plan task) | S# | Route | Status | Commit / evidence |
 |---|---|---|---|---|---|
-| T1 | MkDocs scaffold | S5 | inline | done (uncommitted) | strict build exit 0; internal folders absent from site/ |
-| T2 | Theme on design system v2 | S3,S5 | inline | pending | |
-| T3 | Metrics data file + drift test | S1,S2,S8 | inline | pending | |
+| T1 | MkDocs scaffold | S5 | inline | done | 8b38699; strict build exit 0; internal folders absent from site/ |
+| T2 | Theme on design system v2 | S3,S5 | inline | done | 58eb292; light/dark screenshots reviewed |
+| T3 | Metrics data file + drift test | S1,S2,S8 | inline | done (commit pending) | RED: coverage() missing, plus axis regex matched pillar calls (16≠12). GREEN: 12/12 drift tests; full suite 1803 OK |
 | T4 | Macro components (formula, scale, rail, matrix) | S1,S2,S8 | inline | pending | |
 | T5 | Axis and pillar pages | S1,S2,S3 | inline | pending | |
 | T6 | Scoring overview, GStack, insights, rubric matrix | S1,S2 | inline | pending | |
 | T7 | Get started, sources, teams, project pages | S3,S5 | inline | pending | |
-| T8 | Landing as site home | S6,S7 | delegated: Writer trigger (a), an independent unit with a disjoint surface running parallel to T2–T7 | done (uncommitted) | writer: strict build 0, 60fps metal, reduced-motion/no-WebGL/CDN-blocked → SVG, no overflow 360/390; parent spot check: build exit 0 + screenshots reviewed. Safari/Firefox untested. Risk: item 6 (render covered by screenshots only) |
+| T8 | Landing as site home | S6,S7 | delegated: Writer trigger (a), an independent unit with a disjoint surface running parallel to T2–T7 | done | 5c0b0b5; writer: strict build 0, 60fps metal, reduced-motion/no-WebGL/CDN-blocked → SVG, no overflow 360/390; parent spot check: build exit 0 + screenshots reviewed. Safari/Firefox untested. Risk: item 6 (render covered by screenshots only) |
 | T9 | Docs workflow (Risk item 5, own commit) | S5 | inline | pending | |
 | T10 | Cut-over: delete legacy docs, shrink README, fix links (Risk item 3) | S4 | inline | pending (precondition: Pages enabled before merge) | |
 | T11 | Follow-up issues list (file only with OK) | S8 | inline | pending | |
@@ -39,3 +39,6 @@ Generar documentacion, una rubica /brainstorming"
 - **L4 (2026-10-22):** RDD is on (global). The forecast is far above 400 authored lines (content-heavy), so the ask-on-risk chain strategy question is pending before the first commit.
 - **L5 (2026-10-22):** The T8 writer finished. All three defects are fixed. The grey night is replaced by a low "midnight sun" sweep behind the gnomon (9 s night, 34 s day). This is new motion not in the approved mockup, so it is flagged to the user. The writer removed its own scratch.
 - **L6 (2026-10-22, user, verbatim):** "Todos en el mismo pr". The delivery strategy is single-pr, and the plan's PR 1/PR 2 split collapses into one PR. The no-404 guarantee moves to "enable Pages before merging".
+- **L7 (2026-10-22):** Nav paths changed from the plan: `metrics/index.md` became `metrics/how-scoring-works.md` and `sources/index.md` became `sources/supported-tools.md`, because `navigation.indexes` hid them as section links. The landing links were updated to match.
+- **L8 (2026-10-22):** Correction. Coverage claimed "Verification not scored on Gemini/Pi", which was wrong: test coverage depends on timestamped tool events (`accumulator.py:1199`), not on the source. Coverage is now derived from `SOURCE_CAPS` only, so Gemini, Pi and opencode are "partial (tests)". The spec and plan were corrected, and the JSON schema uses `constants` maps.
+- **L9 (2026-10-22):** RDD assess on 4f4744d..5c0b0b5 returned risk medium and review_due false (`under_budget`); the slice stays pending.
