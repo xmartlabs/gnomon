@@ -588,7 +588,12 @@ async function startGL() {
   renderer.toneMappingExposure = 1.0;
   renderer.setClearColor('#08121F', 1);
   glBox.dataset.renderer = 'webgl';
-  canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); stop(); startSVG(); });
+  // A lost context (GPU reset, eviction) hands over to the SVG dial for good: `lost` keeps the
+  // resize, intersection and visibility triggers from restarting a render loop on a dead context.
+  let lost = false;
+  canvas.addEventListener('webglcontextlost', e => {
+    e.preventDefault(); lost = true; stop(); motionBtn.hidden = true; canvas.remove(); startSVG();
+  });
 
   const scene = new THREE.Scene();
   scene.environment = studioEnvironment(THREE, renderer);
@@ -714,7 +719,7 @@ async function startGL() {
     frame(clock, false);
     if (first) { first = false; goLive(); }
   };
-  const start = () => { if (still() || running || paused || !onScreen || document.hidden) return; running = true; last = 0; raf = requestAnimationFrame(loop); };
+  const start = () => { if (lost || still() || running || paused || !onScreen || document.hidden) return; running = true; last = 0; raf = requestAnimationFrame(loop); };
   function stop() { running = false; cancelAnimationFrame(raf); }
 
   // Hand over from the static stand-in, if one was shown: fade it out as the render fades in.
@@ -729,7 +734,7 @@ async function startGL() {
   // Compile now: a GPU that rejects the dial's shaders gets the static frame, not a blank hero.
   if (comp) { placeSun(STILL_PHASE, 1); placeCamera(0, 0, 1); render(); }
   if (shaderFailed) { renderer.dispose(); canvas.remove(); throw new Error('the dial shaders did not compile'); }
-  new ResizeObserver(() => { resize(); if (!running) frame(clock, still()); }).observe(glBox);
+  new ResizeObserver(() => { if (lost) return; resize(); if (!running) frame(clock, still()); }).observe(glBox);
   if (still()) { frame(0, true); goLive(); }
   else {
     motionBtn.hidden = false;
@@ -742,7 +747,7 @@ async function startGL() {
     document.addEventListener('visibilitychange', () => (document.hidden ? stop() : start()));
     start();
   }
-  reduceMQ.addEventListener('change', e => { if (e.matches) { stop(); motionBtn.hidden = true; frame(0, true); } });
+  reduceMQ.addEventListener('change', e => { if (e.matches && !lost) { stop(); motionBtn.hidden = true; frame(0, true); } });
 }
 
 /* ---------- boot ---------- */

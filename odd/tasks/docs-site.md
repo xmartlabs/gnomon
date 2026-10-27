@@ -13,6 +13,10 @@ Detailed design: `docs/superpowers/specs/2026-10-21-docs-site-design.md` · Step
 - **S7 — Contact destination.** "El contact us puedetraernos a esto https://www.xmartlabs.com/contact … la landing de la empresa es https://www.xmartlabs.com/". UTM parameters per the design.
 - **S8 — Docs stay true to code.** This is an anti-goal of the design ("Docs that disagree with the code"). Every number is rendered from `docs/data/metrics.json`, which the stdlib drift test checks against `gnomon/scoring/aq.py` and `gnomon/config.py`.
 
+- **S9 — Get into each metric.** "De alguna forma me gustaria entrar en cada metrica, ver realmente como es". Every metric name and pillar on the landing links to its page, and there is an "Explore all 12 metrics" entry point.
+- **S10 — Say exactly how it measures.** "lo importante es decir bien como lo mide". Every scored axis page shows a worked example: a realistic month computed step by step, with its numbers rendered by a macro from `docs/data/metrics.json` so they cannot drift. It also lists what counts and what doesn't, taken from the code.
+- **S11 — Humanized copy.** "tambien para los textos usa /humanizer". All site and landing prose is passed through the humanizer skill.
+
 ## Tasks
 
 | ID | Task (plan task) | S# | Route | Status | Commit / evidence |
@@ -27,6 +31,10 @@ Detailed design: `docs/superpowers/specs/2026-10-21-docs-site-design.md` · Step
 | T8 | Landing as site home | S6,S7 | delegated: Writer trigger (a), an independent unit with a disjoint surface running parallel to T2–T7 | done | 5c0b0b5; writer: strict build 0, 60fps metal, reduced-motion/no-WebGL/CDN-blocked → SVG, no overflow 360/390; parent spot check: build exit 0 + screenshots reviewed. Safari/Firefox untested. Risk: item 6 (render covered by screenshots only) |
 | T9 | Docs workflow (Risk item 5, own commit) | S5 | inline | done | 3d220fb; actionlint OK; RDD review (risk + resilience lenses), consent granted by the user: approved and acknowledged (lineage review-60bd8ed02849932e). The review left 4 non-blocking suggestions; see L12 |
 | T10 | Cut-over: delete legacy docs, shrink README, fix links (Risk item 3) | S4 | delegated: Writer trigger (b), context backstop | done | writer: contract test 16 OK (every phrase byte-identical, re-pointed), strict build 0, full suite 1808 OK, legacy-name grep empty, README 805→97 lines; parent spot check: code diffs are comment-only, doc tests OK, build 0 |
+| T12 | Landing links into every metric and pillar | S9 | inline | done | 12 axis + 4 pillar links + "Explore all 12 metrics"; screenshot reviewed. Review advisories fixed: context loss now sticks (CDP: loseContext → svg, canvas removed, survives resize/visibility/scroll, 0 errors); SRI on the 4 three.js modules (CDP: valid hashes → webgl; tampered hash → svg fallback, 0 errors) |
+| T13 | Worked-example macro and data schema, tested, with Verification as the reference | S10 | inline | pending | |
+| T14 | Examples and what-counts lists for the other 10 scored axes | S10 | delegated: Writer trigger (b), context backstop | pending | |
+| T15 | Humanizer pass over site and landing prose | S11 | delegated: same writer as T14 (one unit of copy work) | pending | |
 | T11 | Follow-up issues list (file only with OK) | S8 | inline | drafted, awaiting OK | `.context/followup-issues.md`: 7 issues, each re-verified at HEAD |
 
 ## Log
@@ -49,3 +57,7 @@ Generar documentacion, una rubica /brainstorming"
 - **L14 (2026-10-22):** T10 scope grew. `tests/test_documentation_contract.py` pins 16 public-doc facts in README, metrics-by-source.md and scoring-philosophy.md, and code comments also reference those docs. The decision is to migrate the still-true contributor content into a new `docs/metrics/scoring-reference.md` and re-point each assertion without weakening it.
 - **L15 (2026-10-22):** The contract test now runs 72 assertions instead of 91. The 19 dropped were duplicate passes over the README copy of the same phrases, which S4 removes on purpose. Accepted.
 - **L16 (2026-10-22):** Independent verifier: S1–S5 and S7 met; S6 visual-only (Safari and Firefox untested); S8 had one blocker, false landing copy saying Token economy is dropped for Cursor and Antigravity IDE (home.html:233,236). Fixed in one correction batch along with the Codex, Gemini and IDE paths, and rechecked against the coverage matrix. A whole-branch review hit `lens_context_budget_exceeded` (8953 lines), so the scope was reduced to the T10 commit. That review (readability + reliability, consent granted) was approved and acknowledged (lineage review-5d47991226dcaf1b). Its advisories were applied: the 8 high-signal metrics list restored in usage.md (the build_summary docstring points there), the payload figure aligned to 89%, and the single-item loops removed from the contract test.
+- **L17 (2026-10-27, user, verbatim):** "De alguna forma me gustaria entrar en cada metrica, ver realmente como es, (es lo que haboamos hablado)
+
+hoy no se como hacerlo, capaz que puede enviarme a otra pagina o algo donde cuenta las metricas? No estoy seguro, lo importante es decir bien como lo mide, tambien para los textos usa /humanizer". The proposal (landing links, worked example per metric, what counts or doesn't, humanizer) was approved: "Si, dale".
+- **L18 (2026-10-27):** The landing slice (4f4744d..5c0b0b5) was reviewed in a detached worktree with risk, resilience and readability lenses, approved and acknowledged. Advisories: no SRI on the three.js import map; the webglcontextlost fallback re-arms its observers; the level cut-offs are hard-coded in landing.js. All three are folded into T12.

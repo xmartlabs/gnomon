@@ -142,7 +142,16 @@ code{font-family:var(--font-figure);font-size:.875em;background:var(--surface-su
 .pillar h3{font-size:21px;letter-spacing:-.015em;margin-top:22px;font-weight:600}
 .pdesc{font-size:15px;line-height:1.55;margin-top:8px;color:var(--grey-700)}
 .axes{margin-top:18px;border-top:1px solid var(--rule-subtle)}
-.axes li{font-size:15px;color:var(--grey-700);padding:9px 0;border-bottom:1px solid var(--rule-subtle)}
+.axes li{font-size:15px;color:var(--grey-700);border-bottom:1px solid var(--rule-subtle)}
+.axes li a{display:block;padding:9px 0;color:inherit;text-decoration:none;border-bottom:0}
+.axes li a:hover,.axes li a:focus-visible{color:var(--blue-600)}
+.axes .go-arrow{float:right;color:var(--blue-500);opacity:.55;transition:transform .18s,opacity .18s}
+.axes li a:hover .go-arrow,.axes li a:focus-visible .go-arrow{opacity:1;transform:translateX(3px)}
+.pillar h3 a{color:inherit;text-decoration:none;border-bottom:0}
+.pillar h3 a:hover,.pillar h3 a:focus-visible{color:var(--blue-600)}
+.explore{margin:14px 0 0;font-size:15px}
+.explore .explore-note{color:var(--text-secondary);margin-left:8px}
+@media (prefers-reduced-motion:reduce){.axes .go-arrow{transition:none}}
 .axes .muted{display:block;font:500 10px/1.3 var(--font-figure);letter-spacing:.08em;text-transform:uppercase;color:var(--text-tertiary);margin-top:3px}
 .pbar{display:none}
 

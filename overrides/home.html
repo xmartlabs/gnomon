@@ -18,13 +18,20 @@
 <!--
   The site home: a standalone template, so none of Material's header, navigation or sidebars render here.
   Ported from the approved mockup docs/superpowers/specs/2026-10-21-docs-landing-mockup-v2.html.
-  three.js is pinned below. If WebGL is missing or the CDN is unreachable, landing.js draws the same dial
+  three.js is pinned below, with Subresource Integrity hashes for every module it loads; bumping
+  the version means recomputing them. If WebGL is missing or the CDN is unreachable, landing.js draws the same dial
   as an inline SVG, so the hero never depends on the CDN.
 -->
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+},
+  "integrity": {
+  "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js": "sha384-m8JoFX52V6NGv2usipnlLJKnJfL7IE8dbniPDDCSGSQv3Hm4n6PjfV6syVwfuoRc",
+  "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.core.js": "sha384-mdKeCwPEcbDvzaxwhm+MVuLoMou+E7jQqrs4tmu/n8HBYPGI1kZt0MkJxlMR4zFM",
+  "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/geometries/RoundedBoxGeometry.js": "sha384-gHmgcgYfabbVCqiNiLLSop7dMvxAqZsQsjokoDYKyrHmCD5jCPvDvFaXaAkHtTfM",
+  "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/utils/BufferGeometryUtils.js": "sha384-Rm97j4mcjlLkGsYC2LX3nZG9VU2R8lgK0QE+DmBr4thue+H7J+SHm+68If2ZLBVg"
 } }
 </script>
 <script>document.documentElement.classList.add('js')</script>
@@ -92,6 +99,7 @@
         <b>AQ</b> = <em>0.30</em>·Breadth + <em>0.35</em>·Craft + <em>0.20</em>·Efficiency + <em>0.15</em>·Savvy
       </p>
       <p class="formula-note">Each pillar scores 0–100 from its own axes, over one month of sessions.</p>
+      <p class="explore"><a class="go" href="{{ base_url }}/metrics/how-scoring-works/">Explore all 12 metrics<span aria-hidden="true"> →</span></a> <span class="explore-note">Each one shows what it measures, the exact formula, a worked example and the rubric.</span></p>
 
       <div class="pillars">
         <div class="pgrid weights" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
@@ -99,30 +107,30 @@
           <div class="pillar">
             <div class="pbar" aria-hidden="true"><i style="width:30%"></i></div>
             <p class="pfig">30<small>%</small></p>
-            <h3>Breadth</h3>
+            <h3><a href="{{ base_url }}/metrics/breadth/">Breadth</a></h3>
             <p class="pdesc">How much of the agent toolkit gets used: subagents, skills, MCP servers and CLIs, and planning before work.</p>
-            <ul class="axes"><li>Orchestration</li><li>Skill fluency</li><li>Tool command</li><li>Discipline</li></ul>
+            <ul class="axes"><li><a href="{{ base_url }}/metrics/breadth/orchestration/">Orchestration<span class="go-arrow" aria-hidden="true">→</span></a></li><li><a href="{{ base_url }}/metrics/breadth/skill-fluency/">Skill fluency<span class="go-arrow" aria-hidden="true">→</span></a></li><li><a href="{{ base_url }}/metrics/breadth/tool-command/">Tool command<span class="go-arrow" aria-hidden="true">→</span></a></li><li><a href="{{ base_url }}/metrics/breadth/discipline/">Discipline<span class="go-arrow" aria-hidden="true">→</span></a></li></ul>
           </div>
           <div class="pillar">
             <div class="pbar" aria-hidden="true"><i style="width:35%"></i></div>
             <p class="pfig">35<small>%</small></p>
-            <h3>Craft</h3>
+            <h3><a href="{{ base_url }}/metrics/craft/">Craft</a></h3>
             <p class="pdesc">Whether the agent's work is tested, reviewed and grounded, and whether lessons get written down for the next session.</p>
-            <ul class="axes"><li>Verification</li><li>Grounding</li><li>Context intelligence</li><li>Compounding</li></ul>
+            <ul class="axes"><li><a href="{{ base_url }}/metrics/craft/verification/">Verification<span class="go-arrow" aria-hidden="true">→</span></a></li><li><a href="{{ base_url }}/metrics/craft/grounding/">Grounding<span class="go-arrow" aria-hidden="true">→</span></a></li><li><a href="{{ base_url }}/metrics/craft/context-intelligence/">Context intelligence<span class="go-arrow" aria-hidden="true">→</span></a></li><li><a href="{{ base_url }}/metrics/craft/compounding/">Compounding<span class="go-arrow" aria-hidden="true">→</span></a></li></ul>
           </div>
           <div class="pillar">
             <div class="pbar" aria-hidden="true"><i style="width:20%"></i></div>
             <p class="pfig">20<small>%</small></p>
-            <h3>Efficiency</h3>
+            <h3><a href="{{ base_url }}/metrics/efficiency/">Efficiency</a></h3>
             <p class="pdesc">How the work recovers after a tool call fails.</p>
-            <ul class="axes"><li>Recovery</li><li>Steering leverage<span class="muted">Measured, not scored yet</span></li></ul>
+            <ul class="axes"><li><a href="{{ base_url }}/metrics/efficiency/recovery/">Recovery<span class="go-arrow" aria-hidden="true">→</span></a></li><li><a href="{{ base_url }}/metrics/efficiency/steering-leverage/">Steering leverage<span class="go-arrow" aria-hidden="true">→</span><span class="muted">Measured, not scored yet</span></a></li></ul>
           </div>
           <div class="pillar">
             <div class="pbar" aria-hidden="true"><i style="width:15%"></i></div>
             <p class="pfig">15<small>%</small></p>
-            <h3>Savvy</h3>
+            <h3><a href="{{ base_url }}/metrics/savvy/">Savvy</a></h3>
             <p class="pdesc">Choosing models and tools with cost in mind.</p>
-            <ul class="axes"><li>Model mix</li><li>Token economy</li></ul>
+            <ul class="axes"><li><a href="{{ base_url }}/metrics/savvy/model-mix/">Model mix<span class="go-arrow" aria-hidden="true">→</span></a></li><li><a href="{{ base_url }}/metrics/savvy/token-economy/">Token economy<span class="go-arrow" aria-hidden="true">→</span></a></li></ul>
           </div>
         </div>
       </div>
