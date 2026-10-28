@@ -20,6 +20,11 @@ class TestDashboardUrlResolution(unittest.TestCase):
             (
                 ["--mirdash-base=https://cli-mirdash.example/"],
                 {"GNOMON_DASHBOARD_URL": "https://env-dashboard.example/", "GNOMON_MIRDASH_BASE": "https://env-mirdash.example/"},
+                "https://cli-mirdash.example",
+            ),
+            (
+                [],
+                {"GNOMON_DASHBOARD_URL": "https://env-dashboard.example/", "GNOMON_MIRDASH_BASE": "https://env-mirdash.example/"},
                 "https://env-dashboard.example",
             ),
             (
@@ -47,6 +52,14 @@ class TestDashboardUrlResolution(unittest.TestCase):
                     mirdash.resolve_dashboard_url(argv, default="https://fallback.example/"),
                     expected,
                 )
+
+    def test_explicit_mirdash_base_flag_beats_dashboard_env(self):
+        env = {"GNOMON_DASHBOARD_URL": "https://env-dashboard.example"}
+        with patch.dict(os.environ, env, clear=True), patch.object(mirdash, "_gnomon_config", return_value={}):
+            self.assertEqual(
+                mirdash._resolve_mirdash_base(["--mirdash-base=https://cli-mirdash.example"]),
+                "https://cli-mirdash.example",
+            )
 
     def test_mirdash_wrapper_preserves_baked_default(self):
         with patch.dict(os.environ, {}, clear=True), patch.object(mirdash, "_gnomon_config", return_value={}):

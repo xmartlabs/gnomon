@@ -112,30 +112,26 @@ def _clean_dashboard_url(value):
 def resolve_dashboard_url(argv, default=None):
     """Resolve the dashboard URL from CLI, environment, config, or default.
 
-    Precedence (first set value wins):
+    Precedence (first set value wins). Every CLI flag beats every environment
+    variable, so an explicit --mirdash-base is never overridden by an exported
+    GNOMON_DASHBOARD_URL:
       1. --dashboard-url[=URL]
-      2. GNOMON_DASHBOARD_URL
-      3. --mirdash-base[=URL] (backward compatibility)
+      2. --mirdash-base[=URL] (backward compatibility)
+      3. GNOMON_DASHBOARD_URL
       4. GNOMON_MIRDASH_BASE (backward compatibility)
       5. config ``dashboard_url``
       6. config ``mirdash_base`` (backward compatibility)
       7. ``default``
     """
-    value = _cli_option_value(argv, "--dashboard-url")
-    if value:
-        return _clean_dashboard_url(value)
+    for option in ("--dashboard-url", "--mirdash-base"):
+        value = _cli_option_value(argv, option)
+        if value:
+            return _clean_dashboard_url(value)
 
-    value = os.environ.get("GNOMON_DASHBOARD_URL", "")
-    if str(value).strip():
-        return _clean_dashboard_url(value)
-
-    value = _cli_option_value(argv, "--mirdash-base")
-    if value:
-        return _clean_dashboard_url(value)
-
-    value = os.environ.get("GNOMON_MIRDASH_BASE", "")
-    if str(value).strip():
-        return _clean_dashboard_url(value)
+    for name in ("GNOMON_DASHBOARD_URL", "GNOMON_MIRDASH_BASE"):
+        value = os.environ.get(name, "")
+        if str(value).strip():
+            return _clean_dashboard_url(value)
 
     cfg = _gnomon_config()
     for key in ("dashboard_url", "mirdash_base"):
