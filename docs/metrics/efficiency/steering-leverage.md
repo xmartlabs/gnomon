@@ -19,6 +19,10 @@ hide: [toc]
 
 {{ formula(page.meta.axis) }}
 
+{{ what_counts(page.meta.axis) }}
+
+{{ worked_example(page.meta.axis) }}
+
 ## Rubric
 
 {{ rubric_scale(page.meta.axis) }}

@@ -277,6 +277,88 @@ def render_levels(data):
     return f'<table><thead><tr><th>Level</th><th>AQ score</th></tr></thead><tbody>{"".join(rows)}</tbody></table>'
 
 
+def term_credit(term, value):
+    """The 0-1 credit a term earns for a measured value, by the term's kind.
+
+    target:   min(1, value / target), the `sat()` every target-based term uses
+    fraction: the value is already a 0-1 share
+    credit:   the value is the fixed credit itself (for example 1.0 or 0.6)
+    inverse:  1 - min(1, value / target), a penalty term such as API retries
+    """
+    kind = term["kind"]
+    if kind == "target":
+        return min(1.0, value / term["target"])
+    if kind == "inverse":
+        return 1.0 - min(1.0, value / term["target"])
+    return max(0.0, min(1.0, value))
+
+
+def _example_rows(data, axis_id):
+    axis = find_axis(data, axis_id)
+    terms = {t["name"]: t for t in axis["terms"]}
+    rows = []
+    for item in axis["example"]["inputs"]:
+        term = terms[item["term"]]
+        credit = term_credit(term, item["value"])
+        rows.append((term, item, credit, term["share"] * credit))
+    return rows
+
+
+def example_score(data, axis_id):
+    """The worked example's axis fill, 0-100."""
+    return round(100 * sum(points for *_, points in _example_rows(data, axis_id)))
+
+
+def level_for(data, score):
+    """The level name for a 0-100 fill."""
+    return [lvl["name"] for lvl in data["levels"] if score >= lvl["floor"]][-1]
+
+
+def _fmt_value(term, value):
+    if term["kind"] == "inverse":
+        return f"{value:g} per 100 calls"
+    if term["kind"] in {"fraction", "credit"} or (term["kind"] == "target" and term["target"] <= 1 and value <= 1):
+        if term["kind"] == "target" and term["target"] < 0.05:
+            return f"{value * 1000:g} per 1,000 calls"
+        return f"{round(value * 100):g}%"
+    return f"{value:g}"
+
+
+def render_example(data, axis_id):
+    """A realistic month, computed step by step from the axis terms."""
+    axis = find_axis(data, axis_id)
+    if "example" not in axis:
+        return ""
+    rows = []
+    for term, item, credit, points in _example_rows(data, axis_id):
+        rows.append(
+            '<div class="gn-formula__row gn-example__row" role="row">'
+            f'<span class="gn-formula__w gn-fig" role="cell">{_pct(term["share"])}</span>'
+            f'<span class="gn-formula__t" role="cell">{_e(term["name"])}<small>{_e(item["label"])}</small></span>'
+            f'<span class="gn-formula__target gn-fig" role="cell">{_e(_fmt_value(term, item["value"]))} → '
+            f'{round(credit * 100)}% credit<br><b>{points * 100:.1f} pts</b></span></div>')
+    score = example_score(data, axis_id)
+    return ('<h2 id="a-worked-example">A worked example</h2>'
+            f'<p>{_e(axis["example"]["story"])} Each term earns credit against its target, '
+            "and its share of the axis turns that credit into points.</p>"
+            f'<div class="gn-formula gn-example" role="table" aria-label="{_e(axis["name"])} worked example">'
+            f'{"".join(rows)}</div>'
+            f'<p class="gn-example__total"><span class="gn-fig">{score}</span> / 100 on this axis, '
+            f'which is <b>{_e(level_for(data, score))}</b>.</p>')
+
+
+def render_counts(data, axis_id):
+    """What the code counts toward the axis, and what it leaves out."""
+    axis = find_axis(data, axis_id)
+    if not axis.get("counts"):
+        return ""
+    counts = "".join(f"<li>{_e(x)}</li>" for x in axis["counts"])
+    excluded = "".join(f"<li>{_e(x)}</li>" for x in axis["excluded"])
+    return ('<div class="gn-counts">'
+            f'<div><span class="gn-label">Counts</span><ul>{counts}</ul></div>'
+            f'<div><span class="gn-label">Doesn\'t count</span><ul>{excluded}</ul></div></div>')
+
+
 def render_coverage_matrix(data, base_url=""):
     """Source x axis matrix of what each source can measure."""
     sources = list(data["sources"].items())
@@ -338,6 +420,14 @@ def define_env(env):
     @env.macro
     def pillars_table():
         return render_pillars_table(data, base_url())
+
+    @env.macro
+    def worked_example(axis_id):
+        return render_example(data, axis_id)
+
+    @env.macro
+    def what_counts(axis_id):
+        return render_counts(data, axis_id)
 
     @env.macro
     def gstack_scorecard():

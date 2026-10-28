@@ -12,7 +12,7 @@ The AQ total maps to a [level](how-scoring-works.md#levels), from Novice to Elit
 
 ## Signature moves
 
-Up to five patterns the developer already does well, picked from what the month shows: reviewing the agent's work, thinking before building, building at pace, planning, keeping the human in charge of decisions, working through the shell, and researching before acting. Each one appears only when its evidence clears a threshold, so the list is earned, not filler. Source: `gnomon/scoring/insights.py`.
+Up to five patterns the developer already does well, picked from what the month shows: reviewing the agent's work, thinking before building, building at pace, planning, keeping the human in charge of decisions, working through the shell, and researching before acting. Each one appears only when its evidence clears a threshold, so the list can be shorter than five. Source: `gnomon/scoring/insights.py`.
 
 ## Growth edges
 

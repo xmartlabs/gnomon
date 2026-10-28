@@ -128,12 +128,12 @@
             "delegate"
           ],
           "thesis": "Does the developer split big work across subagents, and do it well? Orchestration reads how often large sessions delegate and how varied and wide that delegation is.",
-          "why": "One agent working alone on a large change runs out of context and attention. Splitting the work across a few specialised subagents keeps each one focused, and lets independent parts run in parallel. Management research on span of control lands at five to seven direct reports, which is where the fan-out target sits.",
+          "why": "One agent working alone on a large change runs out of context and attention. Splitting the work across a few specialised subagents keeps each one focused, and lets independent parts run in parallel. Span-of-control studies (Graicunas, Urwick) put the useful limit at five to seven direct reports, and the fan-out target of 5 sits there.",
           "terms": [
             {
               "name": "Delegation frequency",
               "share": 0.3,
-              "definition": "Share of large sessions (3 or more code files written and 20 or more substantive calls) that delegated to a subagent. Its weight grows from 0 to 30% over the first 5 such sessions.",
+              "definition": "Share of large sessions that delegated to a subagent. A large session wrote code and either wrote 3 or more code files or made 20 or more substantive calls. Its weight grows from 0 to 30% over the first 5 such sessions.",
               "target_label": "full credit at 78% of large sessions",
               "constants": {
                 "ORCHESTRATION_FREQUENCY_TARGET": 0.78,
@@ -141,7 +141,9 @@
                 "ORCHESTRATABLE_CODE_FILES": 3,
                 "ORCHESTRATABLE_SUBSTANTIVE": 20
               },
-              "requires": []
+              "requires": [],
+              "kind": "target",
+              "target": 0.78
             },
             {
               "name": "Subagent variety",
@@ -151,7 +153,9 @@
               "constants": {
                 "SUBAGENT_TYPES_DISTINCT_CEILING": 8
               },
-              "requires": []
+              "requires": [],
+              "kind": "target",
+              "target": 8
             },
             {
               "name": "Fan-out",
@@ -161,7 +165,9 @@
               "constants": {
                 "FANOUT_CEILING": 5
               },
-              "requires": []
+              "requires": [],
+              "kind": "target",
+              "target": 5
             },
             {
               "name": "Team sessions",
@@ -172,7 +178,8 @@
                 "HARNESS_TEAM_SESSION_TYPES": 3,
                 "HARNESS_BELOW_TEAM_CREDIT": 0.6
               },
-              "requires": []
+              "requires": [],
+              "kind": "credit"
             }
           ],
           "eligibility": "The three quality terms (variety, fan-out, team sessions) share 70% of the axis once delegation frequency has full weight; before that they share the rest. A source that cannot delegate at all drops this axis.",
@@ -209,7 +216,43 @@
               "next": ""
             }
           ],
-          "improve": "Write the split into the prompt: name the parts and the subagent that owns each. Keep a small set of specialised subagents (explore, implement, review, test) so variety comes from real roles, not from novelty."
+          "improve": "Write the split into the prompt: name the parts and the subagent that owns each. Keep a small set of specialised subagents (explore, implement, review, test) so the variety comes from real roles.",
+          "example": {
+            "story": "A month with 7 large sessions. That is at least 5, so delegation frequency carries its full 30%.",
+            "inputs": [
+              {
+                "term": "Delegation frequency",
+                "label": "5 of the 7 large sessions handed work to a subagent",
+                "value": 0.714
+              },
+              {
+                "term": "Subagent variety",
+                "label": "4 subagent types used: explore, implement, review and test",
+                "value": 4
+              },
+              {
+                "term": "Fan-out",
+                "label": "Sessions that delegated sent out 3 subagents at the median",
+                "value": 3
+              },
+              {
+                "term": "Team sessions",
+                "label": "One session used explore, implement and review subagents together",
+                "value": 1.0
+              }
+            ]
+          },
+          "counts": [
+            "A delegation is a call to Agent, Task or Workflow. Agent and Task count one subagent per call; a Workflow counts each agent it actually dispatched.",
+            "A large session wrote at least one code file and then either wrote 3 or more code files or made 20 or more substantive calls.",
+            "Subagent variety counts distinct subagent types. A call that names no type counts as general-purpose.",
+            "Fan-out is the median over the sessions that delegated at least once."
+          ],
+          "excluded": [
+            "TaskCreate, TaskUpdate, TaskList and TaskGet. They are to-do bookkeeping, not delegation.",
+            "Delegation calls themselves, and repeat reads of the same file, don't add to the 20 substantive calls that make a session large.",
+            "Sessions that write only docs, config, lockfiles or tests. They are never large sessions."
+          ]
         },
         {
           "id": "skill-fluency",
@@ -233,7 +276,9 @@
               "constants": {
                 "SKILLS_DISTINCT_CEILING": 40
               },
-              "requires": []
+              "requires": [],
+              "kind": "target",
+              "target": 40
             },
             {
               "name": "Skill use rate",
@@ -243,14 +288,17 @@
               "constants": {
                 "SKILLS_TOTAL_PER_CALL_TARGET": 0.009
               },
-              "requires": []
+              "requires": [],
+              "kind": "target",
+              "target": 0.009
             },
             {
               "name": "Process skills",
               "share": 0.3,
               "definition": "Full credit when a process skill (subagent-driven development, brainstorming, writing plans, systematic debugging) was used; 0.6 otherwise.",
               "target_label": "full credit with any process skill",
-              "requires": []
+              "requires": [],
+              "kind": "credit"
             }
           ],
           "eligibility": "The rate term needs enough tool calls to be meaningful; below that it is left out rather than scored. Sources that report skills either as a first-class tool or by reading skill files are scored; a source that can do neither drops this axis.",
@@ -287,7 +335,36 @@
               "next": ""
             }
           ],
-          "improve": "Keep a short list of skills for your common tasks and invoke them by name. When you explain the same thing to an agent twice, turn it into a skill."
+          "improve": "Keep a short list of skills for your common tasks and invoke them by name. When you explain the same thing to an agent twice, turn it into a skill.",
+          "example": {
+            "story": "A month with 4,500 tool calls and no process skill.",
+            "inputs": [
+              {
+                "term": "Skill variety",
+                "label": "14 different skills used during the month",
+                "value": 14
+              },
+              {
+                "term": "Skill use rate",
+                "label": "27 skill uses in 4,500 tool calls, which is 6 per 1,000",
+                "value": 0.006
+              },
+              {
+                "term": "Process skills",
+                "label": "No process skill used, so the term keeps its 0.6 floor",
+                "value": 0.6
+              }
+            ]
+          },
+          "counts": [
+            "A skill use is a Skill tool call, a skill the tool injected into the turn, or a read of a skills/<name>/SKILL.md file, directly or from the shell.",
+            "Process skills: any skill whose name contains subagent-driven, brainstorm, writing-plans, cerberus or systematic-debugging.",
+            "Skill variety counts distinct skill names across the month."
+          ],
+          "excluded": [
+            "Repeat attribution. A skill tagged on every turn of a session adds one use for that session, not one per turn.",
+            "The use rate in a month under 112 tool calls, where 9 per 1,000 adds up to less than one expected use."
+          ]
         },
         {
           "id": "tool-command",
@@ -309,7 +386,9 @@
               "constants": {
                 "MCP_SERVERS_DISTINCT_CEILING": 15
               },
-              "requires": []
+              "requires": [],
+              "kind": "target",
+              "target": 15
             },
             {
               "name": "Command-line tools",
@@ -319,7 +398,9 @@
               "constants": {
                 "CLIS_DISTINCT_CEILING": 40
               },
-              "requires": []
+              "requires": [],
+              "kind": "target",
+              "target": 40
             }
           ],
           "eligibility": "Measured for every source. ToolSearch calls are shown in the profile but not scored.",
@@ -356,7 +437,30 @@
               "next": ""
             }
           ],
-          "improve": "List the systems you still copy information from by hand. Each one is a candidate MCP server or CLI the agent could call directly."
+          "improve": "List the systems you still copy information from by hand. Each one is a candidate MCP server or CLI the agent could call directly.",
+          "example": {
+            "story": "A month where the agent mostly works through files and the shell.",
+            "inputs": [
+              {
+                "term": "MCP servers",
+                "label": "4 MCP servers called: GitHub, Linear, Supabase and context7",
+                "value": 4
+              },
+              {
+                "term": "Command-line tools",
+                "label": "18 known CLIs run, from git and npm to docker and psql",
+                "value": 18
+              }
+            ]
+          },
+          "counts": [
+            "An MCP server is the <server> part of an mcp__<server>__<tool> call. Cursor's plugin-wrapped names collapse to the vendor, so mcp__plugin__atlassian_… counts as atlassian.",
+            "A CLI counts when it starts a shell command (Bash or PowerShell), or any part of one joined by &&, ||, | or ;, and it is on gnomon's list of 53 known tools such as git, gh, npm, docker, kubectl and pytest."
+          ],
+          "excluded": [
+            "Programs that are not on that list, such as uv or terraform.",
+            "Repeat calls. Using the same server or CLI again adds nothing; only distinct names count."
+          ]
         },
         {
           "id": "discipline",
@@ -380,7 +484,9 @@
               },
               "requires": [
                 "planning_signal"
-              ]
+              ],
+              "kind": "target",
+              "target": 0.3
             },
             {
               "name": "Planned changes",
@@ -392,7 +498,9 @@
                 "PLAN_MIN_LINES": 8,
                 "PLAN_MIN_STEPS": 3
               },
-              "requires": []
+              "requires": [],
+              "kind": "target",
+              "target": 0.5
             }
           ],
           "eligibility": "A change session wrote code and touched 2 or more files, changed 80 or more lines, or made 10 or more substantive calls. Each share needs at least 5 eligible sessions in the month; with fewer it is left out rather than scored.",
@@ -429,7 +537,33 @@
               "next": ""
             }
           ],
-          "improve": "Start sessions in plan mode, or with a planning skill, whenever the change is bigger than one file. Keep the plan in a file so later sessions can pick it up."
+          "improve": "Start sessions in plan mode, or with a planning skill, whenever the change is bigger than one file. Keep the plan in a file so later sessions can pick it up.",
+          "example": {
+            "story": "A month with 25 sessions, 10 of them change sessions.",
+            "inputs": [
+              {
+                "term": "Planning habit",
+                "label": "6 of the 25 sessions used plan mode or a planning skill",
+                "value": 0.24
+              },
+              {
+                "term": "Planned changes",
+                "label": "4 of the 10 change sessions started from a plan",
+                "value": 0.4
+              }
+            ]
+          },
+          "counts": [
+            "Planning habit: the session's main thread entered or left plan mode, or used a planning skill or planning subagent (a name containing plan, brainstorm, spec, office-hours, autoplan, grill, ceo-review, eng-review, design-review, sdd-propose, sdd-design or sdd-tasks).",
+            "Planned changes: before its first code edit, the session wrote a to-do list with 3 or more distinct steps, wrote a plan file of 8 or more lines, or used a planning skill.",
+            "Plan files: .claude/plans/*.md, anything under .cursor/plans/, files in .context/ with plan in the name, and .md, .mdx or .txt files directly inside a plans/ folder.",
+            "A plan from an earlier session counts when it was written in the same project folder. Each plan credits one change session."
+          ],
+          "excluded": [
+            "To-do lists and plan files written after the session's first code edit.",
+            "TodoWrite and the task tools, for Planning habit. Only plan mode and planning skills count there.",
+            "Plan mode and planning skills used inside a subagent's own thread."
+          ]
         }
       ]
     },
@@ -456,7 +590,8 @@
               "share": 0.5,
               "definition": "Share of change sessions that also ran a test command.",
               "target_label": "full credit at 100%",
-              "requires": []
+              "requires": [],
+              "kind": "fraction"
             },
             {
               "name": "Review skill use",
@@ -468,7 +603,9 @@
               },
               "requires": [
                 "skill_reads"
-              ]
+              ],
+              "kind": "target",
+              "target": 0.004
             }
           ],
           "eligibility": "A change session wrote code and touched 2 or more files, changed 80 or more lines, or made 10 or more substantive calls. The test share needs at least 5 change sessions and timestamped tool events; otherwise it is left out rather than scored.",
@@ -505,7 +642,31 @@
               "next": ""
             }
           ],
-          "improve": "Write the test command into your project instructions (CLAUDE.md, AGENTS.md) so the agent runs it unprompted. Install a review skill and call it before you merge."
+          "improve": "Write the test command into your project instructions (CLAUDE.md, AGENTS.md) so the agent runs it unprompted. Install a review skill and call it before you merge.",
+          "example": {
+            "story": "A month with 12 change sessions and 4,000 tool calls.",
+            "inputs": [
+              {
+                "term": "Tested change sessions",
+                "label": "9 of the 12 change sessions ran a passing test after their first code edit",
+                "value": 0.75
+              },
+              {
+                "term": "Review skill use",
+                "label": "12 review-skill uses in 4,000 tool calls, which is 3 per 1,000",
+                "value": 0.003
+              }
+            ]
+          },
+          "counts": [
+            "A test command that runs after the first code edit of the session and finishes without an error: pytest, unittest, tox, jest, vitest, playwright test, go test, cargo test, rspec, phpunit and other common runners.",
+            "Review skills: code-review, requesting-code-review, security-review, any skill named *-review or review-*, verify and judgment-day."
+          ],
+          "excluded": [
+            "A test run that fails, or one that ran before the first code edit of the session.",
+            "Planning reviews: plan-eng-review, plan-ceo-review, eng-review, ceo-review, design-review and any skill whose name starts with plan.",
+            "Sessions that only touch docs, configuration, lockfiles or tests; they are not change sessions."
+          ]
         },
         {
           "id": "grounding",
@@ -524,7 +685,9 @@
               "share": 1.0,
               "definition": "Explore actions (reads, searches, thinking) divided by doing actions (edits, writes, commands). Planning dispatches don't count as doing.",
               "target_label": "full credit at 1 to 1",
-              "requires": []
+              "requires": [],
+              "kind": "target",
+              "target": 1.0
             }
           ],
           "eligibility": "Measured for every source. Known limitation: in the corpora measured so far, almost everyone sits at or near full credit, so this axis separates people mainly below parity.",
@@ -561,7 +724,25 @@
               "next": ""
             }
           ],
-          "improve": "Give the agent a code map or index so exploring is cheap, and ask it to explain the current behaviour before it changes anything."
+          "improve": "Give the agent a code map or index so exploring is cheap, and ask it to explain the current behaviour before it changes anything.",
+          "example": {
+            "story": "A month with 1,900 explore actions and 1,580 doing actions.",
+            "inputs": [
+              {
+                "term": "Explore-to-do ratio",
+                "label": "1,900 reads, searches and thinking blocks against 1,580 edits, commands and dispatches, a ratio of 1.2",
+                "value": 1.2
+              }
+            ]
+          },
+          "counts": [
+            "Explore: Read, Grep, Glob, NotebookRead, WebSearch, WebFetch and ToolSearch, MCP calls whose tool name reads (get, list, search, query, fetch and similar), and the model's thinking blocks.",
+            "Doing: Edit, Write, MultiEdit and NotebookEdit, shell commands, Skill calls, subagent dispatches, scheduling tools, and MCP calls that don't read."
+          ],
+          "excluded": [
+            "Plan mode, to-do and worktree tools, AskUserQuestion, and tools gnomon doesn't recognise. They sit on neither side.",
+            "Exploring more than you build earns nothing extra: any ratio above 1 to 1 scores 100."
+          ]
         },
         {
           "id": "context-intelligence",
@@ -572,18 +753,20 @@
           "base_weight": 20,
           "status": "provisional",
           "requires": [],
-          "thesis": "Does the agent check the team's knowledge before it writes? Context intelligence counts the change sessions where a knowledge or project tool was consulted before the code changed.",
-          "why": "Requirements live in tickets, docs and designs, not in the code. A change written without reading them meets the code's rules but misses the product's. Consulting the source of truth before writing is how agents stay aligned with what the team actually decided.",
+          "thesis": "Does the agent look before it changes anything? Context intelligence counts the change sessions that read the code, or consulted a knowledge, project, data or design tool, before their first code edit.",
+          "why": "An edit made before reading anything is a guess about the code around it and about what the team decided. Opening the files, searching the codebase, or pulling the ticket or design first gives the change something to stand on. This axis checks that habit once per change session, so a single early look is enough, and more looking does not add credit.",
           "terms": [
             {
               "name": "Grounded change sessions",
               "share": 1.0,
-              "definition": "Share of change sessions where a knowledge or explore-class MCP call (Jira, Notion, Figma, a database and similar) came before a later edit in the same session.",
+              "definition": "Share of change sessions that read the code, or consulted a knowledge, project, data or design tool, before their first code edit.",
               "target_label": "full credit at 60% (provisional)",
               "constants": {
                 "CONTEXT_INTELLIGENCE_TARGET": 0.6
               },
-              "requires": []
+              "requires": [],
+              "kind": "target",
+              "target": 0.6
             }
           ],
           "eligibility": "Needs at least 5 change sessions and timestamped tool events; otherwise it is left out rather than scored. The 60% target is provisional: it has not yet been fitted to production data.",
@@ -591,36 +774,57 @@
           "rubric": [
             {
               "level": "Novice",
-              "looks_like": "Code changes are written without consulting any ticket, doc or design.",
-              "next": "Connect the issue tracker and have the agent read the ticket first."
+              "looks_like": "Most change sessions start editing before the agent has read anything.",
+              "next": "Ask the agent to open the files it will change before its first edit."
             },
             {
               "level": "Apprentice",
-              "looks_like": "Context is pulled in occasionally, usually after a misunderstanding.",
-              "next": "Start each change session by having the agent read the relevant ticket or spec."
+              "looks_like": "Some sessions start with a look at the code; many go straight to editing.",
+              "next": "Start each change session by having the agent search for the code it will touch."
             },
             {
               "level": "Adequate",
-              "looks_like": "About a third of changes start from team knowledge.",
-              "next": "Connect the other places decisions live: docs, designs, data."
+              "looks_like": "About a third of change sessions read the code or a ticket before the first edit.",
+              "next": "Connect the places decisions live, such as tickets, docs and designs, so the agent can check them too."
             },
             {
               "level": "Proficient",
-              "looks_like": "Many changes start from a ticket, doc or design.",
-              "next": "Make reading the source of truth a written step in your project instructions."
+              "looks_like": "Many change sessions start with reading, searching or checking a ticket.",
+              "next": "Write \"read before you edit\" into your project instructions."
             },
             {
               "level": "Advanced",
-              "looks_like": "Most changes are grounded in team knowledge.",
-              "next": "Extend it to small changes, which are the ones most often written blind."
+              "looks_like": "Most change sessions start from the code or the team's knowledge.",
+              "next": "Keep the habit on small changes, which are the ones most often written blind."
             },
             {
               "level": "Elite",
-              "looks_like": "Changes routinely start from the team's source of truth.",
+              "looks_like": "Almost every change session looks first and edits second.",
               "next": ""
             }
           ],
-          "improve": "Connect the systems where requirements live through MCP servers and tell the agent, in your project instructions, to read the ticket or spec before it edits."
+          "improve": "Put a \"read before you edit\" rule in your project instructions, and connect the issue tracker and docs through MCP servers so the agent can check the ticket as well as the code before it changes anything.",
+          "example": {
+            "story": "A month with 10 change sessions.",
+            "inputs": [
+              {
+                "term": "Grounded change sessions",
+                "label": "4 of the 10 change sessions looked something up before their first code edit",
+                "value": 0.4
+              }
+            ]
+          },
+          "counts": [
+            "Reading or searching the code with Read, Grep, Glob or NotebookRead.",
+            "Any call to a knowledge MCP server, such as engram, context7, codegraph or a memory server.",
+            "A read-type call (get, list, search, query and similar) to a project, data or design MCP server, such as Jira, GitHub, Linear, Notion, Supabase or Figma.",
+            "Running codegraph explore, search or query, graphify, or gh issue view or gh pr view in the shell."
+          ],
+          "excluded": [
+            "Anything consulted after the session's first code edit.",
+            "WebSearch and WebFetch. Web grounding is switched off in the code.",
+            "Write-type calls to project, data or design servers, such as creating a ticket or running a migration."
+          ]
         },
         {
           "id": "compounding",
@@ -642,7 +846,9 @@
               "constants": {
                 "COMPOUNDING_WRITES_PER_CALL_TARGET": 0.0018
               },
-              "requires": []
+              "requires": [],
+              "kind": "target",
+              "target": 0.0018
             },
             {
               "name": "Reflection skills",
@@ -651,7 +857,8 @@
               "target_label": "full credit with any reflection skill",
               "requires": [
                 "skill_reads"
-              ]
+              ],
+              "kind": "credit"
             }
           ],
           "eligibility": "The write rate needs enough tool calls to be meaningful; below that it is left out rather than scored.",
@@ -688,7 +895,32 @@
               "next": ""
             }
           ],
-          "improve": "Treat the agent's instruction files as code: update them when you correct the agent, and review them with the team. End larger tasks with a short retro."
+          "improve": "Treat the agent's instruction files as code: update them when you correct the agent, and review them with the team. End larger tasks with a short retro.",
+          "example": {
+            "story": "A month with 5,000 tool calls and no reflection skill.",
+            "inputs": [
+              {
+                "term": "Knowledge writes",
+                "label": "5 edits to CLAUDE.md and memory files in 5,000 tool calls, which is 1 per 1,000",
+                "value": 0.001
+              },
+              {
+                "term": "Reflection skills",
+                "label": "No retro, writing-plans or brainstorming skill, so the term keeps its 0.6 floor",
+                "value": 0.6
+              }
+            ]
+          },
+          "counts": [
+            "An Edit, Write, MultiEdit or NotebookEdit on a path containing CLAUDE.md, AGENTS.md, GEMINI.md, /memory/, /docs/adr, .cursorrules or /.cursor/rules/, in any letter case. Every such write counts.",
+            "A storing call (add, write, save, remember, create, update and similar) to a knowledge MCP server such as engram or mem0, counted once per session and target.",
+            "Reflection skills: any skill whose name contains retro, writing-plans or brainstorm."
+          ],
+          "excluded": [
+            "Shell writes to those files, such as echo >> CLAUDE.md, and plain reads of them.",
+            "Knowledge MCP calls that read, and any call to context7 or exa, which only fetch docs and search results.",
+            "The write rate in a month under 556 tool calls."
+          ]
         }
       ]
     },
@@ -737,15 +969,16 @@
           "base_weight": 50,
           "status": "scored",
           "requires": [],
-          "thesis": "When a tool call fails, does the work get back on track? Recovery reads how often errors are followed by a successful retry, and penalises storms of API retries.",
+          "thesis": "When a tool call fails, does the work get back on track? Recovery reads how often a failed call is followed by another call in the same session, and penalises storms of API retries.",
           "why": "Agents hit errors all the time: a failing command, a wrong path, a flaky API. What matters is whether the session recovers or stalls. Frequent API retry storms usually point to a broken setup that wastes time and money for everyone on the team.",
           "terms": [
             {
               "name": "Error recovery",
               "share": 0.85,
-              "definition": "Share of failed tool calls that were followed by a successful one.",
+              "definition": "Share of failed tool calls that the agent followed with another tool call in the same session.",
               "target_label": "full credit at 100%",
-              "requires": []
+              "requires": [],
+              "kind": "fraction"
             },
             {
               "name": "API retry hygiene",
@@ -755,7 +988,9 @@
               "constants": {
                 "API_RETRIES_PER_100_TOOLS_TARGET": 2.0
               },
-              "requires": []
+              "requires": [],
+              "kind": "inverse",
+              "target": 2.0
             }
           ],
           "eligibility": "Measured for every source.",
@@ -792,7 +1027,30 @@
               "next": ""
             }
           ],
-          "improve": "Make errors easy to read: clear test output, accessible logs, pinned tool versions. When the same failure repeats, fix the environment rather than retrying."
+          "improve": "Make errors easy to read: clear test output, accessible logs, pinned tool versions. When the same failure repeats, fix the environment instead of retrying.",
+          "example": {
+            "story": "A month with 5,000 tool calls and 150 failed ones.",
+            "inputs": [
+              {
+                "term": "Error recovery",
+                "label": "129 of the 150 failed tool calls were followed by another call in the same session",
+                "value": 0.86
+              },
+              {
+                "term": "API retry hygiene",
+                "label": "40 API errors and retries in 5,000 tool calls, which is 0.8 per 100",
+                "value": 0.8
+              }
+            ]
+          },
+          "counts": [
+            "A failed tool call is a tool result marked as an error. It is recovered when the agent makes any later tool call in the same session; that call's own outcome isn't checked.",
+            "API errors and retries: messages flagged as API errors, plus system retry attempts, per 100 tool calls."
+          ],
+          "excluded": [
+            "A failure that is the last tool call of its session. It is never recovered.",
+            "Extra failures that arrive together, such as several parallel calls failing in one turn. The next call recovers only one of them."
+          ]
         }
       ]
     },
@@ -814,7 +1072,7 @@
             "model"
           ],
           "thesis": "Is each task given the right model? Model mix reads how many models are used, how much work moves off the default, and whether subagents run on cheaper models.",
-          "why": "The strongest model is not the right choice for every step. Routing simple, well-defined work to faster and cheaper models cuts cost and waiting time without hurting quality, and keeps the strongest model for the decisions that need it.",
+          "why": "The strongest model is not the right choice for every step. Sending simple, well-defined work to faster and cheaper models cuts cost and waiting time, and saves the strongest model for the decisions that need it.",
           "terms": [
             {
               "name": "Model variety",
@@ -824,7 +1082,9 @@
               "constants": {
                 "MODELS_DISTINCT_CEILING": 3
               },
-              "requires": []
+              "requires": [],
+              "kind": "target",
+              "target": 3
             },
             {
               "name": "Off-default share",
@@ -834,7 +1094,9 @@
               "constants": {
                 "OFFLOAD_SHARE_TARGET": 0.3
               },
-              "requires": []
+              "requires": [],
+              "kind": "target",
+              "target": 0.3
             },
             {
               "name": "Cheaper subagents",
@@ -846,7 +1108,9 @@
               },
               "requires": [
                 "linked_model_routing"
-              ]
+              ],
+              "kind": "target",
+              "target": 0.4
             }
           ],
           "eligibility": "A source that does not record the model per turn drops this axis. Cursor records it but bills per request, so it is not scored there.",
@@ -883,7 +1147,35 @@
               "next": ""
             }
           ],
-          "improve": "Set the model in each subagent definition instead of inheriting the lead's, and keep the strongest model for planning, review and hard debugging."
+          "improve": "Set the model in each subagent definition instead of inheriting the lead's, and keep the strongest model for planning, review and hard debugging.",
+          "example": {
+            "story": "A month spent almost entirely on one model.",
+            "inputs": [
+              {
+                "term": "Model variety",
+                "label": "2 models used: Opus for most turns, Sonnet for a few",
+                "value": 2
+              },
+              {
+                "term": "Off-default share",
+                "label": "8% of turns ran on a model other than Opus",
+                "value": 0.08
+              },
+              {
+                "term": "Cheaper subagents",
+                "label": "0 of 18 substantive subagent runs used a cheaper tier; all ran on Opus like their sessions",
+                "value": 0.0
+              }
+            ]
+          },
+          "counts": [
+            "Tiers, read from the model name: for Anthropic, opus above sonnet above haiku; for OpenAI, pro above gpt- and codex models, above mini, above nano.",
+            "A subagent run is eligible when it finished, both models have a known tier, and it wrote something or made 5 or more substantive calls. It counts as cheaper when its tier is strictly lower than its session's."
+          ],
+          "excluded": [
+            "Subagent runs that didn't finish, made fewer than 5 substantive calls without writing anything, or used a model whose tier gnomon can't read.",
+            "A subagent on the same tier as its session. Sonnet launching Sonnet earns nothing."
+          ]
         },
         {
           "id": "token-economy",
@@ -895,7 +1187,7 @@
           "status": "scored",
           "requires": [],
           "thesis": "Does the agent pick the lighter tool when it will do? Token economy reads the share of tool calls that went to command-line tools rather than MCP servers.",
-          "why": "MCP servers are powerful but expensive: their definitions and responses fill the context window. A command-line tool often does the same job with a fraction of the tokens. Preferring the CLI when it is enough keeps sessions faster, cheaper and less likely to lose focus.",
+          "why": "MCP servers are powerful but expensive: their definitions and responses fill the context window. A command-line tool often does the same job with a fraction of the tokens. When the CLI is enough, using it keeps sessions faster and cheaper, and leaves more of the context window for the work.",
           "terms": [
             {
               "name": "CLI share",
@@ -905,7 +1197,9 @@
               "constants": {
                 "CLI_SHARE_TARGET": 0.7
               },
-              "requires": []
+              "requires": [],
+              "kind": "target",
+              "target": 0.7
             }
           ],
           "eligibility": "Measured for every source.",
@@ -942,7 +1236,25 @@
               "next": ""
             }
           ],
-          "improve": "Install the CLIs your team relies on (gh, cloud CLIs, database clients) and mention them in your project instructions so the agent knows to use them."
+          "improve": "Install the CLIs your team relies on (gh, cloud CLIs, database clients) and mention them in your project instructions so the agent knows to use them.",
+          "example": {
+            "story": "A month with 1,100 CLI calls and 900 MCP calls.",
+            "inputs": [
+              {
+                "term": "CLI share",
+                "label": "1,100 of 2,000 CLI and MCP calls went to the command line",
+                "value": 0.55
+              }
+            ]
+          },
+          "counts": [
+            "CLI calls: each known command-line tool that starts a shell command or a part joined by &&, ||, | or ;. So git add && git commit counts as 2.",
+            "MCP calls: every mcp__ tool call, whether it reads or writes."
+          ],
+          "excluded": [
+            "Shell commands whose program isn't on the list of 53 known tools. They count on neither side.",
+            "Built-in tools such as Read, Edit and WebFetch. They count on neither side."
+          ]
         }
       ]
     }
@@ -1046,7 +1358,7 @@
       },
       {
         "name": "Engineering",
-        "summary": "Whether files are got right early, work stays focused, and quality work happens.",
+        "summary": "Whether files come out right early, work stays focused, and quality checks happen.",
         "terms": [
           {
             "name": "Low rework (mean)",

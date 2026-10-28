@@ -217,3 +217,14 @@ code, kbd, pre, .gn-fig { font-family: var(--font-figure); font-variant-numeric:
   .gn-formula__row { grid-template-columns: 2.6rem minmax(0, 1fr); }
   .gn-formula__target { grid-column: 2; text-align: left; }
 }
+
+/* What counts, and the worked example */
+.gn-counts { display: grid; grid-template-columns: 1fr 1fr; gap: 1.6rem; margin: 1.2rem 0 0.4rem; max-width: 40rem; }
+.gn-counts ul { margin: 0.4rem 0 0; padding-left: 1.1rem; font-size: 0.68rem; line-height: 1.5; }
+.md-typeset .gn-counts li { margin-bottom: 0.35rem; }
+.gn-counts > div:last-child ul li::marker { color: var(--neutral); }
+.gn-counts > div:first-child ul li::marker { color: var(--accent-mark); }
+.gn-example .gn-formula__target b { color: var(--text-primary); font-weight: 500; }
+.md-typeset .gn-example__total { font-size: 0.85rem; margin: 0.8rem 0 0; }
+.gn-example__total .gn-fig { font-size: 1.4rem; font-weight: 500; letter-spacing: -0.02em; }
+@media (max-width: 38em) { .gn-counts { grid-template-columns: 1fr; } }

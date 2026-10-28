@@ -19,6 +19,10 @@ hide: [toc]
 
 {{ formula(page.meta.axis) }}
 
+{{ what_counts(page.meta.axis) }}
+
+{{ worked_example(page.meta.axis) }}
+
 ## Rubric
 
 Where you sit on the axis, what that usually looks like, and the one habit that moves you up. Your level on this axis is its fill in your profile, from 0 to 100.

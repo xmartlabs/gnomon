@@ -155,6 +155,42 @@ class DocsMetricsSyncTest(unittest.TestCase):
                 if band["floor"] > 0:
                     self.assertNotEqual(gstack._axis_verdict(band["floor"] - 0.01), band["name"])
 
+    def test_terms_declare_how_a_value_becomes_credit(self):
+        for axis in _axes(self.data):
+            if axis["status"] == "not_scored":
+                continue
+            for term in axis["terms"]:
+                with self.subTest(axis=axis["id"], term=term["name"]):
+                    self.assertIn(term["kind"], {"target", "fraction", "credit", "inverse"})
+                    if term["kind"] in {"target", "inverse"}:
+                        # The target the example divides by is one of the code constants.
+                        self.assertIn(term["target"], set(term.get("constants", {}).values()) | {1.0})
+
+    def test_worked_examples_are_consistent(self):
+        macros = _load_macros()
+        for axis in _axes(self.data):
+            if axis["status"] == "not_scored":
+                self.assertNotIn("example", axis)
+                continue
+            with self.subTest(axis=axis["id"]):
+                example = axis["example"]
+                self.assertTrue(example["story"].strip())
+                self.assertEqual([i["term"] for i in example["inputs"]], [t["name"] for t in axis["terms"]])
+                score = macros.example_score(self.data, axis["id"])
+                self.assertGreaterEqual(score, 0)
+                self.assertLessEqual(score, 100)
+                self.assertTrue(axis["counts"] and axis["excluded"])
+
+    def test_verification_example_matches_the_documented_formula(self):
+        # 9 of 12 change sessions tested (0.75), 3 review uses per 1,000 calls against a
+        # target of 4 (0.75): 0.5 * 0.75 + 0.5 * 0.75 = 0.75 -> 75, Advanced.
+        macros = _load_macros()
+        self.assertEqual(macros.example_score(self.data, "verification"), 75)
+        self.assertEqual(macros.level_for(self.data, 75), "Advanced")
+        html = macros.render_example(self.data, "verification")
+        self.assertIn("75", html)
+        self.assertIn("Advanced", html)
+
     def test_effective_weight_redistributes_withheld_axis(self):
         macros = _load_macros()
         self.assertEqual(macros.effective_weight(self.data, "recovery"), 100.0)
