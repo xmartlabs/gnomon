@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from datetime import datetime, timezone
 from unittest import mock
+from tests._clock import legacy_all_history
 
 import gnomon.cli.insights as insights
 import gnomon.cli.local as local
@@ -61,7 +62,8 @@ class TestLowVolumeSourceFiltering(unittest.TestCase):
         selected = list(dict.fromkeys(source for source, _, _ in sources))
         argv = selected + ["--summary", "--no-open", f"--since={WINDOW_SINCE}",
                            f"--until={WINDOW_UNTIL}"] + list(extra)
-        with mock.patch.object(local, "discover_sources", return_value=sources), \
+        with legacy_all_history(), \
+                mock.patch.object(local, "discover_sources", return_value=sources), \
                 mock.patch.object(local, "antigravity_summary", return_value=None), \
                 mock.patch.object(local, "_coverage_month_index", return_value={}), \
                 contextlib.redirect_stdout(io.StringIO()):
@@ -105,7 +107,8 @@ class TestLowVolumeSourceFiltering(unittest.TestCase):
         )
         out = os.path.join(self.root, "out-unbounded")
         os.makedirs(out)
-        with mock.patch.object(local, "discover_sources", return_value=sources), \
+        with legacy_all_history(), \
+                mock.patch.object(local, "discover_sources", return_value=sources), \
                 mock.patch.object(local, "antigravity_summary", return_value=None), \
                 mock.patch.object(local, "_coverage_month_index", return_value={}), \
                 contextlib.redirect_stdout(io.StringIO()):

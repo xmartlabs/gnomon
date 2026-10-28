@@ -174,6 +174,16 @@ def _models_for_scoring(stats, fallback):
     return list(counts.items())
 
 
+# Tier floors, highest first: a tier starts at its floor score (inclusive).
+TIER_FLOORS = (("Elite", 88), ("Advanced", 75), ("Proficient", 60),
+               ("Adequate", 45), ("Apprentice", 25), ("Novice", 0))
+
+
+def tier_for(total):
+    """The tier name for an AQ total (0-100)."""
+    return next(name for name, floor in TIER_FLOORS if total >= floor)
+
+
 def compute_aq(stats):
     """Agentic Quotient v4 — 'how well you OPERATE AGENTS' (distinct from the gstack
     scorecard, which grades how you BUILD). Four pillars: Breadth (how much machinery),
@@ -685,8 +695,7 @@ def compute_aq(stats):
     total = round(sum(p["weight"] / 100 * p["score"] for p in pillars))
     # ONE honest level vocabulary, driven by AQ (the score that actually separates level).
     # No flattery at the floor: a low score reads low. Also drives the profile archetype.
-    tier = ("Elite" if total >= 88 else "Advanced" if total >= 75 else "Proficient" if total >= 60
-            else "Adequate" if total >= 45 else "Apprentice" if total >= 25 else "Novice")
+    tier = tier_for(total)
     return {
         "aq_0_100": total, "tier": tier, "pillars": pillars,
         "score_contract_id": SCORE_CONTRACT_ID,

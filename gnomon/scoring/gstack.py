@@ -32,7 +32,7 @@ ERROR_RATE_PER_100_TOOLS_TARGET = 10.0
 EVIDENCE_SATURATION_TOOL_CALLS = 2000
 
 
-REPO_URL = "https://github.com/Photobombastic/paxel-local"
+REPO_URL = "https://github.com/xmartlabs/gnomon"
 
 # Plain-language explanation shown under each score bar — what the axis measures, in
 # human terms, no jargon. (The gstack grounding lives in the disclaimer + README, not here.)

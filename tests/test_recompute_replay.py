@@ -22,6 +22,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from unittest import mock
+from tests._clock import legacy_all_history
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -71,6 +72,7 @@ def _run_summary(testcase, sources, extra_argv=None):
             + list(extra_argv or []))
     buf = io.StringIO()
     with (
+        legacy_all_history(),
         mock.patch.multiple(paxel, OUT_DIR=out, **SRC_DIRS),
         mock.patch.object(sys, "argv", argv),
         contextlib.redirect_stdout(buf),
@@ -130,6 +132,7 @@ def _run_claude_summary(testcase, rows, extra_argv=None):
     argv = ["paxel.py", "claude", "--include-low-volume", "--summary", "--no-open"] + (extra_argv or [])
     buf = io.StringIO()
     with (
+        legacy_all_history(),
         mock.patch.multiple(paxel, OUT_DIR=out, **dirs),
         mock.patch.object(sys, "argv", argv),
         contextlib.redirect_stdout(buf),
@@ -204,6 +207,7 @@ def _run_blended_multisource_summary(testcase):
                 "--summary", "--no-open"] + extra_argv
         buf = io.StringIO()
         with (
+            legacy_all_history(),
             mock.patch.multiple(paxel, OUT_DIR=out, **dirs),
             mock.patch.object(sys, "argv", argv),
             contextlib.redirect_stdout(buf),
@@ -1160,6 +1164,7 @@ class RecomputeGradeFieldsExcludedFromStatsAndNarrative(unittest.TestCase):
                 "--summary", "--no-open"]
         buf = io.StringIO()
         with (
+            legacy_all_history(),
             mock.patch.multiple(paxel, OUT_DIR=cls._out, **SRC_DIRS),
             mock.patch.object(sys, "argv", argv),
             contextlib.redirect_stdout(buf),

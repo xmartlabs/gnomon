@@ -19,6 +19,7 @@ import subprocess
 import contextlib
 import unittest
 from unittest import mock
+from tests._clock import legacy_all_history
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -62,7 +63,8 @@ def _run(testcase, args):
     # policy so the parser/metric assertions continue to exercise their data.
     argv = ["paxel.py"] + args + ["--include-low-volume", "--no-open"]
     buf = io.StringIO()
-    with mock.patch.multiple(paxel, OUT_DIR=out, **SRC_DIRS), \
+    with legacy_all_history(), \
+            mock.patch.multiple(paxel, OUT_DIR=out, **SRC_DIRS), \
             mock.patch.object(sys, "argv", argv), \
             contextlib.redirect_stdout(buf):
         paxel.main()
@@ -134,8 +136,11 @@ class TestPipeline(unittest.TestCase):
         self.assertTrue(os.path.exists(prof), "profile.html was not written")
         with open(prof, encoding="utf-8") as fh:
             html = fh.read()
-        self.assertIn("scorecard", html.lower())
-        self.assertIn('class="steerread"', html, "Steering reading block missing")
+        self.assertIn('<header class="gn-masthead">', html)
+        self.assertIn('<title>gnomon · Local profile</title>', html)
+        self.assertIn("Generated on this machine by gnomon", html)
+        for old in ("Roadmap", "paxel", "Max Schilling", "scorecard"):
+            self.assertNotIn(old, html)
         # stats.json must be valid JSON
         with open(os.path.join(out, "stats.json"), encoding="utf-8") as fh:
             json.load(fh)
@@ -155,21 +160,22 @@ class TestPipeline(unittest.TestCase):
         _, out = _run(self, [])
         with open(os.path.join(out, "profile.html"), encoding="utf-8") as fh:
             html = fh.read()
-        # exactly the three scored axes render as bar rows
-        for axis in SCORED_AXES:
-            self.assertIn(f'<span class="name">{axis}</span>', html)
-        # Steering is DESCRIBED, never a scored bar row
-        self.assertNotIn('<span class="name">Steering</span>', html)
-        # the article fix: no archetype should read "You're a The Architect"
-        self.assertNotIn("You're a The ", html)
-        # the poster's embedded CARD payload must be valid JSON (guards the _js() escaper)
+        self.assertIn('id="activity"', html)
+        self.assertIn('id="portrait"', html)
+        self.assertNotIn("Which model do you reach for?", html)
+        self.assertNotIn("stat-strip", html)
+        self.assertNotIn("Merriweather", html)
+        self.assertNotIn("Josefin Sans", html)
+        self.assertNotIn("#ED7379", html)
+        self.assertNotIn("#D14E57", html)
+        # The poster payload is valid JSON, always light, and carries no gstack (ADR 13, 23).
         card_line = next((ln for ln in html.splitlines()
                           if ln.strip().startswith("var CARD=")), None)
         self.assertIsNotNone(card_line, "var CARD= line not found in profile.html")
         card_json = card_line.strip()[len("var CARD="):].rstrip(";")
         card = json.loads(card_json)
-        self.assertEqual({s[0] for s in card["scores"]}, SCORED_AXES)
-        self.assertIn("steering", card)              # described row present on the poster too
+        self.assertEqual(card["theme"], "light")
+        self.assertNotIn("Execution", card_json)
 
     def test_summary_flag(self):
         # --summary writes the shareable subset of docs/metrics-evaluation.md: the 8
@@ -1225,7 +1231,8 @@ def _run_single_source(testcase, source_name, gemini_dir=None, claude_dir=None):
     testcase.addCleanup(shutil.rmtree, out, ignore_errors=True)
     buf = io.StringIO()
     argv = ["paxel.py", source_name, "--include-low-volume", "--no-open"]
-    with mock.patch.multiple(paxel, OUT_DIR=out, **dirs), \
+    with legacy_all_history(), \
+            mock.patch.multiple(paxel, OUT_DIR=out, **dirs), \
             mock.patch.object(sys, "argv", argv), \
             contextlib.redirect_stdout(buf):
         paxel.main()
@@ -1337,6 +1344,7 @@ def _run_claude_transcript(testcase, rows, extra_argv=None, spy_git_churn=None):
     argv = ["paxel.py", "claude", "--include-low-volume", "--no-open"] + (extra_argv or [])
     buf = io.StringIO()
     patches = [
+        legacy_all_history(),
         mock.patch.multiple(paxel, OUT_DIR=out, **dirs),
         mock.patch.object(sys, "argv", argv),
         contextlib.redirect_stdout(buf),

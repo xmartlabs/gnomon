@@ -21,6 +21,7 @@ import sys
 import tempfile
 import unittest
 from unittest import mock
+from tests._clock import legacy_all_history
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -146,7 +147,8 @@ class TestMultiSourceCorpusAq(unittest.TestCase):
         # published AQ is the raw full-window compute_aq, not a 65/35 blend of two of them.
         argv = ["paxel.py", "--include-low-volume", "--no-open", "--summary",
                 "--since=2026-03-01", "--until=2026-03-31"]
-        with mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
+        with legacy_all_history(), \
+                mock.patch.multiple(paxel, OUT_DIR=out, **overrides), \
                 mock.patch.object(sys, "argv", argv), \
                 contextlib.redirect_stdout(io.StringIO()):
             paxel.main()

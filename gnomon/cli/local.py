@@ -27,7 +27,10 @@ from gnomon.scoring.aq import (
 )
 from gnomon.scoring.archetype import pick_archetype
 from gnomon.scoring.inputs import SCORING_INPUTS_VERSION, build_scoring_inputs
+from gnomon.scoring.trend import build_aq_trend, month_bounds, trend_months
 from gnomon.cli.accumulator import Accumulator, event_in_window
+from gnomon.cli import period as _period
+from gnomon.cli.period import resolve_period
 from gnomon.coverage import month_index as _coverage_month_index, coverage_for as _coverage_for
 from gnomon.output.summary import build_summary
 from gnomon.output.report import write_report
@@ -306,6 +309,21 @@ def main(argv=None, output_dir=None):
         _out_dir = OUT_DIR
 
     _t_main_start = time.monotonic()
+    period = resolve_period(argv)
+
+    # The current calendar month is scored by the main accumulator.  The trend
+    # accumulators cover the preceding months, or all six months for a custom /
+    # all-history window whose end is not the current default month.
+    if period.month_key:
+        trend_end_month = period.month_key
+    elif period.until is not None:
+        trend_end_month = (period.until - timedelta(microseconds=1)).strftime("%Y-%m")
+    else:
+        trend_end_month = _period.now_local().strftime("%Y-%m")
+    trend_keys = trend_months(trend_end_month)
+    if period.kind == "current_month":
+        trend_keys = [month for month in trend_keys if month != trend_end_month]
+    trend_windows = [(month, *month_bounds(month)) for month in trend_keys]
 
     # Sources to analyze: pass names as args (e.g. `python3 paxel.py claude`) to
     # restrict; default is every detected source. ("claude" keeps it to your own
@@ -341,7 +359,7 @@ def main(argv=None, output_dir=None):
         selected = [s for s in selected if s != "antigravity-ide"]
     _t0_disc = time.monotonic()
     sources = discover_sources(selected)
-    since_dt, until_dt = parse_window(argv)
+    since_dt, until_dt = period.since, period.until
     # Apply the source-volume policy to every scoring run. With no explicit window,
     # the preflight counts the complete available history; --include-low-volume bypasses
     # only the threshold while still requiring in-window activity.
@@ -395,7 +413,7 @@ def main(argv=None, output_dir=None):
     _t0_acc = time.monotonic()
     stats, narrative = _accumulate(
         sources, since_dt, until_dt, cursor_twins, admitted_antigravity,
-        total_file_count=len(sources), verbose=True)
+        total_file_count=len(sources), verbose=True, trend_windows=trend_windows)
     _t_accumulate_corpus = time.monotonic() - _t0_acc
     opening_prompts = narrative["opening_prompts"]
     longest_prompts = narrative["longest_prompts"]
@@ -487,6 +505,27 @@ def main(argv=None, output_dir=None):
     # replacing every axis's `signals` with the 30-day bucket's -- see the recency-blend
     # block at the top of gnomon/scoring/aggregate.py.
     stats["agentic"] = compute_aq(stats)
+
+    trend_month_stats = narrative.get("_trend_month_stats", {})
+    trend_month_results = {}
+    for month, month_stats in trend_month_stats.items():
+        month_score = _score_trend_month(month_stats)
+        trend_month_results[month] = {
+            "aq": month_score,
+            "stats": month_stats,
+            "sources": sorted(
+                source for source, values in
+                (month_stats.get("corpus", {}).get("sources", {}) or {}).items()
+                if (values or {}).get("sessions", 0) > 0
+            ),
+        }
+    trend = build_aq_trend(
+        trend_end_month,
+        trend_month_results,
+        current_month=period.month_key if period.kind == "current_month" else None,
+        current_stats=stats if period.kind == "current_month" else None,
+        now=_period.now_local(),
+    )
 
     # No bucket_scoring_inputs block ships any more: nothing computes a recency blend, so
     # there is no bucket to persist for a later replay. Named in `omitted` rather than
@@ -589,7 +628,8 @@ def main(argv=None, output_dir=None):
     rage_pool = _quote_pool([(sc, tx) for sc, tx in crashout_cands if len(tx.split()) <= 9])
     cuff_pool = _quote_pool(cryptic_cands)
     voice = {"goto": goto, "crashouts": rage_pool, "cryptics": cuff_pool}
-    write_profile_html(stats, archetype, quote, scores, voice, output_dir=_out_dir)
+    write_profile_html(stats, archetype, quote, scores, voice, output_dir=_out_dir,
+                       period=period, trend=trend)
     print("\nWrote stats.json, report.md, narrative_input.md, profile.html to", _out_dir)
     if "--no-open" not in argv:
         _open_in_browser(os.path.join(_out_dir, "profile.html"))
@@ -612,8 +652,29 @@ def main(argv=None, output_dir=None):
         print("  json: " + json.dumps(_trec))
 
 
+def _score_trend_month(m_stats):
+    """Score a monthly corpus, preserving exactness for single-source months."""
+    sources = sorted(
+        source for source, values in
+        (m_stats.get("corpus", {}).get("sources", {}) or {}).items()
+        if (values or {}).get("sessions", 0) > 0
+    )
+    scored = dict(m_stats)
+    scored_corpus = dict(m_stats.get("corpus", {}))
+    scored_corpus["sources"] = {
+        source: (m_stats.get("corpus", {}).get("sources", {}) or {})[source]
+        for source in sources
+    }
+    scored["corpus"] = scored_corpus
+    if len(sources) == 1:
+        scored["scoring_inputs_by_source"] = {
+            sources[0]: {"window": build_scoring_inputs(scored), "monthly": []}
+        }
+    return compute_aq(scored)
+
+
 def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
-                total_file_count=None, verbose=True):
+                total_file_count=None, verbose=True, trend_windows=None):
     """Accumulate every per-event signal over `sources` and return (stats, narrative).
 
     Feeds each event to the corpus Accumulator AND to its source's Accumulator, so
@@ -645,6 +706,12 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
     self_heal_corpus = Accumulator() if self_heal_since is not None else None
 
     file_scan_since = _file_scan_since(since_dt)
+    # Widen a bounded scan to reach the trend months; an unbounded scan (None) already
+    # reads every file and must stay unbounded.
+    if trend_windows and file_scan_since is not None:
+        trend_scan_since = min(window_since for _, window_since, _ in trend_windows)
+        file_scan_since = min(file_scan_since, trend_scan_since)
+    trend_accums = {month: Accumulator() for month, _, _ in (trend_windows or [])}
 
     # ---- narrative quote candidates (corpus-only, never serialized) ----------
     phrase_counts = Counter()      # normalized short prompt -> times seen
@@ -671,6 +738,8 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
         sa.begin_file(cur_src, fp)
         if self_heal_corpus is not None:
             self_heal_corpus.begin_file(cur_src, fp)
+        for trend_accum in trend_accums.values():
+            trend_accum.begin_file(cur_src, fp)
         if verbose and corpus.files_parsed % 300 == 0:
             print(f"  ...{corpus.files_parsed}/{total_file_count}")
 
@@ -687,12 +756,16 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
                 sa.skip_file()
                 if self_heal_corpus is not None:
                     self_heal_corpus.skip_file()
+                for trend_accum in trend_accums.values():
+                    trend_accum.skip_file()
                 continue
             for ev in _ev_list:
                 info = corpus.observe(ev, since_dt, until_dt)
                 sa.observe(ev, since_dt, until_dt)
                 if self_heal_corpus is not None:
                     self_heal_corpus.observe(ev, self_heal_since, until_dt)
+                for month, window_since, window_until in trend_windows or []:
+                    trend_accums[month].observe(ev, window_since, window_until)
                 if info is None:
                     continue
                 # ---- narrative: verbatim-quote candidates from a genuine prompt ----
@@ -735,6 +808,8 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
         sa.end_file()
         if self_heal_corpus is not None:
             self_heal_corpus.end_file()
+        for trend_accum in trend_accums.values():
+            trend_accum.end_file()
 
     # ---- whole-corpus stats (also stashes corpus gc window + null-honesty flag) --
     stats = corpus.to_corpus_stats(since_dt, until_dt, antigravity)
@@ -753,6 +828,12 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
             _per_source_stats[_src_name] = None
             continue
         _per_source_stats[_src_name] = _sa.to_source_stats(_src_name, since_dt, until_dt)
+
+    trend_month_stats = {}
+    for month, window_since, window_until in trend_windows or []:
+        month_stats = trend_accums[month].to_corpus_stats(window_since, window_until, None)
+        if month_stats.get("volume", {}).get("total_sessions", 0) > 0:
+            trend_month_stats[month] = month_stats
 
     narrative = {
         "opening_prompts": opening_prompts,
@@ -778,6 +859,7 @@ def _accumulate(sources, since_dt, until_dt, cursor_twins, antigravity,
         "_self_heal_monthly_noticed_stats": (
             self_heal_corpus.to_monthly_noticed_stats()
             if self_heal_corpus is not None else None),
+        "_trend_month_stats": trend_month_stats,
     }
     return stats, narrative
 

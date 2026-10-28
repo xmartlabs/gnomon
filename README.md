@@ -109,6 +109,11 @@ xl-ai-insights --local --include-low-volume  # include sources with fewer than 1
 xl-ai-insights --local --output-dir=.    # write outputs to current directory
 ```
 
+With `--local` and no window flags, gnomon analyzes the **in-progress calendar
+month**. Use `--since` (optionally with `--until`) or `--last` to choose another
+window; use `--since` without `--until` to include the full history from that
+date onward.
+
 Every scored point is computed over a **trailing window of `--window=N` calendar
 months** (default 1) ending at its anchor month, so a month is scored on that
 month. Raise it with `--window=N` if you want a point smoothed over the N months
@@ -147,13 +152,14 @@ it was first uploaded. Only the scoring window is published as
 Every payload declares the corpus span it was actually built over in
 `context.window_months`, derived from the dates the run covered rather than from
 the flag that asked for them. A run bounded to whole calendar months declares
-that count; a run with no bounds at all — a plain local run, which reads every
-transcript still on disk — declares `null`, because its span is whatever survived
-retention rather than anything the run chose. Recomputing a stored payload
-against a newer formula only accepts payloads that declare the current one-month
-window: a wider or unstated corpus produces roughly a different number of
-sessions and tool calls than the scoring targets are calibrated for, so it is
-refused instead of being pooled with genuine one-month scores.
+that count; a flagless local run now supplies the current calendar-month bounds
+and declares one month. An upload run with no bounds still declares `null`,
+because its span is whatever survived retention rather than anything the run
+chose. Recomputing a stored payload against a newer formula only accepts payloads
+that declare the current one-month window: a wider or unstated corpus produces
+roughly a different number of sessions and tool calls than the scoring targets
+are calibrated for, so it is refused instead of being pooled with genuine
+one-month scores.
 
 </details>
 
@@ -171,6 +177,10 @@ Every metric follows the requested window — **including git churn**, whose
 Events without a timestamp are dropped in windowed runs because they cannot
 honor explicit bounds; that includes Cursor JSONL-only sessions beyond their
 single file-mtime timestamp.
+
+Cursor JSONL-only sessions use their file mtime as their window timestamp. A
+flagless local run therefore keeps only sessions whose file mtime falls in the
+current calendar month. Pass `--since` to count sessions over the full history.
 
 </details>
 
