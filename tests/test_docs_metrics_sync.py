@@ -162,9 +162,13 @@ class DocsMetricsSyncTest(unittest.TestCase):
             for term in axis["terms"]:
                 with self.subTest(axis=axis["id"], term=term["name"]):
                     self.assertIn(term["kind"], {"target", "fraction", "credit", "inverse"})
+                    self.assertIn(term["unit"], {"percent", "credit", "per_1000_calls", "per_100_calls", "count", "ratio"})
                     if term["kind"] in {"target", "inverse"}:
-                        # The target the example divides by is one of the code constants.
-                        self.assertIn(term["target"], set(term.get("constants", {}).values()) | {1.0})
+                        # The target the example divides by is the term's own target/ceiling constant.
+                        # Grounding's parity target (1.0) is the only target with no named constant.
+                        target_constants = {v for k, v in term.get("constants", {}).items()
+                                            if k.endswith(("_TARGET", "_CEILING"))}
+                        self.assertEqual({term["target"]}, target_constants or {1.0})
 
     def test_worked_examples_are_consistent(self):
         macros = _load_macros()
@@ -188,8 +192,23 @@ class DocsMetricsSyncTest(unittest.TestCase):
         self.assertEqual(macros.example_score(self.data, "verification"), 75)
         self.assertEqual(macros.level_for(self.data, 75), "Advanced")
         html = macros.render_example(self.data, "verification")
-        self.assertIn("75", html)
-        self.assertIn("Advanced", html)
+        self.assertIn('data-score="75"', html)
+        self.assertIn("which is <b>Advanced</b>", html)
+        with self.assertRaises(ValueError):
+            macros.term_credit({"kind": "fractoin", "name": "typo"}, 0.5)
+
+    def test_landing_links_point_at_existing_pages(self):
+        html = (ROOT / "overrides" / "home.html").read_text(encoding="utf-8")
+        hrefs = set(re.findall(r'href="\{\{ base_url \}\}/([^"#?]*)', html))
+        self.assertGreaterEqual(len([h for h in hrefs if h.startswith("metrics/")]), 17)
+        for href in hrefs:
+            with self.subTest(href=href):
+                target = ROOT / "docs" / href.rstrip("/")
+                if target.suffix:  # an asset such as landing.css
+                    self.assertTrue(target.is_file(), f"no asset for {href}")
+                else:
+                    self.assertTrue(target.with_suffix(".md").is_file() or (target / "index.md").is_file(),
+                                    f"no page for {href}")
 
     def test_effective_weight_redistributes_withheld_axis(self):
         macros = _load_macros()

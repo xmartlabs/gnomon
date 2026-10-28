@@ -290,7 +290,9 @@ def term_credit(term, value):
         return min(1.0, value / term["target"])
     if kind == "inverse":
         return 1.0 - min(1.0, value / term["target"])
-    return max(0.0, min(1.0, value))
+    if kind in ("fraction", "credit"):
+        return max(0.0, min(1.0, value))
+    raise ValueError(f"unknown term kind {kind!r} for {term['name']!r}")
 
 
 def _example_rows(data, axis_id):
@@ -314,14 +316,19 @@ def level_for(data, score):
     return [lvl["name"] for lvl in data["levels"] if score >= lvl["floor"]][-1]
 
 
+_UNIT_FORMATS = {
+    "percent": lambda v: f"{round(v * 100):g}%",
+    "credit": lambda v: f"{round(v * 100):g}%",
+    "per_1000_calls": lambda v: f"{v * 1000:g} per 1,000 calls",
+    "per_100_calls": lambda v: f"{v:g} per 100 calls",
+    "count": lambda v: f"{v:g}",
+    "ratio": lambda v: f"{v:g} to 1",
+}
+
+
 def _fmt_value(term, value):
-    if term["kind"] == "inverse":
-        return f"{value:g} per 100 calls"
-    if term["kind"] in {"fraction", "credit"} or (term["kind"] == "target" and term["target"] <= 1 and value <= 1):
-        if term["kind"] == "target" and term["target"] < 0.05:
-            return f"{value * 1000:g} per 1,000 calls"
-        return f"{round(value * 100):g}%"
-    return f"{value:g}"
+    """The example's measured value in the unit the term declares in metrics.json."""
+    return _UNIT_FORMATS[term["unit"]](value)
 
 
 def render_example(data, axis_id):
@@ -343,7 +350,7 @@ def render_example(data, axis_id):
             "and its share of the axis turns that credit into points.</p>"
             f'<div class="gn-formula gn-example" role="table" aria-label="{_e(axis["name"])} worked example">'
             f'{"".join(rows)}</div>'
-            f'<p class="gn-example__total"><span class="gn-fig">{score}</span> / 100 on this axis, '
+            f'<p class="gn-example__total" data-score="{score}"><span class="gn-fig">{score}</span> / 100 on this axis, '
             f'which is <b>{_e(level_for(data, score))}</b>.</p>')
 
 

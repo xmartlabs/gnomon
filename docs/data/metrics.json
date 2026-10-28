@@ -143,7 +143,8 @@
               },
               "requires": [],
               "kind": "target",
-              "target": 0.78
+              "target": 0.78,
+              "unit": "percent"
             },
             {
               "name": "Subagent variety",
@@ -155,7 +156,8 @@
               },
               "requires": [],
               "kind": "target",
-              "target": 8
+              "target": 8,
+              "unit": "count"
             },
             {
               "name": "Fan-out",
@@ -167,7 +169,8 @@
               },
               "requires": [],
               "kind": "target",
-              "target": 5
+              "target": 5,
+              "unit": "count"
             },
             {
               "name": "Team sessions",
@@ -179,7 +182,8 @@
                 "HARNESS_BELOW_TEAM_CREDIT": 0.6
               },
               "requires": [],
-              "kind": "credit"
+              "kind": "credit",
+              "unit": "credit"
             }
           ],
           "eligibility": "The three quality terms (variety, fan-out, team sessions) share 70% of the axis once delegation frequency has full weight; before that they share the rest. A source that cannot delegate at all drops this axis.",
@@ -278,7 +282,8 @@
               },
               "requires": [],
               "kind": "target",
-              "target": 40
+              "target": 40,
+              "unit": "count"
             },
             {
               "name": "Skill use rate",
@@ -290,7 +295,8 @@
               },
               "requires": [],
               "kind": "target",
-              "target": 0.009
+              "target": 0.009,
+              "unit": "per_1000_calls"
             },
             {
               "name": "Process skills",
@@ -298,7 +304,8 @@
               "definition": "Full credit when a process skill (subagent-driven development, brainstorming, writing plans, systematic debugging) was used; 0.6 otherwise.",
               "target_label": "full credit with any process skill",
               "requires": [],
-              "kind": "credit"
+              "kind": "credit",
+              "unit": "credit"
             }
           ],
           "eligibility": "The rate term needs enough tool calls to be meaningful; below that it is left out rather than scored. Sources that report skills either as a first-class tool or by reading skill files are scored; a source that can do neither drops this axis.",
@@ -388,7 +395,8 @@
               },
               "requires": [],
               "kind": "target",
-              "target": 15
+              "target": 15,
+              "unit": "count"
             },
             {
               "name": "Command-line tools",
@@ -400,7 +408,8 @@
               },
               "requires": [],
               "kind": "target",
-              "target": 40
+              "target": 40,
+              "unit": "count"
             }
           ],
           "eligibility": "Measured for every source. ToolSearch calls are shown in the profile but not scored.",
@@ -486,7 +495,8 @@
                 "planning_signal"
               ],
               "kind": "target",
-              "target": 0.3
+              "target": 0.3,
+              "unit": "percent"
             },
             {
               "name": "Planned changes",
@@ -500,7 +510,8 @@
               },
               "requires": [],
               "kind": "target",
-              "target": 0.5
+              "target": 0.5,
+              "unit": "percent"
             }
           ],
           "eligibility": "A change session wrote code and touched 2 or more files, changed 80 or more lines, or made 10 or more substantive calls. Each share needs at least 5 eligible sessions in the month; with fewer it is left out rather than scored.",
@@ -591,7 +602,8 @@
               "definition": "Share of change sessions that also ran a test command.",
               "target_label": "full credit at 100%",
               "requires": [],
-              "kind": "fraction"
+              "kind": "fraction",
+              "unit": "percent"
             },
             {
               "name": "Review skill use",
@@ -605,7 +617,8 @@
                 "skill_reads"
               ],
               "kind": "target",
-              "target": 0.004
+              "target": 0.004,
+              "unit": "per_1000_calls"
             }
           ],
           "eligibility": "A change session wrote code and touched 2 or more files, changed 80 or more lines, or made 10 or more substantive calls. The test share needs at least 5 change sessions and timestamped tool events; otherwise it is left out rather than scored.",
@@ -687,7 +700,8 @@
               "target_label": "full credit at 1 to 1",
               "requires": [],
               "kind": "target",
-              "target": 1.0
+              "target": 1.0,
+              "unit": "ratio"
             }
           ],
           "eligibility": "Measured for every source. Known limitation: in the corpora measured so far, almost everyone sits at or near full credit, so this axis separates people mainly below parity.",
@@ -766,7 +780,8 @@
               },
               "requires": [],
               "kind": "target",
-              "target": 0.6
+              "target": 0.6,
+              "unit": "percent"
             }
           ],
           "eligibility": "Needs at least 5 change sessions and timestamped tool events; otherwise it is left out rather than scored. The 60% target is provisional: it has not yet been fitted to production data.",
@@ -848,7 +863,8 @@
               },
               "requires": [],
               "kind": "target",
-              "target": 0.0018
+              "target": 0.0018,
+              "unit": "per_1000_calls"
             },
             {
               "name": "Reflection skills",
@@ -858,7 +874,8 @@
               "requires": [
                 "skill_reads"
               ],
-              "kind": "credit"
+              "kind": "credit",
+              "unit": "credit"
             }
           ],
           "eligibility": "The write rate needs enough tool calls to be meaningful; below that it is left out rather than scored.",
@@ -978,7 +995,8 @@
               "definition": "Share of failed tool calls that the agent followed with another tool call in the same session.",
               "target_label": "full credit at 100%",
               "requires": [],
-              "kind": "fraction"
+              "kind": "fraction",
+              "unit": "percent"
             },
             {
               "name": "API retry hygiene",
@@ -990,7 +1008,8 @@
               },
               "requires": [],
               "kind": "inverse",
-              "target": 2.0
+              "target": 2.0,
+              "unit": "per_100_calls"
             }
           ],
           "eligibility": "Measured for every source.",
@@ -1084,7 +1103,8 @@
               },
               "requires": [],
               "kind": "target",
-              "target": 3
+              "target": 3,
+              "unit": "count"
             },
             {
               "name": "Off-default share",
@@ -1096,7 +1116,8 @@
               },
               "requires": [],
               "kind": "target",
-              "target": 0.3
+              "target": 0.3,
+              "unit": "percent"
             },
             {
               "name": "Cheaper subagents",
@@ -1110,7 +1131,8 @@
                 "linked_model_routing"
               ],
               "kind": "target",
-              "target": 0.4
+              "target": 0.4,
+              "unit": "percent"
             }
           ],
           "eligibility": "A source that does not record the model per turn drops this axis. Cursor records it but bills per request, so it is not scored there.",
@@ -1199,7 +1221,8 @@
               },
               "requires": [],
               "kind": "target",
-              "target": 0.7
+              "target": 0.7,
+              "unit": "percent"
             }
           ],
           "eligibility": "Measured for every source.",
