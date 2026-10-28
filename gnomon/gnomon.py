@@ -47,8 +47,7 @@ class Gnomon:
             argv.append("--summary")
         if "--no-open" not in argv:
             argv.append("--no-open")
-        if self.window_months != 1 and not any(a.startswith("--window") for a in argv):
-            kwargs.setdefault("window_months", self.window_months)
+        # window_months only shapes uploads; local analysis is bounded by --since/--until.
         _append_options(argv, kwargs)
 
         temporary = None

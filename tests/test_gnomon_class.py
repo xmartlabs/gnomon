@@ -20,6 +20,20 @@ class TestGnomon(unittest.TestCase):
         self.assertEqual(argv[0], "claude")
         self.assertIn("--summary", argv)
 
+    def test_analyze_does_not_forward_upload_only_window(self):
+        # --window=N is an upload-wrapper flag; local analysis never reads it.
+        from gnomon.gnomon import Gnomon
+
+        def fake_local_main(argv=None, output_dir=None):
+            with open(os.path.join(output_dir, "summary.json"), "w", encoding="utf-8") as fh:
+                json.dump({}, fh)
+
+        with patch("gnomon.gnomon.local.main", side_effect=fake_local_main) as local_main:
+            Gnomon(sources=["claude"], window_months=3).analyze()
+
+        argv = local_main.call_args.kwargs["argv"]
+        self.assertFalse(any(a.startswith("--window") for a in argv), argv)
+
     def test_upload_uses_configured_dashboard_url(self):
         from gnomon.gnomon import Gnomon
 

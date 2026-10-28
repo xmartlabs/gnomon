@@ -33,7 +33,8 @@ _HELP_TEXT = """Usage:
     --local       run local analysis only (no login, no upload)
     --dashboard-url=URL
                   dashboard URL used for authentication and upload
-    --window=N    trailing window size in months for each scored point (default 1)
+    --window=N    trailing window size in months for each uploaded point (default 1;
+                  upload only, ignored with --local)
     --no-open     skip redirecting to the dashboard report at the end
     --quiet       only print errors and the final report URL
     --verbose     also show paxel's full stdout/stderr
