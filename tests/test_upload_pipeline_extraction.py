@@ -1,5 +1,6 @@
 import inspect
 import unittest
+from unittest.mock import patch
 
 from gnomon.cli import insights, upload_pipeline
 
@@ -32,6 +33,20 @@ class TestUploadPipelineExtraction(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertIn("brand", params)
                 self.assertIn("dashboard_url", params)
+
+    def test_pipeline_entrypoints_reject_missing_required_inputs(self):
+        complete = {"mode": "auto", "token_count": 1, "paxel_forward": [],
+                    "dashboard_url": "https://dashboard.example"}
+        # Validation must fail before any server, browser, or auth side effect.
+        side_effect = AssertionError("pipeline started without validating its inputs")
+        with patch.object(upload_pipeline, "ProgressServer", side_effect=side_effect), \
+                patch.object(upload_pipeline.webbrowser, "open", side_effect=side_effect), \
+                patch.object(upload_pipeline, "_capture_cli_token", side_effect=side_effect):
+            for name in ("_main_web", "_main_console"):
+                for missing in ("dashboard_url", "mode", "token_count"):
+                    kwargs = dict(complete, **{missing: None})
+                    with self.subTest(name=name, missing=missing), self.assertRaises(ValueError):
+                        getattr(upload_pipeline, name)([], **kwargs)
 
 
 if __name__ == "__main__":

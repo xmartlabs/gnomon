@@ -159,6 +159,15 @@ def offer_retention_config(settings_path=None):
     return {"action": "accepted", "written": {"cleanupPeriodDays": _SUGGESTED_RETENTION_DAYS},
             "backup_path": backup_path}
 
+def _upload_retention_window(token_count, window_months):
+    """Return the (since, until) datetimes of the newest window an upload scores.
+
+    The retention preflight checks Claude history inside this window, so an upload
+    run only offers retention when that window actually has transcripts to lose.
+    """
+    newest = month_windows(token_count, datetime.date.today(), window_months=window_months)[-1]
+    return tuple(datetime.datetime.fromisoformat(bound).astimezone() for bound in newest[:2])
+
 def _maybe_offer_retention(dry_run, quiet, argv=None, default_window=None):
     """Offer the retention config on a real, talkative run (design decision F).
 
@@ -218,14 +227,28 @@ def _print_dry_run_plan(mode, windows, plan_pairs):
             print(f"    {label}  {_REASON_LABELS['backfill']}")
     print("  (empty months are skipped automatically on a real run)")
 
+def _require_pipeline_inputs(mirdash_base, dashboard_url, mode, token_count):
+    """Return the dashboard base URL, or raise before any auth/browser side effect.
+
+    The keyword defaults exist so callers can pass ``dashboard_url`` instead of the
+    legacy positional ``mirdash_base``; they are not optional inputs.
+    """
+    base = dashboard_url if dashboard_url is not None else mirdash_base
+    if not base:
+        raise ValueError("dashboard_url (or mirdash_base) is required")
+    if mode is None:
+        raise ValueError("mode is required")
+    if token_count is None:
+        raise ValueError("token_count is required")
+    return base
+
 def _main_web(argv, mirdash_base=None, mode=None, token_count=None, paxel_forward=None,
               no_open=False, quiet=False, verbose=False, output_dir=None,
               window_months=_DEFAULT_WINDOW_MONTHS, *, dry_run=False,
               brand="xl-ai-insights", dashboard_url=None):
     """Web progress mode: auth + progress in browser, minimal console output."""
 
-    if dashboard_url is not None:
-        mirdash_base = dashboard_url
+    mirdash_base = _require_pipeline_inputs(mirdash_base, dashboard_url, mode, token_count)
 
     port = 8799
     redirect_uri = f"http://127.0.0.1:{port}/callback"
@@ -431,8 +454,7 @@ def _main_console(argv, mirdash_base=None, mode=None, token_count=None, paxel_fo
                   brand="xl-ai-insights", dashboard_url=None):
     """Console mode: original behavior with full terminal output."""
 
-    if dashboard_url is not None:
-        mirdash_base = dashboard_url
+    mirdash_base = _require_pipeline_inputs(mirdash_base, dashboard_url, mode, token_count)
     brand_cfg = _brand_cfg(brand)
     port = 8799
     redirect_uri = f"http://127.0.0.1:{port}/callback"

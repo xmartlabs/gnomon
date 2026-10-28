@@ -1,16 +1,16 @@
 """Standalone CLI entry point for the generic Gnomon client."""
 
+import datetime
 import sys
 
 from gnomon.cli import local
-import datetime
-import re
-
+from gnomon.cli.period import resolve_period
 from gnomon.cli.upload_pipeline import (
     _main_console,
     _main_web,
     _maybe_offer_retention,
     _print_dry_run_plan,
+    _upload_retention_window,
 )
 from gnomon.upload.mirdash import (
     _absolutize_dir_flags,
@@ -43,11 +43,20 @@ _HELP_TEXT = """Usage:
                   copy final artifacts into PATH
 """
 
+# URL options also accept their value as the next token (see _cli_option_value).
 _URL_OPTIONS = ("--dashboard-url", "--mirdash-base")
+# Wrapper options whose bare form is valid on its own (parse_backfill, parse_window,
+# _resolve_output_dir), so only the flag itself is removed, never the next token.
+_WRAPPER_VALUE_OPTIONS = ("--window", "--output-dir", "--backfill")
 
 
-def _without_options(argv, *, remove_flags=(), remove_value_options=()):
-    """Remove wrapper options, including their separate values, from argv."""
+def _without_options(argv, *, remove_flags=(), remove_options=()):
+    """Remove wrapper flags and options from argv.
+
+    ``--option=value`` and a bare ``--option`` are dropped for every option in
+    ``remove_options``; only URL options also drop a separate value, matching how
+    ``resolve_dashboard_url`` reads them.
+    """
     result = []
     skip_value = False
     for arg in argv:
@@ -56,10 +65,10 @@ def _without_options(argv, *, remove_flags=(), remove_value_options=()):
             continue
         if arg in remove_flags:
             continue
-        if any(arg.startswith(option + "=") for option in remove_value_options):
+        if any(arg.startswith(option + "=") for option in remove_options):
             continue
-        if arg in remove_value_options:
-            skip_value = True
+        if arg in remove_options:
+            skip_value = arg in _URL_OPTIONS
             continue
         result.append(arg)
     return result
@@ -69,7 +78,7 @@ def _local_argv(argv):
     local_argv = _without_options(
         argv,
         remove_flags={"--local", "--console", "--force", "--dry-run"},
-        remove_value_options=set(_URL_OPTIONS) | {"--window", "--output-dir"},
+        remove_options=_URL_OPTIONS + _WRAPPER_VALUE_OPTIONS,
     )
     if "--summary" not in local_argv:
         local_argv.append("--summary")
@@ -84,7 +93,7 @@ def _pipeline_argv(argv):
     forwarded = _without_options(
         argv,
         remove_flags=wrapper_flags,
-        remove_value_options=set(_URL_OPTIONS) | {"--window", "--output-dir", "--backfill"},
+        remove_options=_URL_OPTIONS + _WRAPPER_VALUE_OPTIONS,
     )
     return _absolutize_dir_flags(forwarded)
 
@@ -109,7 +118,11 @@ def main(argv=None):
     output_dir = _resolve_output_dir(argv)
 
     if "--local" in argv:
-        local.main(argv=_local_argv(argv), output_dir=output_dir)
+        local_argv = _local_argv(argv)
+        period = resolve_period(local_argv)
+        _maybe_offer_retention(dry_run, quiet, local_argv,
+                               default_window=(period.since, period.until))
+        local.main(argv=local_argv, output_dir=output_dir)
         return
 
     window_months = parse_window(argv)
@@ -127,7 +140,10 @@ def main(argv=None):
 
     dashboard_url = resolve_dashboard_url(argv)
     if not dashboard_url:
-        local.main(argv=_local_argv(argv), output_dir=output_dir)
+        # Without a URL a normal run still produces the local report; --dry-run
+        # promises no side effects, so it only reports the missing URL.
+        if not dry_run:
+            local.main(argv=_local_argv(argv), output_dir=output_dir)
         print(
             "dashboard URL required to upload; use --local or --dashboard-url=URL",
             file=sys.stderr,
@@ -139,7 +155,8 @@ def main(argv=None):
     console = "--console" in argv
     runner = _main_console if console else _main_web
 
-    _maybe_offer_retention(dry_run, quiet, argv)
+    _maybe_offer_retention(dry_run, quiet, argv,
+                           default_window=_upload_retention_window(token_count, window_months))
     return runner(
         argv=argv,
         mode=mode,

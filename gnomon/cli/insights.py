@@ -16,6 +16,7 @@ from gnomon.cli.upload_pipeline import (
     _print_dry_run_plan,
     offer_retention_config,
     _maybe_offer_retention,
+    _upload_retention_window,
     _main_web,
     _main_console,
 )
@@ -231,14 +232,9 @@ def main(argv=None):
     if mirdash_base == _DEFAULT_MIRDASH_BASE:
         _enforce_cli_freshness(allow_stale=allow_stale_cli)
 
-    today = datetime.date.today()
-    current_window = month_windows(token_count, today, window_months=window_months)[-1]
-    current_window = tuple(
-        datetime.datetime.fromisoformat(bound).astimezone()
-        for bound in current_window[:2]
-    )
     _maybe_offer_retention(
-        dry_run, quiet, argv, default_window=current_window)
+        dry_run, quiet, argv,
+        default_window=_upload_retention_window(token_count, window_months))
 
     if console:
         _main_console(argv, mirdash_base, mode, token_count, paxel_forward, no_open, quiet, verbose,
