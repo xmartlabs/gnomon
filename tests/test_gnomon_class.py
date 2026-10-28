@@ -61,6 +61,49 @@ class TestGnomon(unittest.TestCase):
         self.assertEqual(kwargs["dashboard_url"], "https://dashboard.example")
         self.assertEqual(kwargs["mode"], "auto")
 
+    def _run_kwargs(self, **run_kwargs):
+        from gnomon.gnomon import Gnomon
+
+        with patch("gnomon.gnomon._main_web") as main_web:
+            Gnomon(dashboard_url="https://dashboard.example", sources=["claude"]).run(**run_kwargs)
+        return main_web.call_args.kwargs
+
+    def test_run_token_count_follows_mode_and_months(self):
+        cases = (
+            ({"mode": "backfill"}, 6),
+            ({"mode": "backfill", "months": 3}, 3),
+            ({"mode": "force"}, 12),
+        )
+        for run_kwargs, expected in cases:
+            with self.subTest(run_kwargs=run_kwargs):
+                kwargs = self._run_kwargs(**run_kwargs)
+                self.assertEqual(kwargs["mode"], run_kwargs["mode"])
+                self.assertEqual(kwargs["token_count"], expected)
+
+    def test_run_rejects_unknown_mode_months_and_options(self):
+        cases = (
+            (ValueError, {"mode": "Force"}),
+            (ValueError, {"mode": "auto", "months": 3}),
+            (ValueError, {"mode": "backfill", "months": 0}),
+            (TypeError, {"bogus": True}),
+        )
+        for error, run_kwargs in cases:
+            with self.subTest(run_kwargs=run_kwargs), self.assertRaises(error):
+                self._run_kwargs(**run_kwargs)
+
+    def test_run_turns_pipeline_failure_exit_into_gnomon_run_error(self):
+        from gnomon.gnomon import Gnomon, GnomonRunError
+
+        gnomon = Gnomon(dashboard_url="https://dashboard.example")
+        with patch("gnomon.gnomon._main_web", side_effect=SystemExit(1)):
+            with self.assertRaises(GnomonRunError) as raised:
+                gnomon.run()
+        self.assertEqual(raised.exception.exit_code, 1)
+        self.assertIsInstance(raised.exception, Exception)
+
+        with patch("gnomon.gnomon._main_web", side_effect=SystemExit(0)):
+            self.assertIsNone(gnomon.run())
+
 
 if __name__ == "__main__":
     unittest.main()

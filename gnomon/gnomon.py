@@ -6,7 +6,34 @@ import tempfile
 
 from gnomon.cli import local
 from gnomon.cli.upload_pipeline import _main_console, _main_web
-from gnomon.upload.mirdash import _upload_summary, decide_mode
+from gnomon.upload.mirdash import _MAX_BACKFILL, _upload_summary, decide_mode
+
+_RUN_MODES = ("auto", "force", "backfill")
+
+
+class GnomonRunError(RuntimeError):
+    """The upload pipeline ended with a non-zero exit status."""
+
+    def __init__(self, exit_code):
+        super().__init__(f"gnomon run failed with exit code {exit_code}")
+        self.exit_code = exit_code
+
+
+def _mode_token_count(mode, months):
+    """Return the token count for ``mode`` exactly as the CLI flags would."""
+    if mode not in _RUN_MODES:
+        raise ValueError(f"mode must be one of {', '.join(_RUN_MODES)}; got {mode!r}")
+    if months is not None and mode != "backfill":
+        raise ValueError("months only applies to mode='backfill'")
+    if months is not None and not (isinstance(months, int) and 1 <= months <= _MAX_BACKFILL):
+        raise ValueError(f"months must be an integer from 1 to {_MAX_BACKFILL}; got {months!r}")
+    if mode == "force":
+        flags = ["--force"]
+    elif mode == "backfill":
+        flags = ["--backfill" if months is None else f"--backfill={months}"]
+    else:
+        flags = []
+    return decide_mode(flags)[1]
 
 
 def _source_list(sources):
@@ -72,28 +99,39 @@ class Gnomon:
             raise ValueError("dashboard_url required for upload")
         return _upload_summary(self.dashboard_url, token, summary)
 
-    def run(self, mode="auto", console=False, **kwargs):
-        """Run the shared authentication, analysis, and upload pipeline."""
+    def run(self, mode="auto", console=False, *, months=None, argv=None,
+            window_months=None, paxel_forward=None, no_open=False, quiet=False,
+            verbose=False, output_dir=None, dry_run=False):
+        """Run the shared authentication, analysis, and upload pipeline.
+
+        ``mode`` is ``"auto"``, ``"force"`` or ``"backfill"``; ``months`` sets the
+        backfill size (default 6, like a bare ``--backfill``). Returns ``None``
+        when the pipeline finishes with exit status 0 and raises
+        ``GnomonRunError`` otherwise, so the CLI's ``sys.exit`` never reaches the
+        host process. Exit status 0 also covers runs that shared nothing, such
+        as a cancelled login or a machine without a browser.
+        """
         if not self.dashboard_url:
             raise ValueError("dashboard_url required for run")
 
-        argv = list(kwargs.pop("argv", self.sources))
-        window_months = kwargs.pop("window_months", self.window_months)
-        _, default_token_count = decide_mode(argv)
-        token_count = kwargs.pop("token_count", default_token_count)
-        paxel_forward = kwargs.pop("paxel_forward", list(argv))
+        token_count = _mode_token_count(mode, months)
+        argv = list(self.sources if argv is None else argv)
         pipeline = _main_console if console else _main_web
-        return pipeline(
-            argv=argv,
-            mode=mode,
-            token_count=token_count,
-            paxel_forward=paxel_forward,
-            no_open=kwargs.pop("no_open", False),
-            quiet=kwargs.pop("quiet", False),
-            verbose=kwargs.pop("verbose", False),
-            output_dir=kwargs.pop("output_dir", None),
-            window_months=window_months,
-            dry_run=kwargs.pop("dry_run", False),
-            brand="gnomon",
-            dashboard_url=self.dashboard_url,
-        )
+        try:
+            pipeline(
+                argv=argv,
+                mode=mode,
+                token_count=token_count,
+                paxel_forward=list(argv) if paxel_forward is None else paxel_forward,
+                no_open=no_open,
+                quiet=quiet,
+                verbose=verbose,
+                output_dir=output_dir,
+                window_months=self.window_months if window_months is None else window_months,
+                dry_run=dry_run,
+                brand="gnomon",
+                dashboard_url=self.dashboard_url,
+            )
+        except SystemExit as exc:
+            if exc.code not in (0, None):
+                raise GnomonRunError(exc.code) from None
