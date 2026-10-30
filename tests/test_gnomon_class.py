@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import os
 import unittest
@@ -33,6 +35,14 @@ class TestGnomon(unittest.TestCase):
 
         argv = local_main.call_args.kwargs["argv"]
         self.assertFalse(any(a.startswith("--window") for a in argv), argv)
+
+    def test_analyze_rejects_upload_only_window_keyword(self):
+        from gnomon.gnomon import Gnomon
+
+        with patch("gnomon.gnomon.local.main") as local_main:
+            with self.assertRaisesRegex(ValueError, "window_months"):
+                Gnomon(sources=["claude"]).analyze(window_months=3)
+        local_main.assert_not_called()
 
     def test_upload_uses_configured_dashboard_url(self):
         from gnomon.gnomon import Gnomon
@@ -90,6 +100,27 @@ class TestGnomon(unittest.TestCase):
         for error, run_kwargs in cases:
             with self.subTest(run_kwargs=run_kwargs), self.assertRaises(error):
                 self._run_kwargs(**run_kwargs)
+
+    def test_run_force_and_backfill_dry_run_print_plan_without_auth(self):
+        from gnomon.gnomon import Gnomon
+
+        gnomon = Gnomon(dashboard_url="https://dashboard.example", sources=["claude"])
+        for mode in ("force", "backfill"):
+            with self.subTest(mode=mode), patch("gnomon.gnomon._main_web") as main_web, \
+                    contextlib.redirect_stdout(io.StringIO()) as stdout:
+                self.assertIsNone(gnomon.run(mode=mode, dry_run=True))
+            main_web.assert_not_called()
+            self.assertIn("Dry run -- no uploads, no tokens consumed.", stdout.getvalue())
+
+    def test_run_absolutizes_forwarded_dir_flags_like_the_cli(self):
+        from gnomon.upload.mirdash import _absolutize_dir_flags
+
+        argv = ["claude", "--claude-dir=relative/projects"]
+        for run_kwargs in ({"argv": argv}, {"argv": ["claude"], "paxel_forward": argv}):
+            with self.subTest(run_kwargs=run_kwargs):
+                kwargs = self._run_kwargs(**run_kwargs)
+                self.assertEqual(kwargs["paxel_forward"], _absolutize_dir_flags(list(argv)))
+                self.assertNotEqual(kwargs["paxel_forward"], argv)
 
     def test_run_turns_pipeline_failure_exit_into_gnomon_run_error(self):
         from gnomon.gnomon import Gnomon, GnomonRunError

@@ -1,6 +1,5 @@
 """Standalone CLI entry point for the generic Gnomon client."""
 
-import datetime
 import sys
 
 from gnomon.cli import local
@@ -9,16 +8,14 @@ from gnomon.cli.upload_pipeline import (
     _main_console,
     _main_web,
     _maybe_offer_retention,
-    _print_dry_run_plan,
+    _print_static_dry_run_plan,
     _upload_retention_window,
 )
 from gnomon.upload.mirdash import (
     _absolutize_dir_flags,
     _resolve_output_dir,
     decide_mode,
-    month_windows,
     parse_window,
-    plan_upload,
     resolve_dashboard_url,
 )
 
@@ -129,13 +126,7 @@ def main(argv=None):
     mode, token_count = decide_mode(argv)
 
     if dry_run and mode in ("force", "backfill"):
-        today = datetime.date.today()
-        windows = month_windows(token_count, today, window_months=window_months)
-        if mode == "backfill":
-            plan_pairs = [label for _, _, label in windows]
-        else:
-            plan_pairs = plan_upload(today, [], force=True)
-        _print_dry_run_plan(mode, windows, plan_pairs)
+        _print_static_dry_run_plan(mode, token_count, window_months)
         raise SystemExit(0)
 
     dashboard_url = resolve_dashboard_url(argv)

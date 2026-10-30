@@ -5,8 +5,13 @@ import os
 import tempfile
 
 from gnomon.cli import local
-from gnomon.cli.upload_pipeline import _main_console, _main_web
-from gnomon.upload.mirdash import _MAX_BACKFILL, _upload_summary, decide_mode
+from gnomon.cli.upload_pipeline import _main_console, _main_web, _print_static_dry_run_plan
+from gnomon.upload.mirdash import (
+    _MAX_BACKFILL,
+    _absolutize_dir_flags,
+    _upload_summary,
+    decide_mode,
+)
 
 _RUN_MODES = ("auto", "force", "backfill")
 
@@ -49,7 +54,7 @@ def _append_options(argv, options):
     for name, value in options.items():
         if value is None or value is False:
             continue
-        flag = "--" + ("window" if name == "window_months" else name.replace("_", "-"))
+        flag = "--" + name.replace("_", "-")
         if value is True:
             argv.append(flag)
         elif isinstance(value, (list, tuple)):
@@ -74,7 +79,11 @@ class Gnomon:
             argv.append("--summary")
         if "--no-open" not in argv:
             argv.append("--no-open")
-        # window_months only shapes uploads; local analysis is bounded by --since/--until.
+        if "window_months" in kwargs:
+            raise ValueError(
+                "window_months only applies to uploads (run()); bound local analysis "
+                "with since/until/last instead"
+            )
         _append_options(argv, kwargs)
 
         temporary = None
@@ -105,7 +114,8 @@ class Gnomon:
         """Run the shared authentication, analysis, and upload pipeline.
 
         ``mode`` is ``"auto"``, ``"force"`` or ``"backfill"``; ``months`` sets the
-        backfill size (default 6, like a bare ``--backfill``). Returns ``None``
+        backfill size (default 6, like a bare ``--backfill``). A force or backfill
+        ``dry_run`` only prints the plan, with no login. Returns ``None``
         when the pipeline finishes with exit status 0 and raises
         ``GnomonRunError`` otherwise, so the CLI's ``sys.exit`` never reaches the
         host process. Exit status 0 also covers runs that shared nothing, such
@@ -116,18 +126,24 @@ class Gnomon:
 
         token_count = _mode_token_count(mode, months)
         argv = list(self.sources if argv is None else argv)
+        window_months = self.window_months if window_months is None else window_months
+        if dry_run and mode in ("force", "backfill"):
+            _print_static_dry_run_plan(mode, token_count, window_months)
+            return None
+        # Resolve relative --<source>-dir flags against the caller's cwd, as the CLI does.
+        forward = _absolutize_dir_flags(list(argv if paxel_forward is None else paxel_forward))
         pipeline = _main_console if console else _main_web
         try:
             pipeline(
                 argv=argv,
                 mode=mode,
                 token_count=token_count,
-                paxel_forward=list(argv) if paxel_forward is None else paxel_forward,
+                paxel_forward=forward,
                 no_open=no_open,
                 quiet=quiet,
                 verbose=verbose,
                 output_dir=output_dir,
-                window_months=self.window_months if window_months is None else window_months,
+                window_months=window_months,
                 dry_run=dry_run,
                 brand="gnomon",
                 dashboard_url=self.dashboard_url,

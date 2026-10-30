@@ -17,6 +17,7 @@ from gnomon.cli.upload_pipeline import (
     offer_retention_config,
     _maybe_offer_retention,
     _upload_retention_window,
+    _print_static_dry_run_plan,
     _main_web,
     _main_console,
 )
@@ -220,13 +221,7 @@ def main(argv=None):
     # auto dry-run still needs login (the plan depends on `uploaded`) and is
     # handled inside _main_web/_main_console.
     if dry_run and mode in ("force", "backfill"):
-        today = datetime.date.today()
-        windows = month_windows(token_count, today, window_months=window_months)
-        if mode == "backfill":
-            plan_pairs = [label for _, _, label in windows]
-        else:  # force
-            plan_pairs = plan_upload(today, [], force=True)
-        _print_dry_run_plan(mode, windows, plan_pairs)
+        _print_static_dry_run_plan(mode, token_count, window_months)
         sys.exit(0)
 
     if mirdash_base == _DEFAULT_MIRDASH_BASE:

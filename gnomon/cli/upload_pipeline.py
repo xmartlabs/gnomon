@@ -227,6 +227,21 @@ def _print_dry_run_plan(mode, windows, plan_pairs):
             print(f"    {label}  {_REASON_LABELS['backfill']}")
     print("  (empty months are skipped automatically on a real run)")
 
+def _print_static_dry_run_plan(mode, token_count, window_months):
+    """Print the force/backfill dry-run plan without auth, browser, or tokens.
+
+    These plans depend only on `today`, not on the server's uploaded state, so
+    every caller can short-circuit them before authentication. The auto dry-run
+    still needs login (its plan depends on `uploaded`) and stays in the pipeline.
+    """
+    today = datetime.date.today()
+    windows = month_windows(token_count, today, window_months=window_months)
+    if mode == "backfill":
+        plan_pairs = [label for _, _, label in windows]
+    else:  # force
+        plan_pairs = plan_upload(today, [], force=True)
+    _print_dry_run_plan(mode, windows, plan_pairs)
+
 def _require_pipeline_inputs(mirdash_base, dashboard_url, mode, token_count):
     """Return the dashboard base URL, or raise before any auth/browser side effect.
 
