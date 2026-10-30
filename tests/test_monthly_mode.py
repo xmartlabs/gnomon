@@ -17,6 +17,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import gnomon.cli.insights as _insights
+from gnomon.cli import upload_pipeline as _upload_pipeline
 _RELEASE_CURRENT = {"status": "current", "current": "0.4.0", "latest": "0.4.0"}
 
 import gnomon.upload.mirdash as _mirdash
@@ -320,15 +321,15 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
             return _real_upload_window(*args, **kwargs)
 
         with (
-            patch.object(_insights, "_capture_cli_token", return_value=(tokens, uploaded)),
+            patch.object(_upload_pipeline, "_capture_cli_token", return_value=(tokens, uploaded)),
             patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             # main() now offers the retention config on a real interactive run;
             # stub it out like every other side effect here (it would otherwise
             # prompt on stdin and write the developer's ~/.claude/settings.json).
-            patch.object(_insights, "offer_retention_config"),
-            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_upload_pipeline, "offer_retention_config"),
+            patch.object(_upload_pipeline, "webbrowser") as mock_wb,
             # Set the thread-local token before each _upload_window call.
-            patch.object(_insights, "_upload_window", side_effect=_window_wrapper),
+            patch.object(_upload_pipeline, "_upload_window", side_effect=_window_wrapper),
             patch.object(
                 _mirdash,
                 "_run_paxel",
@@ -346,7 +347,7 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
             # a high producible coverage so fixtures with a low STORED
             # coverage on the previous month reconstruct a "previous +
             # current" 2-window plan without touching the real filesystem.
-            patch.object(_insights, "default_producible_coverage_for", return_value=(2, 999)),
+            patch.object(_upload_pipeline, "default_producible_coverage_for", return_value=(2, 999)),
         ):
             mock_wb.open.return_value = True
             exit_code = None
@@ -587,21 +588,21 @@ class TestWebContractBridgeOrchestration(unittest.TestCase):
         tokens = tokens or ["previous-token", "current-token"]
 
         with (
-            patch("gnomon.upload.progress_server.ProgressServer", return_value=server),
-            patch.object(_insights, "_wait_for_auth_tokens", return_value=tokens),
+            patch("gnomon.cli.upload_pipeline.ProgressServer", return_value=server),
+            patch.object(_upload_pipeline, "_wait_for_auth_tokens", return_value=tokens),
             patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             # main() now offers the retention config on a real interactive run;
             # stub it out like every other side effect here (it would otherwise
             # prompt on stdin and write the developer's ~/.claude/settings.json).
-            patch.object(_insights, "offer_retention_config"),
-            patch.object(_insights.webbrowser, "open", return_value=True),
+            patch.object(_upload_pipeline, "offer_retention_config"),
+            patch.object(_upload_pipeline.webbrowser, "open", return_value=True),
             patch.object(_insights.os.path, "isfile", return_value=True),
             patch.object(
-                _insights,
+                _upload_pipeline,
                 "_upload_window_web",
                 side_effect=upload_results,
             ) as mock_upload_window,
-            patch.object(_insights, "default_producible_coverage_for", return_value=(2, 999)),
+            patch.object(_upload_pipeline, "default_producible_coverage_for", return_value=(2, 999)),
         ):
             exit_code = None
             try:
@@ -736,13 +737,13 @@ class TestForceMode(unittest.TestCase):
         tokens = [f"t{i}" for i in range(1, 13)]
 
         with (
-            patch.object(_insights, "_capture_cli_token", return_value=(tokens, [])),
+            patch.object(_upload_pipeline, "_capture_cli_token", return_value=(tokens, [])),
             patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             # main() now offers the retention config on a real interactive run;
             # stub it out like every other side effect here (it would otherwise
             # prompt on stdin and write the developer's ~/.claude/settings.json).
-            patch.object(_insights, "offer_retention_config"),
-            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_upload_pipeline, "offer_retention_config"),
+            patch.object(_upload_pipeline, "webbrowser") as mock_wb,
             patch.object(
                 _mirdash,
                 "_run_paxel",
@@ -819,13 +820,13 @@ class TestForceModeConcurrentBudgetViolation(unittest.TestCase):
             + [f"/r/{i}" for i in range(11)]
         )
         with (
-            patch.object(_insights, "_capture_cli_token", return_value=(tokens, [])),
+            patch.object(_upload_pipeline, "_capture_cli_token", return_value=(tokens, [])),
             patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             # main() now offers the retention config on a real interactive run;
             # stub it out like every other side effect here (it would otherwise
             # prompt on stdin and write the developer's ~/.claude/settings.json).
-            patch.object(_insights, "offer_retention_config"),
-            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_upload_pipeline, "offer_retention_config"),
+            patch.object(_upload_pipeline, "webbrowser") as mock_wb,
             patch.object(_mirdash, "_run_paxel", side_effect=summaries) as mock_paxel,
             patch.object(_mirdash, "_upload_summary", side_effect=upload_rets) as mock_upload,
             patch.object(_insights.os.path, "isfile", return_value=True),
@@ -857,16 +858,16 @@ class TestForceModeConcurrentBudgetViolation(unittest.TestCase):
             + [f"/r/{i}" for i in range(11)]
         )
         with (
-            patch("gnomon.upload.progress_server.ProgressServer", return_value=server),
-            patch.object(_insights, "_wait_for_auth_tokens", return_value=tokens),
+            patch("gnomon.cli.upload_pipeline.ProgressServer", return_value=server),
+            patch.object(_upload_pipeline, "_wait_for_auth_tokens", return_value=tokens),
             patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             # main() now offers the retention config on a real interactive run;
             # stub it out like every other side effect here (it would otherwise
             # prompt on stdin and write the developer's ~/.claude/settings.json).
-            patch.object(_insights, "offer_retention_config"),
-            patch.object(_insights.webbrowser, "open", return_value=True),
+            patch.object(_upload_pipeline, "offer_retention_config"),
+            patch.object(_upload_pipeline.webbrowser, "open", return_value=True),
             patch.object(_insights.os.path, "isfile", return_value=True),
-            patch.object(_insights, "_upload_window_web", side_effect=upload_results) as mock_upload_window,
+            patch.object(_upload_pipeline, "_upload_window_web", side_effect=upload_results) as mock_upload_window,
         ):
             exit_code = None
             try:
@@ -916,15 +917,15 @@ class TestForceDirectiveInUploadedPayload(unittest.TestCase):
             return "/r/x"
 
         with (
-            patch.object(_insights, "_capture_cli_token", return_value=(tokens, uploaded)),
+            patch.object(_upload_pipeline, "_capture_cli_token", return_value=(tokens, uploaded)),
             patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
-            patch.object(_insights, "offer_retention_config"),
-            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_upload_pipeline, "offer_retention_config"),
+            patch.object(_upload_pipeline, "webbrowser") as mock_wb,
             patch.object(_mirdash, "_run_paxel", side_effect=list(summaries)),
             patch.object(_mirdash, "_upload_summary", side_effect=capture_upload),
             patch.object(_insights.os.path, "isfile", return_value=True),
             patch.object(_insights.sys, "argv", ["xl-ai-insights"] + argv),
-            patch.object(_insights, "default_producible_coverage_for", return_value=(2, 999)),
+            patch.object(_upload_pipeline, "default_producible_coverage_for", return_value=(2, 999)),
         ):
             mock_wb.open.return_value = True
             try:
@@ -1068,19 +1069,19 @@ class TestForcePlanReasonDrivesPayloadDirective(unittest.TestCase):
         plan = [(a, "force" if a == forced else "gap") for a in anchors]
 
         with (
-            patch.object(_insights, "_capture_cli_token",
+            patch.object(_upload_pipeline, "_capture_cli_token",
                          return_value=([f"t{i}" for i in range(12)], [])),
             patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
-            patch.object(_insights, "offer_retention_config"),
-            patch.object(_insights, "webbrowser") as mock_wb,
-            patch.object(_insights, "plan_upload", return_value=plan),
+            patch.object(_upload_pipeline, "offer_retention_config"),
+            patch.object(_upload_pipeline, "webbrowser") as mock_wb,
+            patch.object(_upload_pipeline, "plan_upload", return_value=plan),
             patch.object(_mirdash, "_run_paxel",
                          side_effect=[_make_summary(sessions=i + 1) for i in range(12)]),
             patch.object(_mirdash, "_upload_summary", side_effect=capture_upload),
             patch.object(_insights.os.path, "isfile", return_value=True),
             patch.object(_insights.sys, "argv",
                          ["xl-ai-insights", "--force", "--no-open", "--console"]),
-            patch.object(_insights, "default_producible_coverage_for", return_value=(2, 999)),
+            patch.object(_upload_pipeline, "default_producible_coverage_for", return_value=(2, 999)),
         ):
             mock_wb.open.return_value = True
             try:
@@ -1104,15 +1105,15 @@ class TestHeadlessAuthCleanExit(unittest.TestCase):
 
     def _run_headless(self, *, raises):
         with (
-            patch.object(_insights, "_capture_cli_token") as mock_capture,
+            patch.object(_upload_pipeline, "_capture_cli_token") as mock_capture,
             patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             # main() now offers the retention config on a real interactive run;
             # stub it out like every other side effect here (it would otherwise
             # prompt on stdin and write the developer's ~/.claude/settings.json).
-            patch.object(_insights, "offer_retention_config"),
-            patch.object(_insights, "webbrowser") as mock_wb,
-            patch.object(_insights, "_run_paxel") as mock_paxel,
-            patch.object(_insights, "_upload_summary") as mock_upload,
+            patch.object(_upload_pipeline, "offer_retention_config"),
+            patch.object(_upload_pipeline, "webbrowser") as mock_wb,
+            patch.object(_upload_pipeline, "_run_paxel") as mock_paxel,
+            patch.object(_upload_pipeline, "_upload_summary") as mock_upload,
             patch.object(_insights.os.path, "isfile", return_value=True),
             patch.object(_insights.sys, "argv", ["xl-ai-insights", "--no-open", "--console"]),
         ):

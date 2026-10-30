@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import gnomon.cli.insights as _insights
+from gnomon.cli import upload_pipeline as _upload_pipeline
 _RELEASE_CURRENT = {"status": "current", "current": "0.4.0", "latest": "0.4.0"}
 
 import gnomon.upload.mirdash as _mirdash
@@ -151,7 +152,7 @@ class TestWindowNotForwardedToPaxel(unittest.TestCase):
             # main() now offers the retention config on a real interactive run;
             # stub it out like every other side effect here (it would otherwise
             # prompt on stdin and write the developer's ~/.claude/settings.json).
-            patch.object(_insights, "offer_retention_config"),
+            patch.object(_upload_pipeline, "offer_retention_config"),
             patch.object(
                 _insights.sys,
                 "argv",
@@ -174,7 +175,7 @@ class TestWindowNotForwardedToPaxel(unittest.TestCase):
             # main() now offers the retention config on a real interactive run;
             # stub it out like every other side effect here (it would otherwise
             # prompt on stdin and write the developer's ~/.claude/settings.json).
-            patch.object(_insights, "offer_retention_config"),
+            patch.object(_upload_pipeline, "offer_retention_config"),
             patch.object(
                 _insights.sys,
                 "argv",
@@ -202,7 +203,7 @@ class TestWindowMonthsPassedToHandlers(unittest.TestCase):
             # main() now offers the retention config on a real interactive run;
             # stub it out like every other side effect here (it would otherwise
             # prompt on stdin and write the developer's ~/.claude/settings.json).
-            patch.object(_insights, "offer_retention_config"),
+            patch.object(_upload_pipeline, "offer_retention_config"),
             patch.object(
                 _insights.sys,
                 "argv",
@@ -221,7 +222,7 @@ class TestWindowMonthsPassedToHandlers(unittest.TestCase):
             # main() now offers the retention config on a real interactive run;
             # stub it out like every other side effect here (it would otherwise
             # prompt on stdin and write the developer's ~/.claude/settings.json).
-            patch.object(_insights, "offer_retention_config"),
+            patch.object(_upload_pipeline, "offer_retention_config"),
             patch.object(
                 _insights.sys,
                 "argv",
@@ -240,7 +241,7 @@ class TestWindowMonthsPassedToHandlers(unittest.TestCase):
             # main() now offers the retention config on a real interactive run;
             # stub it out like every other side effect here (it would otherwise
             # prompt on stdin and write the developer's ~/.claude/settings.json).
-            patch.object(_insights, "offer_retention_config"),
+            patch.object(_upload_pipeline, "offer_retention_config"),
             patch.object(
                 _insights.sys,
                 "argv",
@@ -298,15 +299,15 @@ class TestWindowMonthsInPayload(unittest.TestCase):
             return remaining_uploads.pop(0)
 
         with (
-            patch.object(_insights, "_capture_cli_token", return_value=(tokens, uploaded)),
+            patch.object(_upload_pipeline, "_capture_cli_token", return_value=(tokens, uploaded)),
             patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             # main() now offers the retention config on a real interactive run;
             # stub it out like every other side effect here (it would otherwise
             # prompt on stdin and write the developer's ~/.claude/settings.json).
-            patch.object(_insights, "offer_retention_config"),
-            patch.object(_insights, "webbrowser") as mock_wb,
-            patch.object(_insights, "_run_paxel", side_effect=fake_run_paxel),
-            patch.object(_insights, "_upload_summary", side_effect=capture_upload),
+            patch.object(_upload_pipeline, "offer_retention_config"),
+            patch.object(_upload_pipeline, "webbrowser") as mock_wb,
+            patch.object(_upload_pipeline, "_run_paxel", side_effect=fake_run_paxel),
+            patch.object(_upload_pipeline, "_upload_summary", side_effect=capture_upload),
             patch.object(_mirdash, "_run_paxel", side_effect=fake_run_paxel),
             patch.object(_mirdash, "_upload_summary", side_effect=capture_upload),
             patch.object(_insights.os.path, "isfile", return_value=True),
@@ -381,13 +382,13 @@ class TestWindowMonthsInPayload(unittest.TestCase):
             return _make_summary(sessions=1)
 
         with (
-            patch.object(_insights, "_capture_cli_token", return_value=(["t1", "t2"], [])),
+            patch.object(_upload_pipeline, "_capture_cli_token", return_value=(["t1", "t2"], [])),
             patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             # main() now offers the retention config on a real interactive run;
             # stub it out like every other side effect here (it would otherwise
             # prompt on stdin and write the developer's ~/.claude/settings.json).
-            patch.object(_insights, "offer_retention_config"),
-            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_upload_pipeline, "offer_retention_config"),
+            patch.object(_upload_pipeline, "webbrowser") as mock_wb,
             patch.object(_mirdash, "_run_paxel", side_effect=capture_paxel),
             patch.object(_mirdash, "_upload_summary", return_value="/r/1"),
             patch.object(_insights.os.path, "isfile", return_value=True),
@@ -433,13 +434,13 @@ class TestWindowMonthsAutoSweepPayload(unittest.TestCase):
 
         argv = ["--no-open", "--console"] + ([window_arg] if window_arg else [])
         with (
-            patch.object(_insights, "_capture_cli_token", return_value=([f"t{i}" for i in range(12)], [])),
+            patch.object(_upload_pipeline, "_capture_cli_token", return_value=([f"t{i}" for i in range(12)], [])),
             patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             # main() now offers the retention config on a real interactive run;
             # stub it out like every other side effect here (it would otherwise
             # prompt on stdin and write the developer's ~/.claude/settings.json).
-            patch.object(_insights, "offer_retention_config"),
-            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_upload_pipeline, "offer_retention_config"),
+            patch.object(_upload_pipeline, "webbrowser") as mock_wb,
             patch.object(_mirdash, "_run_paxel", side_effect=list(summaries)),
             patch.object(_mirdash, "_upload_summary", side_effect=capture_upload),
             patch.object(_insights.os.path, "isfile", return_value=True),

@@ -35,13 +35,13 @@ def _tokens_from_query(parsed_qs):
     return []
 
 
-_PROGRESS_PAGE = """\
+_PROGRESS_PAGE_TEMPLATE = """\
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>xl-ai-insights — syncing</title>
+<title>__BRAND_TITLE__ — syncing</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Outfit:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
@@ -172,7 +172,7 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
 </defs></svg>
 
 <div class="card">
-  <div class="brand"><span class="dot"></span> xl-ai-insights &middot; mirdash</div>
+  <div class="brand"><span class="dot"></span> __BRAND_LINE__</div>
 
   <!-- Icon (switches between progress and done) -->
   <div id="icon" class="icon-wrap icon-progress">
@@ -184,13 +184,13 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
   <p class="sub" id="subtitle"></p>
 
   <!-- Sign-in fallback (revealed if auth hasn't arrived) -->
-  <a id="signin" class="signin hidden" href="__AUTH_URL__">Sign in with mirdash</a>
+  <a id="signin" class="signin hidden" href="__AUTH_URL__">__SIGN_IN_LABEL__</a>
 
   <!-- Single-month steps (hidden until authenticated — no fake progress pre-login) -->
   <div id="single" class="steps hidden">
     <div class="step done" id="step-auth"><span class="si">&check;</span> <span class="label">Authenticated</span></div>
     <div class="step active" id="step-analyze"><span class="si">&circlearrowleft;</span> <span class="label">Analyzing metrics&hellip;</span></div>
-    <div class="step pending" id="step-upload"><span class="si">&middot;</span> <span class="label">Upload to mirdash</span></div>
+    <div class="step pending" id="step-upload"><span class="si">&middot;</span> <span class="label">__UPLOAD_LABEL__</span></div>
   </div>
 
   <!-- Batch progress -->
@@ -428,7 +428,7 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
     if (!isBatch) {
       setStep('step-analyze', 'done');
       setStep('step-upload', 'active');
-      document.querySelector('#step-upload .label').textContent = 'Uploading to mirdash\\u2026';
+      document.querySelector('#step-upload .label').textContent = '__UPLOADING_LABEL__';
     } else {
       setMonthState(d.month, d.label, 'active');
     }
@@ -521,12 +521,48 @@ h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;
 """
 
 
+def _render_progress_page(brand="xl-ai-insights", auth_url=""):
+    """Render the progress page with brand-specific visible labels."""
+    brand = str(brand or "xl-ai-insights")
+    if brand == "xl-ai-insights":
+        values = {
+            "line": f"{brand} · mirdash",
+            "sign_in": "Sign in with mirdash",
+            "upload": "Upload to mirdash",
+            "uploading": "Uploading to mirdash…",
+        }
+    else:
+        values = {
+            "line": brand,
+            "sign_in": "Sign in",
+            "upload": "Upload",
+            "uploading": "Uploading…",
+        }
+    page = _PROGRESS_PAGE_TEMPLATE
+    replacements = {
+        "__BRAND_TITLE__": html.escape(brand),
+        "__BRAND_LINE__": html.escape(values["line"]),
+        "__SIGN_IN_LABEL__": html.escape(values["sign_in"]),
+        "__UPLOAD_LABEL__": html.escape(values["upload"]),
+        "__UPLOADING_LABEL__": values["uploading"],
+        "__AUTH_URL__": html.escape(auth_url or "", quote=True),
+    }
+    for marker, value in replacements.items():
+        page = page.replace(marker, value)
+    return page
+
+
+# Keep the legacy private constant available with its original auth placeholder.
+_PROGRESS_PAGE = _render_progress_page(auth_url="__AUTH_URL__")
+
+
 class ProgressServer:
     """Local HTTP server for auth callback and SSE progress updates."""
 
-    def __init__(self, port=8799, auth_url=""):
+    def __init__(self, port=8799, auth_url="", *, brand="xl-ai-insights"):
         self._port = port
         self._auth_url = auth_url
+        self._brand = brand or "xl-ai-insights"
         self._auth_event = threading.Event()
         self._tokens = None
         self._upload_history = {"state": "legacy", "months": []}
@@ -568,9 +604,7 @@ class ProgressServer:
                     parent._upload_history = _history_from_query(params)
                     parent._uploaded = _uploaded_from_query(params)
                     parent._auth_event.set()
-                page = _PROGRESS_PAGE.replace(
-                    "__AUTH_URL__", html.escape(parent._auth_url, quote=True)
-                )
+                page = _render_progress_page(parent._brand, parent._auth_url)
                 body = page.encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")

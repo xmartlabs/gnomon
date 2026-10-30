@@ -12,6 +12,7 @@ import unittest
 from unittest.mock import MagicMock, call, patch
 
 import gnomon.cli.insights as _insights
+from gnomon.cli import upload_pipeline as _upload_pipeline
 _RELEASE_CURRENT = {"status": "current", "current": "0.4.0", "latest": "0.4.0"}
 
 import gnomon.upload.mirdash as _mirdash
@@ -269,13 +270,13 @@ class TestBackfillLoop(unittest.TestCase):
         tokens = ["t1", "t2", "t3"]
 
         with (
-            patch.object(_insights, "_capture_cli_token", return_value=(tokens, [])),
+            patch.object(_upload_pipeline, "_capture_cli_token", return_value=(tokens, [])),
             patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             # main() now offers the retention config on a real interactive run;
             # stub it out like every other side effect here (it would otherwise
             # prompt on stdin and write the developer's ~/.claude/settings.json).
-            patch.object(_insights, "offer_retention_config"),
-            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_upload_pipeline, "offer_retention_config"),
+            patch.object(_upload_pipeline, "webbrowser") as mock_wb,
             patch.object(
                 _mirdash,
                 "_run_paxel",
@@ -397,13 +398,13 @@ class TestBatchOutputContract(unittest.TestCase):
             return f"/r/{token[1:]}"
 
         with (
-            patch.object(_insights, "_capture_cli_token", return_value=(tokens, [])),
+            patch.object(_upload_pipeline, "_capture_cli_token", return_value=(tokens, [])),
             patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             # main() now offers the retention config on a real interactive run;
             # stub it out like every other side effect here (it would otherwise
             # prompt on stdin and write the developer's ~/.claude/settings.json).
-            patch.object(_insights, "offer_retention_config"),
-            patch.object(_insights, "webbrowser") as mock_wb,
+            patch.object(_upload_pipeline, "offer_retention_config"),
+            patch.object(_upload_pipeline, "webbrowser") as mock_wb,
             patch.object(_mirdash, "_run_paxel", side_effect=summaries),
             patch.object(
                 _mirdash, "_upload_summary", side_effect=_upload_by_token
@@ -497,14 +498,14 @@ class TestParallelAggregation(unittest.TestCase):
             return per_token_result[token]
 
         with (
-            patch.object(_insights, "_capture_cli_token", return_value=(tokens, [])),
+            patch.object(_upload_pipeline, "_capture_cli_token", return_value=(tokens, [])),
             patch.object(_insights, "_check_latest_cli_release", return_value=_RELEASE_CURRENT),
             # main() now offers the retention config on a real interactive run;
             # stub it out like every other side effect here (it would otherwise
             # prompt on stdin and write the developer's ~/.claude/settings.json).
-            patch.object(_insights, "offer_retention_config"),
-            patch.object(_insights, "webbrowser") as mock_wb,
-            patch.object(_insights, "_upload_window", side_effect=_fake_upload_window),
+            patch.object(_upload_pipeline, "offer_retention_config"),
+            patch.object(_upload_pipeline, "webbrowser") as mock_wb,
+            patch.object(_upload_pipeline, "_upload_window", side_effect=_fake_upload_window),
             patch.object(_insights.os.path, "isfile", return_value=True),
             patch.object(_insights.sys, "argv", ["xl-ai-insights"] + argv),
             contextlib.redirect_stdout(buf),
