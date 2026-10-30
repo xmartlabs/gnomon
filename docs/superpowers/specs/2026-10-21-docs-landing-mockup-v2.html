@@ -1,0 +1,1260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gnomon · See how well your team works with AI agents</title>
+<meta name="description" content="gnomon reads the agent sessions already on each developer's machine and scores how they work with AI coding agents. Built by Xmartlabs.">
+<meta name="theme-color" content="#08121F">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 8 L32 52 L8 52 Z' fill='%239EC2EF'/%3E%3Cpath d='M32 8 L44 52 L32 52 Z' fill='%232A78D6'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!--
+  Landing mockup v2 for https://xmartlabs.github.io/gnomon/ (approval artifact, not production).
+  Replaces the visual execution of 2026-10-21-docs-landing-mockup.html; copy, links and fallbacks are kept.
+  Colour and type tokens come from docs/design/design-system-v2/design_system/tokens/*.css.
+  The hero adds a "night studio" set (--night-*) derived from the blue ramp.
+  QA hooks: ?renderer=svg forces the static fallback; ?phase=0..1 freezes the sun at that point of its sweep;
+  ?still=1 renders one frame and stops; ?far lays the scale on the far half of the dial (the rejected layout's side).
+-->
+<style>
+:root{
+  --grey-0:#FFFFFF;--grey-25:#FBFBFB;--grey-50:#F4F5F5;--grey-100:#E9EAEA;--grey-200:#D5D7D7;--grey-300:#B4B7B7;--grey-400:#8B8F8F;--grey-500:#6A6E6E;--grey-600:#4E5252;--grey-700:#383B3B;--grey-800:#232626;--grey-900:#141616;--grey-950:#0A0B0B;
+  --blue-50:#EBF2FC;--blue-100:#CFE0F7;--blue-200:#9EC2EF;--blue-300:#6BA1E4;--blue-400:#4189DC;--blue-500:#2A78D6;--blue-600:#1F60B0;--blue-700:#17498A;--blue-800:#103361;--blue-900:#0A2242;
+
+  /* the night studio: the hero, the contact band and the footer */
+  --night-950:#050B15;--night-900:#08121F;--night-850:#0B1828;--night-800:#0F2036;--night-700:#1A2F4D;--night-600:#2A4266;
+  --mist-50:#F2F5F9;--mist-200:#C9D3E0;--mist-300:#AEBBCC;--mist-500:#8595AB;
+
+  --text-primary:var(--grey-900);--text-secondary:var(--grey-500);--text-tertiary:#6E7272;
+  --surface-page:var(--grey-0);--surface-sunken:var(--grey-50);
+  --rule-strong:var(--grey-900);--rule-default:var(--grey-200);--rule-subtle:var(--grey-100);
+  --accent:var(--blue-600);--accent-hover:var(--blue-700);--accent-pressed:var(--blue-800);--accent-on:var(--grey-0);
+  --focus-ring:var(--blue-500);
+
+  --font-ui:"Archivo","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --font-figure:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --layout-max:1240px;--gutter:40px;
+  --ease-out:cubic-bezier(.22,.61,.36,1);
+  --ease-soft:cubic-bezier(.16,1,.3,1);
+  --duration-fast:120ms;
+}
+@media (prefers-reduced-motion:reduce){:root{--duration-fast:0ms}}
+
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;background:var(--night-900)}
+@media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
+body{margin:0;background:var(--surface-page);color:var(--text-primary);font:400 16px/1.55 var(--font-ui);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden}
+a{color:var(--accent);text-decoration:none;border-bottom:1px solid currentColor;transition:color var(--duration-fast) var(--ease-out),border-color var(--duration-fast) var(--ease-out)}
+a:hover{color:var(--accent-hover)}
+:focus-visible{outline:2px solid var(--focus-ring);outline-offset:3px}
+::selection{background:var(--blue-100);color:var(--grey-900)}
+p{margin:0}
+ul,ol{margin:0;padding:0;list-style:none}
+h1,h2,h3{margin:0;font-weight:600}
+code{font-family:var(--font-figure);font-size:.875em;background:var(--surface-sunken);padding:1px 5px;border-radius:2px}
+
+.wrap{max-width:calc(var(--layout-max) + 2*var(--gutter));margin:0 auto;padding:0 var(--gutter)}
+.label{font:500 11px/1.2 var(--font-figure);letter-spacing:.12em;text-transform:uppercase;color:var(--text-tertiary)}
+.display{font-family:var(--font-ui);font-stretch:112%;font-weight:500;letter-spacing:-.034em;text-wrap:balance}
+.skip{position:absolute;left:16px;top:-60px;z-index:50;background:var(--grey-0);color:var(--grey-900);padding:10px 14px;border:0;border-radius:2px}
+.skip:focus{top:12px}
+
+/* controls (DS Button: primary; on night surfaces the primary turns porcelain) */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;height:44px;padding:0 20px;border:1px solid var(--accent);border-radius:2px;background:var(--accent);color:var(--accent-on);font:500 15px/1 var(--font-ui);white-space:nowrap;transition:background-color var(--duration-fast) var(--ease-out),border-color var(--duration-fast) var(--ease-out),color var(--duration-fast) var(--ease-out)}
+.btn:hover{background:var(--accent-hover);border-color:var(--accent-hover);color:var(--accent-on)}
+.btn:active{background:var(--accent-pressed);border-color:var(--accent-pressed)}
+.btn-lg{height:52px;padding:0 26px;font-size:16px}
+.btn-sm{height:34px;padding:0 14px;font-size:13.5px}
+.on-night .btn{background:var(--mist-50);border-color:var(--mist-50);color:var(--night-900)}
+.on-night .btn:hover{background:var(--blue-100);border-color:var(--blue-100);color:var(--night-900)}
+.on-night .btn:active{background:var(--blue-200);border-color:var(--blue-200)}
+.go{font-weight:500;white-space:nowrap}
+.go span{font-family:var(--font-figure);margin-left:8px;display:inline-block;transition:transform var(--duration-fast) var(--ease-out)}
+.go:hover span{transform:translateX(3px)}
+.on-night a{color:var(--blue-100)}
+.on-night a:hover{color:var(--grey-0)}
+.on-night :focus-visible{outline-color:var(--blue-200)}
+
+/* ===== masthead: sits on the night studio ===== */
+.mast{position:absolute;top:0;left:0;right:0;z-index:6;color:var(--mist-50)}
+.mast-in{display:flex;align-items:center;gap:32px;height:76px}
+.brand{display:flex;align-items:center;gap:11px;color:inherit;border:0}
+.brand svg{display:block}
+.wordmark{font:600 20px/1 var(--font-ui);letter-spacing:-.03em}
+.brand-group{display:flex;align-items:center;gap:14px}
+.mast .brand,.mast .brand:hover{color:var(--mist-50)}
+.mast .by{border:0;color:var(--mist-500)}
+.mast .by:hover{color:var(--mist-50)}
+.mast-nav{display:flex;gap:28px;margin-left:auto;font-size:14px}
+.mast-nav a,.mast-docs{color:var(--mist-300);border:0}
+.mast-nav a:hover,.mast-docs:hover{color:var(--grey-0)}
+.mast-docs{display:none;font-size:14px;margin-left:auto}
+
+/* ===== hero: a sundial in a night studio ===== */
+.hero{position:relative;isolation:isolate;overflow:hidden;background:var(--night-900);color:var(--mist-50);min-height:max(700px,min(100svh,1040px));display:flex;flex-direction:column}
+.hero-backdrop{position:absolute;inset:0;z-index:0;background:
+  radial-gradient(60% 70% at 70% 58%,#13284A 0%,rgba(19,40,74,0) 70%),
+  radial-gradient(120% 90% at 50% 100%,#0B1828 0%,var(--night-900) 60%)}
+.hero-gl{position:absolute;inset:0;z-index:1}
+.hero-gl canvas{position:absolute;inset:0;width:100%;height:100%;display:block;opacity:0;transition:opacity 1.6s var(--ease-out)}
+.hero-gl.is-live canvas{opacity:1}
+.hero-gl svg{position:absolute;inset:0;width:100%;height:100%;display:block;transition:opacity 1.4s var(--ease-out)}
+.hero-gl svg.is-leaving{opacity:0}
+.hero-grain{position:absolute;inset:0;z-index:2;pointer-events:none;opacity:.07;mix-blend-mode:overlay;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E")}
+.hero-vignette{position:absolute;inset:0;z-index:2;pointer-events:none;background:
+  linear-gradient(90deg,rgba(8,18,31,.86) 0%,rgba(8,18,31,.55) 26%,rgba(8,18,31,0) 46%),
+  radial-gradient(130% 110% at 62% 46%,rgba(8,18,31,0) 55%,rgba(5,11,21,.65) 100%)}
+.hero-body{position:relative;z-index:3;flex:1;display:grid;grid-template-columns:minmax(0,5.1fr) minmax(0,6.9fr);gap:0 24px;align-items:center;padding-top:104px;padding-bottom:24px;width:100%}
+.hero-copy{max-width:600px;padding-bottom:12px}
+.hero-stage{align-self:stretch;min-height:440px}
+.hero-label{color:var(--mist-500);display:flex;align-items:center;gap:12px}
+.hero-label::before{content:"";width:22px;height:1px;background:var(--blue-300)}
+.hero-title{font-size:clamp(44px,5.15vw,80px);line-height:.97;margin-top:26px;color:var(--grey-0)}
+.lede{font-size:18px;line-height:1.55;max-width:31em;margin-top:28px;color:var(--mist-300);text-wrap:pretty}
+.actions{display:flex;flex-wrap:wrap;align-items:center;gap:18px 30px;margin-top:40px}
+.hero-foot{position:relative;z-index:3;width:100%;display:flex;align-items:center;justify-content:space-between;gap:24px;padding-top:18px;padding-bottom:28px}
+.hero-foot::before{content:"";position:absolute;left:var(--gutter);right:var(--gutter);top:0;height:1px;background:linear-gradient(90deg,rgba(174,187,204,.22),rgba(174,187,204,.08) 70%,rgba(174,187,204,0))}
+.etym{font-size:13.5px;color:var(--mist-500);max-width:48em}
+.etym i{font-style:normal;color:var(--mist-200)}
+.hero-meta{display:flex;align-items:center;gap:22px;flex:none}
+.reading{font:500 11px/1 var(--font-figure);letter-spacing:.12em;text-transform:uppercase;color:var(--mist-500);font-variant-numeric:tabular-nums;white-space:nowrap}
+.reading b{font-weight:500;color:var(--mist-50)}
+.reading[hidden]{display:none}
+.motion-btn{font:500 11px/1 var(--font-figure);letter-spacing:.12em;text-transform:uppercase;color:var(--mist-300);background:rgba(8,18,31,.4);border:1px solid rgba(174,187,204,.28);border-radius:2px;height:34px;padding:0 13px;cursor:pointer;white-space:nowrap;transition:color var(--duration-fast) var(--ease-out),border-color var(--duration-fast) var(--ease-out)}
+.motion-btn:hover{color:var(--grey-0);border-color:rgba(201,211,224,.6)}
+.motion-btn[hidden]{display:none}
+
+/* intro: copy rises with the sun (only when motion is allowed) */
+@media (prefers-reduced-motion:no-preference){
+  .js .rise{opacity:0;transform:translateY(14px);animation:rise 1.1s var(--ease-soft) forwards}
+  .js .rise-2{animation-delay:.12s}.js .rise-3{animation-delay:.24s}.js .rise-4{animation-delay:.36s}.js .rise-5{animation-delay:.6s}
+}
+@keyframes rise{to{opacity:1;transform:none}}
+
+/* ===== sections ===== */
+.section{padding:clamp(96px,10vw,152px) 0;border-top:1px solid var(--rule-default)}
+.hero + .section,.band + .section{border-top:0}
+.h2{font-size:clamp(34px,4.3vw,62px);line-height:1.01;max-width:17ch;margin-top:22px;color:var(--grey-900)}
+.sub{font-size:19px;line-height:1.55;max-width:37em;margin-top:26px;color:var(--grey-600);text-wrap:pretty}
+.note{font-size:14px;color:var(--text-secondary);max-width:42em}
+.vrule{width:1px;background:var(--rule-default);align-self:stretch}
+
+/* formula + pillar ruler (column widths are the weights) */
+.formula{margin-top:64px;padding:30px 0 28px;border-top:2px solid var(--rule-strong);border-bottom:1px solid var(--rule-default);font:400 clamp(17px,2.35vw,34px)/1.3 var(--font-figure);letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--grey-900)}
+.formula b{font-weight:600}
+.formula em{font-style:normal;color:var(--blue-600)}
+.formula-note{font-size:14px;color:var(--text-secondary);margin-top:14px}
+.pillars{margin-top:72px}
+.pgrid{display:grid;grid-template-columns:30fr 35fr 20fr 15fr}
+.weights{height:12px;gap:3px}
+.weights span{display:block;height:100%;background:var(--blue-500);border-radius:1px}
+.pillar{padding:22px 28px 0 18px;border-left:1px solid var(--rule-default);min-width:0}
+.pillar:first-child{border-left:0;padding-left:0}
+.pfig{font:400 clamp(48px,5vw,72px)/.9 var(--font-figure);letter-spacing:-.04em;color:var(--grey-900)}
+.pfig small{font-size:.32em;letter-spacing:0;color:var(--text-secondary);margin-left:4px;vertical-align:.95em}
+.pillar h3{font-size:21px;letter-spacing:-.015em;margin-top:22px;font-weight:600}
+.pdesc{font-size:15px;line-height:1.55;margin-top:8px;color:var(--grey-700)}
+.axes{margin-top:18px;border-top:1px solid var(--rule-subtle)}
+.axes li{font-size:15px;color:var(--grey-700);padding:9px 0;border-bottom:1px solid var(--rule-subtle)}
+.axes .muted{display:block;font:500 10px/1.3 var(--font-figure);letter-spacing:.08em;text-transform:uppercase;color:var(--text-tertiary);margin-top:3px}
+.pbar{display:none}
+
+/* split section header: the claim on the left, its support on the right */
+.sec-head{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:24px 64px;align-items:end}
+.sec-head .sub{margin-top:0;max-width:30em}
+.section-tight{padding-top:clamp(88px,9vw,128px)}
+
+/* night band: the dial's scale unrolled */
+.band{position:relative;overflow:hidden;background:var(--night-900);color:var(--mist-50);padding:clamp(88px,9vw,132px) 0}
+.band::before{content:"";position:absolute;inset:0;background:radial-gradient(70% 120% at 75% 0%,rgba(42,120,214,.16),rgba(42,120,214,0) 60%);pointer-events:none}
+.band .wrap{position:relative}
+.band .label{color:var(--mist-500)}
+.band-title{font-size:clamp(30px,3.2vw,44px);line-height:1.04;margin-top:18px;color:var(--grey-0);max-width:12ch}
+/* levels: the calibrated scale, drawn like the dial's chapter ring */
+.levels{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2.6fr);gap:56px;align-items:end}
+.lv-txt{font-size:16px;margin-top:16px;color:var(--mist-300);max-width:22em}
+.scale{min-width:0}
+.ticks{position:relative;height:46px}
+.ticks i{position:absolute;bottom:0;width:1px;height:7px;background:rgba(174,187,204,.32)}
+.ticks i.five{height:13px;background:rgba(174,187,204,.62)}
+.ticks i.cut{height:30px;width:2px;background:var(--mist-50)}
+.ticks b{position:absolute;top:0;transform:translateX(8px);font:500 13px var(--font-figure);color:var(--mist-50);font-variant-numeric:tabular-nums}
+.track{display:flex;height:16px;gap:3px;margin-top:2px}
+.track span{height:100%;border-radius:1px}
+.bands{display:flex}
+.bands li{padding:16px 8px 0 10px;border-left:1px solid rgba(174,187,204,.16);min-width:0}
+.bands li:first-child{border-left:0;padding-left:0}
+.bands .label{display:block;color:var(--mist-50)}
+.bands .rng{display:block;font:400 12px/1.6 var(--font-figure);color:var(--mist-500);margin-top:6px}
+
+.pair{display:grid;grid-template-columns:minmax(0,1.35fr) auto minmax(0,1fr);gap:56px}
+.pair h3,.split h3{font-size:23px;line-height:1.25;letter-spacing:-.015em;margin-top:14px}
+.ptxt{font-size:16px;margin-top:12px;max-width:36em;color:var(--grey-700)}
+.facts{margin:80px 0 0;border-top:2px solid var(--rule-strong)}
+.facts div{display:grid;grid-template-columns:220px minmax(0,1fr);gap:24px;padding:20px 0;border-bottom:1px solid var(--rule-default)}
+.facts dt{font:500 11px/1.9 var(--font-figure);letter-spacing:.12em;text-transform:uppercase;color:var(--text-primary)}
+.facts dd{margin:0;font-size:16.5px;color:var(--grey-800)}
+
+/* who it's for */
+.split>*,.pair>*,.ledger>*{min-width:0}
+.split{display:grid;grid-template-columns:minmax(0,1.15fr) auto minmax(0,1fr);gap:64px;margin-top:72px}
+.stxt{margin-top:14px;max-width:34em;color:var(--grey-700)}
+.split .note{margin-top:18px}
+.split .go{display:inline-block;margin-top:24px}
+.cmd{display:flex;align-items:stretch;margin-top:22px;background:var(--night-900);border-radius:3px;max-width:100%;box-shadow:inset 0 0 0 1px rgba(174,187,204,.12)}
+.cmd code{flex:1;min-width:0;background:none;color:var(--mist-50);padding:16px 18px;font-size:13px;line-height:1.65;overflow-x:auto;white-space:pre}
+.cmd code::before{content:"$ ";color:var(--blue-300)}
+.copy{flex:none;font:500 11px/1 var(--font-figure);letter-spacing:.12em;text-transform:uppercase;color:var(--mist-300);background:none;border:0;border-left:1px solid rgba(174,187,204,.16);padding:0 16px;cursor:pointer;border-radius:0 3px 3px 0}
+.copy:hover{color:var(--grey-0);background:var(--night-800)}
+.copy:focus-visible{outline-color:var(--blue-300);outline-offset:-3px}
+
+/* sources */
+.sources{background:var(--grey-25)}
+.srcs-table{margin-top:56px;border-top:2px solid var(--rule-strong)}
+.srcs li,.srcs-head{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr) minmax(0,1.25fr);gap:24px;padding:16px 0;border-bottom:1px solid var(--rule-default);align-items:baseline}
+.srcs-head{padding:14px 0 12px}
+.src-name{font-weight:500;font-size:16.5px}
+.src-path{font:400 13px/1.5 var(--font-figure);color:var(--grey-800);overflow-wrap:anywhere}
+.src-note{font-size:14px;color:var(--text-secondary)}
+.srcs-foot{display:flex;flex-wrap:wrap;justify-content:space-between;gap:16px 32px;margin-top:24px;align-items:baseline}
+
+/* privacy ledger */
+.ledger{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1.35fr);gap:56px;margin-top:56px}
+.ledger h3{font-size:21px;letter-spacing:-.015em;padding-bottom:14px;border-bottom:2px solid var(--rule-strong)}
+.ledger li{font-size:16px;padding:12px 0;border-bottom:1px solid var(--rule-default);color:var(--grey-800)}
+.ledger .lead-in{font-size:14px;color:var(--text-secondary);padding:14px 0 2px}
+.ledger-note{margin-top:32px}
+
+/* contact: back to the night studio */
+.contact{position:relative;overflow:hidden;isolation:isolate;padding:clamp(112px,12vw,176px) 0 clamp(104px,11vw,160px);background:var(--night-900);color:var(--mist-50)}
+.contact .label{color:var(--mist-500)}
+.contact-arc{position:absolute;z-index:-1;left:calc(100% - min(30vw,430px));top:50%;width:min(60vw,860px);aspect-ratio:1;transform:translateY(-50%);pointer-events:none;opacity:.85}
+.contact-title{font-size:clamp(46px,7.4vw,112px);line-height:.94;margin-top:22px;max-width:11ch;color:var(--grey-0)}
+.contact .lede{max-width:30em;color:var(--mist-300)}
+
+/* footer */
+.foot{padding:30px 0 44px;background:var(--night-950);color:var(--mist-500)}
+.foot-in{display:flex;flex-wrap:wrap;align-items:baseline;gap:12px 36px;font-size:13px}
+.foot-in nav{display:flex;gap:22px;margin-left:auto}
+.foot .brand{gap:9px;color:var(--mist-50)}
+.foot .wordmark{font-size:16px}
+
+/* ===== responsive ===== */
+@media (max-width:1180px){
+  .hero-body{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .hero-title{font-size:clamp(42px,5.6vw,68px)}
+}
+@media (max-width:1080px){
+  .mast-nav{gap:20px}
+  .pgrid.cols{grid-template-columns:1fr 1fr;row-gap:44px}
+  .pgrid.cols .pillar:nth-child(3){border-left:0;padding-left:0}
+  .weights{display:none}
+  .pbar{display:block;height:8px;background:var(--grey-100);margin-bottom:18px;border-radius:1px}
+  .pbar i{display:block;height:100%;background:var(--blue-500);border-radius:1px}
+  .levels{grid-template-columns:1fr;gap:32px}
+  .sec-head{grid-template-columns:minmax(0,1fr)}
+  .sec-head .sub{margin-top:4px}
+}
+@media (max-width:900px){
+  .mast-nav{display:none}
+  .mast-docs{display:inline}
+  .hero{min-height:0}
+  .hero-body{grid-template-columns:minmax(0,1fr);padding-top:76px}
+  .hero-stage{order:-1;min-height:0;height:clamp(300px,74vw,500px)}
+  .hero-copy{max-width:640px;padding-bottom:8px}
+  .hero-vignette{background:radial-gradient(130% 80% at 50% 30%,rgba(8,18,31,0) 50%,rgba(5,11,21,.6) 100%)}
+}
+@media (max-width:760px){
+  :root{--gutter:22px}
+  .mast-in{height:60px;gap:16px}
+  .brand-group{gap:10px}
+  .hero-body{padding-top:60px}
+  .hero-title{font-size:clamp(36px,10.4vw,52px);margin-top:20px}
+  .lede{font-size:17px;margin-top:22px}
+  .actions{margin-top:30px}
+  .hero-foot{flex-direction:column;align-items:flex-start;gap:16px;padding-bottom:26px}
+  .hero-meta{width:100%;justify-content:space-between}
+  .section{padding:80px 0}
+  .sub{font-size:17px}
+  .formula{margin-top:44px}
+  .pgrid.cols{grid-template-columns:minmax(0,1fr);row-gap:36px}
+  .pgrid.cols .pillar{border-left:0;padding-left:0;padding-right:0}
+  .ticks,.track{display:none}
+  .bands{flex-direction:column}
+  .bands li{width:auto!important;border-left:3px solid var(--tone);padding:9px 0 11px 14px}
+  .bands li:first-child{border-left:3px solid var(--tone);padding-left:14px}
+  .pair,.split,.ledger{grid-template-columns:minmax(0,1fr);gap:40px}
+  .vrule{display:none}
+  .facts div{grid-template-columns:minmax(0,1fr);gap:4px}
+  .srcs-head{display:none}
+  .srcs li{grid-template-columns:minmax(0,1fr);gap:4px}
+  .contact-arc{left:62vw;width:110vw;opacity:.5}
+  .foot-in nav{margin-left:0}
+}
+@media (max-width:480px){.mast .by{display:none}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+} }
+</script>
+<script>document.documentElement.classList.add('js')</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<!-- The mark on night surfaces uses the repo's dark variant (.github/assets/gnomon-mark-dark.svg).
+     "Contact us" goes to the Xmartlabs contact page; utm_content marks the placement: header-cta, hero-cta, footer-cta. -->
+<header class="mast on-night">
+  <div class="wrap mast-in">
+    <div class="brand-group">
+      <a class="brand" href="#top">
+        <svg width="24" height="24" viewBox="0 0 64 64" aria-hidden="true"><path d="M32 8 L32 52 L8 52 Z" fill="#17498A"/><path d="M32 8 L44 52 L32 52 Z" fill="#6BA1E4"/></svg>
+        <span class="wordmark">gnomon</span>
+      </a>
+      <a class="by label" href="https://www.xmartlabs.com/?utm_source=gnomon-docs&amp;utm_medium=landing&amp;utm_content=brand">by Xmartlabs</a>
+    </div>
+    <!-- Mockup: "docs" links point at the approved docs-page mockup. On the site they go to the MkDocs pages. -->
+    <nav class="mast-nav" aria-label="Page">
+      <a href="#measures">What it measures</a>
+      <a href="#sources">Sources</a>
+      <a href="#privacy">Privacy</a>
+      <a href="2026-10-21-docs-site-mockup.html">Docs</a>
+      <a href="https://github.com/xmartlabs/gnomon">GitHub</a>
+    </nav>
+    <a class="mast-docs" href="2026-10-21-docs-site-mockup.html">Docs</a>
+    <a class="btn btn-sm" href="https://www.xmartlabs.com/contact?utm_source=gnomon-docs&amp;utm_medium=landing&amp;utm_content=header-cta">Contact us</a>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero on-night" id="top" aria-labelledby="hero-title">
+    <div class="hero-backdrop" aria-hidden="true"></div>
+    <!-- Decorative: the AQ scale made as a sundial. Everything it shows is also in the page text. -->
+    <div class="hero-gl" aria-hidden="true"></div>
+    <div class="hero-vignette" aria-hidden="true"></div>
+    <div class="hero-grain" aria-hidden="true"></div>
+    <div class="wrap hero-body">
+      <div class="hero-copy">
+        <p class="label hero-label rise">Agentic Quotient · 0–100</p>
+        <h1 id="hero-title" class="display hero-title rise rise-2">See how well your team works with AI agents.</h1>
+        <p class="lede rise rise-3">gnomon reads the agent sessions already saved on each developer's machine and scores how they work with Claude Code, Codex, Cursor and four other tools. Every formula is public, and nothing leaves the machine unless the developer chooses to share.</p>
+        <div class="actions rise rise-4">
+          <a class="btn btn-lg" href="https://www.xmartlabs.com/contact?utm_source=gnomon-docs&amp;utm_medium=landing&amp;utm_content=hero-cta">Contact us</a>
+          <a class="go" href="2026-10-21-docs-site-mockup.html">Read the docs<span aria-hidden="true">→</span></a>
+        </div>
+      </div>
+      <div class="hero-stage" aria-hidden="true"></div>
+    </div>
+    <div class="wrap hero-foot rise rise-5">
+      <p class="etym"><i>gnomon</i> (<span lang="el">γνώμων</span>): the part of a sundial that casts the shadow. It measures by what you cast.</p>
+      <div class="hero-meta">
+        <p class="reading" aria-hidden="true" hidden>Shadow at <b class="reading-v">64</b> · <b class="reading-n">Proficient</b></p>
+        <button class="motion-btn" type="button" hidden>Pause motion</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="measures" aria-labelledby="measures-title">
+    <div class="wrap">
+      <p class="label">What it measures</p>
+      <h2 id="measures-title" class="display h2">One score from four pillars, with every weight in plain sight.</h2>
+      <p class="formula" role="img" aria-label="AQ equals 0.30 times Breadth, plus 0.35 times Craft, plus 0.20 times Efficiency, plus 0.15 times Savvy.">
+        <b>AQ</b> = <em>0.30</em>·Breadth + <em>0.35</em>·Craft + <em>0.20</em>·Efficiency + <em>0.15</em>·Savvy
+      </p>
+      <p class="formula-note">Each pillar scores 0–100 from its own axes, over one month of sessions.</p>
+
+      <div class="pillars">
+        <div class="pgrid weights" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        <div class="pgrid cols">
+          <div class="pillar">
+            <div class="pbar" aria-hidden="true"><i style="width:30%"></i></div>
+            <p class="pfig">30<small>%</small></p>
+            <h3>Breadth</h3>
+            <p class="pdesc">How much of the agent toolkit gets used: subagents, skills, MCP servers and CLIs, and planning before work.</p>
+            <ul class="axes"><li>Orchestration</li><li>Skill fluency</li><li>Tool command</li><li>Discipline</li></ul>
+          </div>
+          <div class="pillar">
+            <div class="pbar" aria-hidden="true"><i style="width:35%"></i></div>
+            <p class="pfig">35<small>%</small></p>
+            <h3>Craft</h3>
+            <p class="pdesc">Whether the agent's work is tested, reviewed and grounded, and whether lessons get written down for the next session.</p>
+            <ul class="axes"><li>Verification</li><li>Grounding</li><li>Context intelligence</li><li>Compounding</li></ul>
+          </div>
+          <div class="pillar">
+            <div class="pbar" aria-hidden="true"><i style="width:20%"></i></div>
+            <p class="pfig">20<small>%</small></p>
+            <h3>Efficiency</h3>
+            <p class="pdesc">How the work recovers after a tool call fails.</p>
+            <ul class="axes"><li>Recovery</li><li>Steering leverage<span class="muted">Measured, not scored yet</span></li></ul>
+          </div>
+          <div class="pillar">
+            <div class="pbar" aria-hidden="true"><i style="width:15%"></i></div>
+            <p class="pfig">15<small>%</small></p>
+            <h3>Savvy</h3>
+            <p class="pdesc">Choosing models and tools with cost in mind.</p>
+            <ul class="axes"><li>Model mix</li><li>Token economy</li></ul>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section class="band on-night" id="levels" aria-labelledby="levels-title">
+    <div class="wrap">
+      <div class="levels">
+        <div class="levels-intro">
+          <p class="label">Levels</p>
+          <h3 id="levels-title" class="display band-title">Six levels, Novice to Elite.</h3>
+          <p class="lv-txt">The overall AQ places each developer on one ladder with fixed cut-offs.</p>
+        </div>
+        <div class="scale">
+          <div class="ticks" aria-hidden="true"></div>
+          <div class="track" aria-hidden="true">
+            <span style="width:25%;background:#D5D9DD"></span>
+            <span style="width:20%;background:var(--blue-100)"></span>
+            <span style="width:15%;background:var(--blue-200)"></span>
+            <span style="width:15%;background:var(--blue-300)"></span>
+            <span style="width:13%;background:var(--blue-400)"></span>
+            <span style="width:12%;background:var(--blue-500)"></span>
+          </div>
+          <ol class="bands">
+            <li style="width:25%;--tone:#D5D9DD"><span class="label">Novice</span><span class="rng">0–24</span></li>
+            <li style="width:20%;--tone:var(--blue-100)"><span class="label">Apprentice</span><span class="rng">25–44</span></li>
+            <li style="width:15%;--tone:var(--blue-200)"><span class="label">Adequate</span><span class="rng">45–59</span></li>
+            <li style="width:15%;--tone:var(--blue-300)"><span class="label">Proficient</span><span class="rng">60–74</span></li>
+            <li style="width:13%;--tone:var(--blue-400)"><span class="label">Advanced</span><span class="rng">75–87</span></li>
+            <li style="width:12%;--tone:var(--blue-500)"><span class="label">Elite</span><span class="rng">88–100</span></li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-tight">
+    <div class="wrap">
+      <div class="pair">
+        <div>
+          <p class="label">Fair across tools</p>
+          <h3>A missing signal is never a zero.</h3>
+          <p class="ptxt">Not every tool records every signal. When one can't, that part is left out and its weight moves to the parts that can be measured. Nobody loses points for the tool they use.</p>
+        </div>
+        <div class="vrule" aria-hidden="true"></div>
+        <div>
+          <p class="label">Second score</p>
+          <h3>How you build, scored apart.</h3>
+          <p class="ptxt">The GStack scorecard rates Execution, Planning and Engineering from 0 to 10, next to the AQ.</p>
+        </div>
+      </div>
+
+      <dl class="facts">
+        <div><dt>Open source</dt><dd>MIT license. The scoring code is public on GitHub, and the docs cite the code behind each formula.</dd></div>
+        <div><dt>Versioned</dt><dd>Every score carries a contract ID. Two scores compare only when their IDs match.</dd></div>
+        <div><dt>Reproducible</dt><dd>The miraudit skill re-derives a published score from the developer's own transcripts.</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="section" id="who" aria-labelledby="who-title">
+    <div class="wrap">
+      <p class="label">Who it's for</p>
+      <h2 id="who-title" class="display h2">Leads get the team view. Developers get their own profile.</h2>
+      <div class="split">
+        <div>
+          <p class="label">For engineering leads</p>
+          <h3>Find where the team is thin.</h3>
+          <p class="stxt">Each developer who runs gnomon gets a profile: an AQ, a score for every pillar and axis, and a level from Novice to Elite. When developers share to your self-hosted dashboard, you see the team: average AQ, how people spread across levels, pillar averages, model mix and the trend from month to month.</p>
+          <p class="stxt">The dashboard runs as one container with one volume, on your own server.</p>
+          <p class="note">gnomon scores how someone operates agents, not the person. It is a learning aid, not a productivity ranking.</p>
+          <a class="go" href="2026-10-21-docs-site-mockup.html">How scoring works<span aria-hidden="true">→</span></a>
+        </div>
+        <div class="vrule" aria-hidden="true"></div>
+        <div>
+          <p class="label">For developers</p>
+          <h3>Run one command and read your own profile.</h3>
+          <p class="stxt">gnomon reads the transcripts your agents already write to disk and opens your profile in the browser. The docs show how each number is computed and which habit moves it up.</p>
+          <div class="cmd">
+            <code id="install-cmd" data-copy="uvx --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights --local">uvx --from \
+  git+https://github.com/xmartlabs/gnomon@latest \
+  xl-ai-insights --local</code>
+            <button class="copy" type="button" aria-describedby="install-cmd" aria-live="polite">Copy</button>
+          </div>
+          <p class="note">Python 3 standard library only. With <code>--local</code>, it makes zero network calls.</p>
+          <a class="go" href="2026-10-21-docs-site-mockup.html">Install and quick start<span aria-hidden="true">→</span></a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section sources" id="sources" aria-labelledby="sources-title">
+    <div class="wrap">
+      <div class="sec-head">
+      <div>
+      <p class="label">Sources</p>
+      <h2 id="sources-title" class="display h2">Reads the agents your team already uses.</h2>
+      </div>
+      <p class="sub">gnomon finds each tool's history where the tool already keeps it. Nothing gets installed inside the agents: no wrapper, no daemon.</p>
+      </div>
+      <div class="srcs-table">
+      <div class="srcs-head" aria-hidden="true"><span class="label">Tool</span><span class="label">Reads from</span><span class="label">Notes</span></div>
+      <ul class="srcs" aria-label="Supported tools">
+        <li><span class="src-name">Claude Code</span><span class="src-path">~/.claude/projects/</span><span class="src-note">Fullest signal coverage</span></li>
+        <li><span class="src-name">Codex CLI</span><span class="src-path">~/.codex/</span><span class="src-note">Valid profile, fewer signals than Claude Code</span></li>
+        <li><span class="src-name">Cursor</span><span class="src-path">state.vscdb and ~/.cursor/projects/</span><span class="src-note">App and <code>cursor-agent</code> CLI. The CLI stores no tokens, so Token economy and Model mix are left out.</span></li>
+        <li><span class="src-name">Gemini CLI</span><span class="src-path">~/.gemini/</span><span class="src-note">Valid profile, fewer signals than Claude Code</span></li>
+        <li><span class="src-name">Google Antigravity CLI</span><span class="src-path">~/.gemini/antigravity-cli/</span><span class="src-note">Scored fully offline</span></li>
+        <li><span class="src-name">Google Antigravity IDE</span><span class="src-path">The IDE's local language server</span><span class="src-note">The IDE hides model and token data, so those axes are left out</span></li>
+        <li><span class="src-name">opencode</span><span class="src-path">Its local session files</span><span class="src-note">Parsed where present</span></li>
+        <li><span class="src-name">Pi</span><span class="src-path">Its local session files</span><span class="src-note">Parsed where present</span></li>
+      </ul>
+      </div>
+      <div class="srcs-foot">
+        <p class="note">An axis a tool can't record is left out of that profile, never scored as zero.</p>
+        <a class="go" href="2026-10-21-docs-site-mockup.html">What each source measures<span aria-hidden="true">→</span></a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="privacy" aria-labelledby="privacy-title">
+    <div class="wrap">
+      <div class="sec-head">
+      <div>
+      <p class="label">Privacy</p>
+      <h2 id="privacy-title" class="display h2">The analysis runs on the developer's machine.</h2>
+      </div>
+      <p class="sub">With <code>--local</code>, gnomon makes zero network calls. Code churn comes from the local <code>git</code>. Sharing is a separate step that each developer opts into.</p>
+      </div>
+      <div class="ledger">
+        <div>
+          <h3>Never uploaded</h3>
+          <ul>
+            <li>Prompts</li>
+            <li>File contents</li>
+            <li>Verbatim quotes</li>
+            <li>File paths</li>
+            <li><code>narrative_input.md</code> and <code>stats.json</code></li>
+          </ul>
+        </div>
+        <div class="vrule" aria-hidden="true"></div>
+        <div>
+          <h3>Uploaded only when the developer shares</h3>
+          <p class="lead-in">One file, <code>summary.json</code>, with:</p>
+          <ul>
+            <li>Counts and ratios, such as error recovery, planning ratio and fan-out</li>
+            <li>The computed profile: AQ, archetype and scorecard</li>
+            <li>Names of the AI models used each month</li>
+            <li>Names of custom skills and MCP servers, which can include a project or customer name</li>
+          </ul>
+        </div>
+      </div>
+      <p class="note ledger-note">With the self-hosted dashboard, shared summaries go to your own server.</p>
+    </div>
+  </section>
+
+  <section class="contact on-night" id="contact" aria-labelledby="contact-title">
+    <svg class="contact-arc" viewBox="-100 -100 200 200" aria-hidden="true"></svg>
+    <div class="wrap">
+      <p class="label">Contact</p>
+      <h2 id="contact-title" class="display contact-title">Bring gnomon to your team.</h2>
+      <p class="lede">gnomon is built by <a href="https://www.xmartlabs.com/?utm_source=gnomon-docs&amp;utm_medium=landing&amp;utm_content=brand">Xmartlabs</a>. Tell us about your team and the agents it uses, and we will get back to you.</p>
+      <div class="actions">
+        <a class="btn btn-lg" href="https://www.xmartlabs.com/contact?utm_source=gnomon-docs&amp;utm_medium=landing&amp;utm_content=footer-cta">Contact us</a>
+        <a class="go" href="2026-10-21-docs-site-mockup.html">Or start with the docs<span aria-hidden="true">→</span></a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot on-night">
+  <div class="wrap foot-in">
+    <span class="brand"><svg width="18" height="18" viewBox="0 0 64 64" aria-hidden="true"><path d="M32 8 L32 52 L8 52 Z" fill="#17498A"/><path d="M32 8 L44 52 L32 52 Z" fill="#6BA1E4"/></svg><span class="wordmark">gnomon</span></span>
+    <p>MIT license. Built by <a href="https://www.xmartlabs.com/?utm_source=gnomon-docs&amp;utm_medium=landing&amp;utm_content=brand">Xmartlabs</a>. Forked from <a href="https://github.com/Photobombastic/paxel-local">paxel-local</a> by Max Schilling; the build axes come from <a href="https://github.com/garrytan/gstack">gstack</a>.</p>
+    <nav aria-label="Footer">
+      <a href="2026-10-21-docs-site-mockup.html">Docs</a>
+      <a href="https://github.com/xmartlabs/gnomon">GitHub</a>
+      <a href="https://github.com/xmartlabs/gnomon/blob/main/CONTRIBUTING.md">Contributing</a>
+    </nav>
+  </div>
+</footer>
+
+<script type="module">
+/* ============================================================
+   Page furniture that never needs WebGL.
+   ============================================================ */
+// The calibrated scale's ticks: every unit, longer every 5, cut marks at the level floors.
+(function buildTicks() {
+  const box = document.querySelector('.ticks');
+  const cuts = [25, 45, 60, 75, 88];
+  let html = '';
+  for (let v = 0; v <= 100; v++) {
+    const cls = cuts.includes(v) ? 'cut' : (v % 5 === 0 ? 'five' : '');
+    const left = v === 100 ? 'calc(100% - 1px)' : v + '%';
+    html += `<i class="${cls}" style="left:${left}"></i>`;
+  }
+  for (const v of cuts) html += `<b style="left:${v}%">${v}</b>`;
+  box.innerHTML = html;
+})();
+
+// The contact band repeats the dial's chapter ring as a faint engraved arc.
+(function contactArc() {
+  const svg = document.querySelector('.contact-arc');
+  const out = [];
+  const at = (v, r) => { const a = Math.PI * (1 - v / 100) + Math.PI / 2; return [r * Math.cos(a), -r * Math.sin(a)]; };
+  const f = n => n.toFixed(2);
+  for (let v = 0; v <= 100; v++) {
+    const major = [0, 25, 45, 60, 75, 88, 100].includes(v), five = v % 5 === 0;
+    const r0 = major ? 80 : five ? 86 : 89, [x0, y0] = at(v, r0), [x1, y1] = at(v, 93);
+    out.push(`<line x1="${f(x0)}" y1="${f(y0)}" x2="${f(x1)}" y2="${f(y1)}" stroke="${major ? '#4F7FC0' : '#22385A'}" stroke-width="${major ? 0.6 : 0.3}"/>`);
+  }
+  out.push('<circle r="95" fill="none" stroke="#1A2F4D" stroke-width="0.35"/>');
+  out.push('<circle r="70" fill="none" stroke="#14263F" stroke-width="0.35"/>');
+  svg.innerHTML = out.join('');
+})();
+
+// Copy the install command.
+const copyBtn = document.querySelector('.copy');
+copyBtn.addEventListener('click', async () => {
+  const text = document.getElementById('install-cmd').dataset.copy;
+  try { await navigator.clipboard.writeText(text); copyBtn.textContent = 'Copied'; }
+  catch (e) { const r = document.createRange(); r.selectNodeContents(document.getElementById('install-cmd')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); copyBtn.textContent = 'Selected'; }
+  setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1800);
+});
+</script>
+
+<script type="module">
+/* ============================================================
+   The hero sundial: a porcelain dial in a steel case, with an obelisk gnomon.
+   The AQ scale is the hour fan; a moving sun casts the reading.
+   World: y up, dial centre at the origin, the fan opens toward -z (away from the default camera).
+   Two renderers share this file's geometry: WebGL (three.js, live) and SVG (static fallback).
+   ============================================================ */
+const D2R = Math.PI / 180;
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const mix = (a, b, t) => a + (b - a) * t;
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+const easeOut = x => 1 - Math.pow(1 - clamp(x), 3);
+const easeInOut = x => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+
+const LEVELS = [['Novice', 0, 25], ['Apprentice', 25, 45], ['Adequate', 45, 60], ['Proficient', 60, 75], ['Advanced', 75, 88], ['Elite', 88, 100]];
+const FLOORS = [0, 25, 45, 60, 75, 88, 100];
+const ENAMEL = ['#D5D9DD', '#CFE0F7', '#9EC2EF', '#6BA1E4', '#4189DC', '#2A78D6'];   // grey track, then --blue-100 … --blue-500
+const levelOf = v => LEVELS.find(([, a, b]) => v >= a && (v < b || b === 100)) || LEVELS[0];
+
+// Dimensions, in world units. The dial plate is 20 across.
+const G = {
+  R: 10, faceR: 9.3, plateH: 1.1, faceY: 1.0,
+  railOut: 9.0, railIn: 8.42, idxIn: 7.55, idxOut: 8.95, num: 6.98, bandIn: 5.55, bandOut: 6.35, name: 4.86,
+  hourIn: 1.95, hourOut: 5.38, hubRing: 1.72,
+  plinthW: 1.05, plinthH: 0.38, shaftW0: 0.5, shaftW1: 0.34, shaftH: 5.9, pyrH: 0.72
+};
+G.top = G.faceY + G.plinthH + G.shaftH + G.pyrH;   // obelisk apex height
+
+// A scale value → its direction on the plate (x, z). FAN -1 lays the scale on the near half, so the shadow
+// falls toward the viewer and is never hidden behind the obelisk; +1 lays it on the far half.
+const params = new URLSearchParams(location.search);
+const FAN = params.has('far') ? 1 : -1;
+function dirOf(v) { const a = Math.PI * (1 - v / 100); return [Math.cos(a), -FAN * Math.sin(a)]; }
+
+// The sun for a point of its sweep: low at both ends, so shadows run long at dawn and dusk.
+const SUN = { e0: 11, e1: 33 };
+function sunAt(p) {
+  const v = 100 * clamp(p);
+  const e = (SUN.e0 + (SUN.e1 - SUN.e0) * Math.pow(Math.sin(Math.PI * clamp(p)), 0.85)) * D2R;
+  const [dx, dz] = dirOf(v);
+  return { v, e, dir: [dx, dz], L: [-dx * Math.cos(e), Math.sin(e), -dz * Math.cos(e)] };   // L points at the sun
+}
+
+/* ---------- composition: where the dial sits, per layout ---------- */
+const hero = document.querySelector('.hero');
+const glBox = hero.querySelector('.hero-gl');
+const stage = hero.querySelector('.hero-stage');
+const readingEl = hero.querySelector('.reading');
+const readV = hero.querySelector('.reading-v'), readN = hero.querySelector('.reading-n');
+const motionBtn = hero.querySelector('.motion-btn');
+const fixedPhase = params.has('phase') ? clamp(parseFloat(params.get('phase')) || 0) : null;
+const forceSVG = params.get('renderer') === 'svg';
+const forceStill = params.has('still');
+const reduceMQ = matchMedia('(prefers-reduced-motion: reduce)');
+const narrowMQ = matchMedia('(max-width: 900px)');
+const STILL_PHASE = 0.8;
+
+function compose(w, h) {
+  const hr = hero.getBoundingClientRect(), sr = stage.getBoundingClientRect();
+  const sx = sr.left - hr.left, sy = sr.top - hr.top, sw = sr.width, sh = sr.height;
+  let c;
+  if (narrowMQ.matches) {
+    c = { el: 36, az: 20, fov: 24 };
+    c.rPx = Math.min(sw * 0.46, sh * 0.62, 300);
+    c.ox = sx + sw * 0.5; c.oy = sy + sh * 0.55;
+  } else {
+    c = { el: 34, az: 24, fov: 21 };
+    c.rPx = Math.min(sw * 0.5, sh * 0.6, 600);
+    c.ox = Math.min(sx + sw * 0.53, w - c.rPx * 1.02); c.oy = sy + sh * 0.6;
+  }
+  c.w = w; c.h = h; c.ty = 2.2;
+  c.k = h / (2 * Math.tan(c.fov * D2R / 2));     // pixels per unit at depth 1
+  c.D = G.R * c.k / c.rPx;
+  return c;
+}
+
+// Pinhole camera with a shift lens: looks at (0, ty, 0) from (el, az); the dial centre lands on (ox, oy).
+const V = {
+  sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]],
+  dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2],
+  cross: (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]],
+  norm: a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; }
+};
+function cameraFor(c, dAz = 0, dEl = 0, dDist = 1) {
+  const el = (c.el + dEl) * D2R, az = (c.az + dAz) * D2R, D = c.D * dDist;
+  const tgt = [0, c.ty, 0];
+  const eye = [D * Math.cos(el) * Math.sin(az), c.ty + D * Math.sin(el), D * Math.cos(el) * Math.cos(az)];
+  const f = V.norm(V.sub(tgt, eye)), r = V.norm(V.cross(f, [0, 1, 0])), u = V.cross(r, f);
+  const raw = p => { const q = V.sub(p, eye); const z = V.dot(q, f); return [c.w / 2 + c.k * V.dot(q, r) / z, c.h / 2 - c.k * V.dot(q, u) / z, z]; };
+  const [dx0, dy0] = raw([0, G.faceY, 0]);
+  const shiftX = c.ox - dx0, shiftY = c.oy - dy0;
+  return { eye, tgt, f, r, u, shiftX, shiftY, fov: c.fov, project: p => { const s = raw(p); return [s[0] + shiftX, s[1] + shiftY, s[2]]; } };
+}
+
+/* ---------- live reading (decorative; the scale itself is in the page text) ---------- */
+let shownV = -1;
+function setReading(v, on) {
+  if (!on) { if (!readingEl.hidden) readingEl.hidden = true; shownV = -1; return; }
+  const n = Math.round(v);
+  if (readingEl.hidden) readingEl.hidden = false;
+  if (n !== shownV) { readV.textContent = String(n).padStart(2, ' '); readN.textContent = levelOf(n)[0]; shownV = n; }
+}
+
+/* ---------- static renderer (SVG): no WebGL, or the CDN is blocked ---------- */
+const NS = 'http://www.w3.org/2000/svg';
+function drawSVG(svg, p) {
+  const w = glBox.clientWidth, h = glBox.clientHeight;
+  if (!w || !h) return;
+  const c = compose(w, h), cam = cameraFor(c), sun = sunAt(p);
+  const P = (x, y, z) => cam.project([x, y, z]);
+  const f = n => n.toFixed(1);
+  const pts = a => a.map(q => f(q[0]) + ',' + f(q[1])).join(' ');
+  const ring = (r, y, a0 = 0, a1 = 2 * Math.PI, n = 160) => { const o = []; for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n; o.push(P(r * Math.cos(a), y, -r * Math.sin(a))); } return o; };
+  const at = (v, r, y = G.faceY) => { const [x, z] = dirOf(v); return P(x * r, y, z * r); };
+  const fan = (r, v0, v1, y = G.faceY, n = 48) => { const o = []; for (let i = 0; i <= n; i++) o.push(at(v0 + (v1 - v0) * i / n, r, y)); return o; };
+  const C = P(0, G.faceY, 0);
+  const out = [];
+  out.push(`<defs>
+    <radialGradient id="gPool" cx="${f(C[0])}" cy="${f(C[1])}" r="${f(c.rPx * 2.1)}" gradientUnits="userSpaceOnUse" gradientTransform="translate(${f(C[0])} ${f(C[1])}) scale(1 .62) translate(${f(-C[0])} ${f(-C[1])})"><stop offset="0" stop-color="#1B3459"/><stop offset=".45" stop-color="#11233F"/><stop offset="1" stop-color="#08121F" stop-opacity="0"/></radialGradient>
+    <linearGradient id="gWall" x1="${f(C[0] - c.rPx)}" x2="${f(C[0] + c.rPx)}" y1="0" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2B3442"/><stop offset=".3" stop-color="#8C96A4"/><stop offset=".52" stop-color="#E9EDF2"/><stop offset=".62" stop-color="#8E98A6"/><stop offset="1" stop-color="#1E2631"/></linearGradient>
+    <linearGradient id="gBezel" x1="0" y1="${f(C[1] - c.rPx * .6)}" x2="0" y2="${f(C[1] + c.rPx * .6)}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#5B6574"/><stop offset=".5" stop-color="#D9DEE5"/><stop offset="1" stop-color="#F7F9FB"/></linearGradient>
+    <radialGradient id="gFace" cx="${f(C[0] + c.rPx * .25)}" cy="${f(C[1] + c.rPx * .1)}" r="${f(c.rPx * 1.25)}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#F6F8FA"/><stop offset=".7" stop-color="#E4E9EF"/><stop offset="1" stop-color="#C9D1DA"/></radialGradient>
+    <linearGradient id="gSteelL" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5D93DE"/><stop offset="1" stop-color="#1D4C9E"/></linearGradient>
+    <linearGradient id="gSteelD" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1C3F7E"/><stop offset="1" stop-color="#0D2350"/></linearGradient>
+    <linearGradient id="gSilverL" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F2F5F8"/><stop offset="1" stop-color="#A9B2BE"/></linearGradient>
+    <linearGradient id="gSilverD" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7D8794"/><stop offset="1" stop-color="#3B4350"/></linearGradient>
+    <filter id="fSoft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="${f(c.rPx * 0.006)}"/></filter>
+    <filter id="fBlur" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="${f(c.rPx * 0.03)}"/></filter>
+  </defs>`);
+  // the floor: a pool of light, the plate's contact shadow
+  out.push(`<rect width="${w}" height="${h}" fill="url(#gPool)"/>`);
+  out.push(`<polygon points="${pts(ring(G.R * 1.04, 0))}" fill="#02060C" opacity=".75" filter="url(#fBlur)"/>`);
+  // the case wall (front half) and the bezel
+  const a0 = Math.PI + (c.az * D2R), front = ring(G.R, G.plateH, a0, a0 + Math.PI).concat(ring(G.R, 0, a0, a0 + Math.PI).reverse());
+  out.push(`<polygon points="${pts(front)}" fill="url(#gWall)"/>`);
+  out.push(`<path fill-rule="evenodd" fill="url(#gBezel)" d="M${pts(ring(G.R, G.plateH))}Z M${pts(ring(G.faceR, G.plateH))}Z"/>`);
+  out.push(`<polygon points="${pts(ring(G.faceR, G.faceY))}" fill="url(#gFace)"/>`);
+  // enamel band, railway track, ticks, hour lines
+  LEVELS.forEach(([, a, b], i) => {
+    const g = 0.5, s0 = a === 0 ? a : a + g, s1 = b === 100 ? b : b - g;
+    out.push(`<polygon points="${pts(fan(G.bandOut, s0, s1).concat(fan(G.bandIn, s1, s0)))}" fill="${ENAMEL[i]}"/>`);
+  });
+  const ink = '#1A2333';
+  out.push(`<polyline points="${pts(fan(G.railOut, 0, 100, G.faceY, 120))}" fill="none" stroke="${ink}" stroke-width=".7"/>`);
+  out.push(`<polyline points="${pts(fan(G.railIn, 0, 100, G.faceY, 120))}" fill="none" stroke="${ink}" stroke-width=".5"/>`);
+  out.push(`<polygon points="${pts(ring(G.hubRing, G.faceY, 0, 2 * Math.PI, 64))}" fill="none" stroke="${ink}" stroke-width=".5"/>`);
+  for (let v = 0; v <= 100; v++) {
+    const big = v % 5 === 0, [x0, y0] = at(v, big ? 8.25 : G.railIn), [x1, y1] = at(v, G.railOut);
+    out.push(`<line x1="${f(x0)}" y1="${f(y0)}" x2="${f(x1)}" y2="${f(y1)}" stroke="${ink}" stroke-width="${big ? 1.1 : .5}"/>`);
+  }
+  for (const v of FLOORS) { const [x0, y0] = at(v, G.hourIn), [x1, y1] = at(v, G.hourOut); out.push(`<line x1="${f(x0)}" y1="${f(y0)}" x2="${f(x1)}" y2="${f(y1)}" stroke="${ink}" stroke-width=".5" opacity=".7"/>`); }
+  // the obelisk's shadow: the hull of its foot and its apex, cast along the sunlight (soft, like the live one)
+  const len = (G.top - G.faceY) / Math.tan(sun.e), tip = [sun.dir[0] * Math.min(len, G.faceR), sun.dir[1] * Math.min(len, G.faceR)];
+  const nx = -sun.dir[1], nz = sun.dir[0], wB = G.shaftW0 * 1.05;
+  const shadow = [[nx * wB, nz * wB], [tip[0] + nx * 0.06, tip[1] + nz * 0.06], [tip[0] - nx * 0.06, tip[1] - nz * 0.06], [-nx * wB, -nz * wB]].map(([x, z]) => P(x, G.faceY, z));
+  out.push(`<polygon points="${pts(shadow)}" fill="#0E1C33" opacity=".42" filter="url(#fSoft)"/>`);
+  // applied indices at the level floors
+  for (const v of FLOORS) {
+    const [dx, dz] = dirOf(v), tx = -dz * 0.08, tz = dx * 0.08, y = G.faceY + 0.06;
+    const q = [[dx * G.idxIn + tx, dz * G.idxIn + tz], [dx * G.idxOut + tx, dz * G.idxOut + tz], [dx * G.idxOut - tx, dz * G.idxOut - tz], [dx * G.idxIn - tx, dz * G.idxIn - tz]].map(([x, z]) => P(x, y, z));
+    out.push(`<polygon points="${pts(q)}" fill="#F4F7FA" stroke="#5E6876" stroke-width=".6"/>`);
+  }
+  // numerals and level names, set on the dial in the page's figure face
+  const fs = Math.max(9, c.rPx * 0.033);
+  for (const v of FLOORS) { const [x, y] = at(v, G.num); out.push(`<text x="${f(x)}" y="${f(y)}" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="${f(fs)}" font-weight="500" fill="${ink}" text-anchor="middle" dominant-baseline="central">${v}</text>`); }
+  LEVELS.forEach(([name, a, b]) => { const [x, y] = at((a + b) / 2, G.name); out.push(`<text x="${f(x)}" y="${f(y)}" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="${f(fs * 0.62)}" letter-spacing="${f(fs * 0.1)}" font-weight="500" fill="${ink}" text-anchor="middle" dominant-baseline="central">${name.toUpperCase()}</text>`); });
+  // the obelisk: plinth, shaft and pyramidion; the face turned toward the sun is the lit one
+  const yaw = (c.az + 45) * D2R, rot = (x, z) => [x * Math.cos(yaw) + z * Math.sin(yaw), -x * Math.sin(yaw) + z * Math.cos(yaw)];
+  const sq = (hw, y) => [[hw, hw], [-hw, hw], [-hw, -hw], [hw, -hw]].map(([x, z]) => { const [a, b] = rot(x, z); return [a, y, b]; });
+  const y0 = G.faceY, y1 = y0 + G.plinthH, y2 = y1 + G.shaftH, ap = [0, G.top, 0];
+  const solid = (bot, top) => {
+    const faces = [];
+    for (let i = 0; i < 4; i++) { const j = (i + 1) % 4; faces.push(top ? [bot[i], bot[j], top[j], top[i]] : null); }
+    return faces;
+  };
+  const toCam = V.norm(V.sub(cam.eye, [0, 2, 0]));
+  const drawFaces = (bot, top, lit, dark) => {
+    solid(bot, top).forEach(q => {
+      const n = V.norm(V.cross(V.sub(q[1], q[0]), V.sub(q[3], q[0])));
+      const nn = V.dot(n, [q[0][0], 0, q[0][2]]) < 0 ? n.map(x => -x) : n;
+      if (V.dot(nn, toCam) <= 0) return;
+      const left = V.dot(nn, cam.r) < 0;   // the face turned toward the key light reads lit, like the live render
+      out.push(`<polygon points="${pts(q.map(v => P(...v)))}" fill="url(#${left ? lit : dark})" stroke="${left ? '#9EC2EF' : '#2A4A85'}" stroke-width=".5" stroke-linejoin="round"/>`);
+    });
+  };
+  drawFaces(sq(G.plinthW, y0), sq(G.plinthW, y1), 'gSilverL', 'gSilverD');
+  out.push(`<polygon points="${pts(sq(G.plinthW, y1).map(v => P(...v)))}" fill="#E3E8EE"/>`);
+  drawFaces(sq(G.shaftW0, y1), sq(G.shaftW1, y2), 'gSteelL', 'gSteelD');
+  const capTop = sq(G.shaftW1, y2);
+  for (let i = 0; i < 4; i++) {
+    const a = capTop[i], b = capTop[(i + 1) % 4], n = V.norm(V.cross(V.sub(b, a), V.sub(ap, a)));
+    const nn = V.dot(n, [a[0] + b[0], 0, a[2] + b[2]]) < 0 ? n.map(x => -x) : n;
+    if (V.dot(nn, toCam) <= 0) continue;
+    out.push(`<polygon points="${pts([a, b, ap].map(v => P(...v)))}" fill="${V.dot(nn, cam.r) < 0 ? '#F2F5F8' : '#9AA6B6'}"/>`);
+  }
+  svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  svg.innerHTML = out.join('');
+}
+
+function startSVG() {
+  glBox.querySelector('canvas')?.remove();
+  let svg = glBox.querySelector('svg');
+  if (!svg) { svg = document.createElementNS(NS, 'svg'); svg.setAttribute('preserveAspectRatio', 'none'); glBox.appendChild(svg); }
+  glBox.dataset.renderer = 'svg';
+  motionBtn.hidden = true;
+  const p = fixedPhase ?? STILL_PHASE;
+  const redraw = () => drawSVG(svg, p);
+  redraw();
+  setReading(100 * p, true);
+  new ResizeObserver(redraw).observe(glBox);
+  if (document.fonts) document.fonts.ready.then(redraw);
+}
+
+/* ---------- live renderer (WebGL via three.js) ---------- */
+const lin = h => { const c = parseInt(h.slice(1), 16); return [(c >> 16) & 255, (c >> 8) & 255, c & 255].map(x => { x /= 255; return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }); };
+const glsl3 = a => `vec3(${a.map(x => x.toFixed(5)).join(',')})`;
+
+// Percentage-closer soft shadows from our own depth map: sharp where the obelisk meets the dial,
+// softer toward the tip, the way a real sun's disc blurs a long shadow.
+const SHADOW_GLSL = /* glsl */`
+uniform sampler2D gnShadowMap;
+uniform mat4 gnShadowMatrix;
+uniform float gnShadowRange, gnShadowSpan, gnSunTan, gnShadowTexel, gnShadowOn;
+varying vec3 vGnWorld;
+varying vec3 vGnNormal;
+float gnIGN(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
+vec2 gnDisk(float i, float n, float phi) { float r = sqrt((i + 0.5) / n); float t = i * 2.39996323 + phi; return r * vec2(cos(t), sin(t)); }
+float gnShadow(vec3 wp, vec3 wn) {
+  if (gnShadowOn < 0.001) return 1.0;
+  vec4 sc = gnShadowMatrix * vec4(wp + wn * 0.03, 1.0);
+  vec3 c = sc.xyz / sc.w;
+  if (c.x <= 0.0 || c.x >= 1.0 || c.y <= 0.0 || c.y >= 1.0 || c.z >= 1.0) return 1.0;
+  float zR = c.z - 0.0003;
+  float phi = gnIGN(gl_FragCoord.xy) * 6.2831853;
+  const float SEARCH = 0.026;
+  float sum = 0.0, cnt = 0.0;
+  for (int i = 0; i < 16; i++) {
+    float zB = texture2D(gnShadowMap, c.xy + gnDisk(float(i), 16.0, phi) * SEARCH).r;
+    if (zB < zR) { sum += zB; cnt += 1.0; }
+  }
+  if (cnt < 0.5) return 1.0;
+  float dist = (zR - sum / cnt) * gnShadowRange;
+  float pen = clamp(0.5 * dist * gnSunTan / gnShadowSpan, 1.5 * gnShadowTexel, SEARCH);
+  float lit = 0.0;
+  for (int i = 0; i < 28; i++) {
+    float z = texture2D(gnShadowMap, c.xy + gnDisk(float(i), 28.0, phi + 1.7) * pen).r;
+    lit += step(zR, z);
+  }
+  return mix(1.0, lit / 28.0, gnShadowOn);
+}
+`;
+
+// The dial face: porcelain enamel, printed ink, an inlaid enamel band (all drawn from distance fields,
+// so they stay sharp at any size), the printed lettering from a texture, and contact shading.
+const FACE_GLSL_DECL = /* glsl */`
+#define FAN_SIGN ${FAN.toFixed(1)}
+uniform sampler2D gnInk;
+uniform float gnYaw;
+float gnLine(float d, float hw) { float fw = max(fwidth(d), 1e-5); float w = max(hw, 0.6 * fw); return clamp(0.5 + (w - d) / fw, 0.0, 1.0) * (hw / w); }
+float gnRad(float r, float r0, float r1) { float fw = max(fwidth(r), 1e-5); return clamp((r - r0) / fw + 0.5, 0.0, 1.0) * clamp((r1 - r) / fw + 0.5, 0.0, 1.0); }
+`;
+const FACE_GLSL_MAP = /* glsl */`
+vec2 gp = vec2(vGnWorld.x, -FAN_SIGN * vGnWorld.z);
+float gr = length(gp);
+float gth = atan(gp.y, gp.x); if (gth < -0.5 * PI) gth += 2.0 * PI;
+float gv = 100.0 * (1.0 - gth / PI);
+float perV = PI / 100.0 * gr;
+float fwv = max(fwidth(gv), 1e-4);
+float inArc = clamp((gv + 0.35) / fwv, 0.0, 1.0) * clamp((100.35 - gv) / fwv, 0.0, 1.0);
+float inScale = clamp(gv / fwv + 0.5, 0.0, 1.0) * clamp((100.0 - gv) / fwv + 0.5, 0.0, 1.0);
+float dUnit = abs(gv - clamp(floor(gv + 0.5), 0.0, 100.0)) * perV;
+float d5 = abs(gv - clamp(5.0 * floor(gv / 5.0 + 0.5), 0.0, 100.0)) * perV;
+float dCut = min(min(min(abs(gv - 25.0), abs(gv - 45.0)), min(abs(gv - 60.0), abs(gv - 75.0))), abs(gv - 88.0));
+float dFloor = min(dCut, min(abs(gv), abs(gv - 100.0))) * perV;
+dCut *= perV;
+float ink = 0.0;
+ink = max(ink, gnLine(dUnit, 0.0105) * gnRad(gr, ${G.railIn.toFixed(3)}, ${G.railOut.toFixed(3)}));
+ink = max(ink, gnLine(d5, 0.021) * gnRad(gr, 8.2, ${G.railOut.toFixed(3)}));
+ink = max(ink, gnLine(abs(gr - ${G.railOut.toFixed(3)}), 0.013) * inArc);
+ink = max(ink, gnLine(abs(gr - ${G.railIn.toFixed(3)}), 0.008) * inArc);
+ink = max(ink, 0.8 * gnLine(dFloor, 0.0095) * gnRad(gr, ${G.hourIn.toFixed(3)}, ${G.hourOut.toFixed(3)}));
+ink = max(ink, gnLine(abs(gr - ${G.hubRing.toFixed(3)}), 0.009));
+vec2 tuv = vec2(vGnWorld.x, -vGnWorld.z) / ${(2 * G.faceR).toFixed(3)} + 0.5;
+ink = max(ink, texture2D(gnInk, tuv).r);
+float band = gnRad(gr, ${G.bandIn.toFixed(3)}, ${G.bandOut.toFixed(3)}) * inScale * (1.0 - gnLine(dCut, 0.05));
+vec3 bc = gv < 25.0 ? ${glsl3(lin(ENAMEL[0]))} : gv < 45.0 ? ${glsl3(lin(ENAMEL[1]))} : gv < 60.0 ? ${glsl3(lin(ENAMEL[2]))} : gv < 75.0 ? ${glsl3(lin(ENAMEL[3]))} : gv < 88.0 ? ${glsl3(lin(ENAMEL[4]))} : ${glsl3(lin(ENAMEL[5]))};
+diffuseColor.rgb = mix(diffuseColor.rgb, bc, band);
+diffuseColor.rgb = mix(diffuseColor.rgb, ${glsl3(lin('#161E2C'))}, ink);
+roughnessFactor = mix(roughnessFactor, 0.62, band);
+roughnessFactor = mix(roughnessFactor, 0.9, ink);
+// contact shading: under the plinth and along the bezel wall
+float cy = cos(gnYaw), sy = sin(gnYaw);
+vec2 lq = vec2(vGnWorld.x * cy - vGnWorld.z * sy, vGnWorld.x * sy + vGnWorld.z * cy);
+vec2 bq = abs(lq) - vec2(${G.plinthW.toFixed(3)});
+float dPl = length(max(bq, 0.0)) + min(max(bq.x, bq.y), 0.0);
+float gnAO = 1.0 - 0.62 * exp(-max(dPl, 0.0) * 3.2);
+gnAO *= 1.0 - 0.38 * exp(-max(${G.faceR.toFixed(3)} - gr, 0.0) * 6.0);
+// a lamp, not an overcast sky: the light pools on the dial and falls off toward the rim
+float gnFall = 0.8 + 0.2 * exp(-pow(gr / 8.0, 2.0));
+`;
+
+function injectMaterial(THREE, mat, key, SHU, extra = {}) {
+  const lightsPatched = THREE.ShaderChunk.lights_fragment_begin.replace(
+    'getDirectionalLightInfo( directionalLight, directLight );',
+    'getDirectionalLightInfo( directionalLight, directLight );\n\t\tdirectLight.color *= gnSh;');
+  if (lightsPatched === THREE.ShaderChunk.lights_fragment_begin) throw new Error('three.js light chunk changed; cannot attach the dial shadow');
+  mat.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, SHU, extra.uniforms || {});
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vGnWorld;\nvarying vec3 vGnNormal;')
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvGnWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvGnNormal = normalize(mat3(modelMatrix) * objectNormal);');
+    let fs = sh.fragmentShader.replace('#include <common>', '#include <common>\n' + SHADOW_GLSL + (extra.decl || ''));
+    if (extra.map) fs = fs.replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n' + extra.map);
+    fs = fs.replace('#include <lights_fragment_begin>', 'float gnSh = gnShadow(vGnWorld, normalize(vGnNormal))' + (extra.fall ? ' * gnFall' : '') + ';\n' + lightsPatched);
+    if (extra.ao) fs = fs.replace('#include <aomap_fragment>', '#include <aomap_fragment>\n' + extra.ao);
+    sh.fragmentShader = fs;
+  };
+  mat.customProgramCacheKey = () => 'gn-' + key;
+  return mat;
+}
+
+// A product studio for reflections: a deep blue cyclorama, two strip lights and an overhead softbox.
+function studioEnvironment(THREE, renderer) {
+  const env = new THREE.Scene();
+  env.add(new THREE.Mesh(new THREE.SphereGeometry(60, 48, 24), new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false,
+    vertexShader: 'varying vec3 vD; void main(){ vD = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `varying vec3 vD; void main(){ float y = vD.y;
+      vec3 low = vec3(0.004, 0.007, 0.014), hor = vec3(0.034, 0.056, 0.105), sky = vec3(0.010, 0.017, 0.034);
+      vec3 c = y < 0.0 ? mix(hor, low, smoothstep(0.0, -0.45, y)) : mix(hor, sky, smoothstep(0.0, 0.75, y));
+      // the lit dial seen in reflection: bright toward the key side, a black flag on the right,
+      // fading with depth so vertical steel faces carry a studio-sweep gradient
+      vec2 hz = normalize(vD.xz + 1e-5);
+      float below = smoothstep(-0.03, -0.2, y), sweep = smoothstep(-0.63, -0.44, y);
+      float pool = pow(max(dot(hz, normalize(vec2(-0.75, 0.66))), 0.0), 2.2) * below * sweep;
+      c += vec3(0.62, 0.60, 0.57) * pool;
+      float pool2 = pow(max(dot(hz, normalize(vec2(0.86, -0.5))), 0.0), 2.0) * below * sweep;
+      c += vec3(0.05, 0.085, 0.16) * pool2;
+      float ridge = pow(max(dot(hz, normalize(vec2(0.41, 0.91))), 0.0), 60.0) * below * sweep;
+      c += vec3(1.5, 1.5, 1.45) * ridge;
+      gl_FragColor = vec4(c, 1.0); }`
+  })));
+  const panel = (w, h, p, k, hex) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(hex).multiplyScalar(k), side: THREE.DoubleSide }));
+    m.position.set(...p); m.lookAt(0, 1, 0); env.add(m);
+  };
+  panel(24, 13, [-7, 27, 9], 2.4, '#FFFFFF');    // overhead softbox, front-left
+  panel(3.5, 24, [-28, 7, 7], 3.2, '#FFF3E8');   // tall strip, left
+  panel(3.5, 24, [27, 9, -7.2], 2.1, '#D9E6FF');  // rim strip, right and behind: the cap's right facet
+  panel(14, 3, [-22, 2.2, 14], 2.2, '#FFF3E6');    // low strip, front left: the cap's left facet
+  panel(44, 4.5, [8, 1.2, 30], 0.45, '#7896C4'); // low bounce card in front
+  panel(50, 16, [-6, 22, -32], 0.85, '#DFE6EF'); // a wide diffuser behind the dial, at the bezel's reflection angle
+  const pm = new THREE.PMREMGenerator(renderer);
+  const tex = pm.fromScene(env, 0.03).texture;
+  pm.dispose();
+  return tex;
+}
+
+// The obelisk: a chamfered plinth, a tapered square shaft with bevelled corners, a pyramidion. Flat-shaded facets.
+function obeliskGeometry(THREE) {
+  const pos = [];
+  const oct = (hw, ch, y) => { const a = hw - ch; return [[hw, -a], [hw, a], [a, hw], [-a, hw], [-hw, a], [-hw, -a], [-a, -hw], [a, -hw]].map(([x, z]) => [x, y, z]); };
+  const tri = (a, b, c, up = false) => {
+    const n = V.cross(V.sub(b, a), V.sub(c, a));
+    const ref = up ? [0, 1, 0] : [(a[0] + b[0] + c[0]) / 3, 0, (a[2] + b[2] + c[2]) / 3];
+    if (V.dot(n, ref) < 0) pos.push(...a, ...c, ...b); else pos.push(...a, ...b, ...c);
+  };
+  const band = (r0, r1) => { for (let i = 0; i < 8; i++) { const j = (i + 1) % 8; tri(r0[i], r0[j], r1[j]); tri(r0[i], r1[j], r1[i]); } };
+  const y1 = G.plinthH, y2 = y1 + G.shaftH, y3 = y2 + G.pyrH;
+  const done = () => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos.splice(0), 3)); g.computeVertexNormals(); return g; };
+  const pb = oct(G.plinthW, 0.08, 0), pm = oct(G.plinthW, 0.08, y1 - 0.075), pt = oct(G.plinthW - 0.075, 0.06, y1);
+  band(pb, pm); band(pm, pt);
+  for (let i = 0; i < 8; i++) tri([0, y1, 0], pt[i], pt[(i + 1) % 8], true);
+  const plinth = done();
+  const s0 = oct(G.shaftW0, 0.05, y1), s1 = oct(G.shaftW1, 0.034, y2);
+  band(s0, s1);
+  const shaft = done();
+  for (let i = 0; i < 8; i++) tri(s1[i], s1[(i + 1) % 8], [0, y3, 0]);
+  return { plinth, shaft, cap: done() };
+}
+
+// Printed lettering for the dial, drawn once into a mask: numerals, level names and the maker's mark.
+async function inkTexture(THREE, renderer, size) {
+  try {
+    await Promise.race([Promise.all([document.fonts.load('500 60px "IBM Plex Mono"'), document.fonts.load('600 60px "Archivo"')]), new Promise(r => setTimeout(r, 1800))]);
+  } catch (e) { /* system fonts stand in */ }
+  const cv = document.createElement('canvas'); cv.width = cv.height = size;
+  const g = cv.getContext('2d');
+  const s = size / (2 * G.faceR);
+  const mono = '"IBM Plex Mono", ui-monospace, Menlo, monospace', sans = 'Archivo, "Helvetica Neue", Arial, sans-serif';
+  const track = px => { if ('letterSpacing' in g) g.letterSpacing = px + 'px'; };
+  g.fillStyle = '#000'; g.fillRect(0, 0, size, size);
+  g.translate(size / 2, size / 2); g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  const put = (text, v, r, px, weight, tr) => {
+    const [dx, dz] = dirOf(v);
+    g.save(); g.translate(dx * r * s, dz * r * s); g.rotate(Math.atan2(dz, dx) + FAN * Math.PI / 2);
+    g.font = `${weight} ${px}px ${mono}`; track(tr); g.fillText(text, 0, 0); g.restore();
+  };
+  for (const v of FLOORS) put(String(v), v, G.num, 0.5 * s, 500, 0);
+  LEVELS.forEach(([n, a, b]) => put(n.toUpperCase(), (a + b) / 2, G.name, 0.27 * s, 500, 0.27 * s * 0.16));
+  g.save(); g.translate(FAN < 0 ? 2.7 * s : 0, FAN * 4.75 * s + (FAN < 0 ? 0.6 * s : 0)); g.textBaseline = 'alphabetic';
+  if ('fontStretch' in g) g.fontStretch = 'semi-expanded';
+  g.font = `600 ${0.62 * s}px ${sans}`; track(-0.03 * 0.62 * s); g.fillText('gnomon', 0, 0);
+  if ('fontStretch' in g) g.fontStretch = 'normal';
+  g.font = `500 ${0.15 * s}px ${mono}`; track(0.15 * s * 0.24); g.fillText('AGENTIC QUOTIENT · BY XMARTLABS', 0, 0.42 * s);
+  g.restore();
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.NoColorSpace;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return tex;
+}
+
+async function startGL() {
+  const THREE = await import('three');
+  const [{ RoundedBoxGeometry }, { mergeGeometries }] = await Promise.all([
+    import('three/addons/geometries/RoundedBoxGeometry.js'), import('three/addons/utils/BufferGeometryUtils.js')]);
+
+  const canvas = document.createElement('canvas');
+  glBox.appendChild(canvas);
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.NeutralToneMapping;      // a product-shot curve: keeps the brand blue true
+  renderer.toneMappingExposure = 1.0;
+  renderer.setClearColor('#08121F', 1);
+  glBox.dataset.renderer = 'webgl';
+  canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); stop(); startSVG(); });
+
+  const scene = new THREE.Scene();
+  scene.environment = studioEnvironment(THREE, renderer);
+
+  /* shadow map from the sun, drawn by us so the dial can soften it with distance */
+  const SM = 2048, SPAN = 23.6, NEAR = 1, FAR = 92;
+  const depthTex = new THREE.DepthTexture(SM, SM);
+  const shadowRT = new THREE.WebGLRenderTarget(SM, SM, { depthTexture: depthTex, depthBuffer: true });
+  const shadowCam = new THREE.OrthographicCamera(-SPAN / 2, SPAN / 2, SPAN / 2, -SPAN / 2, NEAR, FAR);
+  shadowCam.layers.set(1);
+  const BIAS = new THREE.Matrix4().set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1);
+  const SHU = {
+    gnShadowMap: { value: depthTex }, gnShadowMatrix: { value: new THREE.Matrix4() },
+    gnShadowRange: { value: FAR - NEAR }, gnShadowSpan: { value: SPAN }, gnSunTan: { value: Math.tan(2.0 * D2R) },
+    gnShadowTexel: { value: 1 / SM }, gnShadowOn: { value: 1 }
+  };
+  const depthMat = new THREE.MeshBasicMaterial({ colorWrite: false, side: THREE.DoubleSide });
+
+  /* materials */
+  const inkTex = await inkTexture(THREE, renderer, innerWidth < 700 ? 1536 : 2048);
+  const faceU = { gnInk: { value: inkTex }, gnYaw: { value: 0 } };
+  const M = {
+    polished: injectMaterial(THREE, new THREE.MeshPhysicalMaterial({ color: '#DDE2E8', metalness: 1, roughness: 0.15 }), 'polished', SHU),
+    brushed: injectMaterial(THREE, new THREE.MeshPhysicalMaterial({ color: '#C2C9D1', metalness: 1, roughness: 0.42 }), 'brushed', SHU),
+    blued: injectMaterial(THREE, new THREE.MeshPhysicalMaterial({ color: '#3B6FCB', metalness: 1, roughness: 0.15, envMapIntensity: 1.5 }), 'blued', SHU),
+    enamel: injectMaterial(THREE, new THREE.MeshPhysicalMaterial({ color: '#EEF1F4', roughness: 0.74, envMapIntensity: 0.6 }), 'enamel', SHU,
+      { uniforms: faceU, decl: FACE_GLSL_DECL, map: FACE_GLSL_MAP, fall: true, ao: 'reflectedLight.indirectDiffuse *= gnAO; reflectedLight.indirectSpecular *= mix(1.0, gnAO, 0.6);' })
+  };
+  const floorMat = new THREE.ShaderMaterial({
+    uniforms: { ...SHU, gnBg: { value: new THREE.Vector3(...lin('#08121F')) }, gnPool: { value: new THREE.Vector3(...lin('#1C3558')) }, gnSunI: { value: 1 } },
+    vertexShader: 'varying vec3 vGnWorld; varying vec3 vGnNormal; void main(){ vec4 wp = modelMatrix * vec4(position, 1.0); vGnWorld = wp.xyz; vGnNormal = vec3(0.0, 1.0, 0.0); gl_Position = projectionMatrix * viewMatrix * wp; }',
+    fragmentShader: SHADOW_GLSL + `uniform vec3 gnBg, gnPool; uniform float gnSunI;
+      void main(){
+        vec2 p = vGnWorld.xz; float rp = length(p);
+        float pool = exp(-pow(rp / 22.0, 2.0));
+        float sh = gnShadow(vGnWorld, vec3(0.0, 1.0, 0.0));
+        float ao = 1.0 - 0.82 * exp(-max(rp - ${G.R.toFixed(2)}, 0.0) * 1.05);
+        vec3 col = mix(gnBg, gnPool * (0.45 + 0.55 * mix(1.0, sh, gnSunI) * (0.4 + 0.6 * gnSunI)), pool) * ao;
+        gl_FragColor = vec4(col, 1.0);
+        #include <colorspace_fragment>
+      }`,
+    toneMapped: false
+  });
+
+  /* geometry */
+  const caster = m => { m.layers.enable(1); return m; };
+  const lathe = (r0, y0, r1, y1) => new THREE.LatheGeometry([new THREE.Vector2(r0, y0), new THREE.Vector2(r1, y1)], 320);
+  const wall = caster(new THREE.Mesh(mergeGeometries([lathe(9.9, 0, G.R, 0.1), lathe(G.R, 0.1, G.R, 0.96)]), M.brushed));
+  const bezel = caster(new THREE.Mesh(mergeGeometries([
+    lathe(G.R, 0.96, 9.88, G.plateH), lathe(9.88, G.plateH, 9.45, G.plateH - 0.02), lathe(9.45, G.plateH - 0.02, G.faceR, G.faceY)]), M.polished));
+  const face = new THREE.Mesh(new THREE.CircleGeometry(G.faceR, 320), M.enamel);
+  face.rotation.x = -Math.PI / 2; face.position.y = G.faceY;
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(420, 96), floorMat);
+  floor.rotation.x = -Math.PI / 2;
+  const og = obeliskGeometry(THREE);
+  const gnomon = new THREE.Group();
+  gnomon.add(caster(new THREE.Mesh(og.plinth, M.polished)), caster(new THREE.Mesh(og.shaft, M.blued)), caster(new THREE.Mesh(og.cap, M.polished)));
+  gnomon.position.y = G.faceY;
+  scene.add(wall, bezel, face, floor, gnomon);
+  const idxGeo = new RoundedBoxGeometry(0.17, 0.1, G.idxOut - G.idxIn, 2, 0.04);
+  for (const v of FLOORS) {
+    const [dx, dz] = dirOf(v), r = (G.idxIn + G.idxOut) / 2;
+    const m = caster(new THREE.Mesh(idxGeo, M.polished));
+    m.position.set(dx * r, G.faceY + 0.05, dz * r); m.rotation.y = Math.atan2(dx, dz);
+    scene.add(m);
+  }
+
+  /* the sun */
+  const sun = new THREE.DirectionalLight(0xffffff, 3);
+  scene.add(sun, sun.target);
+  const warm = new THREE.Color('#FFD2A4'), noon = new THREE.Color('#FFF5EC');
+  function placeSun(p, k, eScale = 1) {
+    const s = sunAt(p);
+    if (eScale !== 1) { s.e *= eScale; s.L = [-s.dir[0] * Math.cos(s.e), Math.sin(s.e), -s.dir[1] * Math.cos(s.e)]; }
+    const [lx, ly, lz] = s.L, t = smooth(6 * D2R, 34 * D2R, s.e);
+    sun.position.set(lx * 40, ly * 40, lz * 40);
+    sun.color.copy(warm).lerp(noon, t);
+    sun.intensity = k * mix(13.5, 8.6, t);
+    shadowCam.position.set(lx * 46, 3 + ly * 46, lz * 46); shadowCam.lookAt(0, 3, 0); shadowCam.updateMatrixWorld();
+    SHU.gnShadowMatrix.value.copy(BIAS).multiply(shadowCam.projectionMatrix).multiply(shadowCam.matrixWorldInverse);
+    SHU.gnShadowOn.value = clamp(k * 1.25);
+    floorMat.uniforms.gnSunI.value = k;
+    return s;
+  }
+
+  /* camera and layout */
+  const cam = new THREE.PerspectiveCamera(20, 1, 1, 900);
+  let comp = null, W = 0, H = 0, dpr = Math.min(window.devicePixelRatio || 1, 2);
+  function resize() {
+    W = glBox.clientWidth; H = glBox.clientHeight;
+    if (!W || !H) return;
+    renderer.setPixelRatio(dpr); renderer.setSize(W, H, false);
+    comp = compose(W, H);
+    const yaw = (comp.az + 45) * D2R;
+    gnomon.rotation.y = yaw; faceU.gnYaw.value = yaw;
+  }
+  function placeCamera(dAz, dEl, dDist) {
+    const k = cameraFor(comp, dAz, dEl, dDist);
+    cam.fov = comp.fov; cam.aspect = W / H;
+    cam.position.set(...k.eye); cam.lookAt(...k.tgt);
+    cam.setViewOffset(W, H, -k.shiftX, -k.shiftY, W, H);
+    cam.updateProjectionMatrix();
+  }
+  function render() {
+    scene.overrideMaterial = depthMat;
+    renderer.setRenderTarget(shadowRT); renderer.render(scene, shadowCam);
+    scene.overrideMaterial = null;
+    renderer.setRenderTarget(null); renderer.render(scene, cam);
+  }
+
+  /* time: a sunrise intro, then a 34 s day across the scale, a short night, and the next dawn */
+  const DAY = 34, NIGHT = 2.2, INTRO = 3.2, P0 = 0.36;
+  function frame(t, still) {
+    if (!comp) return;
+    if (still) {
+      const p = fixedPhase ?? STILL_PHASE;
+      placeSun(p, 1); placeCamera(0, 0, 1); render();
+      setReading(100 * p, true);
+      return;
+    }
+    let p, k, rise = 1;
+    if (t < INTRO) { rise = easeOut(t / INTRO); p = P0; k = smooth(0, 0.85, rise); }
+    else {
+      const tau = (t - INTRO + P0 * DAY) % (DAY + NIGHT);
+      if (tau < DAY) { p = tau / DAY; k = smooth(0, 0.045, p) * (1 - smooth(0.955, 1, p)); }
+      else { p = 1; k = 0; }
+    }
+    placeSun(p, k, mix(0.25, 1, rise));
+    const intro = 1 - easeInOut(t / 3.8);
+    ptr.x += (ptr.tx - ptr.x) * 0.045; ptr.y += (ptr.ty - ptr.y) * 0.045;
+    const dAz = 1.1 * Math.sin(t * 2 * Math.PI / 27) - 2.4 * ptr.x;
+    const dEl = 0.5 * Math.sin(t * 2 * Math.PI / 35 + 1) + 1.2 * ptr.y + 3.2 * intro;
+    placeCamera(dAz, dEl, 1 + 0.075 * intro);
+    render();
+    setReading(100 * p, k > 0.6);
+  }
+
+  const ptr = { x: 0, y: 0, tx: 0, ty: 0 };
+  hero.addEventListener('pointermove', e => {
+    if (e.pointerType !== 'mouse') return;
+    const r = hero.getBoundingClientRect();
+    ptr.tx = clamp((e.clientX - r.left) / r.width * 2 - 1, -1, 1); ptr.ty = clamp((e.clientY - r.top) / r.height * 2 - 1, -1, 1);
+  });
+  hero.addEventListener('pointerleave', () => { ptr.tx = 0; ptr.ty = 0; });
+
+  let clock = 0, last = 0, raf = 0, running = false, paused = false, onScreen = true, ema = 16.7, slow = 0, first = true;
+  const stats = window.__gnStats = { frameMs: 0, dpr, frames: 0 };
+  const still = () => fixedPhase !== null || forceStill || reduceMQ.matches;
+  const loop = now => {
+    raf = requestAnimationFrame(loop);
+    const dt = last ? Math.min(100, now - last) : 16.7;
+    last = now; clock += dt / 1000;
+    ema = ema * 0.94 + dt * 0.06; stats.frameMs = +ema.toFixed(2); stats.frames++;
+    if (clock > 4 && dpr > 1 && ema > 21) { if (++slow > 45) { dpr = Math.max(1, dpr - 0.25); stats.dpr = dpr; slow = 0; resize(); } } else slow = 0;
+    frame(clock, false);
+    if (first) { first = false; goLive(); }
+  };
+  const start = () => { if (still() || running || paused || !onScreen || document.hidden) return; running = true; last = 0; raf = requestAnimationFrame(loop); };
+  function stop() { running = false; cancelAnimationFrame(raf); }
+
+  // Hand over from the static stand-in, if one was shown: fade it out as the render fades in.
+  function goLive() {
+    glBox.classList.add('is-live');
+    const ph = glBox.querySelector('svg.is-placeholder');
+    if (ph) { ph.classList.add('is-leaving'); setTimeout(() => ph.remove(), 1500); }
+  }
+  if (glBox.querySelector('svg.is-placeholder')) clock = INTRO;   // the stand-in already showed daylight: skip the sunrise
+
+  resize();
+  new ResizeObserver(() => { resize(); if (!running) frame(clock, still()); }).observe(glBox);
+  if (still()) { frame(0, true); goLive(); }
+  else {
+    motionBtn.hidden = false;
+    motionBtn.addEventListener('click', () => {
+      paused = !paused;
+      motionBtn.textContent = paused ? 'Resume motion' : 'Pause motion';
+      paused ? stop() : start();
+    });
+    new IntersectionObserver(([en]) => { onScreen = en.isIntersecting; onScreen ? start() : stop(); }).observe(hero);
+    document.addEventListener('visibilitychange', () => (document.hidden ? stop() : start()));
+    start();
+  }
+  reduceMQ.addEventListener('change', e => { if (e.matches) { stop(); motionBtn.hidden = true; frame(0, true); } });
+}
+
+/* ---------- boot ---------- */
+function hasWebGL() {
+  try { const cv = document.createElement('canvas'); return !!(cv.getContext('webgl2')); } catch (e) { return false; }
+}
+// On a slow network the static dial stands in until the live one is ready, then hands over.
+function showPlaceholder() {
+  if (glBox.classList.contains('is-live') || glBox.querySelector('svg')) return;
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('preserveAspectRatio', 'none'); svg.classList.add('is-placeholder');
+  glBox.appendChild(svg);
+  drawSVG(svg, fixedPhase ?? STILL_PHASE);
+}
+if (forceSVG || !hasWebGL()) startSVG();
+else {
+  const slow = setTimeout(showPlaceholder, 1500);
+  startGL().then(() => clearTimeout(slow)).catch(err => { clearTimeout(slow); console.warn('gnomon dial: falling back to the static frame', err); glBox.querySelector('svg.is-placeholder')?.remove(); startSVG(); });
+}
+</script>
+</body>
+</html>

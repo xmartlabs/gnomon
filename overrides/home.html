@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gnomon · See how well your team works with AI agents</title>
+<meta name="description" content="gnomon reads the agent sessions already on each developer's machine and scores how they work with AI coding agents. Built by Xmartlabs.">
+<meta name="theme-color" content="#08121F">
+{%- if page and page.canonical_url %}
+<link rel="canonical" href="{{ page.canonical_url }}">
+{%- endif %}
+<link rel="icon" type="image/svg+xml" href="{{ base_url }}/assets/landing/gnomon-mark-light.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ base_url }}/assets/landing/landing.css">
+<!--
+  The site home: a standalone template, so none of Material's header, navigation or sidebars render here.
+  Ported from the approved mockup docs/superpowers/specs/2026-10-21-docs-landing-mockup-v2.html.
+  three.js is pinned below, with Subresource Integrity hashes for every module it loads; bumping
+  the version means recomputing them. If WebGL is missing or the CDN is unreachable, landing.js draws the same dial
+  as an inline SVG, so the hero never depends on the CDN.
+-->
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+},
+  "integrity": {
+  "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js": "sha384-m8JoFX52V6NGv2usipnlLJKnJfL7IE8dbniPDDCSGSQv3Hm4n6PjfV6syVwfuoRc",
+  "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.core.js": "sha384-mdKeCwPEcbDvzaxwhm+MVuLoMou+E7jQqrs4tmu/n8HBYPGI1kZt0MkJxlMR4zFM",
+  "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/geometries/RoundedBoxGeometry.js": "sha384-gHmgcgYfabbVCqiNiLLSop7dMvxAqZsQsjokoDYKyrHmCD5jCPvDvFaXaAkHtTfM",
+  "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/utils/BufferGeometryUtils.js": "sha384-Rm97j4mcjlLkGsYC2LX3nZG9VU2R8lgK0QE+DmBr4thue+H7J+SHm+68If2ZLBVg"
+} }
+</script>
+<script>document.documentElement.classList.add('js')</script>
+<script type="module" src="{{ base_url }}/assets/landing/landing.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<!-- The mark on night surfaces is the repo's dark variant (.github/assets/gnomon-mark-dark.svg).
+     "Contact us" goes to the Xmartlabs contact page; utm_content marks the placement: header-cta, hero-cta, footer-cta. -->
+<header class="mast on-night">
+  <div class="wrap mast-in">
+    <div class="brand-group">
+      <a class="brand" href="#top">
+        <img src="{{ base_url }}/assets/landing/gnomon-mark-dark.svg" width="24" height="24" alt="">
+        <span class="wordmark">gnomon</span>
+      </a>
+      <a class="by label" href="https://www.xmartlabs.com/?utm_source=gnomon-docs&amp;utm_medium=landing&amp;utm_content=brand">by Xmartlabs</a>
+    </div>
+    <nav class="mast-nav" aria-label="Page">
+      <a href="#measures">What it measures</a>
+      <a href="#sources">Sources</a>
+      <a href="#privacy">Privacy</a>
+      <a href="{{ base_url }}/get-started/why-gnomon/">Docs</a>
+      <a href="https://github.com/xmartlabs/gnomon">GitHub</a>
+    </nav>
+    <a class="mast-docs" href="{{ base_url }}/get-started/why-gnomon/">Docs</a>
+    <a class="btn btn-sm" href="https://www.xmartlabs.com/contact?utm_source=gnomon-docs&amp;utm_medium=landing&amp;utm_content=header-cta">Contact us</a>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero on-night" id="top" aria-labelledby="hero-title">
+    <div class="hero-backdrop" aria-hidden="true"></div>
+    <!-- Decorative: the AQ scale made as a sundial. Everything it shows is also in the page text. -->
+    <div class="hero-gl" aria-hidden="true"></div>
+    <div class="hero-vignette" aria-hidden="true"></div>
+    <div class="hero-grain" aria-hidden="true"></div>
+    <div class="wrap hero-body">
+      <div class="hero-copy">
+        <p class="label hero-label rise">Agentic Quotient · 0–100</p>
+        <h1 id="hero-title" class="display hero-title rise rise-2">See how well your team works with AI agents.</h1>
+        <p class="lede rise rise-3">gnomon reads the agent sessions already saved on each developer's machine and scores how they work with Claude Code, Codex, Cursor and four other tools. Every formula is public, and nothing leaves the machine unless the developer chooses to share.</p>
+        <div class="actions rise rise-4">
+          <a class="btn btn-lg" href="https://www.xmartlabs.com/contact?utm_source=gnomon-docs&amp;utm_medium=landing&amp;utm_content=hero-cta">Contact us</a>
+          <a class="go" href="{{ base_url }}/get-started/why-gnomon/">Read the docs<span aria-hidden="true">→</span></a>
+        </div>
+      </div>
+      <div class="hero-stage" aria-hidden="true"></div>
+    </div>
+    <div class="wrap hero-foot rise rise-5">
+      <p class="etym"><i>gnomon</i> (<span lang="el">γνώμων</span>): the part of a sundial that casts the shadow. It measures by what you cast.</p>
+      <div class="hero-meta">
+        <p class="reading" aria-hidden="true" hidden>Shadow at <b class="reading-v">64</b> · <b class="reading-n">Proficient</b></p>
+        <button class="motion-btn" type="button" hidden>Pause motion</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="measures" aria-labelledby="measures-title">
+    <div class="wrap">
+      <p class="label">What it measures</p>
+      <h2 id="measures-title" class="display h2">One score from four pillars, with every weight in plain sight.</h2>
+      <p class="formula" role="img" aria-label="AQ equals 0.30 times Breadth, plus 0.35 times Craft, plus 0.20 times Efficiency, plus 0.15 times Savvy.">
+        <b>AQ</b> = <em>0.30</em>·Breadth + <em>0.35</em>·Craft + <em>0.20</em>·Efficiency + <em>0.15</em>·Savvy
+      </p>
+      <p class="formula-note">Each pillar scores 0–100 from its own axes, over one month of sessions.</p>
+      <p class="explore"><a class="go" href="{{ base_url }}/metrics/how-scoring-works/">Explore all 12 metrics<span aria-hidden="true"> →</span></a> <span class="explore-note">Each one shows what it measures, the exact formula, a worked example and the rubric.</span></p>
+
+      <div class="pillars">
+        <div class="pgrid weights" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        <div class="pgrid cols">
+          <div class="pillar">
+            <div class="pbar" aria-hidden="true"><i style="width:30%"></i></div>
+            <p class="pfig">30<small>%</small></p>
+            <h3><a href="{{ base_url }}/metrics/breadth/">Breadth</a></h3>
+            <p class="pdesc">How much of the agent toolkit gets used: subagents, skills, MCP servers and CLIs, and planning before work.</p>
+            <ul class="axes"><li><a href="{{ base_url }}/metrics/breadth/orchestration/">Orchestration<span class="go-arrow" aria-hidden="true">→</span></a></li><li><a href="{{ base_url }}/metrics/breadth/skill-fluency/">Skill fluency<span class="go-arrow" aria-hidden="true">→</span></a></li><li><a href="{{ base_url }}/metrics/breadth/tool-command/">Tool command<span class="go-arrow" aria-hidden="true">→</span></a></li><li><a href="{{ base_url }}/metrics/breadth/discipline/">Discipline<span class="go-arrow" aria-hidden="true">→</span></a></li></ul>
+          </div>
+          <div class="pillar">
+            <div class="pbar" aria-hidden="true"><i style="width:35%"></i></div>
+            <p class="pfig">35<small>%</small></p>
+            <h3><a href="{{ base_url }}/metrics/craft/">Craft</a></h3>
+            <p class="pdesc">Whether the agent's work is tested, reviewed and grounded, and whether lessons get written down for the next session.</p>
+            <ul class="axes"><li><a href="{{ base_url }}/metrics/craft/verification/">Verification<span class="go-arrow" aria-hidden="true">→</span></a></li><li><a href="{{ base_url }}/metrics/craft/grounding/">Grounding<span class="go-arrow" aria-hidden="true">→</span></a></li><li><a href="{{ base_url }}/metrics/craft/context-intelligence/">Context intelligence<span class="go-arrow" aria-hidden="true">→</span></a></li><li><a href="{{ base_url }}/metrics/craft/compounding/">Compounding<span class="go-arrow" aria-hidden="true">→</span></a></li></ul>
+          </div>
+          <div class="pillar">
+            <div class="pbar" aria-hidden="true"><i style="width:20%"></i></div>
+            <p class="pfig">20<small>%</small></p>
+            <h3><a href="{{ base_url }}/metrics/efficiency/">Efficiency</a></h3>
+            <p class="pdesc">How the work recovers after a tool call fails.</p>
+            <ul class="axes"><li><a href="{{ base_url }}/metrics/efficiency/recovery/">Recovery<span class="go-arrow" aria-hidden="true">→</span></a></li><li><a href="{{ base_url }}/metrics/efficiency/steering-leverage/">Steering leverage<span class="go-arrow" aria-hidden="true">→</span><span class="muted">Measured, not scored yet</span></a></li></ul>
+          </div>
+          <div class="pillar">
+            <div class="pbar" aria-hidden="true"><i style="width:15%"></i></div>
+            <p class="pfig">15<small>%</small></p>
+            <h3><a href="{{ base_url }}/metrics/savvy/">Savvy</a></h3>
+            <p class="pdesc">Choosing models and tools with cost in mind.</p>
+            <ul class="axes"><li><a href="{{ base_url }}/metrics/savvy/model-mix/">Model mix<span class="go-arrow" aria-hidden="true">→</span></a></li><li><a href="{{ base_url }}/metrics/savvy/token-economy/">Token economy<span class="go-arrow" aria-hidden="true">→</span></a></li></ul>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section class="band on-night" id="levels" aria-labelledby="levels-title">
+    <div class="wrap">
+      <div class="levels">
+        <div class="levels-intro">
+          <p class="label">Levels</p>
+          <h3 id="levels-title" class="display band-title">Six levels, Novice to Elite.</h3>
+          <p class="lv-txt">The overall AQ places each developer on one ladder with fixed cut-offs.</p>
+        </div>
+        <div class="scale">
+          <div class="ticks" aria-hidden="true"></div>
+          <div class="track" aria-hidden="true">
+            <span style="width:25%;background:#D5D9DD"></span>
+            <span style="width:20%;background:var(--blue-100)"></span>
+            <span style="width:15%;background:var(--blue-200)"></span>
+            <span style="width:15%;background:var(--blue-300)"></span>
+            <span style="width:13%;background:var(--blue-400)"></span>
+            <span style="width:12%;background:var(--blue-500)"></span>
+          </div>
+          <ol class="bands">
+            <li style="width:25%;--tone:#D5D9DD"><span class="label">Novice</span><span class="rng">0–24</span></li>
+            <li style="width:20%;--tone:var(--blue-100)"><span class="label">Apprentice</span><span class="rng">25–44</span></li>
+            <li style="width:15%;--tone:var(--blue-200)"><span class="label">Adequate</span><span class="rng">45–59</span></li>
+            <li style="width:15%;--tone:var(--blue-300)"><span class="label">Proficient</span><span class="rng">60–74</span></li>
+            <li style="width:13%;--tone:var(--blue-400)"><span class="label">Advanced</span><span class="rng">75–87</span></li>
+            <li style="width:12%;--tone:var(--blue-500)"><span class="label">Elite</span><span class="rng">88–100</span></li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-tight">
+    <div class="wrap">
+      <div class="pair">
+        <div>
+          <p class="label">Fair across tools</p>
+          <h3>A missing signal is never a zero.</h3>
+          <p class="ptxt">Not every tool records every signal. When one can't, that part is left out and its weight moves to the parts that can be measured. Nobody loses points for the tool they use.</p>
+        </div>
+        <div class="vrule" aria-hidden="true"></div>
+        <div>
+          <p class="label">Second score</p>
+          <h3>How you build, scored apart.</h3>
+          <p class="ptxt">The GStack scorecard rates Execution, Planning and Engineering from 0 to 10, next to the AQ.</p>
+        </div>
+      </div>
+
+      <dl class="facts">
+        <div><dt>Open source</dt><dd>MIT license. The scoring code is public on GitHub, and the docs cite the code behind each formula.</dd></div>
+        <div><dt>Versioned</dt><dd>Every score carries a contract ID. Two scores compare only when their IDs match.</dd></div>
+        <div><dt>Reproducible</dt><dd>The miraudit skill re-derives a published score from the developer's own transcripts.</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="section" id="who" aria-labelledby="who-title">
+    <div class="wrap">
+      <p class="label">Who it's for</p>
+      <h2 id="who-title" class="display h2">Leads get the team view. Developers get their own profile.</h2>
+      <div class="split">
+        <div>
+          <p class="label">For engineering leads</p>
+          <h3>Find where the team is thin.</h3>
+          <p class="stxt">Each developer who runs gnomon gets a profile: an AQ, a score for every pillar and axis, and a level from Novice to Elite. When developers share to your self-hosted dashboard, you see the team: average AQ, how people spread across levels, pillar averages, model mix and the trend from month to month.</p>
+          <p class="stxt">The dashboard runs as one container with one volume, on your own server.</p>
+          <p class="note">gnomon scores how someone works with agents, as a learning aid. Don't use it to rank people's productivity.</p>
+          <a class="go" href="{{ base_url }}/metrics/how-scoring-works/">How scoring works<span aria-hidden="true">→</span></a>
+        </div>
+        <div class="vrule" aria-hidden="true"></div>
+        <div>
+          <p class="label">For developers</p>
+          <h3>Run one command and read your own profile.</h3>
+          <p class="stxt">gnomon reads the transcripts your agents already write to disk and opens your profile in the browser. The docs show how each number is computed and which habit moves it up.</p>
+          <div class="cmd">
+            <code id="install-cmd" data-copy="uvx --from git+https://github.com/xmartlabs/gnomon@latest xl-ai-insights --local">uvx --from \
+  git+https://github.com/xmartlabs/gnomon@latest \
+  xl-ai-insights --local</code>
+            <button class="copy" type="button" aria-describedby="install-cmd" aria-live="polite">Copy</button>
+          </div>
+          <p class="note">Python 3 standard library only. With <code>--local</code>, it makes zero network calls.</p>
+          <a class="go" href="{{ base_url }}/get-started/install/">Install and quick start<span aria-hidden="true">→</span></a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section sources" id="sources" aria-labelledby="sources-title">
+    <div class="wrap">
+      <div class="sec-head">
+      <div>
+      <p class="label">Sources</p>
+      <h2 id="sources-title" class="display h2">Reads the agents your team already uses.</h2>
+      </div>
+      <p class="sub">gnomon finds each tool's history where the tool already keeps it. Nothing gets installed inside the agents: no wrapper, no daemon.</p>
+      </div>
+      <div class="srcs-table">
+      <div class="srcs-head" aria-hidden="true"><span class="label">Tool</span><span class="label">Reads from</span><span class="label">Notes</span></div>
+      <ul class="srcs" aria-label="Supported tools">
+        <li><span class="src-name">Claude Code</span><span class="src-path">~/.claude/projects/</span><span class="src-note">Fullest signal coverage</span></li>
+        <li><span class="src-name">Codex CLI</span><span class="src-path">~/.codex/sessions/</span><span class="src-note">Valid profile, fewer signals than Claude Code</span></li>
+        <li><span class="src-name">Cursor</span><span class="src-path">state.vscdb and ~/.cursor/projects/</span><span class="src-note">App and <code>cursor-agent</code> CLI. Model mix is left out because Cursor bills a flat rate per request.</span></li>
+        <li><span class="src-name">Gemini CLI</span><span class="src-path">~/.gemini/tmp/</span><span class="src-note">Valid profile, fewer signals than Claude Code</span></li>
+        <li><span class="src-name">Google Antigravity CLI</span><span class="src-path">~/.gemini/antigravity-cli/</span><span class="src-note">Scored fully offline</span></li>
+        <li><span class="src-name">Google Antigravity IDE</span><span class="src-path">~/.gemini/antigravity-ide/</span><span class="src-note">The IDE hides the model and records no subagents, so Model mix and Orchestration are left out</span></li>
+        <li><span class="src-name">opencode</span><span class="src-path">Its local session files</span><span class="src-note">Parsed where present</span></li>
+        <li><span class="src-name">Pi</span><span class="src-path">Its local session files</span><span class="src-note">Parsed where present</span></li>
+      </ul>
+      </div>
+      <div class="srcs-foot">
+        <p class="note">An axis a tool can't record is left out of that profile, never scored as zero.</p>
+        <a class="go" href="{{ base_url }}/sources/coverage/">What each source measures<span aria-hidden="true">→</span></a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="privacy" aria-labelledby="privacy-title">
+    <div class="wrap">
+      <div class="sec-head">
+      <div>
+      <p class="label">Privacy</p>
+      <h2 id="privacy-title" class="display h2">The analysis runs on the developer's machine.</h2>
+      </div>
+      <p class="sub">With <code>--local</code>, gnomon makes zero network calls. Code churn comes from the local <code>git</code>. Sharing is a separate step that each developer opts into.</p>
+      </div>
+      <div class="ledger">
+        <div>
+          <h3>Never uploaded</h3>
+          <ul>
+            <li>Prompts</li>
+            <li>File contents</li>
+            <li>Verbatim quotes</li>
+            <li>File paths</li>
+            <li><code>narrative_input.md</code> and <code>stats.json</code></li>
+          </ul>
+        </div>
+        <div class="vrule" aria-hidden="true"></div>
+        <div>
+          <h3>Uploaded only when the developer shares</h3>
+          <p class="lead-in">One file, <code>summary.json</code>, with:</p>
+          <ul>
+            <li>Counts and ratios, such as error recovery, planning ratio and fan-out</li>
+            <li>The computed profile: AQ, archetype and scorecard</li>
+            <li>Names of the AI models used each month</li>
+            <li>Names of custom skills and MCP servers, which can include a project or customer name</li>
+          </ul>
+        </div>
+      </div>
+      <p class="note ledger-note">With the self-hosted dashboard, shared summaries go to your own server.</p>
+    </div>
+  </section>
+
+  <section class="contact on-night" id="contact" aria-labelledby="contact-title">
+    <svg class="contact-arc" viewBox="-100 -100 200 200" aria-hidden="true"></svg>
+    <div class="wrap">
+      <p class="label">Contact</p>
+      <h2 id="contact-title" class="display contact-title">Bring gnomon to your team.</h2>
+      <p class="lede">gnomon is built by <a href="https://www.xmartlabs.com/?utm_source=gnomon-docs&amp;utm_medium=landing&amp;utm_content=brand">Xmartlabs</a>. Tell us about your team and the agents it uses, and we will get back to you.</p>
+      <div class="actions">
+        <a class="btn btn-lg" href="https://www.xmartlabs.com/contact?utm_source=gnomon-docs&amp;utm_medium=landing&amp;utm_content=footer-cta">Contact us</a>
+        <a class="go" href="{{ base_url }}/get-started/why-gnomon/">Or start with the docs<span aria-hidden="true">→</span></a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot on-night">
+  <div class="wrap foot-in">
+    <span class="brand"><img src="{{ base_url }}/assets/landing/gnomon-mark-dark.svg" width="18" height="18" alt=""><span class="wordmark">gnomon</span></span>
+    <p>MIT license. Built by <a href="https://www.xmartlabs.com/?utm_source=gnomon-docs&amp;utm_medium=landing&amp;utm_content=brand">Xmartlabs</a>. Forked from <a href="https://github.com/Photobombastic/paxel-local">paxel-local</a> by Max Schilling; the build axes come from <a href="https://github.com/garrytan/gstack">gstack</a>.</p>
+    <nav aria-label="Footer">
+      <a href="{{ base_url }}/get-started/why-gnomon/">Docs</a>
+      <a href="https://github.com/xmartlabs/gnomon">GitHub</a>
+      <a href="https://github.com/xmartlabs/gnomon/blob/main/CONTRIBUTING.md">Contributing</a>
+    </nav>
+  </div>
+</footer>
+</body>
+</html>

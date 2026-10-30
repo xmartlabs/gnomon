@@ -4,7 +4,7 @@ Manual deploy over SSH. GitHub Actions builds the image, ships it to the VM as a
 tarball, and `deploy.sh` switches the running container with a health gate and
 automatic rollback. No registry credentials live on the box.
 
-Design rationale: `docs/specs/2026-09-01-dashboard-vm-deploy-design.md`.
+Design rationale: [`docs/specs/2026-09-01-dashboard-vm-deploy-design.md`](https://github.com/xmartlabs/gnomon/blob/main/docs/specs/2026-09-01-dashboard-vm-deploy-design.md).
 
 ## One-time VM preparation
 
@@ -104,7 +104,8 @@ already delivered stays there until the next deploy overwrites it.
 
 ### `~/gnomon` must not be a checkout of this repo
 
-The project README's quickstart says `git clone … gnomon && cd gnomon`; run from
+The [dashboard quick start](https://xmartlabs.github.io/gnomon/teams/dashboard/#run-it)
+says `git clone … gnomon && cd gnomon`; run from
 `$HOME`, that checkout *is* `~/gnomon`. The deploy would overwrite its
 `docker-compose.yml` and its `.env` — which in that layout holds the
 quickstart's `TEAM_TOKEN`. The workflow refuses to continue if it finds

@@ -45,7 +45,7 @@ out-of-scope concern for gnomon's overall payload, not something this
 capability created or can fix alone.
   1. Real 8-source data measures the baseline (everything EXCEPT this
      capability's two blocks) at ~89% of the cap already
-     (docs/metrics-by-source.md's "Upload payload budget" section).
+     (docs/metrics/scoring-reference.md's "Upload payload budget" section).
   2. In the fully-maxed SYNTHETIC worst case this module builds (every
      documented per-source/per-month list cap hit simultaneously across all
      8 sources, `_NAME_LEN=36` throughout), the PRE-EXISTING

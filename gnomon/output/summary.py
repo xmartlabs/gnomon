@@ -339,7 +339,7 @@ def _is_month_start(dt):
 
 
 def build_summary(stats):
-    """The shareable subset for the low-cost feedback loop (docs/metrics-evaluation.md):
+    """The shareable subset for the low-cost feedback loop (docs/get-started/usage.md):
     the 8 high-signal MEASURED metrics + monthly progression + rubric profile block.
     The profile sub-dict carries scores/level/archetype/steering; all values are computed
     or count-based — no prompts, verbatim quotes, file paths, or file contents.

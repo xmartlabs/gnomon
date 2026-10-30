@@ -1209,7 +1209,7 @@ class RecomputeGradeFieldsExcludedFromStatsAndNarrative(unittest.TestCase):
 
 
 class PayloadFeaturesOmittedCoversTheAbsentRecencyBlend(unittest.TestCase):
-    """Review remediation, Fix 7 minor: docs/metrics-by-source.md documents
+    """Review remediation, Fix 7 minor: docs/metrics/scoring-reference.md documents
     `payload_features.omitted[].reason` as explaining why any of the
     recompute-grade blocks is absent from a given payload -- so
     `bucket_scoring_inputs` being absent must be legible from `omitted` alone,
