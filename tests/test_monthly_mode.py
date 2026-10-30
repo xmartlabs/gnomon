@@ -8,8 +8,10 @@ Covers:
   - current-month orchestration: non-empty upload, empty-fallback, total-empty exit
 """
 
+import contextlib
 import datetime
 import calendar
+import io
 import os
 import sys
 import threading
@@ -555,6 +557,78 @@ class TestCurrentMonthOrchestration(unittest.TestCase):
         self.assertEqual(mock_upload.call_count, 2)
         self.assertEqual(exit_code, 1)
 
+    def test_console_all_months_low_volume_reports_filter_not_missing_sessions(self):
+        history = TestWebContractBridgeOrchestration._bridge_history()
+        low = {"threshold": 10, "dropped": {"claude": 4, "cursor": 2}}
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            _, upload, exit_code = self._run_main(
+                ["--no-open"],
+                [dict(_make_summary(sessions=0), _low_volume=low),
+                 dict(_make_summary(sessions=0), _low_volume=low)],
+                [], ["previous-token", "current-token"], history, True,
+            )
+        self.assertEqual(upload.call_count, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("claude 4, cursor 2", stdout.getvalue())
+        self.assertIn("--include-low-volume", stdout.getvalue())
+        self.assertNotIn("no sessions found", stdout.getvalue())
+
+    def test_console_mixed_upload_and_low_volume_lists_only_skipped_month(self):
+        history = TestWebContractBridgeOrchestration._bridge_history()
+        low = {"threshold": 10, "dropped": {"claude": 4}}
+        labels = [w[2] for w in month_windows(2, datetime.date.today())]
+        # (uploaded month index, expected exit) -- the current month uploading returns
+        # normally; only the previous one uploading falls through and exits 0.
+        for uploaded_index, expected_exit in ((0, 0), (1, None)):
+            with self.subTest(uploaded_index=uploaded_index):
+                summaries = [dict(_make_summary(sessions=0), _low_volume=low)] * 2
+                summaries[uploaded_index] = _make_summary()
+                stdout = io.StringIO()
+                with contextlib.redirect_stdout(stdout):
+                    _, upload, exit_code = self._run_main(
+                        ["--no-open"], summaries, ["/r/uploaded"],
+                        ["previous-token", "current-token"], history, True,
+                    )
+                out = stdout.getvalue()
+                self.assertEqual(upload.call_count, 1)
+                self.assertEqual(exit_code, expected_exit)
+                self.assertNotIn("nothing to share", out)
+                self.assertIn(f"  skipped {labels[1 - uploaded_index]} -- below the low-volume "
+                              "threshold (sessions: claude 4); re-run with "
+                              "--include-low-volume to include it", out)
+
+    def test_console_mixed_upload_and_empty_month_lists_skipped_month(self):
+        history = TestWebContractBridgeOrchestration._bridge_history()
+        labels = [w[2] for w in month_windows(2, datetime.date.today())]
+        # Same exits as the low-volume case: the current month uploading returns
+        # normally; only the previous one uploading falls through and exits 0.
+        for uploaded_index, expected_exit in ((0, 0), (1, None)):
+            with self.subTest(uploaded_index=uploaded_index):
+                summaries = [_make_summary(sessions=0)] * 2
+                summaries[uploaded_index] = _make_summary()
+                stdout = io.StringIO()
+                with contextlib.redirect_stdout(stdout):
+                    _, upload, exit_code = self._run_main(
+                        ["--no-open"], summaries, ["/r/uploaded"],
+                        ["previous-token", "current-token"], history, True,
+                    )
+                out = stdout.getvalue()
+                self.assertEqual(upload.call_count, 1)
+                self.assertEqual(exit_code, expected_exit)
+                self.assertNotIn("nothing to share", out)
+                self.assertIn("  uploaded 1/2 months", out)
+                self.assertIn(f"  skipped {labels[1 - uploaded_index]} -- no activity\n", out)
+
+    def test_skipped_months_lists_empty_and_low_volume_in_month_order(self):
+        low = {"outcome": "low_volume", "threshold": 10, "dropped": {"claude": 4}}
+        self.assertEqual(
+            _mirdash._format_skipped_months({"2026-09": low}, ["2026-10", "2026-08"]),
+            "  skipped 2026-08 -- no activity\n"
+            "  skipped 2026-09 -- below the low-volume threshold (sessions: claude 4); "
+            "re-run with --include-low-volume to include it\n"
+            "  skipped 2026-10 -- no activity")
+
     def test_console_bridge_enforces_cardinality_exceptions_and_current_success(self):
         history = TestWebContractBridgeOrchestration._bridge_history()
         paxel, upload, exit_code = self._run_main(
@@ -686,6 +760,54 @@ class TestWebContractBridgeOrchestration(unittest.TestCase):
         self.assertEqual(done["uploaded"], 1)
         self.assertEqual(done["guarded"], 1)
         self.assertIsNone(exit_code)
+
+    def test_web_all_months_low_volume_reports_filter_not_missing_sessions(self):
+        low = {"outcome": "low_volume", "threshold": 10, "dropped": {"claude": 4}}
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            server, _, exit_code = self._run_web(self._bridge_history(), [low, low])
+        done = [c.args[1] for c in server.push_event.call_args_list if c.args[0] == "done"][-1]
+        self.assertEqual((done["lowVolume"], done["lowVolumeThreshold"]), (2, 10))
+        self.assertIn("sessions were found", stdout.getvalue())
+        self.assertNotIn("no sessions found", stdout.getvalue())
+        self.assertIsNone(exit_code)
+
+    def test_web_mixed_upload_and_low_volume_lists_only_skipped_month(self):
+        low = {"outcome": "low_volume", "threshold": 10, "dropped": {"claude": 4}}
+        labels = [w[2] for w in month_windows(2, datetime.date.today())]
+        for uploaded_index in (0, 1):
+            with self.subTest(uploaded_index=uploaded_index):
+                results = [low, low]
+                results[uploaded_index] = "/r/uploaded"
+                stdout = io.StringIO()
+                with contextlib.redirect_stdout(stdout):
+                    server, _, exit_code = self._run_web(self._bridge_history(), results)
+                done = [c.args[1] for c in server.push_event.call_args_list
+                        if c.args[0] == "done"][-1]
+                out = stdout.getvalue()
+                self.assertEqual((done["uploaded"], done["lowVolume"]), (1, 1))
+                self.assertNotIn("nothing to share", out)
+                self.assertIn(f"  skipped {labels[1 - uploaded_index]} -- below the low-volume "
+                              "threshold (sessions: claude 4)", out)
+                self.assertIsNone(exit_code)
+
+    def test_web_mixed_upload_and_empty_month_lists_skipped_month(self):
+        labels = [w[2] for w in month_windows(2, datetime.date.today())]
+        for uploaded_index in (0, 1):
+            with self.subTest(uploaded_index=uploaded_index):
+                results = [None, None]
+                results[uploaded_index] = "/r/uploaded"
+                stdout = io.StringIO()
+                with contextlib.redirect_stdout(stdout):
+                    server, _, exit_code = self._run_web(self._bridge_history(), results)
+                done = [c.args[1] for c in server.push_event.call_args_list
+                        if c.args[0] == "done"][-1]
+                out = stdout.getvalue()
+                self.assertEqual((done["uploaded"], done["lowVolume"]), (1, 0))
+                self.assertNotIn("nothing to share", out)
+                self.assertIn("  [ok] 1/2 months uploaded", out)
+                self.assertIn(f"  skipped {labels[1 - uploaded_index]} -- no activity\n", out)
+                self.assertIsNone(exit_code)
 
     def test_web_bridge_enforces_cardinality_exceptions_and_current_success(self):
         history = self._bridge_history()

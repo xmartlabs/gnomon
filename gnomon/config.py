@@ -8,6 +8,8 @@ from datetime import datetime
 # for histories copied off a sandbox, devcontainer, or remote box.
 BASE = os.path.join(os.path.expanduser(os.environ.get("CLAUDE_CONFIG_DIR", "~/.claude")), "projects")
 OUT_DIR = os.getcwd()
+# Sidecar paxel writes next to summary.json: sources left out by the low-volume filter.
+LOW_VOLUME_FILE = "low_volume.json"
 
 
 # Which presence-signals a source can even record on disk. Scoring uses this to avoid
